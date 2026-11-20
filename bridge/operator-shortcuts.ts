@@ -36,7 +36,7 @@ const ACTION_NAME = /^[a-z_]+$/;
  * [keys]
  * prefix = "ctrl+b"                       # a string, or a list
  * new_tab = ["prefix+c", "ctrl+alt+c"]
- * zoom = ""                               # unbind
+ * zen_mode = ""                               # unbind
  * ```
  *
  * The list is returned as a one-element array so it can ride the shared reader, which holds rows.

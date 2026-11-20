@@ -475,10 +475,10 @@ cp shortcuts.toml.example ~/.config/collie/shortcuts.toml
 [keys]
 prefix = "ctrl+b"                    # the default
 new_tab = ["prefix+c", "ctrl+alt+c"] # several bindings for one action
-zoom = ""                            # unbind
+zen_mode = ""                        # unbind
 ```
 
-The `[keys]` table has the same name as Herdr's, so you can copy a block from your Herdr file. Every
+The `[keys]` table is named like Herdr's, so you can copy a block from your Herdr file. Every
 value is a string or a list of strings. Your value replaces that action's default whole. `""` or `[]`
 unbinds the action. The example file lists every default as a commented line.
 
@@ -489,10 +489,13 @@ unbinds the action. The example file lists every default as a commented line.
   binding on one of them is refused.
 - A bad line is dropped and the rest of the file loads. The shortcut list names each dropped line and
   the reason, in a note at its foot.
+- A Herdr name that Collie spells differently, such as `new_workspace`, is dropped too. The list
+  says which Collie name to write.
 
-The bridge re-reads the file when it changes. Reload the page to pick it up. The shortcut list in
-the app is the full reference for the actions and their keys. Open it with the prefix, then `?`, or on a
-wide window from Settings, Device, Keyboard shortcuts.
+The bridge re-reads the file when it changes. Reload the page to pick it up. Open the
+[shortcut list](terminology.md#shortcut-list) with the prefix, then `?`, or on a wide window from
+Settings, Device, Keyboard shortcuts. [Keyboard shortcuts](keyboard-shortcuts.md) has every action
+with its default keys, the key grammar and the Herdr names.
 
 ## Your own quick replies
 

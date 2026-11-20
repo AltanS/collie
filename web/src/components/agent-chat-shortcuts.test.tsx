@@ -87,15 +87,15 @@ describe("AgentChat — desktop shortcuts", () => {
   it("zoom turns zen mode on and off, where the pane menu offers zen", async () => {
     setZenEnabled(true);
     const { container } = renderChat({ tabs: fixtureTabs });
-    expect(run("zoom")).toBe(true);
+    expect(run("zen_mode")).toBe(true);
     await waitFor(() => expect(container.querySelector('header [data-slot="header-row"]')).toBeNull());
-    expect(run("zoom")).toBe(true);
+    expect(run("zen_mode")).toBe(true);
     await waitFor(() => expect(container.querySelector('header [data-slot="header-row"]')).not.toBeNull());
   });
 
   it("zoom has no way in while the setting is off", () => {
     renderChat();
-    expect(run("zoom")).toBe(false);
+    expect(run("zen_mode")).toBe(false);
   });
 
   it("find opens the find bar over the output", async () => {
@@ -112,7 +112,7 @@ describe("AgentChat — desktop shortcuts", () => {
   it("goto opens the switcher, the sheet the pull handle opens", async () => {
     renderChat();
     expect(screen.queryByRole("dialog")).toBeNull();
-    expect(run("goto")).toBe(true);
+    expect(run("open_switcher")).toBe(true);
     expect(await screen.findByRole("dialog")).toBeInTheDocument();
   });
 
@@ -122,11 +122,11 @@ describe("AgentChat — desktop shortcuts", () => {
     expect(screen.getByPlaceholderText(/type a reply/i)).toHaveFocus();
   });
 
-  it("toggle_view flips the device's choice between the terminal and Chat", async () => {
+  it("toggle_chat_terminal flips the device's choice between the terminal and Chat", async () => {
     localStorage.setItem("collie:dash-prefs:v1", JSON.stringify({ paneView: "terminal" }));
     renderChat();
     const chosen = () => asJsonString(parseJsonObject(localStorage.getItem("collie:dash-prefs:v1") ?? "{}")?.paneView);
-    expect(run("toggle_view")).toBe(true);
+    expect(run("toggle_chat_terminal")).toBe(true);
     await waitFor(() => expect(chosen()).toBe("chat"));
   });
 });

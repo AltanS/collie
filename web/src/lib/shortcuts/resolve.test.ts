@@ -54,8 +54,8 @@ describe("the normal mode", () => {
   });
 
   it("runs a direct binding and never enters a mode", () => {
-    const resolver = make({ zoom: ["ctrl+shift+z"], find: ["f3"] });
-    expect(resolver.press(ctrl("Z", { shiftKey: true }))).toEqual({ type: "run", action: "zoom" });
+    const resolver = make({ zen_mode: ["ctrl+shift+z"], find: ["f3"] });
+    expect(resolver.press(ctrl("Z", { shiftKey: true }))).toEqual({ type: "run", action: "zen_mode" });
     expect(resolver.press(tap("F3"))).toEqual({ type: "run", action: "find" });
     expect(resolver.mode).toBe("normal");
   });
@@ -111,7 +111,7 @@ describe("the prefix mode", () => {
   it("matches an uppercase letter as Shift plus the letter", () => {
     const resolver = make();
     resolver.press(ctrl("b"));
-    expect(resolver.press(tap("N", { shiftKey: true }))).toEqual({ type: "run", action: "new_workspace" });
+    expect(resolver.press(tap("N", { shiftKey: true }))).toEqual({ type: "run", action: "new_space" });
     resolver.press(ctrl("b"));
     expect(resolver.press(tap("n"))).toEqual({ type: "run", action: "next_tab" });
   });
@@ -249,13 +249,13 @@ describe("the layout", () => {
   });
 
   it("matches a ctrl digit by its physical key", () => {
-    const resolver = make({ goto: ["ctrl+1"] });
-    expect(resolver.press(ctrl("٣", { code: "Digit1" }))).toEqual({ type: "run", action: "goto" });
+    const resolver = make({ open_switcher: ["ctrl+1"] });
+    expect(resolver.press(ctrl("٣", { code: "Digit1" }))).toEqual({ type: "run", action: "open_switcher" });
   });
 
   it("matches an alt letter by its physical key on a Mac, where Option types a symbol", () => {
-    const resolver = make({ goto: ["alt+b"] }, true);
-    expect(resolver.press(tap("∫", { code: "KeyB", altKey: true }))).toEqual({ type: "run", action: "goto" });
+    const resolver = make({ open_switcher: ["alt+b"] }, true);
+    expect(resolver.press(tap("∫", { code: "KeyB", altKey: true }))).toEqual({ type: "run", action: "open_switcher" });
   });
 
   it("does not move a key a Latin layout already named", () => {
@@ -264,12 +264,12 @@ describe("the layout", () => {
   });
 
   it("prefers the key over the physical key", () => {
-    const resolver = make({ goto: ["ctrl+x"] });
-    expect(resolver.press(ctrl("x", { code: "KeyB" }))).toEqual({ type: "run", action: "goto" });
+    const resolver = make({ open_switcher: ["ctrl+x"] });
+    expect(resolver.press(ctrl("x", { code: "KeyB" }))).toEqual({ type: "run", action: "open_switcher" });
   });
 
   it("retries the physical key for a ctrl-only or alt-only chord and nothing else", () => {
-    const resolver = make({ goto: ["ctrl+shift+k"], home: ["ctrl+alt+j"], zoom: ["cmd+k"], find: ["ctrl+k"] });
+    const resolver = make({ open_switcher: ["ctrl+shift+k"], open_dashboard: ["ctrl+alt+j"], zen_mode: ["cmd+k"], find: ["ctrl+k"] });
     expect(resolver.press(ctrl("к", { code: "KeyK", shiftKey: true }))).toEqual(PASS);
     expect(resolver.press(ctrl("о", { code: "KeyJ", altKey: true }))).toEqual(PASS);
     expect(resolver.press(tap("к", { code: "KeyK", metaKey: true }))).toEqual(PASS);
@@ -290,12 +290,12 @@ describe("the layout", () => {
   });
 
   it("matches a bare key behind the prefix by its key on a Dvorak layout", () => {
-    // Dvorak: the physical KeyC types `j`. `prefix j` is focus_pane_down, not new_tab.
+    // Dvorak: the physical KeyC types `j`. `prefix j` is next_space, not new_tab.
     const resolver = make();
     resolver.press(ctrl("b"));
-    expect(resolver.press(tap("j", { code: "KeyC" }))).toEqual({ type: "run", action: "focus_pane_down" });
+    expect(resolver.press(tap("j", { code: "KeyC" }))).toEqual({ type: "run", action: "next_space" });
     resolver.press(ctrl("b"));
-    expect(resolver.press(tap("z", { code: "KeyC" }))).toEqual({ type: "run", action: "zoom" });
+    expect(resolver.press(tap("z", { code: "KeyC" }))).toEqual({ type: "run", action: "zen_mode" });
   });
 
   it("does not use the physical key for a bare key an ASCII layout typed, behind the prefix", () => {
@@ -313,7 +313,7 @@ describe("the layout", () => {
   });
 
   it("never uses the physical key for a bare key in the normal mode, where it is typing", () => {
-    const resolver = make({ goto: ["f3"] });
+    const resolver = make({ open_switcher: ["f3"] });
     expect(resolver.press(tap("с", { code: "KeyC" }))).toEqual(PASS);
     expect(resolver.press(tap("и", { code: "KeyB" }))).toEqual(PASS);
     expect(resolver.mode).toBe("normal");
@@ -328,40 +328,40 @@ describe("the layout", () => {
 
 describe("AltGr", () => {
   it("never fires a ctrl+alt chord on a character typed with AltGr", () => {
-    const resolver = make({ goto: ["ctrl+alt+q"] });
+    const resolver = make({ open_switcher: ["ctrl+alt+q"] });
     // A German keyboard types `@` with AltGr+Q. Windows reports it as ctrl+alt and sets AltGraph.
     expect(resolver.press(tap("@", { code: "KeyQ", ctrlKey: true, altKey: true, altGraph: true }))).toEqual(PASS);
     expect(resolver.mode).toBe("normal");
   });
 
   it("fires the same chord on a US layout, where there is no AltGr", () => {
-    const resolver = make({ goto: ["ctrl+alt+q"] });
-    expect(resolver.press(tap("q", { ctrlKey: true, altKey: true }))).toEqual({ type: "run", action: "goto" });
+    const resolver = make({ open_switcher: ["ctrl+alt+q"] });
+    expect(resolver.press(tap("q", { ctrlKey: true, altKey: true }))).toEqual({ type: "run", action: "open_switcher" });
   });
 
   it("reads an AltGr character as itself behind the prefix", () => {
-    const resolver = make({ goto: ["prefix+@"] });
+    const resolver = make({ open_switcher: ["prefix+@"] });
     resolver.press(ctrl("b"));
-    expect(resolver.press(tap("@", { code: "KeyQ", ctrlKey: true, altKey: true, altGraph: true }))).toEqual({ type: "run", action: "goto" });
+    expect(resolver.press(tap("@", { code: "KeyQ", ctrlKey: true, altKey: true, altGraph: true }))).toEqual({ type: "run", action: "open_switcher" });
   });
 
   it("reads an AltGr character as itself when the system reports only AltGraph", () => {
-    const resolver = make({ goto: ["prefix+@"] });
+    const resolver = make({ open_switcher: ["prefix+@"] });
     resolver.press(ctrl("b"));
-    expect(resolver.press(tap("@", { code: "KeyQ", altKey: true, altGraph: true }))).toEqual({ type: "run", action: "goto" });
+    expect(resolver.press(tap("@", { code: "KeyQ", altKey: true, altGraph: true }))).toEqual({ type: "run", action: "open_switcher" });
   });
 });
 
 describe("a Mac's Cmd", () => {
   it("is the meta key", () => {
-    const resolver = make({ goto: ["cmd+k"] }, true);
-    expect(resolver.press(tap("k", { metaKey: true }))).toEqual({ type: "run", action: "goto" });
+    const resolver = make({ open_switcher: ["cmd+k"] }, true);
+    expect(resolver.press(tap("k", { metaKey: true }))).toEqual({ type: "run", action: "open_switcher" });
     expect(resolver.press(ctrl("k"))).toEqual(PASS);
   });
 
   it("is what mod means", () => {
-    const resolver = make({ goto: ["mod+k"] }, true);
-    expect(resolver.press(tap("k", { metaKey: true }))).toEqual({ type: "run", action: "goto" });
+    const resolver = make({ open_switcher: ["mod+k"] }, true);
+    expect(resolver.press(tap("k", { metaKey: true }))).toEqual({ type: "run", action: "open_switcher" });
   });
 
   it("can be the prefix", () => {
@@ -415,7 +415,7 @@ describe("a sticky mode", () => {
   });
 
   it("passes a Ctrl or Meta chord it does not know, so ctrl+c and cmd+r keep working", () => {
-    const resolver = inMode({ zoom: ["ctrl+shift+z"] });
+    const resolver = inMode({ zen_mode: ["ctrl+shift+z"] });
     expect(resolver.press(ctrl("c"))).toEqual(PASS);
     expect(resolver.press(tap("r", { metaKey: true }))).toEqual(PASS);
     expect(resolver.press(ctrl("Z", { shiftKey: true }))).toEqual(PASS);

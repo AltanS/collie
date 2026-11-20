@@ -42,7 +42,45 @@ One thing you can open on the phone. In a terminal it is a pane with a screen. I
 one conversation, and it opens in Chat only. A pane holds an agent or a plain shell. When it holds an
 agent, the pane shows that agent's [session](#session).
 
-On a large screen several panes show side by side ([Large screens](configure.md#large-screens)).
+On a large screen several panes show side by side, in a [row of panes](#row-of-panes)
+([Large screens](configure.md#large-screens)).
+
+## Row of panes
+
+The panes of one space, side by side, on a large screen. Each space keeps its own row, and the row
+scrolls sideways. A pane in it is a [pane](#pane), never a column
+([Large screens](configure.md#large-screens)). Taking a pane out of the row is
+[Remove from view](#remove-from-view).
+
+## Remove from view
+
+The action that takes a pane out of the [row of panes](#row-of-panes). The agent in it keeps running,
+and the pane is still in the sidebar. It is not closing a tab or stopping the agent
+([Large screens](configure.md#large-screens)).
+
+## Prefix key
+
+The key you press before an action key on a keyboard, `Ctrl+B` by default, the same as Herdr's. It
+says that the next key is for Collie. Press it twice to send it to the pane
+([Keyboard shortcuts](keyboard-shortcuts.md#the-prefix)).
+
+## Shortcut list
+
+The list of every keyboard action with its keys, opened with the [prefix key](#prefix-key) and then
+`?`. It also names each line of `shortcuts.toml` that Collie dropped, and why
+([Keyboard shortcuts](keyboard-shortcuts.md#the-actions)).
+
+## Navigate mode
+
+A mode of the keyboard that stays on until `Esc` or `Enter`. The keys `h`, `j`, `k`, `l`, the arrows
+and `1` to `9` move you between panes, spaces and tabs
+([Keyboard shortcuts](keyboard-shortcuts.md#navigate-mode-and-resize-mode)).
+
+## Resize mode
+
+A mode of the keyboard that stays on until `Esc` or `Enter`. The keys `h` and `l` make the focused
+pane narrower or wider in the [row of panes](#row-of-panes)
+([Keyboard shortcuts](keyboard-shortcuts.md#navigate-mode-and-resize-mode)).
 
 ## Terminal (mux)
 
@@ -208,7 +246,8 @@ yes/no prompt ([Send anyway](multiplexers.md#send-anyway)).
 The composer mode where each key goes to the terminal as you type. It turns itself off after 60
 seconds with no key, when the pane's agent changes, or when the app goes to the background. Collie
 never writes the characters you type in it to the audit log
-([Security](security.md)).
+([Security](security.md)). While it is on, a keyboard takes only the [prefix key](#prefix-key)
+([Keyboard shortcuts](keyboard-shortcuts.md#type-mode)).
 
 ## Put back
 

@@ -50,6 +50,7 @@ function mount() {
 }
 
 const card = () => document.querySelector('[data-slot="keyboard-hint"]');
+const caps = () => [...(card()?.querySelectorAll("kbd") ?? [])].map((cap) => cap.textContent);
 const seeKeyboard = () => act(() => noteKeyPress(HARDWARE));
 
 describe("KeyboardHintCard", () => {
@@ -65,8 +66,32 @@ describe("KeyboardHintCard", () => {
     expect(screen.getByText("You have a keyboard")).toBeInTheDocument();
     expect(card()?.textContent).toContain("Collie takes Herdr's keys. Press");
     expect(card()?.textContent).toContain("then ? to see them all.");
-    const caps = [...(card()?.querySelectorAll("kbd") ?? [])].map((cap) => cap.textContent);
-    expect(caps).toEqual(["Ctrl", "B"]);
+    expect(caps()).toEqual(["Ctrl", "B", "?"]);
+  });
+
+  it("draws the help key as key caps, the first binding of help", () => {
+    publish({ help: ["prefix+shift+k", "prefix+f1"] });
+    mount();
+    seeKeyboard();
+    expect(caps()).toEqual(["Ctrl", "B", "Shift", "K"]);
+  });
+
+  it("names a direct help key without the prefix", () => {
+    publish({ help: ["ctrl+alt+h"] });
+    mount();
+    seeKeyboard();
+    expect(card()?.textContent).toContain("Press");
+    expect(card()?.textContent).not.toContain("then");
+    expect(caps()).toEqual(["Ctrl", "Alt", "H"]);
+  });
+
+  it("leaves the sentence that names help out when help is unbound", () => {
+    publish({ help: [] });
+    mount();
+    seeKeyboard();
+    expect(card()?.textContent).toContain("Collie takes Herdr's keys.");
+    expect(card()?.textContent).not.toContain("to see them all");
+    expect(caps()).toEqual([]);
   });
 
   it("closes, and stays closed after a reload", async () => {
@@ -96,16 +121,14 @@ describe("KeyboardHintCard", () => {
     publish({ prefix: ["ctrl+a"] });
     mount();
     seeKeyboard();
-    const caps = [...(card()?.querySelectorAll("kbd") ?? [])].map((cap) => cap.textContent);
-    expect(caps).toEqual(["Ctrl", "A"]);
+    expect(caps()).toEqual(["Ctrl", "A", "?"]);
   });
 
   it("follows a prefix that changes while it shows", () => {
     mount();
     seeKeyboard();
     act(() => publish({ prefix: ["alt+x"] }));
-    const caps = [...(card()?.querySelectorAll("kbd") ?? [])].map((cap) => cap.textContent);
-    expect(caps).toEqual(["Alt", "X"]);
+    expect(caps()).toEqual(["Alt", "X", "?"]);
   });
 
   it("waits while the mode bar is up and comes back after it", () => {

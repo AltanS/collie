@@ -8,7 +8,7 @@ import { usePaneKeySink, useShortcutHandler } from "./use-shortcut-handler";
 afterEach(() => __resetShortcutRegistry());
 
 function Answers({ handler }: { handler: ShortcutHandler | undefined }) {
-  useShortcutHandler("zoom", handler);
+  useShortcutHandler("zen_mode", handler);
   return null;
 }
 
@@ -16,9 +16,9 @@ describe("useShortcutHandler", () => {
   it("answers while mounted and stops when the component leaves", () => {
     const handler = vi.fn();
     const { unmount } = render(<Answers handler={handler} />);
-    expect(runShortcutAction("zoom")).toBe(true);
+    expect(runShortcutAction("zen_mode")).toBe(true);
     unmount();
-    expect(runShortcutAction("zoom")).toBe(false);
+    expect(runShortcutAction("zen_mode")).toBe(false);
     expect(handler).toHaveBeenCalledTimes(1);
   });
 
@@ -27,18 +27,18 @@ describe("useShortcutHandler", () => {
     const second = vi.fn();
     const { rerender } = render(<Answers handler={first} />);
     rerender(<Answers handler={second} />);
-    runShortcutAction("zoom");
+    runShortcutAction("zen_mode");
     expect(first).not.toHaveBeenCalled();
     expect(second).toHaveBeenCalledTimes(1);
   });
 
   it("offers nothing while the handler is undefined", () => {
     const { rerender } = render(<Answers handler={undefined} />);
-    expect(runShortcutAction("zoom")).toBe(false);
+    expect(runShortcutAction("zen_mode")).toBe(false);
     rerender(<Answers handler={vi.fn()} />);
-    expect(runShortcutAction("zoom")).toBe(true);
+    expect(runShortcutAction("zen_mode")).toBe(true);
     rerender(<Answers handler={undefined} />);
-    expect(runShortcutAction("zoom")).toBe(false);
+    expect(runShortcutAction("zen_mode")).toBe(false);
   });
 });
 

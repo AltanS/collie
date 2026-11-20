@@ -4,7 +4,7 @@
 // without lifting that component's state.
 //
 // A component registers a handler for an action while it is mounted (`useShortcutHandler`). An
-// action with no handler is a no-op: "close the column" on the dashboard has no column to close,
+// action with no handler is a no-op: "remove from view" on the dashboard has no pane to remove,
 // and that is not an error. The newest registration of an id wins, and a registration only removes
 // itself, so a remount that registers before the old mount cleans up loses nothing.
 //
@@ -16,15 +16,15 @@ import { ACTIONS, type ActionId, type ModeId } from "./actions";
 export type ShortcutHandler = (index?: number) => void;
 
 /**
- * A sticky mode's keys run the handler of the global action they mirror, so a column steps the same
+ * A sticky mode's keys run the handler of the global action they mirror, so a pane steps the same
  * way from `prefix+l` and from `l` inside the picker, and one registration serves both. Only the
  * mode rows with no global twin (the width steps) register on their own.
  */
 const MIRRORS: ReadonlyMap<ActionId, ActionId> = new Map<ActionId, ActionId>([
   ["navigate_left", "focus_pane_left"],
   ["navigate_right", "focus_pane_right"],
-  ["navigate_up", "focus_pane_up"],
-  ["navigate_down", "focus_pane_down"],
+  ["navigate_up", "previous_space"],
+  ["navigate_down", "next_space"],
   ["navigate_tab", "switch_tab"],
 ]);
 

@@ -32,6 +32,7 @@ import durableWire from "../docs/durable-wire.md" with { type: "text" };
 import fiveMinuteInstall from "../docs/five-minute-install.md" with { type: "text" };
 import hill from "../docs/hill.md" with { type: "text" };
 import install from "../docs/install.md" with { type: "text" };
+import keyboardShortcuts from "../docs/keyboard-shortcuts.md" with { type: "text" };
 import multiplexers from "../docs/multiplexers.md" with { type: "text" };
 import security from "../docs/security.md" with { type: "text" };
 import sessions from "../docs/sessions.md" with { type: "text" };
@@ -111,6 +112,11 @@ export const DOC_PAGES: readonly DocPage[] = [
     name: "configure",
     purpose: "The `.env`, your own commands, keys, quick replies, typefaces and language",
     text: configure,
+  },
+  {
+    name: "keyboard-shortcuts",
+    purpose: "Drive Collie from a keyboard: the prefix, every action and its keys, and shortcuts.toml",
+    text: keyboardShortcuts,
   },
   {
     name: "commands",

@@ -30,7 +30,7 @@ describe("the defaults", () => {
   it("bind the table's actions behind the prefix", () => {
     expect(keymap.prefixed.get("c")).toEqual({ action: "new_tab" });
     expect(keymap.prefixed.get("?")).toEqual({ action: "help" });
-    expect(keymap.prefixed.get("shift+n")).toEqual({ action: "new_workspace" });
+    expect(keymap.prefixed.get("shift+n")).toEqual({ action: "new_space" });
     expect(keymap.prefixed.get("n")).toEqual({ action: "next_tab" });
     expect(keymap.prefixed.get("b")).toEqual({ action: "toggle_sidebar" });
     expect(keymap.direct.size).toBe(0);
@@ -43,7 +43,7 @@ describe("the defaults", () => {
 
   it("open the sticky modes from a prefix binding", () => {
     expect(keymap.prefixed.get("r")).toEqual({ action: "resize_mode", opensMode: "resize" });
-    expect(keymap.prefixed.get("w")).toEqual({ action: "workspace_picker", opensMode: "navigate" });
+    expect(keymap.prefixed.get("w")).toEqual({ action: "navigate_mode", opensMode: "navigate" });
   });
 
   it("keep the keys of a mode inside the mode", () => {
@@ -94,46 +94,46 @@ describe("the operator's file replaces an action whole", () => {
   });
 
   it("takes a list of bindings", () => {
-    const keymap = build({ goto: ["prefix+g", "ctrl+k"] });
-    expect(keymap.prefixed.get("g")).toEqual({ action: "goto" });
-    expect(keymap.direct.get("ctrl+k")).toEqual({ action: "goto" });
+    const keymap = build({ open_switcher: ["prefix+g", "ctrl+k"] });
+    expect(keymap.prefixed.get("g")).toEqual({ action: "open_switcher" });
+    expect(keymap.direct.get("ctrl+k")).toEqual({ action: "open_switcher" });
   });
 
   it("keeps the unbound action's key free for another", () => {
-    const keymap = build({ next_tab: [], home: ["prefix+n"] });
-    expect(keymap.prefixed.get("n")).toEqual({ action: "home" });
+    const keymap = build({ next_tab: [], open_dashboard: ["prefix+n"] });
+    expect(keymap.prefixed.get("n")).toEqual({ action: "open_dashboard" });
     expect(keymap.diagnostics).toEqual([]);
   });
 });
 
 describe("collisions", () => {
   it("drops a default that meets the operator's binding, without a word", () => {
-    const keymap = build({ home: ["prefix+n"] });
-    expect(keymap.prefixed.get("n")).toEqual({ action: "home" });
+    const keymap = build({ open_dashboard: ["prefix+n"] });
+    expect(keymap.prefixed.get("n")).toEqual({ action: "open_dashboard" });
     expect(keymap.bindings.get("next_tab")).toEqual([]);
     expect(keymap.diagnostics).toEqual([]);
   });
 
   it("keeps the first of two operator bindings on one key and reports the second", () => {
-    const keymap = build({ home: ["prefix+m"], settings: ["prefix+m"] });
+    const keymap = build({ open_dashboard: ["prefix+m"], settings: ["prefix+m"] });
     // `settings` comes first in the table, so it is the one kept, whatever order the file wrote.
     expect(keymap.prefixed.get("m")).toEqual({ action: "settings" });
     expect(keymap.diagnostics).toEqual([
-      { action: "home", binding: "prefix+m", code: "collision", message: "prefix+m: kept settings, disabled home" },
+      { action: "open_dashboard", binding: "prefix+m", code: "collision", message: "prefix+m: kept settings, disabled open_dashboard" },
     ]);
   });
 
   it("treats shift+/ and ? as one key", () => {
-    const keymap = build({ goto: ["prefix+shift+/"] });
-    expect(keymap.prefixed.get("?")).toEqual({ action: "goto" });
+    const keymap = build({ open_switcher: ["prefix+shift+/"] });
+    expect(keymap.prefixed.get("?")).toEqual({ action: "open_switcher" });
     expect(keymap.bindings.get("help")).toEqual([]);
     expect(keymap.diagnostics).toEqual([]);
   });
 
   it("ignores a repeat inside one action", () => {
-    const keymap = build({ goto: ["prefix+g", "prefix+g"] });
+    const keymap = build({ open_switcher: ["prefix+g", "prefix+g"] });
     expect(keymap.diagnostics).toEqual([]);
-    expect(keymap.bindings.get("goto")).toHaveLength(1);
+    expect(keymap.bindings.get("open_switcher")).toHaveLength(1);
   });
 
   it("drops one digit of a range and keeps the others", () => {
@@ -173,10 +173,10 @@ describe("the prefix", () => {
   });
 
   it("falls back to ctrl+b when the prefix is bad, and the rest of the file loads", () => {
-    const keymap = build({ prefix: ["nonsense"], goto: ["prefix+m"] });
+    const keymap = build({ prefix: ["nonsense"], open_switcher: ["prefix+m"] });
     expect(keymap.prefix).toEqual([chord("b", { ctrl: true })]);
     expect(codes(keymap.diagnostics)).toEqual(["invalid-binding", "invalid-prefix"]);
-    expect(keymap.prefixed.get("m")).toEqual({ action: "goto" });
+    expect(keymap.prefixed.get("m")).toEqual({ action: "open_switcher" });
   });
 
   it("falls back when the prefix is emptied", () => {
@@ -201,7 +201,7 @@ describe("the prefix", () => {
   });
 
   it("is reserved: a binding on the prefix key is refused", () => {
-    const keymap = build({ goto: ["prefix+ctrl+b"], home: ["ctrl+b"] });
+    const keymap = build({ open_switcher: ["prefix+ctrl+b"], open_dashboard: ["ctrl+b"] });
     expect(keymap.prefixed.has("ctrl+b")).toBe(false);
     expect(keymap.direct.has("ctrl+b")).toBe(false);
     expect(codes(keymap.diagnostics)).toEqual(["reserved", "reserved"]);
@@ -222,7 +222,7 @@ describe("the prefix", () => {
   });
 
   it("keeps Esc for cancel behind the prefix", () => {
-    const keymap = build({ goto: ["prefix+esc"] });
+    const keymap = build({ open_switcher: ["prefix+esc"] });
     expect(codes(keymap.diagnostics)).toEqual(["reserved"]);
   });
 });
@@ -230,7 +230,7 @@ describe("the prefix", () => {
 describe("direct bindings", () => {
   it("must carry a modifier: a bare or shifted printable key is refused", () => {
     for (const binding of ["x", "shift+x", "X", "?", "space", "enter", "tab", "left", "esc", "shift+tab"]) {
-      const keymap = build({ goto: [binding] });
+      const keymap = build({ open_switcher: [binding] });
       expect(codes(keymap.diagnostics), binding).toEqual(["unsafe-direct"]);
       expect(keymap.direct.size, binding).toBe(0);
     }
@@ -238,7 +238,7 @@ describe("direct bindings", () => {
 
   it("accept Ctrl, Alt or Meta, and an F key on its own", () => {
     for (const binding of ["ctrl+k", "alt+x", "cmd+k", "ctrl+shift+k", "f5", "shift+f5", "alt+left"]) {
-      const keymap = build({ goto: [binding] });
+      const keymap = build({ open_switcher: [binding] });
       expect(keymap.diagnostics, binding).toEqual([]);
       expect(keymap.direct.size, binding).toBe(1);
     }
@@ -246,22 +246,22 @@ describe("direct bindings", () => {
 
   it("refuse the chords the browser keeps", () => {
     for (const binding of ["ctrl+w", "ctrl+t", "ctrl+n", "ctrl+tab", "ctrl+shift+n", "ctrl+l", "ctrl+shift+tab", "ctrl+shift+t", "ctrl+shift+w", "cmd+w", "cmd+t", "cmd+shift+n", "cmd+shift+t", "CTRL+w"]) {
-      const keymap = build({ goto: [binding] });
+      const keymap = build({ open_switcher: [binding] });
       expect(codes(keymap.diagnostics), binding).toEqual(["browser-reserved"]);
       expect(keymap.direct.size, binding).toBe(0);
     }
   });
 
   it("let the browser's chords stand behind the prefix", () => {
-    const keymap = build({ goto: ["prefix+ctrl+w"] });
+    const keymap = build({ open_switcher: ["prefix+ctrl+w"] });
     expect(keymap.diagnostics).toEqual([]);
-    expect(keymap.prefixed.get("ctrl+w")).toEqual({ action: "goto" });
+    expect(keymap.prefixed.get("ctrl+w")).toEqual({ action: "open_switcher" });
   });
 
   it("run mod as Cmd on a Mac and Ctrl elsewhere", () => {
-    expect(build({ goto: ["mod+k"] }, true).direct.has("meta+k")).toBe(true);
-    expect(build({ goto: ["mod+k"] }, false).direct.has("ctrl+k")).toBe(true);
-    expect(build({ goto: ["mod+w"] }, true).direct.size).toBe(0);
+    expect(build({ open_switcher: ["mod+k"] }, true).direct.has("meta+k")).toBe(true);
+    expect(build({ open_switcher: ["mod+k"] }, false).direct.has("ctrl+k")).toBe(true);
+    expect(build({ open_switcher: ["mod+w"] }, true).direct.size).toBe(0);
     expect(build({ prefix: ["mod+j"] }, true).prefix).toEqual([chord("j", { meta: true })]);
     expect(build({}, true).mac).toBe(true);
   });
@@ -269,27 +269,27 @@ describe("direct bindings", () => {
 
 describe("a bad binding is dropped with a diagnostic and the file still loads", () => {
   it("reports grammar errors with the action and the text", () => {
-    const keymap = build({ goto: ["prefix+nope"], home: ["prefix+m"] });
+    const keymap = build({ open_switcher: ["prefix+nope"], open_dashboard: ["prefix+m"] });
     expect(keymap.diagnostics).toEqual([
-      { action: "goto", binding: "prefix+nope", code: "invalid-binding", message: 'prefix+nope: unknown key "nope"' },
+      { action: "open_switcher", binding: "prefix+nope", code: "invalid-binding", message: 'prefix+nope: unknown key "nope"' },
     ]);
-    expect(keymap.prefixed.get("m")).toEqual({ action: "home" });
-    expect(keymap.bindings.get("goto")).toEqual([]);
+    expect(keymap.prefixed.get("m")).toEqual({ action: "open_dashboard" });
+    expect(keymap.bindings.get("open_switcher")).toEqual([]);
   });
 
   it("keeps a bad binding from bringing the default back", () => {
-    const keymap = build({ goto: ["prefix+nope"] });
+    const keymap = build({ open_switcher: ["prefix+nope"] });
     expect(keymap.prefixed.has("g")).toBe(false);
   });
 
   it("keeps the good bindings of one list", () => {
-    const keymap = build({ goto: ["prefix+nope", "prefix+m"] });
-    expect(keymap.prefixed.get("m")).toEqual({ action: "goto" });
+    const keymap = build({ open_switcher: ["prefix+nope", "prefix+m"] });
+    expect(keymap.prefixed.get("m")).toEqual({ action: "open_switcher" });
     expect(codes(keymap.diagnostics)).toEqual(["invalid-binding"]);
   });
 
   it("refuses a range on an action that takes no number", () => {
-    expect(codes(build({ goto: ["prefix+1..9"] }).diagnostics)).toEqual(["range-not-indexed"]);
+    expect(codes(build({ open_switcher: ["prefix+1..9"] }).diagnostics)).toEqual(["range-not-indexed"]);
   });
 
   it("refuses a plain key on an indexed action", () => {
@@ -306,7 +306,7 @@ describe("a bad binding is dropped with a diagnostic and the file still loads", 
   });
 
   it("reports an action the table does not have", () => {
-    const keymap = build({ nonsense: ["prefix+m", "ctrl+k"], goto: ["prefix+g"] });
+    const keymap = build({ nonsense: ["prefix+m", "ctrl+k"], open_switcher: ["prefix+g"] });
     expect(keymap.diagnostics).toEqual([
       { action: "nonsense", binding: "prefix+m, ctrl+k", code: "unknown-action", message: "nonsense is not an action" },
     ]);
@@ -317,6 +317,6 @@ describe("a bad binding is dropped with a diagnostic and the file still loads", 
     const user: UserShortcuts = JSON.parse('{"constructor":["prefix+m"],"__proto__":["x"]}');
     const keymap = build(user);
     expect(keymap.diagnostics.map((diagnostic) => diagnostic.action)).toEqual(["constructor", "__proto__"]);
-    expect(keymap.prefixed.get("g")).toEqual({ action: "goto" });
+    expect(keymap.prefixed.get("g")).toEqual({ action: "open_switcher" });
   });
 });

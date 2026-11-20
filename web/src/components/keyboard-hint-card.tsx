@@ -1,4 +1,6 @@
-import { Keycaps } from "@/components/shortcut-list";
+import { Fragment, type ReactNode } from "react";
+
+import { Keycaps, actionCombos } from "@/components/shortcut-list";
 import { Button } from "@/components/ui/button";
 import { Notice, NOTICE_ACTION } from "@/components/ui/notice";
 import { useAnySheetOpen } from "@/components/ui/sheet";
@@ -8,15 +10,15 @@ import { useHardwareKeyboardSeen } from "@/lib/hardware-keyboard";
 import { t } from "@/lib/i18n";
 import { useCatchingUp, useLocked } from "@/lib/idle";
 import { markKeyboardHintDone, useKeyboardHintDone } from "@/lib/keyboard-hint";
-import { chordKeycaps } from "@/lib/shortcuts/parse";
 import { openShortcutHelp } from "@/lib/shortcuts/help";
 import { useShortcutKeymap, useShortcutMode } from "@/lib/shortcuts/state";
 import type { Keymap } from "@/lib/shortcuts/types";
 
 // THE ONE-TIME KEYBOARD HINT (M108, asked for by Altan on 2026-11-20). A small card at the top right of
 // the window, once the device has shown a hardware key press: "You have a keyboard. Collie takes Herdr's
-// keys. Press Ctrl B then ? to see them all." The prefix is drawn from the live keymap, so a prefix changed
-// in `shortcuts.toml` shows as changed. It is done for good (lib/keyboard-hint.ts) when the person closes
+// keys. Press Ctrl B then ? to see them all." The keys are drawn from the live keymap as key caps: the
+// prefix, and the first binding of `help`, so a key changed in `shortcuts.toml` shows as changed. With `help`
+// unbound the sentence that names it is left out. It is done for good (lib/keyboard-hint.ts) when the person closes
 // it, opens the list from it, or presses the prefix.
 //
 // IT HOLDS NO SPACE. `fixed`, out of flow, so nothing moves when it arrives or leaves (DESIGN.md §2), on an
@@ -34,16 +36,23 @@ import type { Keymap } from "@/lib/shortcuts/types";
 /** The gap between the header's bottom edge and the card, in px. */
 const GAP = 8;
 
-/** The body around its `{prefix}` slot: the words before, and the words after. */
-function bodyParts(): readonly [string, string] {
-  const [before = "", after = ""] = t("shortcuts.hint.body").split("{prefix}");
-  return [before, after];
+/** The words of a template with each `{name}` slot filled by a node. A slot the template names and the call lacks is a bug. */
+function withSlots(template: string, slots: Readonly<Record<string, ReactNode>>): ReactNode[] {
+  return template.split(/\{(\w+)\}/u).map((part, at) => {
+    if (at % 2 === 0) return part;
+    const slot = slots[part];
+    if (slot === undefined) throw new Error(`The keyboard hint has no slot {${part}}`);
+    return <Fragment key={`${part}-${at}`}>{slot}</Fragment>;
+  });
 }
 
-function primaryPrefixCaps(keymap: Keymap): string[] {
-  const first = keymap.prefix[0];
-  if (first === undefined) throw new Error("The keymap has no prefix chord");
-  return chordKeycaps({ chord: first, mac: keymap.mac });
+/** The sentence that names the `help` key, or null when `help` is unbound. It reads the first binding. */
+function seeAllSentence(keymap: Keymap): ReactNode[] | null {
+  const first = actionCombos({ keymap, id: "help" })[0];
+  if (first === undefined) return null;
+  const key = <Keycaps caps={first.caps} />;
+  if (!first.viaPrefix) return withSlots(t("shortcuts.hint.seeDirect"), { key });
+  return withSlots(t("shortcuts.hint.seePrefixed"), { prefix: <Keycaps caps={first.prefixCaps} />, key });
 }
 
 function showShortcuts(): void {
@@ -53,7 +62,7 @@ function showShortcuts(): void {
 
 function HintCard({ keymap }: { keymap: Keymap }) {
   const top = useAppHeaderBottom() + GAP;
-  const [before, after] = bodyParts();
+  const seeAll = seeAllSentence(keymap);
   return (
     <div
       data-slot="keyboard-hint"
@@ -74,9 +83,8 @@ function HintCard({ keymap }: { keymap: Keymap }) {
       >
         <span className="font-semibold">{t("shortcuts.hint.title")}</span>
         <span className="font-normal">
-          {before}
-          <Keycaps caps={primaryPrefixCaps(keymap)} />
-          {after}
+          {t("shortcuts.hint.body")}
+          {seeAll !== null && <> {seeAll}</>}
         </span>
       </Notice>
     </div>

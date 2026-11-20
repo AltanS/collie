@@ -1131,13 +1131,13 @@ describe("the keyboard", () => {
     await waitFor(() => expect(q(container, "aside")?.dataset.slot).toBe("wide-sidebar"));
     run("toggle_sidebar");
     await waitFor(() => expect(q(container, "aside")?.dataset.slot).toBe("rail"));
-    run("goto");
+    run("open_switcher");
     await waitFor(() => expect(q(container, "aside")?.dataset.slot).toBe("wide-sidebar"));
   });
 
   it("offers nothing on the phone layout, where there is no sidebar or strip", async () => {
     await mount("w1:p1", 599);
-    for (const id of ["toggle_sidebar", "goto", "focus_pane_left", "focus_pane_right", "close_column", "resize_wider"] as const) {
+    for (const id of ["toggle_sidebar", "open_switcher", "focus_pane_left", "focus_pane_right", "remove_from_view", "resize_wider"] as const) {
       expect(run(id), id).toBe(false);
     }
   });
@@ -1164,15 +1164,15 @@ describe("the keyboard", () => {
     await mount("w1:p1", 1200);
     expect(run("cycle_pane_next")).toBe(false);
     expect(run("cycle_pane_previous")).toBe(false);
-    expect(run("close_column")).toBe(false);
+    expect(run("remove_from_view")).toBe(false);
   });
 
   it("moves between spaces as the chevrons do, and not past the ends", async () => {
     const { container } = await mount("w1:p1", 1200);
-    expect(run("focus_pane_up")).toBe(false);
-    expect(run("focus_pane_down")).toBe(true);
+    expect(run("previous_space")).toBe(false);
+    expect(run("next_space")).toBe(true);
     await waitFor(() => expect(shownPane(container)).toBe("pane:w2:p1"));
-    expect(run("focus_pane_down")).toBe(false);
+    expect(run("next_space")).toBe(false);
     expect(run("navigate_up")).toBe(true);
     await waitFor(() => expect(shownPane(container)).toBe("pane:w1:p1"));
   });
@@ -1181,10 +1181,10 @@ describe("the keyboard", () => {
     const { container } = await mount("w1:p1", 1200);
     await openBesideFromSidebar(container, A2);
     expect(columns(container)).toHaveLength(2);
-    expect(run("close_column")).toBe(true);
+    expect(run("remove_from_view")).toBe(true);
     await waitFor(() => expect(columns(container)).toHaveLength(1));
     expect(sidebarRow(container, A2)).not.toBeNull();
-    expect(run("close_column")).toBe(false);
+    expect(run("remove_from_view")).toBe(false);
   });
 
   it("steps the width one preset at a time and stops at the ends", async () => {
@@ -1218,7 +1218,7 @@ describe("the keyboard", () => {
     posture = "book";
     await mount("w1:p1", 1200);
     expect(run("toggle_sidebar")).toBe(false);
-    expect(run("goto")).toBe(false);
+    expect(run("open_switcher")).toBe(false);
   });
 });
 

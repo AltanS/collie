@@ -151,9 +151,9 @@ function useRootHandlers(scope: Scope): void {
   const { pathname } = useLocation();
   useShortcutHandler("settings", pathname.startsWith("/settings") ? undefined : () => nav.down(settingsPath(scope)));
   // Up, not down, and `upTo` the named parent: the dashboard is every route's ancestor (ADR 0067).
-  useShortcutHandler("home", pathname === "/" ? undefined : () => nav.upTo(homePath(scope)));
+  useShortcutHandler("open_dashboard", pathname === "/" ? undefined : () => nav.upTo(homePath(scope)));
   useShortcutHandler(
-    "new_workspace",
+    "new_space",
     pathname === "/new" ? undefined : () => nav.down(newPath({ machine: scope.host, session: scope.session })),
   );
 }

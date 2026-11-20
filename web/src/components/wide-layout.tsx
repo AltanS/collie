@@ -312,14 +312,14 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
   const focusedKey = strip.focus;
   useShortcutHandler("toggle_sidebar", book ? undefined : () => setSidebarOpen(!open));
   // On the strip the sidebar IS the switcher (the pane view draws none), so opening it is "go to".
-  useShortcutHandler("goto", book ? undefined : () => setSidebarOpen(true));
+  useShortcutHandler("open_switcher", book ? undefined : () => setSidebarOpen(true));
   useShortcutHandler("focus_pane_left", () => stepFocus(-1, false));
   useShortcutHandler("focus_pane_right", () => stepFocus(1, false));
   useShortcutHandler("cycle_pane_next", framed ? () => stepFocus(1, true) : undefined);
   useShortcutHandler("cycle_pane_previous", framed ? () => stepFocus(-1, true) : undefined);
-  useShortcutHandler("focus_pane_up", spaceAt > 0 ? () => moveSpace(-1) : undefined);
-  useShortcutHandler("focus_pane_down", spaceAt >= 0 && spaceAt < spaces.length - 1 ? () => moveSpace(1) : undefined);
-  useShortcutHandler("close_column", framed && focusedKey !== null ? () => remove(focusedKey) : undefined);
+  useShortcutHandler("previous_space", spaceAt > 0 ? () => moveSpace(-1) : undefined);
+  useShortcutHandler("next_space", spaceAt >= 0 && spaceAt < spaces.length - 1 ? () => moveSpace(1) : undefined);
+  useShortcutHandler("remove_from_view", framed && focusedKey !== null ? () => remove(focusedKey) : undefined);
   useShortcutHandler("resize_narrower", widthChoice ? () => stepWidthOf(-1) : undefined);
   useShortcutHandler("resize_wider", widthChoice ? () => stepWidthOf(1) : undefined);
 

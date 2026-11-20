@@ -96,18 +96,18 @@ describe("ShortcutHelpDoor", () => {
   });
 
   it("reads unset for an action the file unbound", () => {
-    mountWith({ zoom: [""] });
+    mountWith({ zen_mode: [""] });
     act(() => openShortcutHelp());
-    const row = found(screen.getByText("Zen mode on or off").closest("li"), "zoom row");
+    const row = found(screen.getByText("Zen mode on or off").closest("li"), "zen_mode row");
     expect(within(row).getByText("unset")).toBeInTheDocument();
   });
 
   it("shows what the file got wrong in the foot, with the reason", () => {
-    mountWith({ zoom: ["ctrl+w"], find: ["no+such+key"] });
+    mountWith({ zen_mode: ["ctrl+w"], find: ["no+such+key"] });
     act(() => openShortcutHelp());
     const foot = found(document.querySelector('[data-slot="shortcut-list-foot"]'), "foot");
     expect(within(foot).getByText("Dropped from shortcuts.toml (2)")).toBeInTheDocument();
-    expect(foot.textContent).toContain("zoom = ctrl+w");
+    expect(foot.textContent).toContain("zen_mode = ctrl+w");
     expect(foot.textContent).toContain("find = no+such+key");
   });
 
@@ -120,8 +120,8 @@ describe("ShortcutHelpDoor", () => {
   it("follows a change of the keymap while it is open", () => {
     mountWith();
     act(() => openShortcutHelp());
-    act(() => publishShortcutKeymap(buildKeymap({ defaults: ACTIONS, user: { zoom: [""] }, mac: false })));
-    const row = found(screen.getByText("Zen mode on or off").closest("li"), "zoom row");
+    act(() => publishShortcutKeymap(buildKeymap({ defaults: ACTIONS, user: { zen_mode: [""] }, mac: false })));
+    const row = found(screen.getByText("Zen mode on or off").closest("li"), "zen_mode row");
     expect(within(row).getByText("unset")).toBeInTheDocument();
   });
 });

@@ -161,6 +161,8 @@ export const GUARD_WEB: readonly (readonly [file: string, rule: string])[] = [
   ["src/lib/surface/no-harness-names.test.ts", "the surface code names no harness"],
   ["src/components/icons/icon-buttons-labelled.test.ts", "every icon-only button has a name"],
   ["src/lib/key-writes.test.ts", "every write to a pane's keyboard goes through lib/api"],
+  ["src/lib/shortcuts/words.test.ts", "no shortcut label uses the words workspace, column or zoom"],
+  ["src/lib/shortcuts/docs-table.test.ts", "the keyboard shortcuts page lists exactly the actions of the app, with their keys"],
   ["src/lib/tricks/places.test.ts", "no lib file tests a pane's kind for a trick but places.ts"],
   ["src/components/ui/notice.test.tsx", "the alert family does not grow a seventh component"],
   ["src/lib/surface/traces.test.ts", "the golden traces: a negative trace never reads free"],

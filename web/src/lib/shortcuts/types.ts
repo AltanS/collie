@@ -37,6 +37,7 @@ export type DiagnosticCode =
   | "collision"
   | "prefix-in-mode"
   | "unknown-action"
+  | "herdr-name"
   | "invalid-prefix";
 
 /** A binding that was dropped, and why. The rest of the file still loads. The message is English,

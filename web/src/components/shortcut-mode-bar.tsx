@@ -24,26 +24,26 @@ interface Hint {
 
 // In the order of importance, so a row that runs out of room loses the last ones.
 const PREFIX_HINTS: readonly Hint[] = [
-  { ids: ["goto"], labelKey: "shortcuts.bar.goto" },
+  { ids: ["open_switcher"], labelKey: "shortcuts.bar.switcher" },
   { ids: ["new_tab"], labelKey: "shortcuts.bar.newTab" },
   { ids: ["previous_tab", "next_tab"], labelKey: "shortcuts.bar.tabs" },
   { ids: ["switch_tab"], labelKey: "shortcuts.bar.tab" },
-  { ids: ["focus_pane_left", "focus_pane_right"], labelKey: "shortcuts.bar.columns" },
-  { ids: ["focus_pane_down", "focus_pane_up"], labelKey: "shortcuts.bar.spaces" },
-  { ids: ["workspace_picker"], labelKey: "shortcuts.bar.navigate" },
+  { ids: ["focus_pane_left", "focus_pane_right"], labelKey: "shortcuts.bar.panes" },
+  { ids: ["next_space", "previous_space"], labelKey: "shortcuts.bar.spaces" },
+  { ids: ["navigate_mode"], labelKey: "shortcuts.bar.navigate" },
   { ids: ["resize_mode"], labelKey: "shortcuts.bar.resize" },
-  { ids: ["zoom"], labelKey: "shortcuts.bar.zen" },
+  { ids: ["zen_mode"], labelKey: "shortcuts.bar.zen" },
   { ids: ["toggle_sidebar"], labelKey: "shortcuts.bar.sidebar" },
-  { ids: ["toggle_view"], labelKey: "shortcuts.bar.view" },
+  { ids: ["toggle_chat_terminal"], labelKey: "shortcuts.bar.view" },
   { ids: ["focus_composer"], labelKey: "shortcuts.bar.composer" },
   { ids: ["find"], labelKey: "shortcuts.bar.find" },
   { ids: ["settings"], labelKey: "shortcuts.bar.settings" },
-  { ids: ["home"], labelKey: "shortcuts.bar.home" },
+  { ids: ["open_dashboard"], labelKey: "shortcuts.bar.dashboard" },
 ];
 
 const MODE_HINTS = {
   navigate: [
-    { ids: ["navigate_left", "navigate_right"], labelKey: "shortcuts.bar.columns" },
+    { ids: ["navigate_left", "navigate_right"], labelKey: "shortcuts.bar.panes" },
     { ids: ["navigate_down", "navigate_up"], labelKey: "shortcuts.bar.spaces" },
     { ids: ["navigate_tab"], labelKey: "shortcuts.bar.tab" },
   ],

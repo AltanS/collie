@@ -279,7 +279,7 @@ describe("the operator's file", () => {
 
   it("says why a binding was dropped, once", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
-    const view = await renderPage({}, { zoom: ["ctrl+w"] });
+    const view = await renderPage({}, { zen_mode: ["ctrl+w"] });
     expect(warn).toHaveBeenCalledTimes(1);
     expect(String(warn.mock.calls[0]?.[0])).toContain("collie shortcuts:");
     view.rerender(<Page routeKey="/elsewhere" />);

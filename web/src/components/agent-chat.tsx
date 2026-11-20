@@ -2372,10 +2372,10 @@ export function AgentChat({
   // Offered only where that control is drawn. Zen's way in is the pane menu's row (and a floating way
   // out), the switcher is the pull handle (the strip's sidebar stands in for it), find is withheld in
   // Chat, and the Chat/Terminal choice is withdrawn on a pane with no screen.
-  useShortcutHandler("zoom", zen ? () => setZen(false) : zenAvailable && display ? enterZen : undefined);
-  useShortcutHandler("goto", pullHandle === undefined ? undefined : () => setDrawer("switcher"));
+  useShortcutHandler("zen_mode", zen ? () => setZen(false) : zenAvailable && display ? enterZen : undefined);
+  useShortcutHandler("open_switcher", pullHandle === undefined ? undefined : () => setDrawer("switcher"));
   useShortcutHandler("find", display && !chatShown && !agentView.showing ? openFind : undefined);
-  useShortcutHandler("toggle_view", gridless ? undefined : () => paneViewChange(chatShown ? "terminal" : "chat"));
+  useShortcutHandler("toggle_chat_terminal", gridless ? undefined : () => paneViewChange(chatShown ? "terminal" : "chat"));
   useShortcutHandler("focus_composer", () => composerRef.current?.focusInput());
 
   // A trick this session proposed (package I): Collie's own card, last in whichever body is on screen (Chat, the

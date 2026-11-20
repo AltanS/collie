@@ -14,6 +14,7 @@
 
 import { DEFAULT_PREFIX, MODES, type ActionDef, type ActionId, type ModeDef, type ModeId } from "./actions";
 import { chordId, isFunctionKey } from "./chord";
+import { HERDR_NAMES, herdrNameMessage } from "./herdr-names";
 import { parseBinding } from "./parse";
 import type { Binding, Chord, Diagnostic, DiagnosticCode, Hit, Keymap, ModeKeymap, UserShortcuts } from "./types";
 
@@ -236,12 +237,12 @@ function hitsOf<Id extends string>(registry: Registry<Id>): Map<string, Hit<Id>>
 function reportUnknownActions(input: { user: UserShortcuts; known: ReadonlySet<string>; diagnostics: Diagnostic[] }): void {
   for (const name of Object.keys(input.user)) {
     if (name === "prefix" || input.known.has(name)) continue;
-    report(input.diagnostics, {
-      action: name,
-      binding: input.user[name].join(", "),
-      code: "unknown-action",
-      message: `${name} is not an action`,
-    });
+    const binding = input.user[name].join(", ");
+    if (HERDR_NAMES.has(name)) {
+      report(input.diagnostics, { action: name, binding, code: "herdr-name", message: herdrNameMessage({ name, collie: HERDR_NAMES.get(name) ?? null }) });
+      continue;
+    }
+    report(input.diagnostics, { action: name, binding, code: "unknown-action", message: `${name} is not an action` });
   }
 }
 

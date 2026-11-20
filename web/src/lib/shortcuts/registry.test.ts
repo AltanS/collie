@@ -8,13 +8,13 @@ afterEach(() => __resetShortcutRegistry());
 describe("the handler registry", () => {
   it("runs the handler of an action and says so", () => {
     const handler = vi.fn();
-    registerShortcutHandler("zoom", handler);
-    expect(runShortcutAction("zoom")).toBe(true);
+    registerShortcutHandler("zen_mode", handler);
+    expect(runShortcutAction("zen_mode")).toBe(true);
     expect(handler).toHaveBeenCalledTimes(1);
   });
 
   it("an action with no handler is a no-op that says so", () => {
-    expect(runShortcutAction("zoom")).toBe(false);
+    expect(runShortcutAction("zen_mode")).toBe(false);
   });
 
   it("hands an indexed action its number", () => {
@@ -55,7 +55,7 @@ describe("the handler registry", () => {
   it("a mode has a target only while one of its keys has a handler", () => {
     expect(hasShortcutTarget("navigate")).toBe(false);
     expect(hasShortcutTarget("resize")).toBe(false);
-    registerShortcutHandler("focus_pane_up", vi.fn());
+    registerShortcutHandler("previous_space", vi.fn());
     expect(hasShortcutTarget("navigate")).toBe(true);
     expect(hasShortcutTarget("resize")).toBe(false);
     registerShortcutHandler("resize_wider", vi.fn());

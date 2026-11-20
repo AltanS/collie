@@ -51,7 +51,7 @@ describe("ShortcutBarHost", () => {
     show("navigate");
     expect(bar()).toHaveAttribute("data-mode", "navigate");
     expect(screen.getByText("Navigate")).toBeInTheDocument();
-    expect(screen.getByText("columns")).toBeInTheDocument();
+    expect(screen.getByText("panes")).toBeInTheDocument();
     expect(screen.getByText("done")).toBeInTheDocument();
     expect(screen.getByText("leave")).toBeInTheDocument();
     expect(screen.queryByText("new tab")).toBeNull();

@@ -21,10 +21,10 @@ describe("validateOperatorShortcuts", () => {
         [keys]
         prefix = "ctrl+a"
         new_tab = ["prefix+c", "ctrl+alt+c"]
-        zoom = ""
-        close_column = []
+        zen_mode = ""
+        remove_from_view = []
       `),
-    ).toEqual([{ prefix: ["ctrl+a"], new_tab: ["prefix+c", "ctrl+alt+c"], zoom: [], close_column: [] }]);
+    ).toEqual([{ prefix: ["ctrl+a"], new_tab: ["prefix+c", "ctrl+alt+c"], zen_mode: [], remove_from_view: [] }]);
   });
 
   test("it holds no action list: an unknown name travels to the web", () => {
@@ -32,14 +32,14 @@ describe("validateOperatorShortcuts", () => {
   });
 
   test("the binding strings are not parsed here", () => {
-    expect(read(`[keys]\nzoom = ["not a chord", "ctrl+"]`)).toEqual([{ zoom: ["not a chord", "ctrl+"] }]);
+    expect(read(`[keys]\nzen_mode = ["not a chord", "ctrl+"]`)).toEqual([{ zen_mode: ["not a chord", "ctrl+"] }]);
   });
 
   test("no file, no document and no [keys] table all answer nothing to send", () => {
     expect(validateOperatorShortcuts(undefined, quiet)).toEqual([]);
     expect(validateOperatorShortcuts(null, quiet)).toEqual([]);
     expect(read("")).toEqual([]);
-    expect(read(`[other]\nzoom = "z"`)).toEqual([]);
+    expect(read(`[other]\nzen_mode = "z"`)).toEqual([]);
   });
 
   test("an empty [keys] table is a table: it answers an empty set of bindings", () => {
@@ -53,17 +53,17 @@ describe("validateOperatorShortcuts", () => {
         [keys]
         Zoom = "z"
         "new-tab" = "c"
-        goto = 7
+        open_switcher = 7
         help = ["prefix+?", 3]
         settings = true
         find = { key = "prefix+/" }
-        home = "prefix+q"
+        open_dashboard = "prefix+q"
       `,
       (message) => logged.push(message),
     );
-    expect(out).toEqual([{ home: ["prefix+q"] }]);
+    expect(out).toEqual([{ open_dashboard: ["prefix+q"] }]);
     expect(logged).toHaveLength(6);
-    for (const name of ["Zoom", "new-tab", "goto", "help", "settings", "find"]) {
+    for (const name of ["Zoom", "new-tab", "open_switcher", "help", "settings", "find"]) {
       expect(logged.some((line) => line.includes(`"${name}"`))).toBe(true);
     }
   });
@@ -98,15 +98,15 @@ function fakeIo(initial: { mtime: number | null; text: string }) {
 
 describe("createOperatorShortcuts", () => {
   test("parses once and serves the cache until the mtime moves", async () => {
-    const { io, state } = fakeIo({ mtime: 100, text: `[keys]\nzoom = "prefix+z"` });
+    const { io, state } = fakeIo({ mtime: 100, text: `[keys]\nzen_mode = "prefix+z"` });
     const reader = createOperatorShortcuts("/cfg/shortcuts.toml", io, quiet);
-    expect(await reader()).toEqual({ zoom: ["prefix+z"] });
-    expect(await reader()).toEqual({ zoom: ["prefix+z"] });
+    expect(await reader()).toEqual({ zen_mode: ["prefix+z"] });
+    expect(await reader()).toEqual({ zen_mode: ["prefix+z"] });
     expect(state.reads).toBe(1);
 
-    state.text = `[keys]\nzoom = ""`;
+    state.text = `[keys]\nzen_mode = ""`;
     state.mtime = 200;
-    expect(await reader()).toEqual({ zoom: [] });
+    expect(await reader()).toEqual({ zen_mode: [] });
     expect(state.reads).toBe(2);
   });
 

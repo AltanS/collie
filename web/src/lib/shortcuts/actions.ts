@@ -52,7 +52,7 @@ export interface ModeDef {
   readonly exits: readonly string[];
 }
 
-// Both modes act live, with no highlight: in `navigate` the keys move the real focus (column, space,
+// Both modes act live, with no highlight: in `navigate` the keys move the real focus (pane, space,
 // tab) as the prefix actions do, and `Enter` or `Esc` leaves; in `resize` the keys step the width.
 export const MODES = [
   { id: "navigate", labelKey: "shortcuts.mode.navigate", exits: ["enter"] },
@@ -71,12 +71,12 @@ export const ACTIONS = [
   { id: "help", group: "global", defaults: ["prefix+?"], labelKey: "shortcuts.action.help" },
   { id: "settings", group: "global", defaults: ["prefix+s"], labelKey: "shortcuts.action.settings" },
 
-  { id: "goto", group: "navigation", defaults: ["prefix+g"], labelKey: "shortcuts.action.goto" },
-  { id: "home", group: "navigation", defaults: ["prefix+q"], labelKey: "shortcuts.action.home" },
-  { id: "new_workspace", group: "navigation", defaults: ["prefix+shift+n"], labelKey: "shortcuts.action.new_workspace" },
-  { id: "focus_pane_up", group: "navigation", defaults: ["prefix+k"], labelKey: "shortcuts.action.focus_pane_up" },
-  { id: "focus_pane_down", group: "navigation", defaults: ["prefix+j"], labelKey: "shortcuts.action.focus_pane_down" },
-  { id: "workspace_picker", group: "navigation", defaults: ["prefix+w"], labelKey: "shortcuts.action.workspace_picker", opensMode: "navigate" },
+  { id: "open_switcher", group: "navigation", defaults: ["prefix+g"], labelKey: "shortcuts.action.open_switcher" },
+  { id: "open_dashboard", group: "navigation", defaults: ["prefix+q"], labelKey: "shortcuts.action.open_dashboard" },
+  { id: "new_space", group: "navigation", defaults: ["prefix+shift+n"], labelKey: "shortcuts.action.new_space" },
+  { id: "previous_space", group: "navigation", defaults: ["prefix+k"], labelKey: "shortcuts.action.previous_space" },
+  { id: "next_space", group: "navigation", defaults: ["prefix+j"], labelKey: "shortcuts.action.next_space" },
+  { id: "navigate_mode", group: "navigation", defaults: ["prefix+w"], labelKey: "shortcuts.action.navigate_mode", opensMode: "navigate" },
   { id: "navigate_left", group: "navigation", defaults: ["h", "left"], labelKey: "shortcuts.action.navigate_left", scope: "navigate" },
   { id: "navigate_down", group: "navigation", defaults: ["j", "down"], labelKey: "shortcuts.action.navigate_down", scope: "navigate" },
   { id: "navigate_up", group: "navigation", defaults: ["k", "up"], labelKey: "shortcuts.action.navigate_up", scope: "navigate" },
@@ -92,14 +92,14 @@ export const ACTIONS = [
   { id: "focus_pane_right", group: "panes", defaults: ["prefix+l"], labelKey: "shortcuts.action.focus_pane_right" },
   { id: "cycle_pane_next", group: "panes", defaults: ["prefix+tab"], labelKey: "shortcuts.action.cycle_pane_next" },
   { id: "cycle_pane_previous", group: "panes", defaults: ["prefix+shift+tab"], labelKey: "shortcuts.action.cycle_pane_previous" },
-  { id: "close_column", group: "panes", defaults: ["prefix+x"], labelKey: "shortcuts.action.close_column" },
+  { id: "remove_from_view", group: "panes", defaults: ["prefix+x"], labelKey: "shortcuts.action.remove_from_view" },
   { id: "resize_mode", group: "panes", defaults: ["prefix+r"], labelKey: "shortcuts.action.resize_mode", opensMode: "resize" },
   { id: "resize_narrower", group: "panes", defaults: ["h", "left"], labelKey: "shortcuts.action.resize_narrower", scope: "resize" },
   { id: "resize_wider", group: "panes", defaults: ["l", "right"], labelKey: "shortcuts.action.resize_wider", scope: "resize" },
 
-  { id: "zoom", group: "view", defaults: ["prefix+z"], labelKey: "shortcuts.action.zoom" },
+  { id: "zen_mode", group: "view", defaults: ["prefix+z"], labelKey: "shortcuts.action.zen_mode" },
   { id: "toggle_sidebar", group: "view", defaults: ["prefix+b"], labelKey: "shortcuts.action.toggle_sidebar" },
-  { id: "toggle_view", group: "view", defaults: ["prefix+t"], labelKey: "shortcuts.action.toggle_view" },
+  { id: "toggle_chat_terminal", group: "view", defaults: ["prefix+t"], labelKey: "shortcuts.action.toggle_chat_terminal" },
   { id: "focus_composer", group: "view", defaults: ["prefix+i"], labelKey: "shortcuts.action.focus_composer" },
   { id: "find", group: "view", defaults: ["prefix+/"], labelKey: "shortcuts.action.find" },
 ] as const satisfies readonly ActionDef[];

@@ -4,7 +4,9 @@
 #
 # This file configures ONE thing: the keys that drive the app from a keyboard. It works the way
 # Herdr's does. You press a prefix key, then one action key. The `[keys]` table is named like
-# Herdr's, so you can copy a block from your Herdr file.
+# Herdr's, so you can copy a block from your Herdr file. Where Collie names an action differently
+# (Herdr's `new_workspace` is `new_space` here), or has no such action, the shortcut list says what
+# to write and drops that line. Details: docs/keyboard-shortcuts.md.
 #
 # The prefix is `ctrl+b` by default, the same as Herdr. Change it with `prefix`. Press the prefix
 # twice to send it to the pane you are looking at.
@@ -40,12 +42,12 @@
 # [keys]
 # prefix = "ctrl+b"
 
-# Show the shortcut list, open Settings, open the switcher, go to the dashboard, open New.
+# Show the shortcut list, open Settings, open the switcher, open the dashboard, make a new space.
 # help = "prefix+?"
 # settings = "prefix+s"
-# goto = "prefix+g"
-# home = "prefix+q"
-# new_workspace = "prefix+shift+n"
+# open_switcher = "prefix+g"
+# open_dashboard = "prefix+q"
+# new_space = "prefix+shift+n"
 
 # Tabs of the space you are in: a new one, the one before, the one after, one by number.
 # new_tab = "prefix+c"
@@ -53,25 +55,25 @@
 # next_tab = "prefix+n"
 # switch_tab = "prefix+1..9"
 
-# Move between the columns of the wide strip (left, right), and between spaces (up, down).
+# Move between the panes of the row (left, right), and between spaces (up, down).
 # focus_pane_left = "prefix+h"
 # focus_pane_right = "prefix+l"
-# focus_pane_up = "prefix+k"
-# focus_pane_down = "prefix+j"
+# previous_space = "prefix+k"
+# next_space = "prefix+j"
 # cycle_pane_next = "prefix+tab"
 # cycle_pane_previous = "prefix+shift+tab"
 
-# Close the column (the pane keeps running), zen mode, the sidebar.
-# close_column = "prefix+x"
-# zoom = "prefix+z"
+# Remove the pane from the view (it keeps running), zen mode, the sidebar.
+# remove_from_view = "prefix+x"
+# zen_mode = "prefix+z"
 # toggle_sidebar = "prefix+b"
 
-# Two modes that stay until you press `esc`. In resize, `h` and `l` step the column width. In the
-# picker, `h` `j` `k` `l` and the arrows move, `1..9` picks a tab and `enter` opens it.
+# Two modes that stay until you press `esc`. In resize mode, `h` and `l` step the pane width. In
+# navigate mode, `h` `j` `k` `l` and the arrows move, `1..9` picks a tab and `enter` leaves.
 # resize_mode = "prefix+r"
-# workspace_picker = "prefix+w"
+# navigate_mode = "prefix+w"
 
-# The keys inside the picker and inside resize. They are bare keys, only valid in their mode.
+# The keys inside navigate mode and inside resize mode. They are bare keys, only valid in their mode.
 # navigate_left = ["h", "left"]
 # navigate_down = ["j", "down"]
 # navigate_up = ["k", "up"]
@@ -81,7 +83,7 @@
 # resize_wider = ["l", "right"]
 
 # Chat or Terminal for this pane, the composer, the find bar.
-# toggle_view = "prefix+t"
+# toggle_chat_terminal = "prefix+t"
 # focus_composer = "prefix+i"
 # find = "prefix+/"
 
