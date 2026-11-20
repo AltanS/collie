@@ -69,9 +69,8 @@ describe("ShortcutHelpDoor", () => {
     act(() => openShortcutHelp("all"));
     const dialog = found(sheet(), "sheet");
     expect(within(dialog).getByRole("region", { name: "Tabs" })).toBeInTheDocument();
-    expect(within(dialog).getAllByText("Tab by number")).toHaveLength(2);
-    // Tab by number: once behind the prefix, once inside the Navigate mode.
-    expect(within(dialog).getAllByText("1–9")).toHaveLength(2);
+    expect(within(dialog).getAllByText("Go to tab")).toHaveLength(1);
+    expect(within(dialog).getAllByText("1–9")).toHaveLength(1);
   });
 
   it("narrows the rows as the filter is typed", async () => {
@@ -80,7 +79,7 @@ describe("ShortcutHelpDoor", () => {
     expect(screen.getByText("Zen mode on or off")).toBeInTheDocument();
     await userEvent.type(screen.getByRole("textbox", { name: "Filter shortcuts" }), "sidebar");
     // The matched word is drawn as a mark, so the row's text is read as a whole.
-    expect(rowTexts()).toEqual([expect.stringContaining("Show or hide the sidebar")]);
+    expect(rowTexts()).toEqual([expect.stringContaining("Move in the sidebar"), expect.stringContaining("Show or hide the sidebar")]);
     await userEvent.clear(screen.getByRole("textbox", { name: "Filter shortcuts" }));
     await userEvent.type(screen.getByRole("textbox", { name: "Filter shortcuts" }), "nothing like this");
     expect(screen.getByText(/No shortcut matches/)).toBeInTheDocument();

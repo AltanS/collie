@@ -1794,6 +1794,15 @@ svg[data-mark].mark-steps .ct-tw {
   }
 }
 
+/* THE KEYBOARD'S RING over the sidebar (M108, lib/shortcuts/sidebar-focus.ts). Navigate mode marks the row
+   it stands on with `data-shortcut-focus`. DESIGN.md's focus channel, set apart from the row's own state
+   border: a 2px outline in the focus ring ink, 2px out, so it never moves the row and shows on the current
+   row's fill too. The list's 8px inset leaves room for it inside the scroller. */
+[data-shortcut-focus] {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 2px;
+}
+
 /* THE FILL OF A HOLD (components/harness-bar.tsx `ScreenStop`, components/hold-to-approve.tsx). While a
    finger holds the belt's Stop, or the yes to a trick's code, a tinted layer opens from the start edge to
    the end edge over the time left to the act (the hook sets `animation-duration` inline), so the button is

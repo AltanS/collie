@@ -1155,9 +1155,6 @@ describe("the keyboard", () => {
     await waitFor(() => expect(shownPane(container)).toBe("pane:w1:p2"));
     run("cycle_pane_next");
     await waitFor(() => expect(shownPane(container)).toBe("pane:w1:p1"));
-    // The picker's keys run the same acts.
-    run("navigate_right");
-    await waitFor(() => expect(shownPane(container)).toBe("pane:w1:p2"));
   });
 
   it("cycle needs two columns", async () => {
@@ -1173,7 +1170,7 @@ describe("the keyboard", () => {
     expect(run("next_space")).toBe(true);
     await waitFor(() => expect(shownPane(container)).toBe("pane:w2:p1"));
     expect(run("next_space")).toBe(false);
-    expect(run("navigate_up")).toBe(true);
+    expect(run("previous_space")).toBe(true);
     await waitFor(() => expect(shownPane(container)).toBe("pane:w1:p1"));
   });
 

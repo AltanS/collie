@@ -41,21 +41,20 @@ describe("the handler registry", () => {
     expect(runShortcutAction("find")).toBe(false);
   });
 
-  it("a picker key runs the handler of the action it mirrors", () => {
-    const left = vi.fn();
-    const tab = vi.fn();
-    registerShortcutHandler("focus_pane_left", left);
-    registerShortcutHandler("switch_tab", tab);
-    runShortcutAction("navigate_left");
-    runShortcutAction("navigate_tab", 2);
-    expect(left).toHaveBeenCalledTimes(1);
-    expect(tab).toHaveBeenCalledWith(2);
+  it("a mode's key runs its own handler, not a global action's", () => {
+    const space = vi.fn();
+    const down = vi.fn();
+    registerShortcutHandler("next_space", space);
+    registerShortcutHandler("navigate_down", down);
+    runShortcutAction("navigate_down");
+    expect(down).toHaveBeenCalledTimes(1);
+    expect(space).not.toHaveBeenCalled();
   });
 
   it("a mode has a target only while one of its keys has a handler", () => {
     expect(hasShortcutTarget("navigate")).toBe(false);
     expect(hasShortcutTarget("resize")).toBe(false);
-    registerShortcutHandler("previous_space", vi.fn());
+    registerShortcutHandler("navigate_up", vi.fn());
     expect(hasShortcutTarget("navigate")).toBe(true);
     expect(hasShortcutTarget("resize")).toBe(false);
     registerShortcutHandler("resize_wider", vi.fn());

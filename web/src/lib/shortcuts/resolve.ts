@@ -141,6 +141,8 @@ export function createResolver<Id extends string = ActionId>(keymap: Keymap<Id>)
       sticky = hit.opensMode;
       return { type: "mode", id: hit.opensMode };
     }
+    // The key ran and the mode ends with it: the outcome is still a `run`, so the app acts on it.
+    if (hit.leavesMode) sticky = null;
     return hit.index === undefined ? { type: "run", action: hit.action } : { type: "run", action: hit.action, index: hit.index };
   }
 

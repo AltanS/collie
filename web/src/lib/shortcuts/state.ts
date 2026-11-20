@@ -1,5 +1,6 @@
 // What the running keymap shows the rest of the app (M108 spec 03): the mode it is in, the keymap
-// it was built from, and the short "Not on this screen" notice a key with no target raises. Three small external stores, read with `useSyncExternalStore`, so the mode bar
+// it was built from, the short "Not on this screen" notice a key with no target raises, and the focus
+// ring of Navigate mode over the sidebar's rows. Four small external stores, read with `useSyncExternalStore`, so the mode bar
 // (components/shortcut-bar-host.tsx) and the shortcut list (components/shortcut-help-door.tsx) need no
 // prop and no context.
 
@@ -12,6 +13,7 @@ let keymap: Keymap | null = null;
 const modeListeners = new Set<() => void>();
 const keymapListeners = new Set<() => void>();
 const noticeListeners = new Set<() => void>();
+const sidebarFocusListeners = new Set<() => void>();
 
 /** How long the "Not on this screen" line stays up. */
 export const SHORTCUT_NOTICE_MS = 2000;
@@ -33,6 +35,17 @@ function subscribeTo(listeners: Set<() => void>): (listener: () => void) => () =
 const subscribeMode = subscribeTo(modeListeners);
 const subscribeKeymap = subscribeTo(keymapListeners);
 const subscribeNotice = subscribeTo(noticeListeners);
+const subscribeSidebarFocus = subscribeTo(sidebarFocusListeners);
+
+/**
+ * The ring of Navigate mode: `index` counts the sidebar's focusable rows in the order the sidebar draws
+ * them (lib/shortcuts/sidebar-focus.ts reads them from the DOM). Null while the mode is not on the sidebar.
+ */
+export interface SidebarFocus {
+  readonly index: number;
+}
+
+let sidebarFocus: SidebarFocus | null = null;
 
 /** `normal`, `prefix` (one shot, waiting for the action key) or the id of a sticky mode. */
 export function getShortcutMode(): Mode {
@@ -98,12 +111,29 @@ export function useShortcutNotice(): boolean {
   return useSyncExternalStore(subscribeNotice, getShortcutNotice, getShortcutNotice);
 }
 
-/** Test seam: the mode and keymap of a root that never mounted, and no notice. */
+export function getSidebarFocus(): SidebarFocus | null {
+  return sidebarFocus;
+}
+
+export function publishSidebarFocus(next: SidebarFocus | null): void {
+  if (sidebarFocus === next) return;
+  if (sidebarFocus !== null && next !== null && sidebarFocus.index === next.index) return;
+  sidebarFocus = next;
+  notify(sidebarFocusListeners);
+}
+
+export function useSidebarFocus(): SidebarFocus | null {
+  return useSyncExternalStore(subscribeSidebarFocus, getSidebarFocus, getSidebarFocus);
+}
+
+/** Test seam: the mode and keymap of a root that never mounted, no notice and no ring. */
 export function __resetShortcutState(): void {
   mode = "normal";
   keymap = null;
+  sidebarFocus = null;
   clearNoticeTimer();
   setNotice(false);
   notify(modeListeners);
   notify(keymapListeners);
+  notify(sidebarFocusListeners);
 }

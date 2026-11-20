@@ -93,15 +93,15 @@ describe("a key with no target on this screen", () => {
   });
 
   it("takes the hints' place inside a sticky mode, and the mode stays", () => {
-    registerShortcutHandler("focus_pane_left", () => undefined);
+    registerShortcutHandler("navigate_down", () => undefined);
     const { reply } = mount();
     fireEvent.keyDown(reply, CTRL_B);
     fireEvent.keyDown(reply, { key: "w" });
     expect(document.querySelector('[data-slot="shortcut-mode-bar"]')).toHaveAttribute("data-mode", "navigate");
-    // `k` steps a space, which this screen cannot.
+    // `k` moves the ring up, which this screen has no handler for.
     fireEvent.keyDown(reply, { key: "k" });
     expect(notice()).toBeInTheDocument();
-    expect(screen.queryByText("panes")).toBeNull();
-    expect(screen.getByText("leave")).toBeInTheDocument();
+    expect(screen.queryByText("Move:")).toBeNull();
+    expect(screen.getByText("Leave:")).toBeInTheDocument();
   });
 });

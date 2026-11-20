@@ -142,54 +142,79 @@ export function useTypingFocus(lingerMs = 0): boolean {
   return typing;
 }
 
+/**
+ * Watch the keyboard answer outside React: `onChange` gets the answer now and on every change, and the
+ * returned function stops the watch. The state machine of {@link useKeyboardOpen}, in one place, so a
+ * reader that is not a component (lib/hardware-keyboard.ts) gets the same answer the composer does.
+ */
+export function watchKeyboardOpen(onChange: (open: boolean) => void): () => void {
+  const vv = window.visualViewport;
+  if (!vv) return () => {};
+  let baseline = vv.height;
+  let baselineWidth = vv.width;
+  // The previous HEIGHT answer, kept here rather than read back out of React state: `update` is a
+  // stable closure registered once, so it would capture the first `open` forever. This is the
+  // input the hysteresis above needs, and it must be the value the last event produced, not the
+  // value the last render saw. Focus does not feed it: the hysteresis is about the height only.
+  let wasOpen = false;
+  // The field that has focus, kept from the events: on focusout `relatedTarget` is where focus goes
+  // next, so a move between two fields never holds <body> even for the instant between the events
+  // (React batches the two answers into one render either way; this keeps each answer exact).
+  let focused: EventTarget | null = document.activeElement;
+  const answer = () => onChange(wasOpen && raisesKeyboard(focused));
+  const update = () => {
+    // A width change is an orientation/layout change, not the keyboard — re-baseline so a portrait
+    // baseline doesn't read as "open" in landscape.
+    if (vv.width !== baselineWidth) {
+      baselineWidth = vv.width;
+      baseline = vv.height;
+      wasOpen = false;
+      answer();
+      return;
+    }
+    baseline = Math.max(baseline, vv.height);
+    wasOpen = nextKeyboardOpen(wasOpen, baseline, vv.height);
+    answer();
+  };
+  const onFocusIn = (e: FocusEvent) => {
+    focused = e.target;
+    answer();
+  };
+  const onFocusOut = (e: FocusEvent) => {
+    focused = e.relatedTarget;
+    answer();
+  };
+  update();
+  vv.addEventListener("resize", update);
+  document.addEventListener("focusin", onFocusIn);
+  document.addEventListener("focusout", onFocusOut);
+  return () => {
+    vv.removeEventListener("resize", update);
+    document.removeEventListener("focusin", onFocusIn);
+    document.removeEventListener("focusout", onFocusOut);
+  };
+}
+
 export function useKeyboardOpen(): boolean {
   const [open, setOpen] = useState(false);
-  useEffect(() => {
-    const vv = window.visualViewport;
-    if (!vv) return;
-    let baseline = vv.height;
-    let baselineWidth = vv.width;
-    // The previous HEIGHT answer, kept here rather than read back out of React state: `update` is a
-    // stable closure registered once, so it would capture the first `open` forever. This is the
-    // input the hysteresis above needs, and it must be the value the last event produced, not the
-    // value the last render saw. Focus does not feed it: the hysteresis is about the height only.
-    let wasOpen = false;
-    // The field that has focus, kept from the events: on focusout `relatedTarget` is where focus goes
-    // next, so a move between two fields never holds <body> even for the instant between the events
-    // (React batches the two answers into one render either way; this keeps each answer exact).
-    let focused: EventTarget | null = document.activeElement;
-    const answer = () => setOpen(wasOpen && raisesKeyboard(focused));
-    const update = () => {
-      // A width change is an orientation/layout change, not the keyboard — re-baseline so a portrait
-      // baseline doesn't read as "open" in landscape.
-      if (vv.width !== baselineWidth) {
-        baselineWidth = vv.width;
-        baseline = vv.height;
-        wasOpen = false;
-        answer();
-        return;
-      }
-      baseline = Math.max(baseline, vv.height);
-      wasOpen = nextKeyboardOpen(wasOpen, baseline, vv.height);
-      answer();
-    };
-    const onFocusIn = (e: FocusEvent) => {
-      focused = e.target;
-      answer();
-    };
-    const onFocusOut = (e: FocusEvent) => {
-      focused = e.relatedTarget;
-      answer();
-    };
-    update();
-    vv.addEventListener("resize", update);
-    document.addEventListener("focusin", onFocusIn);
-    document.addEventListener("focusout", onFocusOut);
-    return () => {
-      vv.removeEventListener("resize", update);
-      document.removeEventListener("focusin", onFocusIn);
-      document.removeEventListener("focusout", onFocusOut);
-    };
-  }, []);
+  useEffect(() => watchKeyboardOpen(setOpen), []);
   return open;
+}
+
+let isSoftKeyboardOpen = false;
+
+/** Whether the on-screen keyboard is up now, for code outside React. False until {@link trackSoftKeyboard} runs. */
+export function isSoftKeyboardUp(): boolean {
+  return isSoftKeyboardOpen;
+}
+
+/** Keep {@link isSoftKeyboardUp} current. The root listener starts it once and stops it on unmount. */
+export function trackSoftKeyboard(): () => void {
+  const stop = watchKeyboardOpen((open) => {
+    isSoftKeyboardOpen = open;
+  });
+  return () => {
+    stop();
+    isSoftKeyboardOpen = false;
+  };
 }

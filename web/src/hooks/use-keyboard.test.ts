@@ -1,7 +1,7 @@
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { keyboardLikelyOpen, nextKeyboardOpen, raisesKeyboard, useKeyboardOpen, useTypingFocus } from "./use-keyboard";
+import { isSoftKeyboardUp, keyboardLikelyOpen, nextKeyboardOpen, raisesKeyboard, trackSoftKeyboard, useKeyboardOpen, useTypingFocus } from "./use-keyboard";
 
 describe("keyboardLikelyOpen", () => {
   it("is closed when the height is unchanged", () => {
@@ -141,6 +141,21 @@ describe("useKeyboardOpen", () => {
     const { field, hook } = setup();
     act(() => field.focus());
     expect(hook.result.current).toBe(false);
+  });
+
+  it("answers outside React too, from the same height test, once tracked", () => {
+    const { field, resize } = setup();
+    expect(isSoftKeyboardUp()).toBe(false);
+    const stop = trackSoftKeyboard();
+    act(() => field.focus());
+    resize(460);
+    expect(isSoftKeyboardUp()).toBe(true);
+    resize(844);
+    expect(isSoftKeyboardUp()).toBe(false);
+    resize(460);
+    expect(isSoftKeyboardUp()).toBe(true);
+    stop();
+    expect(isSoftKeyboardUp()).toBe(false);
   });
 });
 
