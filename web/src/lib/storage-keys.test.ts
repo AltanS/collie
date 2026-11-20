@@ -57,6 +57,7 @@ const KEYS = new Map<string, KeyFate>([
   ["collie:shape:", { area: "local", prefix: true, fate: "wiped", why: "remembered shape facts: a flag, a small number or a fixed word per page part (lib/remembered-shape.ts)" }],
   // Decision ids of trick proposals closed with "Not now" in their session (lib/hill/session-later.ts, 2026-11-17): they name this pairing's bridge decisions, so they go with it.
   ["collie:session-later", { area: "local", prefix: false, fate: "wiped", why: "decision ids of this pairing's trick proposals, closed in their session" }],
+  ["collie:recent-panes:v1", { area: "local", prefix: false, fate: "wiped", why: "the panes this device opened last: pane addresses and workspace names (lib/recent-panes.ts)" }],
   ["collie:slot:v1:", { area: "local", prefix: true, fate: "wiped", why: "the last pane address and workspace name of each browser tile" }],
   // Written first by the wipe and removed last; present only while a wipe is unfinished (lib/wipe.ts).
   ["collie:wipe-pending", { area: "local", prefix: false, fate: "wiped", why: "a wipe's resume mark" }],
