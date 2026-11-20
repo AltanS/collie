@@ -75,10 +75,10 @@ is written `prefix+<key>`. A key inside a mode is a bare key.
 | `previous_space` | `prefix+k` | Navigation | Goes to the space before this one. | [Space](terminology.md#space) |
 | `next_space` | `prefix+j` | Navigation | Goes to the space after this one. | [Space](terminology.md#space) |
 | `navigate_mode` | `prefix+w` | Navigation | Opens Navigate mode. | [Navigate mode](terminology.md#navigate-mode) |
-| `navigate_left` | `h`, `left` | Navigation | In Navigate mode: moves to the pane before. | [Pane](terminology.md#pane) |
+| `navigate_left` | `h`, `left` | Navigation | In Navigate mode: moves to the previous pane. | [Pane](terminology.md#pane) |
 | `navigate_down` | `j`, `down` | Navigation | In Navigate mode: moves to the next space. | [Space](terminology.md#space) |
 | `navigate_up` | `k`, `up` | Navigation | In Navigate mode: moves to the previous space. | [Space](terminology.md#space) |
-| `navigate_right` | `l`, `right` | Navigation | In Navigate mode: moves to the pane after. | [Pane](terminology.md#pane) |
+| `navigate_right` | `l`, `right` | Navigation | In Navigate mode: moves to the next pane. | [Pane](terminology.md#pane) |
 | `navigate_tab` | `1..9` | Navigation | In Navigate mode: goes to the tab with that number. | [Tab](terminology.md#tab) |
 | `new_tab` | `prefix+c` | Tabs | Makes a new tab in this space. | [Tab](terminology.md#tab) |
 | `previous_tab` | `prefix+p` | Tabs | Goes to the tab before. From the first tab it wraps to the last. | [Tab](terminology.md#tab) |
