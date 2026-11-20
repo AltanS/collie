@@ -383,6 +383,12 @@ const CLAUDE_TEST_RANGE: readonly [VersionRange] = [
   { range: "2.1.0 - 2.1.296", low: "2.1.0", high: "2.1.296", status: "verified", verifiedThrough: "2.1.296", verifiedOn: "2026-10-12" },
 ];
 
+/**
+ * A rig `send`'s rows hash that stands for the person's tap on an offer: the rig reads the screen with a
+ * `prepare` first and sends its hash, as the phone sends the hash of the offer it showed (ADR 0166).
+ */
+export const OFFERED = "offered";
+
 export function rig(
   options: {
     mode?: Mode;
@@ -447,8 +453,12 @@ export function rig(
   };
   const protocol = new SendProtocol(deps);
   const harness = options.harness ?? (options.mode === "generic" ? FRAMELESS : "claude");
-  const send = (text: string, over: Partial<SendRequest> = {}): Promise<SendAnswer> =>
-    protocol.handle({ id: nextId(), text, mode: "send", ...over }, { session: "main", paneId: "%1", harness });
+  const where = { session: "main", paneId: "%1", harness };
+  const send = async (text: string, over: Partial<SendRequest> = {}): Promise<SendAnswer> => {
+    // The person's tap on an offer (ADR 0166): the rows hash of the screen they saw, read by a `prepare` first.
+    if (over.rowsHash === OFFERED) over = { ...over, rowsHash: (await protocol.handle({ id: nextId(), text: "", mode: "prepare" }, where)).rowsHash };
+    return protocol.handle({ id: nextId(), text, mode: "send", ...over }, where);
+  };
   return { pane, protocol, deps, clock, send };
 }
 

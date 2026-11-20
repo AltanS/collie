@@ -9,7 +9,7 @@ import { type Surface } from "../../web/src/lib/surface/surface.ts";
 import { SendProtocol, type SendRequest } from "./protocol.ts";
 import { RequestStore } from "./requests.ts";
 import { HoldStore } from "./holds.ts";
-import { DIALOG, FakePane, LIVE_ROW, NO_PROFILE, PROBE, type Rig, dir, neverEscape, nextId, rig, shellText, useScratchDir } from "./protocol.rig.ts";
+import { OFFERED, DIALOG, FakePane, LIVE_ROW, NO_PROFILE, PROBE, type Rig, dir, neverEscape, nextId, rig, shellText, useScratchDir } from "./protocol.rig.ts";
 
 useScratchDir();
 
@@ -265,11 +265,11 @@ describe("a send at a box that is not free is held, not refused (2026-10-17 fiel
     const r = queued();
     r.pane.box = "half a thought";
     r.pane.dialog = DIALOG;
-    const answer = await r.send("/compact", { id: "box-0000008", mode: "replace" });
+    const answer = await r.send("/compact", { id: "box-0000008", mode: "replace", rowsHash: OFFERED });
     expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "not_free" });
     expect(r.holds.list()).toEqual([]);
     // The same Replace with a plain text is held.
-    const plain = await r.send("a plain thought", { id: "box-0000009", mode: "replace" });
+    const plain = await r.send("a plain thought", { id: "box-0000009", mode: "replace", rowsHash: OFFERED });
     expect(plain.receipt?.outcome).toBe("held");
   });
 

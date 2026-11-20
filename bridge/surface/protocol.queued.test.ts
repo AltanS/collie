@@ -17,7 +17,7 @@ import { StopService } from "./stop.ts";
 import { AuditLog } from "../audit.ts";
 import { heldCancelRoute, sendRoute, type SendRouteRuntime } from "../server.ts";
 import { QUEUED_SEND_MS, type BoxReading } from "./queued.ts";
-import { FakePane, OmpPane, QueueingOmpPane, type Rig, dir, fixture, neverEscape, omp, rig, useScratchDir, words } from "./protocol.rig.ts";
+import { OFFERED, FakePane, OmpPane, QueueingOmpPane, type Rig, dir, fixture, neverEscape, omp, rig, useScratchDir, words } from "./protocol.rig.ts";
 
 useScratchDir();
 
@@ -594,7 +594,7 @@ describe("OMP: a text that starts with its queue prefix is refused before any ke
     const pane = new QueueingOmpPane();
     pane.box = "->\n half a thought";
     const { send } = omp({ pane, version: "18.12.6" });
-    const answer = await send("start with a word", { mode: "replace" });
+    const answer = await send("start with a word", { mode: "replace", rowsHash: OFFERED });
     expect(answer.receipt).toMatchObject({ outcome: "sent" });
     expect(pane.keysSeen.filter((key) => key === "ctrl+c")).toHaveLength(1);
     expect(pane.emptyPresses).toBe(0);
@@ -607,7 +607,7 @@ describe("OMP: a text that starts with its queue prefix is refused before any ke
     pane.box = "an ordinary draft";
     expect((await send("an ordinary draft", { mode: "discard" })).receipt).toMatchObject({ outcome: "discarded" });
     expect(pane.keysSeen).not.toContain("ctrl+c");
-    const sent = await send("a fresh message", { mode: "replace" });
+    const sent = await send("a fresh message", { mode: "replace", rowsHash: OFFERED });
     expect(sent.receipt).toMatchObject({ outcome: "sent" });
     expect(pane.keysSeen).not.toContain("ctrl+c");
     expect(pane.emptyPresses).toBe(0);

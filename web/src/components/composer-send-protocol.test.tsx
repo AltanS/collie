@@ -195,6 +195,29 @@ describe("Composer on the Send Protocol (M56 specs 05 and 06)", () => {
     expect(sends[1]).toMatchObject({ text: " more words", mode: "append" });
   });
 
+  it("Add to it and Replace carry the offer's rows hash, and a box that changed shows the offer again over it (ADR 0166)", async () => {
+    const user = userEvent.setup();
+    const { sends } = bridge([
+      { body: { receipt: receipt("refused", "draft_present"), offers: ["append", "replace", "cancel"], rowsHash: "0abc12" } },
+      // The person typed another draft at the desk: the same refusal again, over the draft now, with its hash.
+      { body: { receipt: receipt("refused", "draft_present"), offers: ["append", "replace", "cancel"], rowsHash: "0def34" } },
+      { body: { receipt: receipt("sent"), offers: [] } },
+    ]);
+    renderComposer();
+    const field = screen.getByPlaceholderText(/type a reply/i);
+    await user.type(field, "new words");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await user.click(await screen.findByRole("button", { name: "Replace" }));
+    await waitFor(() => expect(sends).toHaveLength(2));
+    expect(sends[1]).toMatchObject({ text: "new words", mode: "replace", rowsHash: "0abc12" });
+    // The offer is back, the same sentence as the first time, and the text stays in the field.
+    expect(await screen.findByText("The box already holds a draft. Add to it, replace it, or cancel.")).toBeInTheDocument();
+    expect(field).toHaveValue("new words");
+    await user.click(await screen.findByRole("button", { name: "Add to it" }));
+    await waitFor(() => expect(sends).toHaveLength(3));
+    expect(sends[2]).toMatchObject({ text: " new words", mode: "append", rowsHash: "0def34" });
+  });
+
   it("a screen Collie cannot read takes two taps: the second carries the rows hash", async () => {
     const user = userEvent.setup();
     const { sends } = bridge([

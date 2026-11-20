@@ -8,7 +8,7 @@ import { muxRefused, type MuxAck } from "../mux/types.ts";
 import { type Profile } from "../../web/src/lib/surface/profile.ts";
 import { BOUNDS, GENERIC_PROBE, SendProtocol, type SendRequest } from "./protocol.ts";
 import { HoldStore } from "./holds.ts";
-import { CODEX_WELCOME, CodexPane, DIALOG, FRAMELESS, FakePane, HerdrCodexPane, LIVE_ROW, NO_PROFILE, PROBE, type Rig, SHELL_SCREEN, dir, neverEscape, nextId, rig, shellText, steersWithNoQueueKey, useScratchDir } from "./protocol.rig.ts";
+import { OFFERED, CODEX_WELCOME, CodexPane, DIALOG, FRAMELESS, FakePane, HerdrCodexPane, LIVE_ROW, NO_PROFILE, PROBE, type Rig, SHELL_SCREEN, dir, neverEscape, nextId, rig, shellText, steersWithNoQueueKey, useScratchDir } from "./protocol.rig.ts";
 
 useScratchDir();
 
@@ -103,7 +103,7 @@ describe("a send that goes through", () => {
     const { pane, send } = rig({ block: true });
     pane.box = "draft";
     const lines = Array.from({ length: 12 }, (_, i) => `line ${String(i)}`).join("\n");
-    expect((await send(lines, { mode: "append" })).receipt).toMatchObject({ outcome: "sent" });
+    expect((await send(lines, { mode: "append", rowsHash: OFFERED })).receipt).toMatchObject({ outcome: "sent" });
     expect(pane.calls.filter((call) => call.startsWith("block:"))).toEqual([`block:${lines}`]);
     expect(pane.transcript.at(-1)).toBe("> draft[Pasted text #1 +11 lines]");
   });
@@ -226,7 +226,7 @@ describe("a send that goes through", () => {
     pane.box = "draft";
     const { send } = rig({ block: true, pane, imageFiles: [shot] });
     const lines = Array.from({ length: 10 }, (_, i) => `line ${String(i)}`);
-    expect((await send([...lines, shot].join("\n"), { mode: "append" })).receipt?.outcome).toBe("sent");
+    expect((await send([...lines, shot].join("\n"), { mode: "append", rowsHash: OFFERED })).receipt?.outcome).toBe("sent");
     expect(pane.transcript.at(-1)).toBe("> draft[Image #1][Pasted text #2 +9 lines]");
   });
 

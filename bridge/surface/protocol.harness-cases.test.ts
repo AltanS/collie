@@ -13,7 +13,7 @@ import { surfaceOfScreen } from "../../web/src/lib/surface/fold.ts";
 import { isFree, type Surface } from "../../web/src/lib/surface/surface.ts";
 import { boxMatches, boxMatchesTail, neverHeldEntry, runsInTurnEntry, SendProtocol, STALE_SCREEN, steadyRow, type SendRequest } from "./protocol.ts";
 import { HoldStore } from "./holds.ts";
-import { ClaudeComposerOmpPane, FakePane, FieldOmpPane, OmpPane, PROBE, PiPane, type Rig, StaleOmpPane, TallOmpPane, dir, fixture, neverEscape, nextId, omp, rig, still, surfaceFixture, useScratchDir, withoutScroll, words } from "./protocol.rig.ts";
+import { OFFERED, ClaudeComposerOmpPane, FakePane, FieldOmpPane, OmpPane, PROBE, PiPane, type Rig, StaleOmpPane, TallOmpPane, dir, fixture, neverEscape, nextId, omp, rig, still, surfaceFixture, useScratchDir, withoutScroll, words } from "./protocol.rig.ts";
 
 useScratchDir();
 
@@ -23,7 +23,11 @@ describe("a draft is a reading until the probe proves it: the stale screen (2026
     const made = omp({ pane });
     const frames: string[] = [];
     const protocol = new SendProtocol({ ...made.deps, staleFrame: (paneId, frame) => void frames.push(`${paneId}:${frame}`) });
-    const send = (text: string, over: Partial<SendRequest> = {}): Promise<SendAnswer> => protocol.handle({ id: nextId(), text, mode: "send", ...over }, { session: "main", paneId: "%1", harness: "omp" });
+    const where = { session: "main", paneId: "%1", harness: "omp" };
+    const send = async (text: string, over: Partial<SendRequest> = {}): Promise<SendAnswer> => {
+      if (over.rowsHash === OFFERED) over = { ...over, rowsHash: (await protocol.handle({ id: nextId(), text: "", mode: "prepare" }, where)).rowsHash };
+      return protocol.handle({ id: nextId(), text, mode: "send", ...over }, where);
+    };
     return { ...made, protocol, send, pane, frames };
   };
 
@@ -80,7 +84,7 @@ describe("a draft is a reading until the probe proves it: the stale screen (2026
     for (const mode of ["replace", "discard"] as const) {
       const { pane, send } = staleRig();
       pane.box = "my real words";
-      const answer = await send(mode === "discard" ? "and what about the design" : "new words", { mode });
+      const answer = await send(mode === "discard" ? "and what about the design" : "new words", mode === "discard" ? { mode } : { mode, rowsHash: OFFERED });
       expect(answer.receipt, mode).toMatchObject({ outcome: "refused", reason: "probe_failed" });
       expect(answer.offers, mode).toEqual(["keys"]);
       expect(pane.keysSeen, mode).toEqual(["Backspace"]);
@@ -93,7 +97,7 @@ describe("a draft is a reading until the probe proves it: the stale screen (2026
     const { pane, send } = staleRig();
     pane.mendsOnItsOwn = true;
     pane.box = "my real words";
-    const answer = await send("new words", { mode: "replace" });
+    const answer = await send("new words", { mode: "replace", rowsHash: OFFERED });
     expect(answer.receipt).toMatchObject({ outcome: "sent" });
     expect(pane.transcript.filter((row) => row === " > new words")).toHaveLength(1);
     // Three Backspaces take a probe back (the one that stood in the live editor, the second proof's, the
@@ -105,8 +109,8 @@ describe("a draft is a reading until the probe proves it: the stale screen (2026
 
   test("the real capture: the probe shows nowhere a read finds and the screen stays still, so nothing is deleted", async () => {
     const pane = still(fixture("omp--v18-6-1-stale-frame-below-live--w120.txt"));
-    const { protocol } = rig({ pane, harness: "omp", version: "18.6.1" });
-    const answer = await protocol.handle({ id: "stale-real-1", text: "Reply with only the word: yes", mode: "replace" }, { session: "main", paneId: "%1", harness: "omp" });
+    const { send } = rig({ pane, harness: "omp", version: "18.6.1" });
+    const answer = await send("Reply with only the word: yes", { id: "stale-real-1", mode: "replace", rowsHash: OFFERED });
     expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "probe_failed", keys: ["probe"] });
     expect(answer.receipt?.detail).toStartWith(STALE_SCREEN);
     expect(answer.receipt?.detail).toContain("⌁");
@@ -284,7 +288,7 @@ describe("a draft taller than OMP's box (omp gang 2026-10-25)", () => {
     const draft = Array.from({ length: 26 }, (_, i) => `draft line ${String(i + 1)}: the quick brown fox jumps over the lazy dog ${String(i + 1)}`).join("\n");
     pane.box = draft;
     const { send } = omp({ pane });
-    const answer = await send("Reply with only the word: yes", { mode: "replace" });
+    const answer = await send("Reply with only the word: yes", { mode: "replace", rowsHash: OFFERED });
     expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "draft_present", keys: [] });
     expect(answer.receipt?.detail).toContain("Nothing was deleted");
     expect(answer.offers).toEqual(["keys"]);
@@ -294,8 +298,8 @@ describe("a draft taller than OMP's box (omp gang 2026-10-25)", () => {
 
   test("Replace on the real 26-line screen at the cap (06 C5) is refused with nothing pressed", async () => {
     const pane = still(surfaceFixture("omp--draft-scrolled-26-lines--v18.6.1.txt"));
-    const { protocol } = rig({ pane, harness: "omp", version: "18.6.1" });
-    const answer = await protocol.handle({ id: "tall-replace-1", text: "Reply with only the word: yes", mode: "replace" }, { session: "main", paneId: "%1", harness: "omp" });
+    const { send } = rig({ pane, harness: "omp", version: "18.6.1" });
+    const answer = await send("Reply with only the word: yes", { id: "tall-replace-1", mode: "replace", rowsHash: OFFERED });
     expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "draft_present", keys: [] });
     expect(pane.keysSeen).toEqual([]);
     expect(pane.calls).toEqual([]);
@@ -305,7 +309,7 @@ describe("a draft taller than OMP's box (omp gang 2026-10-25)", () => {
     const pane = new TallOmpPane(120);
     pane.box = words(1600, "d");
     const { send } = omp({ pane });
-    const answer = await send("Reply with the word LIMA only.", { mode: "replace" });
+    const answer = await send("Reply with the word LIMA only.", { mode: "replace", rowsHash: OFFERED });
     expect(answer.receipt).toMatchObject({ outcome: "sent" });
     expect(answer.receipt?.detail).toBeUndefined();
     expect(pane.transcript.filter((row) => row === " > Reply with the word LIMA only.")).toHaveLength(1);
@@ -971,7 +975,7 @@ describe("a profile whose probe is provisional never skips the probe (M56 spec 1
       provisional.pane.afterInput = (p, what) => {
         if (what === `type:${PROBE}`) p.status = [];
       };
-      const answer = await provisional.send(" and the rest", { mode });
+      const answer = await provisional.send(" and the rest", { mode, rowsHash: OFFERED });
       expect(answer.receipt, mode).toMatchObject({ outcome: "refused", reason: "draft_present", keys: ["probe", "Backspace"] });
       expect(answer.offers, mode).toEqual(["append", "replace", "cancel"]);
       expect(provisional.pane.calls, mode).toEqual([`type:${PROBE}`]);
@@ -986,7 +990,7 @@ describe("a profile whose probe is provisional never skips the probe (M56 spec 1
     provisional.pane.afterInput = (p, what) => {
       if (what === `type:${PROBE}`) p.status = [];
     };
-    const answer = await provisional.send(" and the rest", { mode: "append" });
+    const answer = await provisional.send(" and the rest", { mode: "append", rowsHash: OFFERED });
     expect(answer.receipt).toMatchObject({ outcome: "refused", keys: ["probe", "Backspace"] });
     expect(provisional.pane.calls).toEqual([`type:${PROBE}`]);
     expect(provisional.pane.keysSeen).toEqual(["Backspace"]);

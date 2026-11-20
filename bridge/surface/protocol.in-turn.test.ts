@@ -8,7 +8,7 @@ import { type Profile, type VersionRange } from "../../web/src/lib/surface/profi
 import { parseAnsi } from "../../web/src/lib/ansi.ts";
 import { steadyRow } from "./protocol.ts";
 import { HoldStore } from "./holds.ts";
-import { CODEX_WELCOME, DIALOG, FakePane, LIVE_ROW, PROBE, type Rig, dir, neverEscape, noCommandQueue, rig, useScratchDir } from "./protocol.rig.ts";
+import { OFFERED, CODEX_WELCOME, DIALOG, FakePane, LIVE_ROW, PROBE, type Rig, dir, neverEscape, noCommandQueue, rig, useScratchDir } from "./protocol.rig.ts";
 
 useScratchDir();
 
@@ -311,7 +311,7 @@ describe("codex: Tab sends every text, Enter steers a running turn (M56 spec 13)
     pane.over = [CODEX_RUNNING];
     pane.box = "half a thought";
     expect((await send("hello")).receipt).toMatchObject({ outcome: "refused", reason: "draft_present", keys: [] });
-    const added = await send(" and the rest", { mode: "append" });
+    const added = await send(" and the rest", { mode: "append", rowsHash: OFFERED });
     expect(added.receipt).toMatchObject({ outcome: "sent", queued: true });
     expect(added.receipt?.keys.at(-1)).toBe("Tab");
     expect(pane.queued).toEqual(["half a thought and the rest"]);
@@ -322,7 +322,7 @@ describe("codex: Tab sends every text, Enter steers a running turn (M56 spec 13)
     const { pane, send } = codex();
     pane.over = [CODEX_RUNNING];
     pane.box = "half a thought";
-    const replaced = await send("a new thought", { mode: "replace" });
+    const replaced = await send("a new thought", { mode: "replace", rowsHash: OFFERED });
     expect(replaced.receipt).toMatchObject({ outcome: "sent", queued: true });
     expect(replaced.receipt?.keys.at(-1)).toBe("Tab");
     expect(pane.queued).toEqual(["a new thought"]);
@@ -564,7 +564,7 @@ describe("a send into a running turn", () => {
     expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "draft_present", keys: [] });
     expect(answer.offers).toEqual(["append", "replace", "cancel"]);
     expect(pane.calls).toEqual([]);
-    const added = await send(" and the rest", { mode: "append" });
+    const added = await send(" and the rest", { mode: "append", rowsHash: OFFERED });
     expect(added.receipt).toMatchObject({ outcome: "sent", queued: true });
     expect(pane.transcript.at(-1)).toBe("> half a thought and the rest");
   });
@@ -644,11 +644,11 @@ describe("a send into a running turn", () => {
     pane.over = [LIVE_ROW];
     pane.box = "/compact";
     expect((await send("hello")).receipt).toMatchObject({ outcome: "refused", reason: "draft_present" });
-    expect((await send(" and more", { mode: "append" })).receipt).toMatchObject({ outcome: "refused", reason: "turn_running", keys: [] });
+    expect((await send(" and more", { mode: "append", rowsHash: OFFERED })).receipt).toMatchObject({ outcome: "refused", reason: "turn_running", keys: [] });
     expect((await send("/compact", { mode: "submit" })).receipt).toMatchObject({ outcome: "refused", reason: "turn_running", keys: [] });
     expect(pane.calls).toEqual([]);
     expect(pane.keysSeen).toEqual([]);
-    expect((await send("hello instead", { mode: "replace" })).receipt).toMatchObject({ outcome: "sent", queued: true });
+    expect((await send("hello instead", { mode: "replace", rowsHash: OFFERED })).receipt).toMatchObject({ outcome: "sent", queued: true });
     expect(pane.transcript.at(-1)).toBe("> hello instead");
   });
 
@@ -753,13 +753,13 @@ describe("a send into a running turn", () => {
     const append = rig();
     append.pane.over = [LIVE_ROW];
     append.pane.box = "a draft";
-    expect((await append.send(" and more", { mode: "append" })).receipt).toMatchObject({ outcome: "sent", queued: true, profileStatus: "verified" });
+    expect((await append.send(" and more", { mode: "append", rowsHash: OFFERED })).receipt).toMatchObject({ outcome: "sent", queued: true, profileStatus: "verified" });
     expect(append.pane.keysSeen.slice(0, 1)).toEqual(["Backspace"]);
     expect(append.pane.calls[0]).toBe(`type:${PROBE}`);
     const replace = rig();
     replace.pane.over = [LIVE_ROW];
     replace.pane.box = "a draft";
-    const answer = await replace.send("something else", { mode: "replace" });
+    const answer = await replace.send("something else", { mode: "replace", rowsHash: OFFERED });
     expect(answer.receipt).toMatchObject({ outcome: "sent", queued: true, profileStatus: "verified" });
     expect(answer.receipt?.keys).toContain("probe");
   });

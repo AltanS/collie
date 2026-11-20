@@ -11,7 +11,7 @@ import { lineText, splitLines } from "../../web/src/lib/blocks.ts";
 import { normalizePrompt } from "../../web/src/lib/surface/edges.ts";
 import { SendProtocol, type SendDeps } from "./protocol.ts";
 import { SurfaceLedger } from "./counters.ts";
-import { DIALOG, FRAMELESS, FakePane, LIVE_ROW, NO_PROFILE, PROBE, dir, fixture, nextId, rig, shellText, still, useScratchDir } from "./protocol.rig.ts";
+import { OFFERED, DIALOG, FRAMELESS, FakePane, LIVE_ROW, NO_PROFILE, PROBE, dir, fixture, nextId, rig, shellText, still, useScratchDir } from "./protocol.rig.ts";
 
 useScratchDir();
 
@@ -113,7 +113,7 @@ describe("real screens from the fixture corpus", () => {
     const { pane, send } = rig();
     pane.over = NOTICE_ROWS;
     pane.box = "half a thought";
-    const answer = await send("1", { mode: "replace" });
+    const answer = await send("1", { mode: "replace", rowsHash: OFFERED });
     expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "unconfirmed", keys: [] });
     expect(answer.cause).toBe("notice_key");
     expect(answer.offers).toEqual(["keys"]);
@@ -127,7 +127,7 @@ describe("real screens from the fixture corpus", () => {
     const { pane, send } = rig();
     pane.over = NOTICE_ROWS;
     pane.afterInput = answersDigit;
-    const answer = await send("1", { mode: "append" });
+    const answer = await send("1", { mode: "append", rowsHash: OFFERED });
     expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "unconfirmed", keys: [] });
     expect(answer.cause).toBe("notice_key");
     expect(answer.offers).toEqual(["keys"]);
@@ -139,7 +139,7 @@ describe("real screens from the fixture corpus", () => {
     const { pane, send } = rig();
     pane.over = NOTICE_ROWS;
     pane.box = "pick option";
-    const answer = await send(" 1", { mode: "append" });
+    const answer = await send(" 1", { mode: "append", rowsHash: OFFERED });
     expect(answer.receipt).toMatchObject({ outcome: "sent" });
     expect(answer.cause).toBeUndefined();
     expect(pane.transcript.at(-1)).toBe("> pick option 1");
@@ -408,14 +408,14 @@ describe("real screens from the fixture corpus", () => {
     const replacing = rig();
     replacing.pane.over = TRANSCRIPT_ROWS;
     replacing.pane.box = "half a thought";
-    const replace = await replacing.send("Y", { mode: "replace" });
+    const replace = await replacing.send("Y", { mode: "replace", rowsHash: OFFERED });
     expect(replace.receipt).toMatchObject({ outcome: "refused", reason: "unconfirmed", keys: [] });
     expect(replace.cause).toBe("notice_key");
     expect(replacing.pane.box).toBe("half a thought");
 
     const appending = rig();
     appending.pane.over = TRANSCRIPT_ROWS;
-    const append = await appending.send("Y", { mode: "append" });
+    const append = await appending.send("Y", { mode: "append", rowsHash: OFFERED });
     expect(append.receipt).toMatchObject({ outcome: "refused", reason: "unconfirmed", keys: [] });
     expect(append.cause).toBe("notice_key");
     expect(appending.pane.calls).toEqual([]);
@@ -469,14 +469,14 @@ describe("real screens from the fixture corpus", () => {
     const replacing = rig();
     replacing.pane.over = TRANSCRIPT_ROWS;
     replacing.pane.box = "half a thought";
-    const replace = await replacing.send("y\nship it", { mode: "replace" });
+    const replace = await replacing.send("y\nship it", { mode: "replace", rowsHash: OFFERED });
     expect(replace.receipt).toMatchObject({ outcome: "refused", reason: "unconfirmed", keys: [] });
     expect(replace.cause).toBe("notice_key");
     expect(replacing.pane.box).toBe("half a thought");
 
     const appending = rig();
     appending.pane.over = TRANSCRIPT_ROWS;
-    const append = await appending.send("n\nship it", { mode: "append" });
+    const append = await appending.send("n\nship it", { mode: "append", rowsHash: OFFERED });
     expect(append.receipt).toMatchObject({ outcome: "refused", reason: "unconfirmed", keys: [] });
     expect(append.cause).toBe("notice_key");
     expect(appending.pane.calls).toEqual([]);
