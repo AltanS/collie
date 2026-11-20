@@ -14,6 +14,7 @@ import { useLongPress } from "@/hooks/use-long-press";
 import { useRevealActive } from "@/hooks/use-reveal-active";
 import { useWidthClass } from "@/hooks/use-width-class";
 import { cn } from "@/lib/utils";
+import { FOCUS_RING_INSET, HOVER_FILL, TRIGGER_OPEN } from "@/components/ui/button";
 import { useTabLook, type TabLook } from "@/lib/tab-look";
 import { TRIAGE_STATUS, worstTriage, type TriageKey } from "@/lib/triage";
 import { CrossfadeText } from "@/components/ui/crossfade-text";
@@ -368,6 +369,8 @@ export function TabStrip({
                 // the parent wired the actions; otherwise the tabs stay plain tap-to-switch.
                 onLongPress={actionsEnabled ? () => openSheet(t, "list") : undefined}
                 onTapActive={actionsEnabled ? (trigger) => openSheet(t, "list", trigger) : undefined}
+                // The menu is open on this tab: a hold opens the same sheet, so the tab shows it on every width.
+                menuOpen={sheetTab?.tabId === t.tabId}
               />
               );
             })}
@@ -454,6 +457,8 @@ interface TabProps {
   /** A plain tap when the tab is already `active` — opens actions instead of a no-op re-select. Gets the
    *  tab's own button, for a menu beside it. */
   onTapActive?: (trigger: HTMLElement) => void;
+  /** The menu {@link onTapActive} opens is open: `aria-expanded` and the shared open look (`TRIGGER_OPEN`). */
+  menuOpen?: boolean;
 }
 
 // One plain tab cell.
@@ -468,7 +473,10 @@ function Tab({
   onClick,
   onLongPress,
   onTapActive,
+  menuOpen = false,
 }: TabProps) {
+  // The open tab opens a menu when it is wired for one: it alone answers hover and the open look.
+  const opensMenu = active && onTapActive !== undefined;
   const longPress = useLongPress(onLongPress);
   // A cell given no title (the "All" cell) says its label, plainly.
   const title: TabTitle | null = titleProp === undefined ? { text: label, positional: false } : titleProp;
@@ -501,6 +509,8 @@ function Tab({
       // would fight the surrounding <nav>. A nav with aria-current is what this actually is, and it
       // is what the space and pane strips already say.
       aria-current={active ? "true" : undefined}
+      aria-haspopup={opensMenu ? "dialog" : undefined}
+      aria-expanded={opensMenu ? menuOpen : undefined}
       className={cn(
         // select-none + -webkit-touch-callout:none stop iOS Safari's selection loupe / touch
         // callout, whose native long-press gesture otherwise fires pointercancel and kills the hold
@@ -521,12 +531,15 @@ function Tab({
         // LARGER WINDOWS: `step.cell` is that compact box, or the medium or expanded one (STEP above).
         // The hit box rule is the same at every step: `before:inset-y-0`, the drawn height.
         step.cell,
-        "relative flex shrink-0 select-none items-center justify-center gap-1.5 [-webkit-touch-callout:none] whitespace-nowrap transition-colors before:inset-y-0 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring",
+        "relative flex shrink-0 select-none items-center justify-center gap-1.5 [-webkit-touch-callout:none] whitespace-nowrap transition-colors before:inset-y-0",
+        FOCUS_RING_INSET,
+        // The open look and the hover are fills: the plain cell has no corner of its own, so it takes the house one (the folder tab keeps its own).
+        look === "plain" && "rounded-md",
         // INK AND WEIGHT ARE THE ONLY MARK. Full ink and semibold for the open tab; the muted ink
         // and medium weight for every other, with the full ink as the hover answer on a device that
         // has one.
         active
-          ? "font-semibold text-foreground"
+          ? cn("font-semibold text-foreground", opensMenu && HOVER_FILL)
           : "font-medium text-muted-foreground hover:text-foreground",
         // THE FOLDER LOOK (`tabs: folder`). Both states carry the same 1px side borders, so the
         // box is one size and only the paint changes; the open tab paints them in `rule`, fills with
@@ -538,6 +551,8 @@ function Tab({
           (active
             ? cn("rounded-t-sm border-x-[1px] border-x-rule bg-background shadow-[inset_0_2px_0_0_var(--tab-active)]", step.folderPx)
             : cn("border-x-[1px] border-x-transparent", step.folderPx)),
+        // Last, so the open look wins over the folder tab's page fill and over hover.
+        TRIGGER_OPEN,
         // NO DESKTOP-FOCUS RING. `TabView.focused` (the tab the desktop TUI is looking at) used to
         // paint a dashed outline on its cell. On the phone that read as a second selection beside the
         // solid pill, and the phone's reader does not care where the desktop is looking. It is gone;

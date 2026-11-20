@@ -168,6 +168,8 @@ export function SpaceStrip({
               // Long-press (and a tap on the already-active chip) opens the space sheet, like a tab's.
               onLongPress={actionsEnabled ? () => { setRenameDoor(false); sheetAnchor.current = null; setSheetSpace(w); } : undefined}
               onTapActive={actionsEnabled ? (trigger) => { setRenameDoor(false); sheetAnchor.current = trigger; setSheetSpace(w); } : undefined}
+              // The space menu is open on this chip (a hold opens the same sheet): it shows it on every width.
+              menuOpen={sheetSpace?.workspaceId === w.workspaceId}
             />
           ))}
         {/* Hidden when the multiplexer cannot open a space (M10/06). No explanation HERE: this strip

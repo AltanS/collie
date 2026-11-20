@@ -46,6 +46,7 @@ import { setStripsCollapsed, useStripsCollapsed } from "@/lib/strips-collapsed";
 import { ChatMessageList, TailRoomContext, type ChatMessageListHandle } from "@/components/ui/chat/chat-message-list";
 import { StretchTextContext } from "@/components/markdown-text";
 import { FabButton } from "@/components/ui/fab";
+import { FOCUS_RING, TRIGGER_OPEN } from "@/components/ui/button";
 import { Notice } from "@/components/ui/notice";
 import { BottomSheet, SHEET_BODY_STICKY } from "@/components/ui/sheet";
 import { DisplayPrefsContent } from "@/components/display-prefs";
@@ -2591,7 +2592,15 @@ export function AgentChat({
                     setDrawer("paneMenu");
                   }}
                   aria-label={t("chat.paneMenu.aria")}
-                  className="grid w-11 min-h-11 shrink-0 place-items-center self-stretch rounded-md text-muted-foreground transition-colors active:bg-muted/60 active:text-foreground"
+                  aria-haspopup="dialog"
+                  // The menu opens beside this button on a wide window and over the page on a phone; the
+                  // button wears the shared open look while either is open (ui/button.tsx `TRIGGER_OPEN`).
+                  aria-expanded={drawer === "paneMenu"}
+                  className={cn(
+                    "grid w-11 min-h-11 shrink-0 place-items-center self-stretch rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground active:bg-muted/60 active:text-foreground",
+                    FOCUS_RING,
+                    TRIGGER_OPEN,
+                  )}
                 >
                   <Icon name="pane-menu" className="size-5" />
                 </button>
