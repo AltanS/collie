@@ -25,7 +25,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Added
 
-- **Experimental: Collie can mirror Rex, Superlogical's terminal.** Rex is a terminal server that keeps your sessions running; start Collie with `COLLIE_MUX=rex` and each Rex session shows as a space, each window as a tab, and each block as a pane. Claude Code, Codex, pi, Grok and omp 18.8.7 or later are recognised from the status they report to Rex, and a Claude pane's History needs the Claude hooks. Thanks @dcvdiego (#814).
+- **Experimental: Collie can mirror Rex, Superlogical's terminal.** Rex is a terminal server that keeps your sessions running; start Collie with `COLLIE_MUX=rex` and each Rex session shows as a space, each window as a tab, and each block as a pane. Claude Code, Codex, pi, Grok and omp 18.8.7 or later are recognised from the status they report to Rex, and a Claude pane's History needs the Claude hooks. `collie doctor` names the Rex server and its API revision. Thanks @dcvdiego (#814).
 
 ### Changed
 
