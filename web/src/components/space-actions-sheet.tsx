@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import { Icon } from "@/components/icons/icon";
 
 import { BottomSheet } from "@/components/ui/sheet";
@@ -30,6 +30,9 @@ interface SpaceActionsSheetProps {
   onRenamed: () => void;
   /** Open on the rename view: the Actions palette's Rename space (ADR 0165). */
   openInRename?: boolean;
+  /** The button the sheet was opened from, when a tap on it opened it: on a wide window the sheet is then
+   *  a menu beside it (ui/sheet.tsx `anchor`). Absent for a hold, the Actions palette or a shortcut. */
+  anchor?: RefObject<HTMLElement | null>;
 }
 
 type Mode = "actions" | "rename";
@@ -49,6 +52,7 @@ export function SpaceActionsSheet({
   savedCopy = false,
   onRenamed,
   openInRename = false,
+  anchor,
 }: SpaceActionsSheetProps) {
   useLocale();
   const [mode, setMode] = useState<Mode>("actions");
@@ -108,6 +112,7 @@ export function SpaceActionsSheet({
     <BottomSheet
       open={open}
       onClose={onClose}
+      anchor={anchor}
       title={space ? t("space.space.titleWithLabel", { label: space.label }) : t("space.space.titleFallback")}
     >
       {readOnly ? (

@@ -1,4 +1,4 @@
-import { useRef, useState, type ReactNode } from "react";
+import { useRef, useState, type MouseEvent, type ReactNode } from "react";
 
 import { AddButton, type AddButtonSize } from "@/components/ui/add-button";
 import {
@@ -224,7 +224,10 @@ export function TabStrip({
   const [sheetTab, setSheetTab] = useState<TabView | null>(null);
   // How the sheet opens: on its list (a hold), or on the view the Actions palette named (ADR 0165).
   const [sheetDoor, setSheetDoor] = useState<"list" | "rename" | "close">("list");
-  const openSheet = (tab: TabView, door: "list" | "rename" | "close") => {
+  // The tab whose tap opened the sheet, for a menu beside it on a wide window; null for a hold or the palette.
+  const sheetAnchor = useRef<HTMLElement | null>(null);
+  const openSheet = (tab: TabView, door: "list" | "rename" | "close", trigger: HTMLElement | null = null) => {
+    sheetAnchor.current = trigger;
     setSheetDoor(door);
     setSheetTab(tab);
   };
@@ -364,7 +367,7 @@ export function TabStrip({
                 // Long-press (and a tap on the already-active tab) opens the actions sheet — only when
                 // the parent wired the actions; otherwise the tabs stay plain tap-to-switch.
                 onLongPress={actionsEnabled ? () => openSheet(t, "list") : undefined}
-                onTapActive={actionsEnabled ? () => openSheet(t, "list") : undefined}
+                onTapActive={actionsEnabled ? (trigger) => openSheet(t, "list", trigger) : undefined}
               />
               );
             })}
@@ -420,6 +423,7 @@ export function TabStrip({
           onClosed={onClosed}
           openInRename={sheetDoor === "rename"}
           armCloseOnOpen={sheetDoor === "close"}
+          anchor={sheetAnchor}
         />
       )}
     </>
@@ -447,8 +451,9 @@ interface TabProps {
   onClick: () => void;
   /** Long-press (or right-click / Android contextmenu) opens actions. Inert when unset. */
   onLongPress?: () => void;
-  /** A plain tap when the tab is already `active` — opens actions instead of a no-op re-select. */
-  onTapActive?: () => void;
+  /** A plain tap when the tab is already `active` — opens actions instead of a no-op re-select. Gets the
+   *  tab's own button, for a menu beside it. */
+  onTapActive?: (trigger: HTMLElement) => void;
 }
 
 // One plain tab cell.
@@ -477,9 +482,9 @@ function Tab({
   // A long-press already suppresses the ensuing click (via longPress.onClickCapture), so this only
   // ever sees a genuine tap. Tapping the already-active tab opens actions rather than a dead
   // re-select.
-  function handleClick() {
+  function handleClick(e: MouseEvent<HTMLButtonElement>) {
     if (active && onTapActive) {
-      onTapActive();
+      onTapActive(e.currentTarget);
       return;
     }
     onClick();

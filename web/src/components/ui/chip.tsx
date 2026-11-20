@@ -1,4 +1,4 @@
-import { useId, type ReactNode } from "react";
+import { useId, type MouseEvent, type ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
 import { UnseenMark } from "@/components/ui/unseen-mark";
@@ -59,9 +59,10 @@ interface ChipProps {
   onLongPress?: () => void;
   /**
    * A plain tap when the chip is already `active` — opens actions instead of a no-op re-select,
-   * mirroring the pane pill. Only meaningful alongside {@link onLongPress}.
+   * mirroring the pane pill. Only meaningful alongside {@link onLongPress}. Gets the chip's own button,
+   * for a menu beside it.
    */
-  onTapActive?: () => void;
+  onTapActive?: (trigger: HTMLElement) => void;
 }
 
 // Pill button shared by the space and tab strips: active fill, an optional desktop-focus ring, and
@@ -97,9 +98,9 @@ export function Chip({
   // A long-press already suppresses the ensuing click (via longPress.onClickCapture), so this only
   // ever sees a genuine tap. Tapping the already-active chip opens actions (when wired) rather than a
   // dead re-select.
-  function handleClick() {
+  function handleClick(e: MouseEvent<HTMLButtonElement>) {
     if (active && onTapActive) {
-      onTapActive();
+      onTapActive(e.currentTarget);
       return;
     }
     onClick();

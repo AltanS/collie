@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import { Icon } from "@/components/icons/icon";
 
 import { BottomSheet } from "@/components/ui/sheet";
@@ -183,6 +183,9 @@ interface PaneActionsSheetProps {
   };
   /** The tricks store the trick groups read, for a test or the playground. Absent: the app's own. */
   tricksStore?: TricksStore;
+  /** The button the sheet was opened from, when a tap on it opened it: on a wide window the sheet is then
+   *  a menu beside it (ui/sheet.tsx `anchor`). Absent for a hold, the Actions palette or a shortcut. */
+  anchor?: RefObject<HTMLElement | null>;
 }
 
 const NO_HERD: readonly AgentView[] = [];
@@ -256,6 +259,7 @@ export function PaneActionsSheet({
   conversation = false,
   agentViews,
   tricksStore: trickStore,
+  anchor,
 }: PaneActionsSheetProps) {
   useLocale();
   // Whether this pane is pinned on this device, read live from the store so the row's word is right
@@ -430,6 +434,7 @@ export function PaneActionsSheet({
     <BottomSheet
       open={open}
       onClose={onClose}
+      anchor={anchor}
       title={
         pane ? (
           // Every row below acts on THIS pane on THIS machine — rename, close, focus — so the

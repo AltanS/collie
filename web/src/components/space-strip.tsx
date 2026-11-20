@@ -75,6 +75,8 @@ export function SpaceStrip({
   const [sheetSpace, setSheetSpace] = useState<WorkspaceView | null>(null);
   // Whether the sheet opens on its rename view: the Actions palette's Rename space (ADR 0165).
   const [renameDoor, setRenameDoor] = useState(false);
+  // The chip whose tap opened the sheet, for a menu beside it on a wide window; null for a hold or the palette.
+  const sheetAnchor = useRef<HTMLElement | null>(null);
   const newSpace = useMuxCapability("createSpace", scope);
   // A durable program makes no space by hand, but it offers starters, and `onNewSpace` opens the New
   // page, which lists exactly those (route space.tsx). So the "+" is drawn for either (M51 spec 08).
@@ -91,6 +93,7 @@ export function SpaceStrip({
     actionsEnabled && openSpace !== undefined && readOnly !== true && savedCopy !== true
       ? () => {
           setRenameDoor(true);
+          sheetAnchor.current = null;
           setSheetSpace(openSpace);
         }
       : undefined,
@@ -163,8 +166,8 @@ export function SpaceStrip({
               )}
               onClick={() => onSelect(w.workspaceId)}
               // Long-press (and a tap on the already-active chip) opens the space sheet, like a tab's.
-              onLongPress={actionsEnabled ? () => { setRenameDoor(false); setSheetSpace(w); } : undefined}
-              onTapActive={actionsEnabled ? () => { setRenameDoor(false); setSheetSpace(w); } : undefined}
+              onLongPress={actionsEnabled ? () => { setRenameDoor(false); sheetAnchor.current = null; setSheetSpace(w); } : undefined}
+              onTapActive={actionsEnabled ? (trigger) => { setRenameDoor(false); sheetAnchor.current = trigger; setSheetSpace(w); } : undefined}
             />
           ))}
         {/* Hidden when the multiplexer cannot open a space (M10/06). No explanation HERE: this strip
@@ -193,6 +196,7 @@ export function SpaceStrip({
           savedCopy={savedCopy}
           onRenamed={onRenamed}
           openInRename={renameDoor}
+          anchor={sheetAnchor}
         />
       )}
     </>

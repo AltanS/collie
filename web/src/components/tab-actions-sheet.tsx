@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import { Icon } from "@/components/icons/icon";
 
 import { BottomSheet } from "@/components/ui/sheet";
@@ -37,6 +37,9 @@ interface TabActionsSheetProps {
   openInRename?: boolean;
   /** Open with Close tab already armed, as the pane sheet's `armCloseOnOpen`: the palette's Close tab. */
   armCloseOnOpen?: boolean;
+  /** The button the sheet was opened from, when a tap on it opened it: on a wide window the sheet is then
+   *  a menu beside it (ui/sheet.tsx `anchor`). Absent for a hold, the Actions palette or a shortcut. */
+  anchor?: RefObject<HTMLElement | null>;
 }
 
 type Mode = "actions" | "rename";
@@ -60,6 +63,7 @@ export function TabActionsSheet({
   onClosed,
   openInRename = false,
   armCloseOnOpen = false,
+  anchor,
 }: TabActionsSheetProps) {
   useLocale();
   const [mode, setMode] = useState<Mode>("actions");
@@ -167,6 +171,7 @@ export function TabActionsSheet({
     <BottomSheet
       open={open}
       onClose={onClose}
+      anchor={anchor}
       title={tab ? t("space.tab.titleWithLabel", { label: tab.label }) : t("space.tab.titleFallback")}
     >
       {readOnly ? (

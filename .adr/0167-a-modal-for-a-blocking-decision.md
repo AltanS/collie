@@ -67,5 +67,10 @@ anything. The tour, a full-screen sheet on purpose, asks for the bottom sheet on
   (`ImageSheet`, `PagerSheet`) stand as wide as its picture, up to `min(92vw, 1200px)`, the picture
   fitted in the height left (`SHEET_PICTURE_FIT`) and never drawn past its own pixels. The pager's stage
   takes the viewer's whole room, so a page of another shape does not move Previous and Next.
+- **A menu beside its button.** A sheet opened by a tap on a small button (the pane, tab and space
+  menus, `anchor`) is drawn on a wide window as a menu beside that button: below it, flipped above when
+  the room is short, 8px inside the window, in the same look, with no dimming, no entrance and no title
+  row (`lib/menu-place.ts`; the reasons of `ui/anchored-menu.tsx`). The same sheet opened another way
+  stays the centred dialog.
 - **No second shell.** A sheet drawn as a dialog is not a modal and does not become one: a new task is
   still a sheet, a new blocking decision still uses `Modal`.

@@ -152,8 +152,13 @@ test.describe("at 1440 x 900 a sheet is a centred dialog", () => {
     await page.setViewportSize(WIDE);
   });
 
-  test("the pane menu", async ({ page }) => {
-    const { dialog, opener } = await openPaneMenu(page);
+  test("the pane menu a row's right-click opens", async ({ page }) => {
+    await page.goto("/");
+    const opener = page.getByRole("main").getByRole("button", { name: /^codex logo codex/u }).first();
+    await opener.focus();
+    await opener.click({ button: "right" });
+    const dialog = page.getByRole("dialog");
+    await expect(dialog.getByRole("button", { name: en["paneActions.rename.label"] })).toBeVisible();
     await expectDialog(page, dialog);
     await expectEscapeReturnsFocus(page, dialog, opener);
   });
@@ -175,6 +180,44 @@ test.describe("at 1440 x 900 a sheet is a centred dialog", () => {
     await expectDialog(page, dialog);
     await expect(field).toBeFocused();
     await expectEscapeReturnsFocus(page, dialog, opener);
+  });
+});
+
+// THE ⋮ MENU OF A PANE OPENS BESIDE ITS BUTTON. A tap on the button that opened it makes the dialog a menu:
+// under the button, inside the window, no dimming, no title row; a row works and Escape gives the focus back.
+test.describe("at 1440 x 900 the pane's three-dots menu opens beside its button", () => {
+  test.beforeEach(async ({ page }) => {
+    await page.setViewportSize(WIDE);
+  });
+
+  test("beside the button, inside the window, nothing dimmed, no title row, Escape back to the button", async ({ page }) => {
+    const { dialog, opener } = await openPaneMenu(page);
+    const panel = panelOf(dialog);
+    await expect(panel).toHaveAttribute("data-presentation", "menu");
+    const b = await box(panel);
+    const o = await box(opener);
+    const { width, height } = page.viewportSize()!;
+    // Below the button within 8px, its trailing edge on the button's.
+    expect(b.y - (o.y + o.height)).toBeGreaterThanOrEqual(0);
+    expect(b.y - (o.y + o.height)).toBeLessThanOrEqual(8);
+    expect(Math.abs(b.x + b.width - (o.x + o.width))).toBeLessThanOrEqual(8);
+    expect(b.x).toBeGreaterThanOrEqual(8);
+    expect(b.y + b.height).toBeLessThanOrEqual(height - 8);
+    expect(b.x + b.width).toBeLessThanOrEqual(width - 8);
+    // The layer under it is clear: the page is not dimmed.
+    const layer = dialog.locator('button[aria-hidden="true"]');
+    expect(await layer.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe("rgba(0, 0, 0, 0)");
+    await expect(dialog.locator('[data-slot="sheet-title-row"]')).toHaveCount(0);
+    await expect(handleOf(dialog)).toHaveCount(0);
+    await expect(dialog.getByRole("button", { name: en["common.closeAria"], exact: true })).toHaveCount(0);
+    await expectEscapeReturnsFocus(page, dialog, opener);
+  });
+
+  test("a row of the menu works", async ({ page }) => {
+    const { dialog } = await openPaneMenu(page);
+    await expect(panelOf(dialog)).toHaveAttribute("data-presentation", "menu");
+    await dialog.getByRole("button", { name: en["chat.history.label"], exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`/pane/${encodeURIComponent(KIRO_PANE_ID)}/history$`, "u"));
   });
 });
 

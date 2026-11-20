@@ -9,6 +9,7 @@ import { useFoldPosture } from "@/hooks/use-fold-posture";
 import { useLocale } from "@/hooks/use-locale";
 import { useWidthClass } from "@/hooks/use-width-class";
 import { hasResizeObserver } from "@/lib/env";
+import { isAnchorShown, placeMenu } from "@/lib/menu-place";
 import { EXPANDED_MIN_PX, WIDE_MIN_HEIGHT_PX } from "@/lib/wide-layout";
 
 // Minimal modal focus handling (no deps, no full trap): on open move focus into the panel so
@@ -120,6 +121,12 @@ const VIEWER_BODY_W = `calc(${VIEWER_MAX_W} - 2rem - 2px)`;
 export type SheetPresentation = "sheet" | "dialog";
 
 /**
+ * A sheet's drawing, as its panel's `data-presentation` names it: the two above, or `menu`, a dialog
+ * drawn beside the button that opened it (`anchor`).
+ */
+export type SheetDrawing = SheetPresentation | "menu";
+
+/**
  * Whether a box the size of the sheet's fixed layer is an expanded room: at least `EXPANDED_MIN_PX` wide
  * and `WIDE_MIN_HEIGHT_PX` tall. A box with no size at all has no layout to read (nothing laid out, or a
  * test's DOM), and then the window decides alone.
@@ -227,6 +234,17 @@ interface BottomSheetProps {
    * `tour-sheet.tsx`, its one caller). Nothing else passes it.
    */
   presentation?: "auto" | "sheet";
+  /**
+   * The button that opened the sheet, for a small menu opened from it (the pane, tab and space menus).
+   * Where the sheet is a dialog and the button is in the document and in view when it opens, the sheet is
+   * drawn as a MENU beside it: below the button, trailing edges aligned, flipped above when the room
+   * below is too small, kept 8px inside the window (`lib/menu-place.ts`), 20rem wide, in the modal's look,
+   * with no dimming and no entrance (the reasons of `ui/anchored-menu.tsx`). It follows a scroll and a
+   * resize. No title row and no close button unless the caller passes `action`; the title stays the
+   * dialog's name. On close the focus goes back to the button. Absent, gone or hidden, and on a bottom
+   * sheet: no change at all. Pass it only when the sheet was opened by a tap on that button.
+   */
+  anchor?: React.RefObject<HTMLElement | null>;
 }
 
 export function BottomSheet(props: BottomSheetProps) {
@@ -248,6 +266,7 @@ function SheetLayer({
   action,
   size = "column",
   presentation: only = "auto",
+  anchor,
 }: BottomSheetProps) {
   useLocale();
   const panelRef = React.useRef<HTMLDivElement>(null);
@@ -258,6 +277,8 @@ function SheetLayer({
   const presentation = useSheetPresentation(probeRef, only);
   const dialog = presentation === "dialog";
   const room = useModalRoom("center");
+  const menu = useAnchoredMenu({ open, dialog, anchor, panel: panelRef, probe: probeRef });
+  const drawing: SheetDrawing = menu ? "menu" : presentation;
   // A peek never opened, so it must never claim focus or block the page behind it from the a11y
   // tree's point of view either way; the dialog role below is only meaningful once `open` is true.
   // A dialog never peeks: the pull is a touch gesture of the compact layout, and a dialog drawn half
@@ -273,6 +294,13 @@ function SheetLayer({
   // translateY(100%) — the sheet dropped out of view and slid back in.
   const openedFromPeek = React.useRef(false);
   useDialogFocus(open, panelRef);
+  // A menu gives the focus back to its button, also where the browser did not focus it on the tap
+  // (Safari): declared after `useDialogFocus`, so this cleanup runs after that one's restore.
+  React.useEffect(() => {
+    if (!menu) return;
+    const trigger = anchor?.current;
+    return () => trigger?.focus({ preventScroll: true });
+  }, [menu, anchor]);
   React.useEffect(() => {
     if (!open) return;
     bumpOpenSheets(1);
@@ -407,7 +435,9 @@ function SheetLayer({
   if (size === "viewer") dialogStyle["--sheet-body-width"] = VIEWER_BODY_W;
   // Peeking: no dialog role, no aria-modal, no pointer events on the page underneath. Nothing has
   // opened yet, so nothing about this render should read as a modal to assistive tech or the mouse.
-  const panelStyle: React.CSSProperties = dialog
+  const panelStyle: React.CSSProperties | undefined = menu
+    ? undefined
+    : dialog
     ? dialogStyle
     : peeking
     ? {
@@ -430,12 +460,12 @@ function SheetLayer({
 
   return (
     <div
-      className={dialog ? cn(MODAL_FRAME, MODAL_CENTER_FRAME) : "fixed inset-x-0 top-0 z-50 flex h-(--app-h) flex-col justify-end"}
+      className={menu ? "fixed inset-0 z-50" : dialog ? cn(MODAL_FRAME, MODAL_CENTER_FRAME) : "fixed inset-x-0 top-0 z-50 flex h-(--app-h) flex-col justify-end"}
       role={peeking ? undefined : "dialog"}
       aria-modal={peeking ? undefined : true}
       aria-labelledby={!peeking && title ? titleId : undefined}
       aria-hidden={peeking ? "true" : undefined}
-      style={peeking ? { pointerEvents: "none" } : dialog ? room : undefined}
+      style={peeking ? { pointerEvents: "none" } : dialog && !menu ? room : undefined}
     >
       {probe}
       {/* Backdrop: still dismisses on tap, but hidden from assistive tech — the ✕ in the header is
@@ -449,7 +479,11 @@ function SheetLayer({
         aria-hidden="true"
         tabIndex={-1}
         className={
-          dialog
+          menu
+            ? // A menu dims nothing: its button stays in plain view (ui/anchored-menu.tsx). A clear layer
+              // that closes on an outside press, by the same press-and-release rule.
+              "absolute inset-0 cursor-default"
+            : dialog
             ? cn(MODAL_SCRIM, "motion-reduce:animate-none")
             : cn("absolute inset-0 bg-black/50", !peeking && !skipEntrance && "duration-200 animate-in fade-in")
         }
@@ -467,8 +501,8 @@ function SheetLayer({
         ref={panelRef}
         tabIndex={peeking ? undefined : -1}
         style={panelStyle}
-        data-presentation={presentation}
-        className={dialog ? dialogPanelClass(size, className) : cn(
+        data-presentation={drawing}
+        className={menu ? menuPanelClass(className) : dialog ? dialogPanelClass(size, className) : cn(
           // `rounded-t-md` (2px), not `rounded-t-2xl`: 16px was the roundest corner left in the app and it
           // sat on the most-seen surface. The sheet is a panel, and a panel has an edge.
           //
@@ -497,6 +531,12 @@ function SheetLayer({
       >
         {/* Solid, never a blur: a sheet's rows animate (a working dot, a spinner) as they scroll under
             this row, and a blur over an animation redraws every frame (issue 748). */}
+        {menu && !action ? (
+          // A menu beside its button needs no heading and no close: the title is the dialog's name only.
+          <span id={title ? titleId : undefined} data-slot="sheet-title" className="sr-only">
+            {title}
+          </span>
+        ) : (
         <div className="sticky top-0 z-10 border-b border-rule bg-card">
           {/* Grab handle — pull down (from anywhere at the top) to dismiss. */}
           {/* Not on a dialog, which takes no pull. Its title row takes the handle's 1rem as padding
@@ -539,10 +579,85 @@ function SheetLayer({
             </Button>
           </div>
         </div>
-        <div className="px-4 py-3">{children}</div>
+        )}
+        <div data-slot="sheet-body" className="px-4 py-3">{children}</div>
       </div>
     </div>
   );
+}
+
+/**
+ * The panel of a sheet drawn as a menu beside its button: the modal's look, 20rem wide, placed by
+ * `useAnchoredMenu`, no entrance. The caller's sizes give way as they do in a dialog.
+ */
+function menuPanelClass(className: string | undefined): string {
+  return cn(
+    "absolute z-10 w-80 max-w-[calc(100%-1rem)] overflow-y-auto overscroll-contain outline-none",
+    MODAL_PANEL_LOOK,
+    className,
+    "h-auto max-h-none rounded-md pb-0",
+  );
+}
+
+/**
+ * Whether the open sheet is drawn as a menu beside `anchor`, and its place. Decided in the layout phase
+ * of the open, before the first paint: a dialog, and the button in the document and in view. The panel
+ * is placed by writing its `top`, `left` and `max-height` straight to it, measured against the layer's
+ * own box (the probe's), and again on any scroll, a resize, or a change of the rows' height. It follows;
+ * it never closes on a scroll, because a pane's own output scrolls the page under it.
+ */
+function useAnchoredMenu({
+  open,
+  dialog,
+  anchor,
+  panel,
+  probe,
+}: {
+  open: boolean;
+  dialog: boolean;
+  anchor: React.RefObject<HTMLElement | null> | undefined;
+  panel: React.RefObject<HTMLDivElement | null>;
+  probe: React.RefObject<HTMLSpanElement | null>;
+}): boolean {
+  const [shown, setShown] = React.useState(false);
+  React.useLayoutEffect(() => {
+    const decide = () => setShown(open && dialog && isAnchorShown(anchor?.current ?? null, { width: window.innerWidth, height: window.innerHeight }));
+    decide();
+  }, [open, dialog, anchor]);
+  const menu = open && dialog && shown;
+  React.useLayoutEffect(() => {
+    const el = panel.current;
+    const body = el?.querySelector('[data-slot="sheet-body"]');
+    if (!menu || el === null || anchor === undefined) return;
+    const place = () => {
+      const trigger = anchor.current;
+      const layer = probe.current?.getBoundingClientRect();
+      if (trigger === null || !trigger.isConnected || layer === undefined) return;
+      const a = trigger.getBoundingClientRect();
+      // The panel's own height, whatever its cap: the rows plus its 1px edges.
+      const height = el.scrollHeight + (el.offsetHeight - el.clientHeight);
+      const at = placeMenu({
+        anchor: { left: a.left - layer.left, top: a.top - layer.top, width: a.width, height: a.height },
+        panel: { width: el.offsetWidth, height },
+        window: { width: layer.width || window.innerWidth, height: layer.height || window.innerHeight },
+      });
+      el.style.left = `${at.left}px`;
+      el.style.top = `${at.top}px`;
+      el.style.maxHeight = `${at.maxHeight}px`;
+      el.dataset.side = at.side;
+    };
+    place();
+    const resizes = hasResizeObserver() && body ? new ResizeObserver(place) : null;
+    if (body) resizes?.observe(body);
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, { capture: true, passive: true });
+    return () => {
+      resizes?.disconnect();
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, { capture: true });
+    };
+  }, [menu, anchor, panel, probe]);
+  return menu;
 }
 
 /**

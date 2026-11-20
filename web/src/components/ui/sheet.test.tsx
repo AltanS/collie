@@ -831,6 +831,100 @@ describe("BottomSheet: the presentation by width class", () => {
     expect(classes(panelOf(phone.container))).toEqual(expect.arrayContaining(["h-[85dvh]", "max-h-[85dvh]"]));
   });
 
+  // A MENU BESIDE ITS BUTTON: a dialog opened by a tap on a button in view draws beside it, with no scrim
+  // and no heading. jsdom lays nothing out, so the button's box is given.
+  function trigger(rect = { x: 900, y: 20, width: 44, height: 44 }, attach = true) {
+    const button = document.createElement("button");
+    button.textContent = "menu";
+    if (attach) document.body.appendChild(button);
+    button.getBoundingClientRect = () => DOMRect.fromRect(rect);
+    return { current: button };
+  }
+
+  it("draws a menu beside an anchor in view: below it, no dimming, no title row, the title as its name", () => {
+    const anchor = trigger();
+    const { container } = render(
+      <BottomSheet open onClose={vi.fn()} title="Pane actions" anchor={anchor}>
+        <button type="button">Rename</button>
+      </BottomSheet>,
+    );
+    const panel = panelOf(container);
+    expect(panel.dataset.presentation).toBe("menu");
+    expect(panel.style.top).toBe("68px");
+    expect(classes(panel)).toEqual(expect.arrayContaining(["w-80", "rounded-md", "border", "border-border", "shadow-2xl"]));
+    expect(classes(panel)).not.toContain("animate-in");
+    const layer = container.querySelector<HTMLElement>('button[aria-hidden="true"]')!;
+    expect(layer.className).not.toMatch(/bg-black/);
+    expect(container.querySelector('[data-slot="sheet-title-row"]')).toBeNull();
+    expect(screen.queryByRole("button", { name: "Close" })).toBeNull();
+    expect(screen.getByRole("dialog", { name: "Pane actions" })).toBeInTheDocument();
+    anchor.current.remove();
+  });
+
+  it("closes a menu on an outside press and release, and Escape gives the focus back to its button", () => {
+    const anchor = trigger();
+    const onClose = vi.fn();
+    const { container, rerender } = render(
+      <BottomSheet open onClose={onClose} title="Pane actions" anchor={anchor}>
+        body
+      </BottomSheet>,
+    );
+    const layer = container.querySelector<HTMLElement>('button[aria-hidden="true"]')!;
+    fireEvent.click(layer);
+    expect(onClose).not.toHaveBeenCalled();
+    fireEvent.pointerDown(layer);
+    fireEvent.click(layer);
+    expect(onClose).toHaveBeenCalledTimes(1);
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(onClose).toHaveBeenCalledTimes(2);
+    rerender(
+      <BottomSheet open={false} onClose={onClose} title="Pane actions" anchor={anchor}>
+        body
+      </BottomSheet>,
+    );
+    expect(document.activeElement).toBe(anchor.current);
+    anchor.current.remove();
+  });
+
+  it("keeps the title row of a menu that carries an action", () => {
+    const anchor = trigger();
+    const { container } = render(
+      <BottomSheet open onClose={vi.fn()} title="Tab" anchor={anchor} action={<button type="button">Go</button>}>
+        body
+      </BottomSheet>,
+    );
+    expect(panelOf(container).dataset.presentation).toBe("menu");
+    expect(container.querySelector('[data-slot="sheet-title-row"]')).not.toBeNull();
+    anchor.current.remove();
+  });
+
+  it("draws the centred dialog with no anchor, an anchor out of the document, or one scrolled out of view", () => {
+    const cases = [undefined, trigger(undefined, false), trigger({ x: 900, y: -200, width: 44, height: 44 })];
+    for (const anchor of cases) {
+      const { container, unmount } = render(
+        <BottomSheet open onClose={vi.fn()} title="Pane actions" anchor={anchor}>
+          body
+        </BottomSheet>,
+      );
+      expect(panelOf(container).dataset.presentation).toBe("dialog");
+      unmount();
+      anchor?.current.remove();
+    }
+  });
+
+  it("keeps the bottom sheet with an anchor on compact", () => {
+    width = 390;
+    const anchor = trigger({ x: 340, y: 20, width: 44, height: 44 });
+    const { container } = render(
+      <BottomSheet open onClose={vi.fn()} title="Pane actions" anchor={anchor}>
+        body
+      </BottomSheet>,
+    );
+    expect(panelOf(container).dataset.presentation).toBe("sheet");
+    expect(container.querySelector('[data-slot="sheet-handle"]')).not.toBeNull();
+    anchor.current.remove();
+  });
+
   it("stays a bottom sheet on medium and compact, and the viewer size changes nothing there", () => {
     for (const w of [390, 820]) {
       width = w;

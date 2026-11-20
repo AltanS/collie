@@ -521,6 +521,12 @@ export function AgentChat({
     setDrawer(null);
     setPull(0);
   };
+  // The ⋮ button, when a tap on it opened the pane menu: on a wide window the menu then stands beside it
+  // (ui/sheet.tsx `anchor`). Null for every other door (the name tap, a shortcut), which keeps the dialog.
+  const paneMenuFrom = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    if (drawer !== "paneMenu") paneMenuFrom.current = null;
+  }, [drawer]);
   // The walky talky message the Messages sheet opens on: a tapped Chat card, or an id chip. The pane menu's
   // own row clears it, so that way in shows the list from the top.
   const [walkyFocus, setWalkyFocus] = useState<string | null>(null);
@@ -2580,7 +2586,10 @@ export function AgentChat({
               {agent ? (
                 <button
                   type="button"
-                  onClick={() => setDrawer("paneMenu")}
+                  onClick={(e) => {
+                    paneMenuFrom.current = e.currentTarget;
+                    setDrawer("paneMenu");
+                  }}
                   aria-label={t("chat.paneMenu.aria")}
                   className="grid w-11 min-h-11 shrink-0 place-items-center self-stretch rounded-md text-muted-foreground transition-colors active:bg-muted/60 active:text-foreground"
                 >
@@ -4057,6 +4066,7 @@ export function AgentChat({
         <PaneActionsSheet
           open={drawer === "paneMenu"}
           onClose={closeDrawer}
+          anchor={paneMenuFrom}
           pane={agent ?? null}
           scope={scope}
           readOnly={readOnly}
