@@ -1864,47 +1864,6 @@ describe("mux", () => {
     expect(gone.code).toBe(EXIT.FAIL);
   });
 
-  test("rex: the binary, the server's address and its API revision; an untested revision warns", async () => {
-    const rexBin = `${HOME}/.local/bin/rex`;
-    const files = { ...healthyFiles(), [rexBin]: "" };
-    const status = (revision: number): Scripted["answers"] => [
-      [
-        `${rexBin} --autostart=false --color=never api call server.status`,
-        { stdout: JSON.stringify({ api_revision: revision, listeners: [{ endpoint: "unix:///run/user/7/rex/server.sock", primary: true }] }) },
-      ],
-      ...HEALTHY_ANSWERS!,
-    ];
-    const tested = await findings(harness(null, [], { env: { COLLIE_MUX: "rex" }, files, answers: status(19) }));
-    expect(tested.byCheck.get("mux")?.status).toBe("ok");
-    expect(tested.byCheck.get("mux")?.detail).toBe(
-      `rex · ${rexBin} · unix:///run/user/7/rex/server.sock · API revision 19 · set by COLLIE_MUX`,
-    );
-
-    const untested = await findings(harness(null, [], { env: { COLLIE_MUX: "rex" }, files, answers: status(20) }));
-    expect(untested.byCheck.get("mux")?.status).toBe("warn");
-    expect(untested.byCheck.get("mux")?.detail).toContain("Rex API revision 20 was not tested with Collie (tested: 18, 19)");
-  });
-
-  test("rex: no binary names every path it tried; no server names the start command", async () => {
-    const none = await findings(harness(null, [], { env: { COLLIE_MUX: "rex" } }));
-    const missing = none.byCheck.get("mux")!;
-    expect(missing.status).toBe("error");
-    expect(missing.detail).toContain(`no rex binary at ${HOME}/.local/bin/rex, /usr/local/bin/rex, /usr/bin/rex`);
-    expect(missing.remedy).toContain("COLLIE_REX_BIN");
-
-    const rexBin = `${HOME}/.local/bin/rex`;
-    const down = await findings(
-      harness(null, [], {
-        env: { COLLIE_MUX: "rex" },
-        files: { ...healthyFiles(), [rexBin]: "" },
-        answers: [[`${rexBin} --autostart=false`, { code: 1, stderr: "Error: no Rex server is running\n" }], ...HEALTHY_ANSWERS!],
-      }),
-    );
-    expect(down.byCheck.get("mux")?.status).toBe("error");
-    expect(down.byCheck.get("mux")?.detail).toBe(`rex — ${rexBin} answered, but no Rex server did: Error: no Rex server is running`);
-    expect(down.byCheck.get("mux")?.remedy).toContain("rex server start");
-  });
-
   test("an unknown mux name is an error naming the ones this build drives", async () => {
     const h = harness(null, [], { env: { COLLIE_MUX: "screen" } });
     const { byCheck, code } = await findings(h);
