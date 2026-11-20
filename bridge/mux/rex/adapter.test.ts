@@ -278,3 +278,36 @@ describe("a screen read that falls back to the whole output says so, at most onc
     expect(lines).toEqual([]);
   });
 });
+
+describe("one capture per pane at a time", () => {
+  const POLL: MuxGridRequest = { scope: "recent", lines: 60, styling: "preserve" };
+
+  async function world2() {
+    const rex = new RecordingRex(new FakeRex());
+    const adapter = new RexMux(rex, { log: () => undefined });
+    const pane = (await adapter.snapshot()).panes[0]!;
+    rex.calls.length = 0;
+    return { rex, adapter, paneId: pane.paneId };
+  }
+  const formats = (calls: readonly string[][]) => calls.filter((argv) => argv[0] === "block" && argv[4] === "format").length;
+
+  test("two phones reading one pane at once share one capture, and both get the screen", async () => {
+    const { rex, adapter, paneId } = await world2();
+    const [a, b] = await Promise.all([adapter.readGrid(paneId, POLL), adapter.readGrid(paneId, { ...POLL, styling: "strip" })]);
+    expect(formats(rex.calls)).toBe(1);
+    expect(a.ok && b.ok).toBe(true);
+  });
+
+  test("another row count or the unwrapped text is its own capture", async () => {
+    const { rex, adapter, paneId } = await world2();
+    await Promise.all([adapter.readGrid(paneId, POLL), adapter.readGrid(paneId, { ...POLL, lines: 600 }), adapter.readLogicalText(paneId, 60)]);
+    expect(formats(rex.calls)).toBe(3);
+  });
+
+  test("a read after the first one ended reads afresh", async () => {
+    const { rex, adapter, paneId } = await world2();
+    await adapter.readGrid(paneId, POLL);
+    await adapter.readGrid(paneId, POLL);
+    expect(formats(rex.calls)).toBe(2);
+  });
+});

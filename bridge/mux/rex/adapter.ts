@@ -268,6 +268,8 @@ export class RexMux implements MuxAdapter {
   /** Whether the server's API revision was asked: once per adapter, on the first good snapshot. */
   private revisionAsked = false;
 
+  /** Captures still running, by pane, rows and unwrap: a second ask for the same tail shares the first. */
+  private readonly capturesInFlight = new Map<string, Promise<MuxOutcome<RexCapture>>>();
   /** When the last fallback line was written, and how many viewport fallbacks it has not named. */
   private lastFallbackLine = Number.NEGATIVE_INFINITY;
   private fallbacksUnlogged = 0;
@@ -315,7 +317,7 @@ export class RexMux implements MuxAdapter {
     // sized by the terminal's own rows, and every read takes only the tail it needs (captureTail).
     const [captured, sized] = await Promise.all([
       // Every read but Load older (`purpose: "older"`) is one the phone repeats on each poll.
-      this.captureTail(paneId, request.lines, false, request.purpose !== "older"),
+      this.sharedCapture(paneId, request.lines, false, request.purpose !== "older"),
       request.scope === "viewport" ? this.attemptRun(["block", "call", "-b", paneId, "size"]) : Promise.resolve(null),
     ]);
     if (!captured.ok) return captured;
@@ -339,7 +341,7 @@ export class RexMux implements MuxAdapter {
   /** The same rows with soft wraps joined: `--unwrap`, probed, joins lines the terminal wrapped. */
   async readLogicalText(paneId: string, lines: number): Promise<MuxOutcome<string>> {
     if (!isRexId("block", paneId)) return notRexId("block", paneId);
-    const result = await this.captureTail(paneId, lines, true, false);
+    const result = await this.sharedCapture(paneId, lines, true, false);
     if (!result.ok) return result;
     const captured = keepSgrOnly(result.value.text).split("\n");
     return muxOk(captured.slice(Math.max(0, captured.length - lines)).join("\n"));
@@ -360,6 +362,20 @@ export class RexMux implements MuxAdapter {
    * server kept only a few results and dropped this one, the part did not reach the end, the rows do
    * not start where a row starts, or there are fewer rows than asked (Load older).
    */
+  /**
+   * One capture per pane, rows and unwrap at a time. Two phones on one pane, or a poll beside the state
+   * engine's read, would otherwise each start their own two `rex` calls and their own server render
+   * of the whole output. Nothing is kept once the capture ends: the next ask reads afresh.
+   */
+  private sharedCapture(paneId: string, rows: number, unwrap: boolean, logFallback: boolean): Promise<MuxOutcome<RexCapture>> {
+    const key = `${paneId}\n${String(rows)}\n${String(unwrap)}`;
+    const running = this.capturesInFlight.get(key);
+    if (running !== undefined) return running;
+    const capture = this.captureTail(paneId, rows, unwrap, logFallback).finally(() => this.capturesInFlight.delete(key));
+    this.capturesInFlight.set(key, capture);
+    return capture;
+  }
+
   private async captureTail(paneId: string, rows: number, unwrap: boolean, viewport: boolean): Promise<MuxOutcome<RexCapture>> {
     const fallBack = (reason: string): Promise<MuxOutcome<RexCapture>> => {
       if (viewport) this.noteFallback(reason);
