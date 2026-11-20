@@ -72,16 +72,14 @@
 # toggle_sidebar = "prefix+b"
 
 # Two modes that stay until you press `esc`. In resize mode, `h` and `l` step the pane width. In
-# navigate mode, `h` `j` `k` `l` and the arrows move, `1..9` picks a tab and `enter` leaves.
+# navigate mode, `j` `k` and the arrows move a focus ring over the sidebar and `enter` opens the row.
 # resize_mode = "prefix+r"
 # navigate_mode = "prefix+w"
 
 # The keys inside navigate mode and inside resize mode. They are bare keys, only valid in their mode.
-# navigate_left = ["h", "left"]
 # navigate_down = ["j", "down"]
 # navigate_up = ["k", "up"]
-# navigate_right = ["l", "right"]
-# navigate_tab = "1..9"
+# navigate_open = "enter"
 # resize_narrower = ["h", "left"]
 # resize_wider = ["l", "right"]
 

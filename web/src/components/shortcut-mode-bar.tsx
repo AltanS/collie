@@ -27,14 +27,14 @@ interface Hint {
   readonly labelKey: MessageKey;
 }
 
-// In the order of importance, so a row that runs out of room loses the last ones.
+// In the order of importance, so a window that wraps the hints puts the last ones on the second line.
 const PREFIX_HINTS: readonly Hint[] = [
   { ids: ["switch_pane"], labelKey: "shortcuts.bar.switchPane" },
   { ids: ["new_tab"], labelKey: "shortcuts.bar.newTab" },
   { ids: ["previous_tab", "next_tab"], labelKey: "shortcuts.bar.tabs" },
   { ids: ["switch_tab"], labelKey: "shortcuts.bar.tab" },
   { ids: ["focus_pane_left", "focus_pane_right"], labelKey: "shortcuts.bar.panes" },
-  { ids: ["next_space", "previous_space"], labelKey: "shortcuts.bar.spaces" },
+  { ids: ["previous_space", "next_space"], labelKey: "shortcuts.bar.spaces" },
   { ids: ["navigate_mode"], labelKey: "shortcuts.bar.navigate" },
   { ids: ["resize_mode"], labelKey: "shortcuts.bar.resize" },
   { ids: ["zen_mode"], labelKey: "shortcuts.bar.zen" },
@@ -47,11 +47,8 @@ const PREFIX_HINTS: readonly Hint[] = [
 ];
 
 const MODE_HINTS = {
-  navigate: [
-    { ids: ["navigate_left", "navigate_right"], labelKey: "shortcuts.bar.panes" },
-    { ids: ["navigate_down", "navigate_up"], labelKey: "shortcuts.bar.spaces" },
-    { ids: ["navigate_tab"], labelKey: "shortcuts.bar.tab" },
-  ],
+  // Navigate has its own line (`NavigateHints`): the word leads, as the sidebar's ring is a place to be.
+  navigate: [],
   resize: [{ ids: ["resize_narrower", "resize_wider"], labelKey: "shortcuts.bar.width" }],
 } as const satisfies Record<ModeId, readonly Hint[]>;
 
@@ -83,12 +80,48 @@ function hintCaps(input: { hint: Hint; keymap: Keymap; viaPrefix: boolean; avail
   return caps;
 }
 
-function HintPair({ caps, label }: { caps: readonly string[]; label: string }) {
+function HintPair({ caps, label, isLabelFirst = false }: { caps: readonly string[]; label: string; isLabelFirst?: boolean }) {
   return (
     <span className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap">
+      {isLabelFirst && <span className="text-xs text-muted-foreground">{label}</span>}
       <Keycaps caps={caps} />
-      <span className="text-xs text-muted-foreground">{label}</span>
+      {!isLabelFirst && <span className="text-xs text-muted-foreground">{label}</span>}
     </span>
+  );
+}
+
+/** The arrow keys as the arrows they are, on the bar only: the list keeps the key's name. */
+const ARROW_GLYPHS: ReadonlyMap<string, string> = new Map([
+  ["Up", "↑"],
+  ["Down", "↓"],
+]);
+
+/** The caps of each binding of one action, in the keymap's order. */
+function capsByBinding(input: { keymap: Keymap; id: ActionId }): string[][] {
+  return actionCombos({ keymap: input.keymap, id: input.id }).map((combo) => combo.caps.map((cap) => ARROW_GLYPHS.get(cap) ?? cap));
+}
+
+/**
+ * The keys that move the ring, letters first and then the arrows as they sit on a keyboard, up before
+ * down: `j k ↑ ↓` for the defaults. Read from the keymap, so a rebound key shows as rebound.
+ */
+function moveCaps(keymap: Keymap): string[] {
+  const down = capsByBinding({ keymap, id: "navigate_down" });
+  const up = capsByBinding({ keymap, id: "navigate_up" });
+  const [firstDown = [], ...otherDown] = down;
+  const [firstUp = [], ...otherUp] = up;
+  return [...firstDown, ...firstUp, ...otherUp.flat(), ...otherDown.flat()];
+}
+
+/** Navigate mode's line: `Move: j k ↑ ↓   Open: Enter   Leave: Esc`. Move and Open show where the sidebar answers them. */
+function NavigateHints({ keymap, available }: { keymap: Keymap; available: ReadonlySet<ActionId> }) {
+  const move = available.has("navigate_down") || available.has("navigate_up") ? moveCaps(keymap) : [];
+  const open = available.has("navigate_open") ? capsByBinding({ keymap, id: "navigate_open" }).flat() : [];
+  return (
+    <>
+      {move.length > 0 && <HintPair isLabelFirst caps={move} label={t("shortcuts.bar.move")} />}
+      {open.length > 0 && <HintPair isLabelFirst caps={open} label={t("shortcuts.bar.open")} />}
+    </>
   );
 }
 
@@ -130,7 +163,8 @@ export interface ShortcutModeBarProps {
 export function ShortcutModeBar({ mode, keymap, available, isNoticeShown = false, className }: ShortcutModeBarProps) {
   useLocale();
   const viaPrefix = mode === "prefix";
-  const hints = viaPrefix ? PREFIX_HINTS : MODE_HINTS[mode];
+  const isNavigate = mode === "navigate";
+  const hints: readonly Hint[] = viaPrefix ? PREFIX_HINTS : MODE_HINTS[mode];
   const shown = hints
     .map((hint) => ({ hint, caps: hintCaps({ hint, keymap, viaPrefix, available }) }))
     .filter((entry) => entry.caps.length > 0);
@@ -144,18 +178,28 @@ export function ShortcutModeBar({ mode, keymap, available, isNoticeShown = false
       className={cn("flex min-w-0 items-center gap-x-4 text-sm", className)}
     >
       <ModePill mode={mode} />
-      <div className="flex min-w-0 flex-1 gap-x-4 overflow-hidden [mask-image:linear-gradient(to_right,black_calc(100%-2rem),transparent)]">
+      {/* The hints WRAP to a second line when the window is narrow, and never cut a word: no clip, no fade. */}
+      <div data-slot="shortcut-hints" className="flex min-w-0 flex-1 flex-wrap items-center gap-x-4 gap-y-0.5">
         {isNoticeShown ? (
           <ShortcutNoticeText />
         ) : (
-          shown.map(({ hint, caps }) => <HintPair key={hint.labelKey} caps={caps} label={t(hint.labelKey)} />)
+          <>
+            {isNavigate && <NavigateHints keymap={keymap} available={available} />}
+            {shown.map(({ hint, caps }) => (
+              <HintPair key={hint.labelKey} caps={caps} label={t(hint.labelKey)} />
+            ))}
+          </>
         )}
       </div>
       <div className="flex shrink-0 items-center gap-x-4">
         {help.length > 0 && <HintPair caps={help} label={t(HELP_HINT.labelKey)} />}
-        {exits.map((id) => (
-          <HintPair key={id} caps={[capitalised(id)]} label={t(viaPrefix ? "shortcuts.bar.cancel" : EXIT_KEY[id])} />
-        ))}
+        {exits.map((id) =>
+          isNavigate ? (
+            <HintPair key={id} isLabelFirst caps={[capitalised(id)]} label={t("shortcuts.bar.leaveNavigate")} />
+          ) : (
+            <HintPair key={id} caps={[capitalised(id)]} label={t(viaPrefix ? "shortcuts.bar.cancel" : EXIT_KEY[id])} />
+          ),
+        )}
       </div>
     </div>
   );

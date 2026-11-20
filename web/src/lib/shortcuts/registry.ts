@@ -16,17 +16,11 @@ import { ACTIONS, type ActionId, type ModeId } from "./actions";
 export type ShortcutHandler = (index?: number) => void;
 
 /**
- * A sticky mode's keys run the handler of the global action they mirror, so a pane steps the same
- * way from `prefix+l` and from `l` inside the picker, and one registration serves both. Only the
- * mode rows with no global twin (the width steps) register on their own.
+ * A sticky mode's key may run the handler of a global action it mirrors, so one registration serves
+ * both. None does now: the Navigate keys move the sidebar's focus ring, a different act from the
+ * `prefix` moves, so each registers on its own.
  */
-const MIRRORS: ReadonlyMap<ActionId, ActionId> = new Map<ActionId, ActionId>([
-  ["navigate_left", "focus_pane_left"],
-  ["navigate_right", "focus_pane_right"],
-  ["navigate_up", "previous_space"],
-  ["navigate_down", "next_space"],
-  ["navigate_tab", "switch_tab"],
-]);
+const MIRRORS: ReadonlyMap<ActionId, ActionId> = new Map<ActionId, ActionId>();
 
 const handlers = new Map<ActionId, ShortcutHandler>();
 const availabilityListeners = new Set<() => void>();

@@ -48,11 +48,15 @@ describe("the defaults", () => {
 
   it("keep the keys of a mode inside the mode", () => {
     const navigate = keymap.modes.get("navigate");
-    expect(navigate?.keys.get("h")).toEqual({ action: "navigate_left" });
-    expect(navigate?.keys.get("left")).toEqual({ action: "navigate_left" });
-    expect(navigate?.keys.get("4")).toEqual({ action: "navigate_tab", index: 4 });
-    expect(navigate?.keys.has("enter")).toBe(false);
-    expect(navigate?.exits).toEqual(new Set(["esc", "enter"]));
+    expect(navigate?.keys.get("j")).toEqual({ action: "navigate_down" });
+    expect(navigate?.keys.get("down")).toEqual({ action: "navigate_down" });
+    expect(navigate?.keys.get("k")).toEqual({ action: "navigate_up" });
+    expect(navigate?.keys.get("up")).toEqual({ action: "navigate_up" });
+    expect(navigate?.keys.has("h")).toBe(false);
+    expect(navigate?.keys.has("4")).toBe(false);
+    // Enter is an action of the mode (it opens the row and leaves); Esc is the only built-in way out.
+    expect(navigate?.keys.get("enter")).toEqual({ action: "navigate_open", leavesMode: true });
+    expect(navigate?.exits).toEqual(new Set(["esc"]));
     expect(keymap.modes.get("resize")?.exits).toEqual(new Set(["esc", "enter"]));
     expect(keymap.prefixed.has("left")).toBe(false);
   });
@@ -73,11 +77,11 @@ describe("the operator's file replaces an action whole", () => {
   });
 
   it("replaces a mode action too", () => {
-    const keymap = build({ navigate_left: ["a"] });
+    const keymap = build({ navigate_down: ["a"] });
     const navigate = keymap.modes.get("navigate");
-    expect(navigate?.keys.get("a")).toEqual({ action: "navigate_left" });
-    expect(navigate?.keys.has("h")).toBe(false);
-    expect(navigate?.keys.has("left")).toBe(false);
+    expect(navigate?.keys.get("a")).toEqual({ action: "navigate_down" });
+    expect(navigate?.keys.has("j")).toBe(false);
+    expect(navigate?.keys.has("down")).toBe(false);
   });
 
   it("unbinds with an empty list", () => {
@@ -146,14 +150,14 @@ describe("collisions", () => {
   });
 
   it("reports two bindings on one key inside a mode", () => {
-    const keymap = build({ navigate_left: ["a"], navigate_right: ["a"] });
-    expect(keymap.modes.get("navigate")?.keys.get("a")).toEqual({ action: "navigate_left" });
+    const keymap = build({ navigate_down: ["a"], navigate_up: ["a"] });
+    expect(keymap.modes.get("navigate")?.keys.get("a")).toEqual({ action: "navigate_down" });
     expect(codes(keymap.diagnostics)).toEqual(["collision"]);
   });
 
   it("lets the same key serve two modes", () => {
-    const keymap = build();
-    expect(keymap.modes.get("navigate")?.keys.get("h")?.action).toBe("navigate_left");
+    const keymap = build({ navigate_down: ["h"] });
+    expect(keymap.modes.get("navigate")?.keys.get("h")?.action).toBe("navigate_down");
     expect(keymap.modes.get("resize")?.keys.get("h")?.action).toBe("resize_narrower");
     expect(keymap.diagnostics).toEqual([]);
   });
@@ -216,7 +220,7 @@ describe("the prefix", () => {
   });
 
   it("is reserved inside a mode, and Esc stays the way out", () => {
-    const keymap = build({ navigate_left: ["ctrl+b"], navigate_right: ["esc"], resize_wider: ["enter"] });
+    const keymap = build({ navigate_down: ["ctrl+b"], navigate_up: ["esc"], resize_wider: ["enter"] });
     expect(codes(keymap.diagnostics)).toEqual(["reserved", "reserved", "reserved"]);
     expect(keymap.modes.get("navigate")?.keys.has("esc")).toBe(false);
   });
@@ -300,7 +304,7 @@ describe("a bad binding is dropped with a diagnostic and the file still loads", 
   });
 
   it("refuses prefix+ inside a mode", () => {
-    const keymap = build({ navigate_left: ["prefix+a"] });
+    const keymap = build({ navigate_down: ["prefix+a"] });
     expect(codes(keymap.diagnostics)).toEqual(["prefix-in-mode"]);
     expect(keymap.modes.get("navigate")?.keys.has("a")).toBe(false);
   });

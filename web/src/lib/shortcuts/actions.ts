@@ -43,6 +43,8 @@ export interface ActionDef<Id extends string = string> {
   readonly opensMode?: ModeId;
   /** The bindings live inside this sticky mode, not in the normal one. */
   readonly scope?: ModeId;
+  /** Running the action ends the sticky mode it lives in, after it ran. */
+  readonly leavesMode?: true;
 }
 
 export interface ModeDef {
@@ -52,10 +54,11 @@ export interface ModeDef {
   readonly exits: readonly string[];
 }
 
-// Both modes act live, with no highlight: in `navigate` the keys move the real focus (pane, space,
-// tab) as the prefix actions do, and `Enter` or `Esc` leaves; in `resize` the keys step the width.
+// `navigate` moves a focus ring over the rows of the sidebar and changes nothing on screen until
+// `navigate_open` (Enter) opens the focused row and leaves; `Esc` leaves with no change. `resize`
+// acts live: its keys step the width, and `Enter` or `Esc` leaves.
 export const MODES = [
-  { id: "navigate", labelKey: "shortcuts.mode.navigate", exits: ["enter"] },
+  { id: "navigate", labelKey: "shortcuts.mode.navigate", exits: [] },
   { id: "resize", labelKey: "shortcuts.mode.resize", exits: ["enter"] },
 ] as const satisfies readonly ModeDef[];
 
@@ -77,11 +80,9 @@ export const ACTIONS = [
   { id: "previous_space", group: "navigation", defaults: ["prefix+k"], labelKey: "shortcuts.action.previous_space" },
   { id: "next_space", group: "navigation", defaults: ["prefix+j"], labelKey: "shortcuts.action.next_space" },
   { id: "navigate_mode", group: "navigation", defaults: ["prefix+w"], labelKey: "shortcuts.action.navigate_mode", opensMode: "navigate" },
-  { id: "navigate_left", group: "navigation", defaults: ["h", "left"], labelKey: "shortcuts.action.navigate_left", scope: "navigate" },
   { id: "navigate_down", group: "navigation", defaults: ["j", "down"], labelKey: "shortcuts.action.navigate_down", scope: "navigate" },
   { id: "navigate_up", group: "navigation", defaults: ["k", "up"], labelKey: "shortcuts.action.navigate_up", scope: "navigate" },
-  { id: "navigate_right", group: "navigation", defaults: ["l", "right"], labelKey: "shortcuts.action.navigate_right", scope: "navigate" },
-  { id: "navigate_tab", group: "navigation", defaults: ["1..9"], labelKey: "shortcuts.action.navigate_tab", scope: "navigate", indexed: true },
+  { id: "navigate_open", group: "navigation", defaults: ["enter"], labelKey: "shortcuts.action.navigate_open", scope: "navigate", leavesMode: true },
 
   { id: "new_tab", group: "tabs", defaults: ["prefix+c"], labelKey: "shortcuts.action.new_tab" },
   { id: "previous_tab", group: "tabs", defaults: ["prefix+p"], labelKey: "shortcuts.action.previous_tab" },

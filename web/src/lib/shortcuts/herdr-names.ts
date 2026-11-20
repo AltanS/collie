@@ -27,8 +27,6 @@ export const HERDR_NAMES: ReadonlyMap<string, ActionId | null> = new Map<string,
   ["next_workspace", "next_space"],
   ["navigate_workspace_up", "navigate_up"],
   ["navigate_workspace_down", "navigate_down"],
-  ["navigate_pane_left", "navigate_left"],
-  ["navigate_pane_right", "navigate_right"],
 
   // The name exists in Herdr, and Collie has no action of that meaning. `focus_pane_up` and
   // `focus_pane_down` move to the pane above and below in a split; Collie has no such layout, and its
@@ -36,6 +34,8 @@ export const HERDR_NAMES: ReadonlyMap<string, ActionId | null> = new Map<string,
   // dashboard (`open_dashboard`) is not that.
   ["focus_pane_up", null],
   ["focus_pane_down", null],
+  ["navigate_pane_left", null],
+  ["navigate_pane_right", null],
   ["navigate_pane_up", null],
   ["navigate_pane_down", null],
   ["detach", null],

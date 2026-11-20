@@ -294,19 +294,19 @@ describe("the operator's file", () => {
 });
 
 describe("a sticky mode", () => {
-  it("opens only where one of its keys has a target, and a key runs the handler it mirrors", async () => {
-    const right = vi.fn();
+  it("opens only where one of its keys has a target, and a key runs its own handler", async () => {
+    const down = vi.fn();
     await renderPage();
     tap(document.body, CTRL_B);
     tap(document.body, { key: "w" });
     expect(mode()).toBe("normal");
 
-    registerShortcutHandler("focus_pane_right", right);
+    registerShortcutHandler("navigate_down", down);
     tap(document.body, CTRL_B);
     tap(document.body, { key: "w" });
     expect(mode()).toBe("navigate");
-    expect(tap(document.body, { key: "l" })).toBe(false);
-    expect(right).toHaveBeenCalledTimes(1);
+    expect(tap(document.body, { key: "j" })).toBe(false);
+    expect(down).toHaveBeenCalledTimes(1);
     expect(mode()).toBe("navigate");
     // A bare letter in the mode is not typing.
     expect(tap(document.body, { key: "q" })).toBe(false);
@@ -315,7 +315,7 @@ describe("a sticky mode", () => {
   });
 
   it("leaves Ctrl chords alone, so ctrl+c still copies", async () => {
-    registerShortcutHandler("focus_pane_right", vi.fn());
+    registerShortcutHandler("navigate_down", vi.fn());
     await renderPage();
     tap(document.body, CTRL_B);
     tap(document.body, { key: "w" });
@@ -351,11 +351,11 @@ describe("what ends a mode", () => {
   });
 
   it("a route change leaves a sticky mode alone while the new screen has a target for it", async () => {
-    registerShortcutHandler("focus_pane_right", vi.fn());
+    registerShortcutHandler("navigate_down", vi.fn());
     const view = await renderPage();
     tap(document.body, CTRL_B);
     tap(document.body, { key: "w" });
-    tap(document.body, { key: "l" });
+    tap(document.body, { key: "j" });
     view.rerender(<Page routeKey="/pane/p2" />);
     expect(mode()).toBe("navigate");
     view.rerender(<Page routeKey="/pane/p3" />);
@@ -363,7 +363,7 @@ describe("what ends a mode", () => {
   });
 
   it("a route change to a screen with no target for the sticky mode ends it", async () => {
-    const forget = registerShortcutHandler("focus_pane_right", vi.fn());
+    const forget = registerShortcutHandler("navigate_down", vi.fn());
     const view = await renderPage();
     tap(document.body, CTRL_B);
     tap(document.body, { key: "w" });
@@ -374,7 +374,7 @@ describe("what ends a mode", () => {
   });
 
   it("a route change under a prefix pressed inside a sticky mode ends the prefix and keeps the mode", async () => {
-    registerShortcutHandler("focus_pane_right", vi.fn());
+    registerShortcutHandler("navigate_down", vi.fn());
     const view = await renderPage();
     tap(document.body, CTRL_B);
     tap(document.body, { key: "w" });
@@ -384,8 +384,8 @@ describe("what ends a mode", () => {
     expect(mode()).toBe("navigate");
   });
 
-  it("Enter and Escape still end a sticky mode", async () => {
-    registerShortcutHandler("focus_pane_right", vi.fn());
+  it("Enter and Escape end Navigate mode", async () => {
+    registerShortcutHandler("navigate_down", vi.fn());
     await renderPage();
     for (const key of ["Enter", "Escape"]) {
       tap(document.body, CTRL_B);

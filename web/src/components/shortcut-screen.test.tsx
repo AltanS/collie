@@ -63,10 +63,10 @@ describe("the mode bar on the screen", () => {
   it("on a dashboard-like screen names no tab and no pane key", () => {
     offer(DASHBOARD);
     showBar("prefix");
-    for (const word of ["new tab", "tabs", "tab", "panes", "switch pane", "navigate", "resize"]) {
+    for (const word of ["new tab", "Previous tab / Next tab", "Go to tab", "Focus pane left / right", "switch pane", "Move in the sidebar", "Resize panes"]) {
       expect(screen.queryByText(word)).toBeNull();
     }
-    expect(screen.getByText("settings")).toBeInTheDocument();
+    expect(screen.getByText("Settings")).toBeInTheDocument();
   });
 
   it("keeps the ways out and the way to the list on every screen", () => {
@@ -75,9 +75,9 @@ describe("the mode bar on the screen", () => {
     expect(screen.getByText("cancel")).toBeInTheDocument();
   });
 
-  it("keeps Enter and Esc in a sticky mode", () => {
-    offer(["focus_pane_left"]);
-    showBar("navigate");
+  it("keeps Enter and Esc in Resize mode", () => {
+    offer(["resize_wider"]);
+    showBar("resize");
     expect(screen.getByText("done")).toBeInTheDocument();
     expect(screen.getByText("leave")).toBeInTheDocument();
   });
@@ -85,10 +85,10 @@ describe("the mode bar on the screen", () => {
   it("names the tab and pane keys on a wide pane view", () => {
     offer(PANE_VIEW);
     showBar("prefix");
-    for (const word of ["new tab", "tabs", "tab", "panes", "settings", "dashboard", "zen"]) {
+    for (const word of ["new tab", "Previous tab / Next tab", "Go to tab", "Focus pane left / right", "Settings", "Dashboard", "zen"]) {
       expect(screen.getByText(word)).toBeInTheDocument();
     }
-    expect(screen.queryByText("sidebar")).toBeNull();
+    expect(screen.queryByText("Show or hide the sidebar")).toBeNull();
   });
 
   it("follows the screen as handlers mount and unmount", () => {
@@ -135,8 +135,8 @@ describe("the shortcut list in the screen context", () => {
     expect(labelOf(found(row, "row")).className).toContain("text-muted-foreground");
     expect(lastKey(found(row, "row")).className).toContain("text-muted-foreground");
     // A row that works here is plain, and stands outside the section.
-    expect(labelOf(rowOf("Open Settings")).className).not.toContain("text-muted-foreground");
-    expect(section.contains(rowOf("Open Settings"))).toBe(false);
+    expect(labelOf(rowOf("Settings")).className).not.toContain("text-muted-foreground");
+    expect(section.contains(rowOf("Settings"))).toBe(false);
   });
 
   it("finds an action that does nothing here with the filter", async () => {

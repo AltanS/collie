@@ -56,6 +56,8 @@ export interface Hit<Id extends string = ActionId> {
   readonly action: Id;
   readonly index?: number;
   readonly opensMode?: ModeId;
+  /** Running the action ends its sticky mode, after it ran. */
+  readonly leavesMode?: true;
 }
 
 export interface ModeKeymap<Id extends string = ActionId> {

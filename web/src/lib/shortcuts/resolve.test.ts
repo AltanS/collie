@@ -428,17 +428,24 @@ describe("a sticky mode", () => {
     expect(resolver.press(ctrl("b"))).toEqual({ type: "enter-prefix" });
   });
 
-  it("leaves on Esc and on Enter, in both modes", () => {
+  it("leaves on Esc in both modes, and on Enter in Resize", () => {
     for (const opener of ["r", "w"]) {
       const byEsc = inMode(undefined, opener);
       expect(byEsc.press(tap("Escape"))).toEqual({ type: "leave-mode" });
       expect(byEsc.mode).toBe("normal");
-
-      const byEnter = inMode(undefined, opener);
-      expect(byEnter.press(tap("Enter"))).toEqual({ type: "leave-mode" });
-      expect(byEnter.mode).toBe("normal");
-      expect(byEnter.sticky).toBeNull();
+      expect(byEsc.sticky).toBeNull();
     }
+    const byEnter = inMode(undefined, "r");
+    expect(byEnter.press(tap("Enter"))).toEqual({ type: "leave-mode" });
+    expect(byEnter.mode).toBe("normal");
+    expect(byEnter.sticky).toBeNull();
+  });
+
+  it("runs Enter in Navigate as an action and leaves the mode with it", () => {
+    const resolver = inMode(undefined, "w");
+    expect(resolver.press(tap("Enter"))).toEqual({ type: "run", action: "navigate_open" });
+    expect(resolver.mode).toBe("normal");
+    expect(resolver.sticky).toBeNull();
   });
 
   it("does not leave the navigate mode on a key it did not name", () => {
@@ -474,14 +481,15 @@ describe("a sticky mode", () => {
     resolver.press(ctrl("b"));
     expect(resolver.press(tap("w"))).toEqual({ type: "mode", id: "navigate" });
     expect(resolver.mode).toBe("navigate");
-    expect(resolver.press(tap("h"))).toEqual({ type: "run", action: "navigate_left" });
+    expect(resolver.press(tap("k"))).toEqual({ type: "run", action: "navigate_up" });
   });
 
-  it("runs the navigate keys and a tab number live, and stays", () => {
+  it("runs the navigate move keys live, and stays", () => {
     const resolver = inMode(undefined, "w");
     expect(resolver.press(tap("j"))).toEqual({ type: "run", action: "navigate_down" });
     expect(resolver.press(tap("ArrowUp"))).toEqual({ type: "run", action: "navigate_up" });
-    expect(resolver.press(tap("3"))).toEqual({ type: "run", action: "navigate_tab", index: 3 });
+    expect(resolver.press(tap("h"))).toEqual(SWALLOW);
+    expect(resolver.press(tap("3"))).toEqual(SWALLOW);
     expect(resolver.mode).toBe("navigate");
   });
 

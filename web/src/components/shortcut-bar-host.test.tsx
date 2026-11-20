@@ -55,15 +55,46 @@ describe("ShortcutBarHost", () => {
     expect(screen.getByText("cancel")).toBeInTheDocument();
   });
 
-  it("names the Navigate mode and its own keys, and leaves with Enter or Esc", () => {
-    offer("focus_pane_left", "focus_pane_right", "new_tab");
+  it("names the Navigate mode and its own keys, and leaves with Esc", () => {
+    offer("navigate_down", "navigate_up", "navigate_open", "new_tab");
     show("navigate");
     expect(bar()).toHaveAttribute("data-mode", "navigate");
     expect(screen.getByText("Navigate")).toBeInTheDocument();
-    expect(screen.getByText("panes")).toBeInTheDocument();
-    expect(screen.getByText("done")).toBeInTheDocument();
-    expect(screen.getByText("leave")).toBeInTheDocument();
+    expect(screen.getByText("Move:")).toBeInTheDocument();
+    expect(screen.getByText("Open:")).toBeInTheDocument();
+    expect(screen.getByText("Leave:")).toBeInTheDocument();
+    expect(screen.queryByText("done")).toBeNull();
     expect(screen.queryByText("new tab")).toBeNull();
+  });
+
+  it("reads Navigate mode as Move: j k ↑ ↓, Open: Enter, Leave: Esc", () => {
+    offer("navigate_down", "navigate_up", "navigate_open");
+    show("navigate");
+    const text = (bar()?.textContent ?? "").replaceAll(/\s+/gu, " ");
+    expect(text).toContain("Move:jk↑↓");
+    expect(text).toContain("Open:Enter");
+    expect(text).toContain("Leave:Esc");
+    expect([...(bar()?.querySelectorAll("kbd") ?? [])].map((cap) => cap.textContent)).toEqual(["j", "k", "↑", "↓", "Enter", "Esc"]);
+  });
+
+  it("wraps its hints to a second line and never clips them", () => {
+    offer("new_tab", "next_tab", "previous_tab", "switch_tab");
+    show("prefix");
+    const hints = document.querySelector('[data-slot="shortcut-hints"]');
+    expect(hints?.className).toContain("flex-wrap");
+    expect(hints?.className).not.toContain("overflow-hidden");
+    expect(hints?.className).not.toContain("mask-image");
+    const band = document.querySelector('[data-slot="mode-band"]');
+    expect(band?.querySelector("div")?.className).toContain("h-auto");
+    expect(band?.querySelector("div")?.className).not.toMatch(/(?:^| )h-8(?: |$)/u);
+  });
+
+  it("names the pairs as one entry each, verb first", () => {
+    offer("previous_tab", "next_tab", "switch_tab", "focus_pane_left", "focus_pane_right", "previous_space", "next_space");
+    show("prefix");
+    for (const label of ["Previous tab / Next tab", "Go to tab", "Focus pane left / right", "Previous / next space"]) {
+      expect(screen.getByText(label)).toBeInTheDocument();
+    }
   });
 
   it("sits in the info tone, out of the flow, along the foot of the window", () => {

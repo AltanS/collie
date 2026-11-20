@@ -684,6 +684,7 @@ function PaneRow({
     <button
       id={id}
       type="button"
+      data-slot="pane-row"
       // The row's full identity (paneRowKey), read back by a large screen's row gestures (a hold
       // opens "Open here" and "Open beside", a drag carries the row into the strip, ADR 0120). The
       // gestures sit on a host around this list, so the list itself takes only the tap.
@@ -827,6 +828,7 @@ function LaunchRow({
   return (
     <button
       type="button"
+      data-slot="launch-row"
       disabled={disabled}
       aria-label={refusal}
       title={refusal}

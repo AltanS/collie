@@ -76,6 +76,8 @@ import {
   type Places,
   type SpaceStrip,
 } from "@/lib/wide-layout";
+import { enterSidebarFocus, leaveSidebarFocus, moveSidebarFocus, openSidebarFocus, settleSidebarFocus } from "@/lib/shortcuts/sidebar-focus";
+import { useShortcutMode } from "@/lib/shortcuts/state";
 import { setSidebarOpen, setSpaceStrip, spaceStrip, useSidebarOpen, useSpaceStrips } from "@/lib/wide-layout-store";
 
 // THE PANE SCREEN ON A LARGE SCREEN (ADR 0120). From 600px wide, and only on `pane/:paneId`, the
@@ -322,6 +324,26 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
   useShortcutHandler("remove_from_view", framed && focusedKey !== null ? () => remove(focusedKey) : undefined);
   useShortcutHandler("resize_narrower", widthChoice ? () => stepWidthOf(-1) : undefined);
   useShortcutHandler("resize_wider", widthChoice ? () => stepWidthOf(1) : undefined);
+  // NAVIGATE MODE walks the sidebar's rows with a focus ring and changes nothing on screen until Enter opens
+  // the focused row (lib/shortcuts/sidebar-focus.ts). Offered where the sidebar's rows are drawn: not in
+  // the fold's two-column book, where the sidebar is a rail with no toggle.
+  const canMoveInSidebar = !book || sidebarShown;
+  useShortcutHandler("navigate_down", canMoveInSidebar ? () => moveSidebarFocus(1) : undefined);
+  useShortcutHandler("navigate_up", canMoveInSidebar ? () => moveSidebarFocus(-1) : undefined);
+  useShortcutHandler("navigate_open", canMoveInSidebar ? openSidebarFocus : undefined);
+  // The mode's own enter and leave. `prefix` over the mode is neither: the ring stays. A leave by Enter
+  // has already run `openSidebarFocus` by the time this effect sees the mode, and the leave repeats safely.
+  const shortcutMode = useShortcutMode();
+  useLayoutEffect(() => {
+    if (shortcutMode === "navigate") enterSidebarFocus();
+    if (shortcutMode === "normal" || shortcutMode === "resize") leaveSidebarFocus();
+  }, [shortcutMode]);
+  // The sidebar draws its rows after it opens from a rail, and again when its list changes: place a waiting
+  // ring and keep the paint on the rows that stand now.
+  useLayoutEffect(() => {
+    settleSidebarFocus();
+  });
+  useEffect(() => leaveSidebarFocus, []);
 
   // ── Row gestures: the menu, the drag ────────────────────────────────────────────────────────
   const [menuRow, setMenuRow] = useState<string | null>(null);
@@ -481,7 +503,7 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
             containing block was the page: a word far down a long list escaped this scroller and the
             app's root and made the document taller than the screen, so a drag on the header scrolled
             the whole app up under the status bar (1.27.1). */}
-        <div {...hostProps} className="relative min-h-0 flex-1 overflow-y-auto [-webkit-touch-callout:none]">
+        <div {...hostProps} data-slot="sidebar-list" className="relative min-h-0 flex-1 overflow-y-auto [-webkit-touch-callout:none]">
           {sidebarShown ? (
             <SidebarList agent={agent} paneId={paneId} scope={scope} onSelect={goTo} />
           ) : (

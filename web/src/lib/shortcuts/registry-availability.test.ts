@@ -14,16 +14,18 @@ describe("isShortcutActionAvailable", () => {
     expect(isShortcutActionAvailable("find")).toBe(false);
   });
 
-  it("reads a mode's key through the action it mirrors", () => {
-    registerShortcutHandler("focus_pane_left", vi.fn());
-    expect(isShortcutActionAvailable("navigate_left")).toBe(true);
-    expect(isShortcutActionAvailable("navigate_right")).toBe(false);
+  it("reads a mode's key by its own handler, not a global action's", () => {
+    registerShortcutHandler("previous_space", vi.fn());
+    expect(isShortcutActionAvailable("navigate_up")).toBe(false);
+    registerShortcutHandler("navigate_up", vi.fn());
+    expect(isShortcutActionAvailable("navigate_up")).toBe(true);
+    expect(isShortcutActionAvailable("navigate_down")).toBe(false);
   });
 
   it("asks an action that opens a mode whether the mode has a target", () => {
     expect(isShortcutActionAvailable("navigate_mode")).toBe(false);
     expect(isShortcutActionAvailable("resize_mode")).toBe(false);
-    registerShortcutHandler("next_space", vi.fn());
+    registerShortcutHandler("navigate_down", vi.fn());
     expect(isShortcutActionAvailable("navigate_mode")).toBe(true);
     expect(isShortcutActionAvailable("resize_mode")).toBe(false);
     registerShortcutHandler("resize_wider", vi.fn());

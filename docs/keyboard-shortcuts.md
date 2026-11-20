@@ -45,15 +45,20 @@ next. It follows the keys you set. `Esc` cancels it.
 
 ## Navigate mode and Resize mode
 
-A mode stays on until you press `Esc` or `Enter`. The bar shows its name and its keys.
+A mode stays on until you press `Esc`. In Resize mode `Enter` leaves too. The bar shows its name and
+its keys.
 
 | Mode | Open with | Keys inside |
 | --- | --- | --- |
-| [Navigate mode](terminology.md#navigate-mode) | `prefix+w` | `h` `l` move between panes, `j` `k` between spaces, `1` to `9` pick a tab |
+| [Navigate mode](terminology.md#navigate-mode) | `prefix+w` | `j` `k` move the focus ring in the sidebar, `Enter` opens the row |
 | [Resize mode](terminology.md#resize-mode) | `prefix+r` | `h` makes the pane narrower, `l` makes it wider |
 
-The arrow keys do the same as `h`, `j`, `k` and `l`. In Navigate mode the move happens at once, as
-it does with the prefix keys, and the mode stays on. A mode opens only where it has something to
+`prefix+w` focuses the sidebar. It opens the sidebar if it was hidden. A focus ring sits on the row
+of the current pane. `j` and `k`, or the arrow keys, move the ring. They move only the ring, and the
+view does not change. `Enter` opens the row, as a tap on it would, and leaves the mode. `Esc` leaves
+with no change, and hides the sidebar again if the mode opened it.
+
+In Resize mode the arrow keys do the same as `h` and `l`. A mode opens only where it has something to
 act on. Resize mode does nothing on a phone or on the dashboard.
 
 The prefix still works inside a mode. A key with `Ctrl` or `Cmd` that the mode does not name, such
@@ -81,11 +86,9 @@ is written `prefix+<key>`. A key inside a mode is a bare key.
 | `previous_space` | `prefix+k` | Navigation | Goes to the space before this one. | [Space](terminology.md#space) |
 | `next_space` | `prefix+j` | Navigation | Goes to the space after this one. | [Space](terminology.md#space) |
 | `navigate_mode` | `prefix+w` | Navigation | Opens Navigate mode. | [Navigate mode](terminology.md#navigate-mode) |
-| `navigate_left` | `h`, `left` | Navigation | In Navigate mode: moves to the previous pane. | [Pane](terminology.md#pane) |
-| `navigate_down` | `j`, `down` | Navigation | In Navigate mode: moves to the next space. | [Space](terminology.md#space) |
-| `navigate_up` | `k`, `up` | Navigation | In Navigate mode: moves to the previous space. | [Space](terminology.md#space) |
-| `navigate_right` | `l`, `right` | Navigation | In Navigate mode: moves to the next pane. | [Pane](terminology.md#pane) |
-| `navigate_tab` | `1..9` | Navigation | In Navigate mode: goes to the tab with that number. | [Tab](terminology.md#tab) |
+| `navigate_down` | `j`, `down` | Navigation | In Navigate mode: moves the focus ring down one row. | [Navigate mode](terminology.md#navigate-mode) |
+| `navigate_up` | `k`, `up` | Navigation | In Navigate mode: moves the focus ring up one row. | [Navigate mode](terminology.md#navigate-mode) |
+| `navigate_open` | `enter` | Navigation | In Navigate mode: opens the focused row, then leaves the mode. | [Navigate mode](terminology.md#navigate-mode) |
 | `new_tab` | `prefix+c` | Tabs | Makes a new tab in this space. | [Tab](terminology.md#tab) |
 | `previous_tab` | `prefix+p` | Tabs | Goes to the tab before. From the first tab it wraps to the last. | [Tab](terminology.md#tab) |
 | `next_tab` | `prefix+n` | Tabs | Goes to the tab after. From the last tab it wraps to the first. | [Tab](terminology.md#tab) |
@@ -184,8 +187,6 @@ Herdr's name for them. Write the Collie name:
 | `next_workspace` | `next_space` |
 | `navigate_workspace_up` | `navigate_up` |
 | `navigate_workspace_down` | `navigate_down` |
-| `navigate_pane_left` | `navigate_left` |
-| `navigate_pane_right` | `navigate_right` |
 
 Any other Herdr name has no equal in Collie, for example `close_pane`, `detach`, `focus_pane_up`
 and `focus_pane_down`. Herdr moves to the pane above or below in a split. Collie shows panes
