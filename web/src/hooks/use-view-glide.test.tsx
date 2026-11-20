@@ -2,10 +2,9 @@ import { act, render } from "@testing-library/react";
 import { useRef } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { COLLAPSE_MS } from "@/components/ui/collapse";
-import { restingScroll, stripGeometry } from "@/lib/wide-layout";
+import { restingScroll, springAt, stripGeometry } from "@/lib/wide-layout";
 
-import { useWidthGlide, type GlideInput, type WidthGlide } from "./use-width-glide";
+import { useViewGlide, type GlideInput, type ViewGlide } from "./use-view-glide";
 
 // WHO OWNS THE SCROLL DURING A GLIDE. jsdom lays nothing out, so the strip is a div whose width and
 // scroll are pinned by hand, the animation frames run when the test says, and the clock is the test's.
@@ -22,6 +21,17 @@ function pin(el: HTMLElement) {
   Object.defineProperty(el, "clientWidth", { value: W, configurable: true });
 }
 
+/** Run frames every 16 ms from the last one until the motion rests; returns the scroll per frame. */
+function settle(): number[] {
+  const out: number[] = [];
+  for (let i = 0; i < 200 && frames.length > 0; i += 1) {
+    frameAt(now + 16);
+    out.push(position);
+  }
+  expect(frames).toEqual([]);
+  return out;
+}
+
 /** Run the frames due at `t` ms after the glide began. */
 function frameAt(t: number) {
   now = t;
@@ -36,10 +46,10 @@ function input(fractions: number[], focusAt: number): GlideInput {
   return { signature: fractions.join(","), fractions, addWidth: stripGeometry(fractions, W, true).addWidth, stripWidth: W, wide: true, focusAt };
 }
 
-let glide: WidthGlide;
+let glide: ViewGlide;
 function Harness() {
   const ref = useRef<HTMLDivElement>(null);
-  glide = useWidthGlide(ref);
+  glide = useViewGlide(ref);
   return (
     <div ref={(el) => {
       ref.current = el;
@@ -88,13 +98,13 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("useWidthGlide", () => {
+describe("useViewGlide", () => {
   it("drives the scroll on the eased clock to the resting place", () => {
     expect(pick([0.5, 0.8])).toBe(true);
-    frameAt(COLLAPSE_MS / 2);
+    frameAt(120);
     expect(position).toBeGreaterThan(0);
     expect(position).toBeLessThan(560);
-    frameAt(COLLAPSE_MS);
+    settle();
     expect(position).toBe(560);
   });
 
@@ -107,7 +117,7 @@ describe("useWidthGlide", () => {
     touch("touchend", 904);
     frameAt(120);
     expect(position).toBeGreaterThan(mid);
-    frameAt(COLLAPSE_MS);
+    settle();
     expect(position).toBe(560);
   });
 
@@ -118,9 +128,9 @@ describe("useWidthGlide", () => {
     touch("touchend", 900);
     now = 80;
     expect(pick([0.5, 1])).toBe(true);
-    frameAt(80 + COLLAPSE_MS / 2);
+    frameAt(140);
     expect(position).toBeLessThan(560);
-    frameAt(80 + COLLAPSE_MS);
+    settle();
     expect(position).toBe(560);
   });
 
@@ -131,8 +141,7 @@ describe("useWidthGlide", () => {
     touch("touchmove", 880);
     position = 300;
     touch("touchend", 880);
-    frameAt(120);
-    frameAt(COLLAPSE_MS);
+    settle();
     expect(position).toBe(300);
   });
 
@@ -148,9 +157,9 @@ describe("useWidthGlide", () => {
     now = 100;
     expect(pick([0.5, 1])).toBe(true);
     const want = restingScroll(stripGeometry([0.5, 1], W, true), 1, 100, W);
-    frameAt(100 + COLLAPSE_MS / 2);
+    frameAt(160);
     expect(position).toBeGreaterThan(100);
-    frameAt(100 + COLLAPSE_MS);
+    settle();
     expect(position).toBe(want);
   });
 
@@ -167,7 +176,60 @@ describe("useWidthGlide", () => {
     now = 100;
     pick([0.5, 0.5]);
     expect(restingScroll(stripGeometry([0.5, 0.5], W, true), 1, 0, W)).toBe(0);
-    frameAt(100 + COLLAPSE_MS);
+    settle();
     expect(position).toBe(0);
+  });
+
+  it("a retarget carries the speed: the scroll goes on from where it is, with no step back, to the new rest", () => {
+    pick([0.5, 0.8]);
+    frameAt(40);
+    const at40 = position;
+    // Where the first spring alone would stand one frame later, and its speed at 40 ms.
+    const alone = springAt(0, 560, 0, 0.056).x;
+    const { v } = springAt(0, 560, 0, 0.04);
+    now = 40;
+    pick([0.5, 1]);
+    // The first frame of the second act continues the first: no step back toward the start, and it moves
+    // as far as the carried speed takes it (both ends are 560, so the path is the first spring's own).
+    expect(position).toBe(at40);
+    frameAt(56);
+    expect(position).toBeGreaterThan(at40);
+    expect(v).toBeGreaterThan(0);
+    expect(position).toBeCloseTo(alone, 6);
+    const path = settle();
+    for (let i = 1; i < path.length; i += 1) expect(path[i]!).toBeGreaterThanOrEqual(path[i - 1]! - 1e-9);
+    // The jump's rest for the same two acts.
+    expect(position).toBe(restingScroll(stripGeometry([0.5, 1], W, true), 1, restingScroll(stripGeometry([0.5, 0.8], W, true), 1, 0, W), W));
+  });
+
+  it("the widths retarget with their speed too: the second column's basis never steps back", () => {
+    const col = () => Number.parseFloat(document.querySelector<HTMLElement>('[data-col-index="1"]')!.style.flex.split(" ")[2]!);
+    pick([0.5, 0.8]);
+    frameAt(40);
+    const at40 = col();
+    now = 40;
+    pick([0.5, 1]);
+    expect(col()).toBeCloseTo(at40, 9);
+    const seen = [at40];
+    for (let i = 0; i < 200 && frames.length > 0; i += 1) {
+      frameAt(now + 16);
+      seen.push(col());
+    }
+    for (let i = 1; i < seen.length; i += 1) expect(seen[i]!).toBeGreaterThanOrEqual(seen[i - 1]! - 1e-9);
+    expect(seen.at(-1)).toBe(100);
+  });
+
+  it("a focus follow moves the scroll on the same spring, and a reduced one jumps", () => {
+    act(() => glide.follow(560, { reduced: false, onEnd: () => {} }));
+    frameAt(40);
+    expect(position).toBeCloseTo(springAt(0, 560, 0, 0.04).x, 6);
+    settle();
+    expect(position).toBe(560);
+    const strip = document.querySelector<HTMLElement>('[data-slot="strip"]')!;
+    const jumps: ScrollToOptions[] = [];
+    Object.defineProperty(strip, "scrollTo", { value: (o: ScrollToOptions) => jumps.push(o), configurable: true });
+    act(() => glide.follow(0, { reduced: true, onEnd: () => {} }));
+    expect(jumps).toEqual([{ left: 0, behavior: "auto" }]);
+    expect(frames).toEqual([]);
   });
 });

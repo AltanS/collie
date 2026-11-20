@@ -267,7 +267,33 @@ function expectMonotonic(xs: readonly number[], name: string): void {
   for (const x of xs) expect(x, `${name} leaves the span ${first} to ${last}`).toBeLessThanOrEqual(hi);
 }
 
-function expectGlide(run: Run, moving: readonly ("width" | "neighbour" | "add" | "scroll")[]): void {
+type Series = "width" | "neighbour" | "add" | "scroll";
+
+/** The frame-to-frame steps of a series, from its first move to its last. */
+function motion(run: Run, series: Series): number[] {
+  const xs = run.samples.map((s) => s[series]);
+  const steps = xs.slice(1).map((x, i) => Math.abs(x - xs[i]!));
+  const first = steps.findIndex((d) => d > 0.5);
+  const last = steps.findLastIndex((d) => d > 0.5);
+  return first < 0 ? [] : steps.slice(first, last + 1);
+}
+
+/** A spring from rest: the fastest step comes in the first third of the motion, and the steps of the
+ *  last third are smaller than those of the first, not a constant speed. */
+function expectSpring(run: Run, series: Series): void {
+  const steps = motion(run, series);
+  expect(steps.length, `${series} moves over frames`).toBeGreaterThanOrEqual(6);
+  const fastest = steps.indexOf(Math.max(...steps));
+  const share = Math.ceil(steps.length / 3);
+  expect(fastest, `${series}: the fastest step, of ${steps.map((d) => d.toFixed(1)).join(" ")}`).toBeLessThan(share);
+  expect(mean(steps.slice(-share)), `${series} slows toward its end`).toBeLessThan(mean(steps.slice(0, share)) / 2);
+}
+
+function mean(xs: readonly number[]): number {
+  return xs.reduce((a, b) => a + b, 0) / xs.length;
+}
+
+function expectGlide(run: Run, moving: readonly Series[], fromRest: boolean): void {
   for (const series of ["width", "neighbour", "add", "scroll"] as const) {
     const xs = run.samples.map((s) => s[series]);
     expectMonotonic(xs, series);
@@ -275,15 +301,15 @@ function expectGlide(run: Run, moving: readonly ("width" | "neighbour" | "add" |
     if (moving.includes(series)) expect(distinct(xs), `${series} glides`).toBeGreaterThanOrEqual(6);
     else expect(distinct(xs), `${series} stays`).toBe(1);
   }
-  // The widths, the neighbours and the scroll move on one clock: no series still moves after the others rest.
-  const lastMove = (series: "width" | "neighbour" | "add" | "scroll") => {
+  // The widths, the neighbours and the scroll move on one clock: they all start on the same frame. (Each
+  // has its own spring, so a short one comes to rest before a long one.)
+  const firstMove = (series: Series) => {
     const xs = run.samples.map((s) => s[series]);
-    let at = 0;
-    for (let i = 1; i < xs.length; i += 1) if (Math.abs(xs[i]! - xs[i - 1]!) > 0.5) at = i;
-    return at;
+    return xs.findIndex((x, i) => i > 0 && Math.abs(x - xs[i - 1]!) > 0.5);
   };
-  const ends = moving.map(lastMove);
-  expect(Math.max(...ends) - Math.min(...ends), "every series ends on the same frame, give or take one").toBeLessThanOrEqual(1);
+  const starts = moving.map(firstMove);
+  expect(Math.max(...starts) - Math.min(...starts), "every series starts on the same frame, give or take one").toBeLessThanOrEqual(1);
+  if (fromRest) for (const series of moving) expectSpring(run, series);
 }
 
 /** With reduced motion each tap is one jump: at most one value more than there were taps. */
@@ -413,7 +439,7 @@ for (const c of [
 
     // Where it started is the same in both runs, so the two ends can be compared.
     expectSameRest(glided.before, jumped.before);
-    expectGlide(glided, c.moving);
+    expectGlide(glided, c.moving, c.taps === 1);
     expectJump(jumped, c.taps);
     expectSameRest(glided.after, jumped.after);
 
@@ -679,4 +705,40 @@ test("a swipe during a glide, then a width tap: it rests where reduced motion re
   expectSameRest(glided.rest, jumped.rest);
   expect(glided.rest.focus).toBe(jumped.rest.focus);
   console.log(`[glide] swipe at scroll ${early} to 560, then tap: rest scroll ${glided.rest.scrollLeft} (reduced ${jumped.rest.scrollLeft})`);
+});
+
+test("a focus step by the keyboard moves the scroll on the same spring and rests where reduced motion rests", async ({ page, browser }) => {
+  test.setTimeout(90_000);
+  const three = [
+    ["w2:p1", "half"],
+    ["w2:p3", "half"],
+    ["w2:p2", "half"],
+  ] as const;
+  const step = async (p: Page) => {
+    const before = await rest(p);
+    await p.evaluate(() => {
+      if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+      window.__record(2, { x: 0, y: 0 });
+    });
+    await p.keyboard.press("Control+b");
+    await p.keyboard.press("l");
+    const samples = await p.evaluate(() => window.__recorded());
+    return { before, after: await rest(p), samples, url: p.url() } satisfies Run;
+  };
+  await openStrip(page, three, "w2:p3", false);
+  const glided = await step(page);
+  const { context, other } = await reducedPage(page, browser);
+  await openStrip(other, three, "w2:p3", true);
+  const jumped = await step(other);
+  await context.close();
+
+  expect(new URL(glided.url).pathname).toBe(paneUrl("w2:p2"));
+  expect(new URL(jumped.url).pathname).toBe(paneUrl("w2:p2"));
+  expect(glided.before.scrollLeft).toBe(0);
+  expect(glided.after.scrollLeft).toBe(1120);
+  expectSameRest(glided.after, jumped.after);
+  expectMonotonic(glided.samples.map((x) => x.scroll), "scroll");
+  expectSpring(glided, "scroll");
+  expect(distinct(jumped.samples.map((x) => x.scroll))).toBeLessThanOrEqual(2);
+  console.log(`[glide] keyboard focus step: frames=${glided.samples.length} longest=${longestFrame(glided)}ms scroll 0 -> ${glided.after.scrollLeft}`);
 });

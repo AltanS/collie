@@ -8,7 +8,6 @@ import {
   columnKeyOf,
   cycleWidth,
   dropIndexAt,
-  easeOut,
   followTarget,
   EMPTY_STRIP,
   focusIndex,
@@ -25,6 +24,10 @@ import {
   prune,
   removeColumn,
   restingScroll,
+  springAt,
+  springEasing,
+  springRestMs,
+  springRests,
   scrollTargetFor,
   shownPreset,
   spaceKeyOf,
@@ -343,16 +346,55 @@ describe("the width glide", () => {
     expect(followTarget(1, lefts, widths, 500, W, 2240)).toBe(560);
   });
 
-  it("eases out on the CSS curve: monotonic, 0 to 1, fast at first", () => {
-    expect(easeOut(0)).toBe(0);
-    expect(easeOut(1)).toBe(1);
+  it("a spring starts where it was, at the speed it had", () => {
+    expect(springAt(0, 560, 0, 0)).toEqual({ x: 0, v: 0 });
+    const moving = springAt(100, 560, 2000, 0);
+    expect(moving.x).toBeCloseTo(100, 9);
+    expect(moving.v).toBeCloseTo(2000, 9);
+  });
+
+  it("from rest it never passes its end, and is within 1% by 235 ms and 0.1% by 330 ms", () => {
     let last = 0;
-    for (let i = 1; i <= 100; i += 1) {
-      const v = easeOut(i / 100);
-      expect(v).toBeGreaterThanOrEqual(last);
-      last = v;
+    for (let ms = 1; ms <= 1000; ms += 1) {
+      const { x } = springAt(0, 560, 0, ms / 1000);
+      expect(x).toBeGreaterThanOrEqual(last);
+      expect(x).toBeLessThanOrEqual(560);
+      last = x;
     }
-    // cubic-bezier(0, 0, 0.58, 1) at x = 0.5 is about 0.685: ahead of a straight line.
-    expect(easeOut(0.5)).toBeCloseTo(0.6846, 3);
+    expect(560 - springAt(0, 560, 0, 0.235).x).toBeLessThan(5.6);
+    expect(560 - springAt(0, 560, 0, 0.225).x).toBeGreaterThan(5.6);
+    expect(560 - springAt(0, 560, 0, 0.33).x).toBeLessThan(0.56);
+    expect(560 - springAt(0, 560, 0, 0.32).x).toBeGreaterThan(0.56);
+  });
+
+  it("its velocity is the derivative of its place", () => {
+    for (const [x0, v0] of [
+      [0, 0],
+      [300, 1500],
+      [700, -4000],
+    ]) {
+      for (const t of [0.01, 0.05, 0.12, 0.3]) {
+        const h = 1e-6;
+        const slope = (springAt(x0!, 560, v0!, t + h).x - springAt(x0!, 560, v0!, t - h).x) / (2 * h);
+        expect(springAt(x0!, 560, v0!, t).v).toBeCloseTo(slope, 3);
+      }
+    }
+  });
+
+  it("rests within half a pixel and under half a pixel a frame", () => {
+    expect(springRests({ x: 559.6, v: 20 }, 560)).toBe(true);
+    expect(springRests({ x: 559.4, v: 0 }, 560)).toBe(false);
+    expect(springRests({ x: 560, v: 40 }, 560)).toBe(false);
+    // A fraction of a 1120px strip: 0.0004 of it is under half a pixel.
+    expect(springRests({ x: 0.9996, v: 0 }, 1, 1120)).toBe(true);
+    // 1/2 to Full at 1440px moves 560px: about a third of a second.
+    expect(springRestMs(560)).toBeGreaterThan(300);
+    expect(springRestMs(560)).toBeLessThan(380);
+  });
+
+  it("draws the spring as a CSS linear() easing that ends on 1", () => {
+    const easing = springEasing(340, 4);
+    expect(easing.startsWith("linear(0, ")).toBe(true);
+    expect(easing.endsWith(", 1)")).toBe(true);
   });
 });
