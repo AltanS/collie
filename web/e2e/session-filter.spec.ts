@@ -5,6 +5,7 @@ import type { AgentView, SnapshotResponse, WorkspaceView } from "@/lib/types";
 import { fixtureAgents, fixtureSnapshot } from "@/test/handlers";
 
 import { installApiStub, pinLocale } from "./fixtures/api";
+import { openSwitcher as openSwitchPane } from "./fixtures/actions";
 
 // THE SESSION FILTER (M97). Above five session rows a filter field leads the switcher (the Switch pane
 // sheet on a phone, the sidebar on a large screen) and the Dashboard offers it behind a magnifier. What a
@@ -98,7 +99,7 @@ async function openSwitcher(page: Page, wide: boolean): Promise<Locator> {
     await expect(sidebar).toBeVisible();
     return sidebar;
   }
-  await page.getByRole("button", { name: en["chat.switcher.aria"] }).click();
+  await openSwitchPane(page);
   const sheet = page.getByRole("dialog", { name: en["chat.switcher.aria"] });
   await expect(sheet).toBeVisible();
   return sheet;

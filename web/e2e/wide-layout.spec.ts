@@ -5,6 +5,7 @@ import { fixtureSnapshot } from "@/test/handlers";
 
 import { installApiStub } from "./fixtures/api";
 import { keepPhoneLayout } from "./fixtures/layout";
+import { actionsButton } from "./fixtures/actions";
 
 // THE LARGE-SCREEN LAYOUT APPEARS ON THE TABLET (ADR 0120). From 600px wide and 480px tall the pane
 // screen is a sidebar beside a strip, and the belt's Switch pill is not drawn, because the sidebar is
@@ -19,18 +20,20 @@ test.beforeEach(async ({ page }, testInfo) => {
   await installApiStub(page);
 });
 
-test("on Auto the pane screen is a sidebar beside a strip, with no Switch pill", async ({ page }) => {
+test("on Auto the pane screen is a sidebar beside a strip, with no Actions pill on the belt", async ({ page }) => {
   await page.goto("/pane/w1:p1");
   await expect(page.locator('[data-slot="wide-layout"]')).toBeVisible();
   await expect(page.getByRole("complementary", { name: en["wide.sidebar.label"] })).toBeVisible();
   await expect(page.locator('[data-slot="composer-actions"]')).toBeVisible();
-  await expect(page.getByRole("button", { name: en["chat.switcher.aria"] })).toHaveCount(0);
+  await expect(page.locator('[data-slot="composer-actions"]').getByRole("button", { name: en["actions.open.aria"], exact: true })).toHaveCount(0);
+  // The large screen's door to Actions is the space header's button (ADR 0165).
+  await expect(page.locator('[data-slot="space-header"]').getByRole("button", { name: en["actions.open.aria"], exact: true })).toBeVisible();
 });
 
 test("on Off the same window keeps the phone pane screen", async ({ page }) => {
   await keepPhoneLayout(page);
   await page.goto("/pane/w1:p1");
-  await expect(page.getByRole("button", { name: en["chat.switcher.aria"] })).toBeVisible();
+  await expect(actionsButton(page)).toBeVisible();
   await expect(page.locator('[data-slot="wide-layout"]')).toHaveCount(0);
 });
 

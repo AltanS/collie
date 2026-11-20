@@ -4,6 +4,7 @@ import { en } from "@/lib/i18n/messages/en";
 
 import { installApiStub } from "./fixtures/api";
 import { keepPhoneLayout } from "./fixtures/layout";
+import { actionsButton } from "./fixtures/actions";
 
 // THE COMPOSER'S BELT, measured in a real engine. The belt (`components/actions-row.tsx`) is a
 // sideways scroller, 45px at the default scale, with a pinned Switch block fading in over its right
@@ -32,7 +33,7 @@ const SCROLLER = `${BELT} [data-overflow] > div > div`;
 
 test("the belt scrolls sideways only, in this engine too", async ({ page }) => {
   await page.goto("/pane/w1:p1");
-  await expect(page.getByRole("button", { name: en["chat.switcher.aria"] })).toBeVisible();
+  await expect(actionsButton(page)).toBeVisible();
 
   const box = await page.locator(SCROLLER).evaluate((el) => {
     el.scrollTop = 20;
@@ -44,7 +45,7 @@ test("the belt scrolls sideways only, in this engine too", async ({ page }) => {
 
 test("the last pill stops 16px clear of the pinned block at the scroll end", async ({ page }) => {
   await page.goto("/pane/w1:p1");
-  const switchButton = page.getByRole("button", { name: en["chat.switcher.aria"] });
+  const switchButton = actionsButton(page);
   await expect(switchButton).toBeVisible();
 
   const edges = await page.locator(SCROLLER).evaluate((el) => {
@@ -72,7 +73,7 @@ test("the last pill stops 16px clear of the pinned block at the scroll end", asy
 // engine: with the X up, the last pill still stops 16px clear of the block at the scroll end.
 test("with the composer's X on the pinned block, the last pill still stops 16px clear of it", async ({ page }) => {
   await page.goto("/pane/w1:p1");
-  await expect(page.getByRole("button", { name: en["chat.switcher.aria"] })).toBeVisible();
+  await expect(actionsButton(page)).toBeVisible();
   await page.getByRole("textbox", { name: en["composer.placeholder.reply"] }).fill("a draft");
   const clear = page.getByRole("button", { name: en["composer.controls.clear"], exact: true });
   await expect(clear).toBeVisible();
@@ -125,7 +126,7 @@ test.describe("the belt's size setting", () => {
         localStorage.setItem("collie:dash-prefs:v1", JSON.stringify({ beltScale }));
       }, size.scale);
       await page.goto("/pane/w1:p1");
-      const switchButton = page.getByRole("button", { name: en["chat.switcher.aria"] });
+      const switchButton = actionsButton(page);
       await expect(switchButton).toBeVisible();
 
       const m = await page.locator(SCROLLER).evaluate((el) => {
