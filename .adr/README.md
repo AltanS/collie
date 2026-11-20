@@ -354,13 +354,13 @@ The rule today: oxlint plus the vendored anti-slop rules is the lint gate, with 
 
 ### Other: the mirror, the mux port, configuration and translation
 
-The rule today: Collie runs no terminal emulator (0008) and owns a multiplexer port in its own vocabulary, with Herdr as one adapter (0022); an adapter declares its freshness, focus and shape (0031). "Never write the operator's screen" is stated in three places, 0008 (geometry writes), 0031 (the phone moves the terminal only on a named tap) and 0126 (never send focus when a worktree opens as a space, which replaced 0032). The operator's command rows replace the catalog on the panes they address, per surface for the bar (0018, 0043), and configuration reads default, machine file, instance file, then the environment (0040). The UI is translated by a typed dictionary (0030), and a push title is a code the phone translates (0074).
+The rule today: Collie runs no terminal emulator (0008); an adapter that reads raw VT, such as Rex's, keeps two stateless row transforms and nothing more (0162, proposed, which amends 0008 in scope). Collie owns a multiplexer port in its own vocabulary, with Herdr as one adapter (0022); an adapter declares its freshness, focus and shape (0031). "Never write the operator's screen" is stated in three places, 0008 (geometry writes), 0031 (the phone moves the terminal only on a named tap) and 0126 (never send focus when a worktree opens as a space, which replaced 0032). The operator's command rows replace the catalog on the panes they address, per surface for the bar (0018, 0043), and configuration reads default, machine file, instance file, then the environment (0040). The UI is translated by a typed dictionary (0030), and a push title is a code the phone translates (0074).
 
 One live record for this topic is being written.
 
 | # | Decision | Status |
 | --- | --- | --- |
-| [0008](./0008-collie-does-not-run-a-terminal-emulator.md) | Collie runs no terminal emulator, in the browser or in the bridge. | Accepted |
+| [0008](./0008-collie-does-not-run-a-terminal-emulator.md) | Collie runs no terminal emulator, in the browser or in the bridge. | Accepted, amended in scope by 0162 |
 | [0018](./0018-operator-command-rows-replace-the-catalog.md) | The operator's command rows replace the catalog on the panes they address. | Accepted |
 | [0022](./0022-the-mux-seam-is-a-port-collie-owns.md) | Collie owns the multiplexer port in its own vocabulary; Herdr is one adapter. | Accepted |
 | [0030](./0030-the-ui-is-translated-by-a-typed-dictionary-not-a-library.md) | The UI is translated by a typed dictionary, not an i18n library. | Accepted, amended in scope by 0074 |
@@ -368,3 +368,4 @@ One live record for this topic is being written.
 | [0040](./0040-configuration-precedence-and-the-config-file.md) | Configuration precedence is default, machine file, instance file, then the environment. | Accepted |
 | [0043](./0043-operator-bar-rows-replace-the-bar-not-the-palette.md) | Operator `bar = true` rows replace the bar, not the Agent palette. | Accepted |
 | [0074](./0074-a-push-title-is-a-code-the-phone-translates.md) | A push title is a code the phone translates. | Accepted |
+| [0162](./0162-an-adapter-that-reads-raw-vt-keeps-two-stateless-row-transforms.md) | An adapter that reads raw VT turns a cursor-forward into spaces and drops what is not SGR, row by row, and nothing more. | Proposed |
