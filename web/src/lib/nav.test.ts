@@ -24,6 +24,7 @@ import {
   readFrom,
   readNewAddKind,
   readNewAt,
+  resolveHomeScope,
   resolveTreeUp,
   resolveUp,
   resolveUpTo,
@@ -453,6 +454,45 @@ describe("resolveUpTo: a named parent", () => {
     expect(resolveUpTo("/?h=a", "/?h=b")).toEqual({ kind: "replace", to: "/?h=b" });
     expect(resolveUpTo("/?s=alpha", "/?s=beta")).toEqual({ kind: "replace", to: "/?s=beta" });
     expect(resolveUpTo("/space/w1?h=a", "/space/w1?h=a", false)).toEqual({ kind: "replace", to: "/space/w1?h=a" });
+  });
+});
+
+describe("resolveHomeScope", () => {
+  it("reads ?h= and ?s= directly from the current URL when present", () => {
+    expect(resolveHomeScope("/settings", "?h=peer&s=work")).toEqual({ host: "peer", session: "work" });
+    expect(resolveHomeScope("/hill", "?h=peer")).toEqual({ host: "peer", session: undefined });
+  });
+
+  it("reads ?machine= and ?s= on /new and /new/add", () => {
+    expect(resolveHomeScope("/new", "?machine=peer")).toEqual({ host: "peer", session: undefined });
+    expect(resolveHomeScope("/new", "?machine=peer&s=work")).toEqual({ host: "peer", session: "work" });
+    expect(resolveHomeScope("/new/add", "?kind=agent&machine=peer&s=work")).toEqual({ host: "peer", session: "work" });
+    expect(resolveHomeScope("/new", "")).toEqual({});
+  });
+
+  it("falls back to state.from on /trick/* (and bare /new) where ?h= and ?s= are absent", () => {
+    expect(resolveHomeScope("/trick/trick%3Alodge%3Alegs%3Alegs", "", { from: "/?h=peer" })).toEqual({
+      host: "peer",
+      session: undefined,
+    });
+    expect(resolveHomeScope("/trick/trick%3Alodge%3Alegs%3Alegs", "", { from: "/?s=work" })).toEqual({
+      host: undefined,
+      session: "work",
+    });
+    expect(resolveHomeScope("/trick/trick%3Alodge%3Alegs%3Alegs", "", { from: "/pane/w1%3Ap1?h=peer&s=work" })).toEqual({
+      host: "peer",
+      session: "work",
+    });
+    expect(resolveHomeScope("/trick/trick%3Alodge%3Alegs%3Alegs", "", { from: "/" })).toEqual({
+      host: undefined,
+      session: undefined,
+    });
+    expect(resolveHomeScope("/trick/trick%3Alodge%3Alegs%3Alegs", "", undefined)).toEqual({});
+  });
+
+  it("does not leak a stale peer scope from state.from onto scoped routes on the lead", () => {
+    expect(resolveHomeScope("/pane/w1%3Ap1", "", { from: "/space/w1?h=peer" })).toEqual({});
+    expect(resolveHomeScope("/trick-card/dc_abc", "", { from: "/?h=peer" })).toEqual({});
   });
 });
 

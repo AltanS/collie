@@ -7,7 +7,7 @@
 // The host stays in the QUERY, never in the path: a `/host/:h/pane/:paneId` shape would fork every
 // route, break every existing deep link, and force the loaders' isPaneUrl() to grow a parser.
 import { asJsonBoolean, asJsonNumber, asJsonObject, asJsonString, type JsonValue } from "./json";
-import { scopeFromSearchParams, scopeKey, scopeSearch, SESSION_PARAM, type Scope } from "./scope";
+import { internScope, scopeFromSearchParams, scopeKey, scopeSearch, SESSION_PARAM, type Scope } from "./scope";
 import type { AgentView } from "./types";
 import type { AgentLaunch } from "./agent-startup";
 
@@ -692,6 +692,28 @@ function sameScope(a: string, b: string): boolean {
   const sa = scopeFromSearchParams(new URLSearchParams(searchOf(a)));
   const sb = scopeFromSearchParams(new URLSearchParams(searchOf(b)));
   return scopeKey(sa) === scopeKey(sb);
+}
+
+/**
+ * The dashboard scope a route returns to on `nav.upTo(homePath(...))`. Most routes carry `?h=` /
+ * `?s=` in their own URL; `/new` and `/new/add` carry `?machine=` / `?s=` instead, and `/trick/*`
+ * carries neither so its caller's scope lives on `state.from`.
+ */
+export function resolveHomeScope(pathname: string, search: string, state?: JsonValue): Scope {
+  const urlScope = scopeFromSearchParams(new URLSearchParams(search));
+  const path = pathOnly(pathname);
+  if (path === "/new" || path === "/new/add") {
+    const at = readNewAt(search);
+    const host = urlScope.host ?? at.machine;
+    const session = urlScope.session ?? at.session;
+    if (host !== undefined || session !== undefined) return internScope({ host, session });
+  }
+  if (urlScope.host !== undefined || urlScope.session !== undefined) return internScope(urlScope);
+  if (path === "/new" || path === "/new/add" || path.startsWith("/trick/")) {
+    const from = readFrom(state);
+    if (from !== undefined) return internScope(scopeFromSearchParams(new URLSearchParams(searchOf(from))));
+  }
+  return internScope({});
 }
 
 /**
