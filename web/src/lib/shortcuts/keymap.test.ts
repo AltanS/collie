@@ -278,7 +278,7 @@ describe("a bad binding is dropped with a diagnostic and the file still loads", 
   });
 
   it("keeps a bad binding from bringing the default back", () => {
-    const keymap = build({ switch_pane: ["prefix+nope"] });
+    const keymap = build({ open_actions: ["prefix+nope"] });
     expect(keymap.prefixed.has("g")).toBe(false);
   });
 
@@ -317,6 +317,6 @@ describe("a bad binding is dropped with a diagnostic and the file still loads", 
     const user: UserShortcuts = JSON.parse('{"constructor":["prefix+m"],"__proto__":["x"]}');
     const keymap = build(user);
     expect(keymap.diagnostics.map((diagnostic) => diagnostic.action)).toEqual(["constructor", "__proto__"]);
-    expect(keymap.prefixed.get("g")).toEqual({ action: "switch_pane" });
+    expect(keymap.prefixed.get("g")).toEqual({ action: "open_actions" });
   });
 });

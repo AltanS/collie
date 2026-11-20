@@ -27,6 +27,7 @@ The prefix is one key that says "the next key is for Collie". It is `Ctrl+B` by 
 as Herdr ([prefix key](terminology.md#prefix-key)).
 
 ```text
+Ctrl+B   then   g      Actions: search the commands and the panes
 Ctrl+B   then   s      open Settings
 Ctrl+B   then   c      a new tab in this space
 Ctrl+B   then   ?      the shortcut list
@@ -75,9 +76,15 @@ is written `prefix+<key>`. A key inside a mode is a bare key.
 | --- | --- | --- | --- | --- |
 | `help` | `prefix+?` | General | Shows the shortcut list. | [Shortcut list](terminology.md#shortcut-list) |
 | `settings` | `prefix+s` | General | Opens Settings. | - |
-| `switch_pane` | `prefix+g` | Navigation | Opens the list of panes to switch to. On a narrow screen that is the Switch pane sheet, on a large screen the sidebar. | [Pane](terminology.md#pane) |
+| `open_actions` | `prefix+g` | General | Opens Actions: the commands of this screen and the panes to go to, in one list you search. | [Actions](terminology.md#actions) |
+| `open_shortcuts` | - | General | Shows every shortcut, as the Settings row does. | [Shortcut list](terminology.md#shortcut-list) |
+| `open_crew` | - | General | Opens Crew, while a crew is set up. | [Crew](terminology.md#crew) |
+| `open_files` | - | General | Opens Files for the pane you are in. | - |
+| `switch_pane` | - | Navigation | Opens the list of panes to switch to. On a narrow screen that is the Switch pane sheet, on a large screen the sidebar. | [Pane](terminology.md#pane) |
 | `open_dashboard` | `prefix+q` | Navigation | Goes to the dashboard. | - |
 | `new_space` | `prefix+shift+n` | Navigation | Opens the New page, to start a new space. | [Space](terminology.md#space) |
+| `new_agent` | - | Navigation | Opens the New page, as the New button does. | - |
+| `rename_space` | - | Navigation | Renames the space you are in, on its page, where its multiplexer takes a rename. | [Space](terminology.md#space) |
 | `previous_space` | `prefix+k` | Navigation | Goes to the space before this one. | [Space](terminology.md#space) |
 | `next_space` | `prefix+j` | Navigation | Goes to the space after this one. | [Space](terminology.md#space) |
 | `navigate_mode` | `prefix+w` | Navigation | Opens Navigate mode. | [Navigate mode](terminology.md#navigate-mode) |
@@ -90,6 +97,9 @@ is written `prefix+<key>`. A key inside a mode is a bare key.
 | `previous_tab` | `prefix+p` | Tabs | Goes to the tab before. From the first tab it wraps to the last. | [Tab](terminology.md#tab) |
 | `next_tab` | `prefix+n` | Tabs | Goes to the tab after. From the last tab it wraps to the first. | [Tab](terminology.md#tab) |
 | `switch_tab` | `prefix+1..9` | Tabs | Goes to the tab with that number. | [Tab](terminology.md#tab) |
+| `new_shell` | - | Tabs | In a pane, makes a new tab with a shell in this space. On the dashboard, opens the New page with Shell chosen. | [Tab](terminology.md#tab) |
+| `rename_tab` | - | Tabs | Renames the tab you are in. | [Tab](terminology.md#tab) |
+| `close_tab` | - | Tabs | Opens the tab's menu with Close tab ready. One more tap closes the tab and every pane in it. | [Tab](terminology.md#tab) |
 | `focus_pane_left` | `prefix+h` | Panes | Moves to the previous pane of the row. | [Row of panes](terminology.md#row-of-panes) |
 | `focus_pane_right` | `prefix+l` | Panes | Moves to the next pane of the row. | [Row of panes](terminology.md#row-of-panes) |
 | `cycle_pane_next` | `prefix+tab` | Panes | Moves to the next pane, and from the last to the first. | [Row of panes](terminology.md#row-of-panes) |
@@ -98,11 +108,21 @@ is written `prefix+<key>`. A key inside a mode is a bare key.
 | `resize_mode` | `prefix+r` | Panes | Opens Resize mode. | [Resize mode](terminology.md#resize-mode) |
 | `resize_narrower` | `h`, `left` | Panes | In Resize mode: makes the pane narrower. | [Resize mode](terminology.md#resize-mode) |
 | `resize_wider` | `l`, `right` | Panes | In Resize mode: makes the pane wider. | [Resize mode](terminology.md#resize-mode) |
+| `rename_pane` | - | Panes | Renames the pane you are in. | [Pane](terminology.md#pane) |
+| `pin_pane` | - | Panes | Pins the pane to the top of the lists, or unpins it. | [Pins](terminology.md#pins) |
+| `pane_settings` | - | Panes | Opens the pane's settings. | [Pane](terminology.md#pane) |
+| `close_pane` | - | Panes | Opens the pane's menu with Close pane ready. One more tap closes the pane. | [Pane](terminology.md#pane) |
 | `zen_mode` | `prefix+z` | View | Turns zen mode on or off, where the pane's menu offers it. | - |
 | `toggle_sidebar` | `prefix+b` | View | Folds the sidebar to its rail, or opens it. | - |
 | `toggle_chat_terminal` | `prefix+t` | View | Switches the pane between Chat and Terminal. | - |
 | `focus_composer` | `prefix+i` | View | Puts the cursor in the composer. | - |
 | `find` | `prefix+/` | View | Opens the find bar of the terminal view. | - |
+| `copy_output` | - | View | Copies the pane's output. | - |
+| `conversation_history` | - | View | Opens the agent's conversation history. | - |
+| `walky_messages` | - | View | Opens the pane's WalkyTalky messages. | [WalkyTalky](terminology.md#walkytalky) |
+
+An action shown as `-` has no default key. Give it one in `shortcuts.toml`. Each of them is a row of
+[Actions](terminology.md#actions), so you can also run it by its name.
 
 An action does something only where its control is on screen. `remove_from_view` and the two
 Resize keys work in the large-screen layout ([Large screens](configure.md#large-screens)), and
@@ -168,8 +188,9 @@ shortcut list. Behind the prefix they are free: `prefix+ctrl+w` works.
 
 You can copy a `[keys]` block from your Herdr `config.toml`. The names Herdr and Collie share
 work as they are: `help`, `settings`, `new_tab`, `previous_tab`, `next_tab`, `switch_tab`,
-`focus_pane_left`, `focus_pane_right`, `cycle_pane_next`, `cycle_pane_previous`, `resize_mode` and
-`toggle_sidebar`.
+`focus_pane_left`, `focus_pane_right`, `cycle_pane_next`, `cycle_pane_previous`, `resize_mode`,
+`toggle_sidebar`, `rename_pane`, `rename_tab`, `close_pane` and `close_tab`. Collie's `close_pane` and
+`close_tab` ask first: they open the menu with Close ready, and one more tap closes.
 
 Collie names some actions after its own words ([Terminology](terminology.md)), so it does not take
 Herdr's name for them. Write the Collie name:
@@ -178,7 +199,7 @@ Herdr's name for them. Write the Collie name:
 | --- | --- |
 | `new_workspace` | `new_space` |
 | `workspace_picker` | `navigate_mode` |
-| `goto` | `switch_pane` |
+| `goto` | `open_actions` |
 | `zoom` | `zen_mode` |
 | `previous_workspace` | `previous_space` |
 | `next_workspace` | `next_space` |
@@ -186,9 +207,10 @@ Herdr's name for them. Write the Collie name:
 | `navigate_workspace_down` | `navigate_down` |
 | `navigate_pane_left` | `navigate_left` |
 | `navigate_pane_right` | `navigate_right` |
+| `rename_workspace` | `rename_space` |
 
-Any other Herdr name has no equal in Collie, for example `close_pane`, `detach`, `focus_pane_up`
-and `focus_pane_down`. Herdr moves to the pane above or below in a split. Collie shows panes
+Any other Herdr name has no equal in Collie, for example `close_workspace`, `detach`,
+`focus_pane_up` and `focus_pane_down`. Herdr moves to the pane above or below in a split. Collie shows panes
 side by side in a row, with none above or below, so `previous_space` and `next_space` are a
 different move. Collie drops a Herdr name it does not take, and the shortcut list names it. It says
 which Collie name to write, or that Collie has no such action.
@@ -198,6 +220,6 @@ which Collie name to write, or that Collie has no such action.
 A shortcut is a second way to reach something. It is never the only way. Each action above has a
 button, a mark or a menu entry that does the same, so you can do everything with no keyboard.
 `help` has its row in **Settings → Device**, and `shortcuts.toml` reloads by itself, so it needs
-no reload action.
+no reload action. The actions with no default key are rows of [Actions](terminology.md#actions).
 
 See also [Configure](configure.md#keyboard-shortcuts) for `shortcuts.toml` beside the other files.

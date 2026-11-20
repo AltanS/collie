@@ -11,6 +11,8 @@
 //     never behind the prefix. The mode itself is opened by an action with `opensMode`.
 //
 // Every row needs a visible control in the app: a shortcut is a second path, never the only one.
+// Since the Actions palette (ADR 0165) every command the palette lists is a row here too, most with no
+// default key (`defaults: []`), so a person can bind any of them; the palette is their second control.
 // Checked on 2026-11-19 against the app: every row has one (the Settings gear, the pane list,
 // the header's way home, New, the tab bar's "+", the strip's width presets, zen mode, the sidebar
 // toggle, the Chat/Terminal choice, the composer, the find bar) except two. `reload_config` is left
@@ -43,6 +45,12 @@ export interface ActionDef<Id extends string = string> {
   readonly opensMode?: ModeId;
   /** The bindings live inside this sticky mode, not in the normal one. */
   readonly scope?: ModeId;
+  /**
+   * Running the action ends something that cannot be taken back (a pane, a tab). Its handler only
+   * opens the confirm the menu row shows; the Actions palette never highlights such a row first, and
+   * Enter on it opens that confirm, as a tap does.
+   */
+  readonly destructive?: true;
 }
 
 export interface ModeDef {
@@ -70,10 +78,17 @@ export const GROUPS = [
 export const ACTIONS = [
   { id: "help", group: "global", defaults: ["prefix+?"], labelKey: "shortcuts.action.help" },
   { id: "settings", group: "global", defaults: ["prefix+s"], labelKey: "shortcuts.action.settings" },
+  { id: "open_actions", group: "global", defaults: ["prefix+g"], labelKey: "shortcuts.action.open_actions" },
+  { id: "open_shortcuts", group: "global", defaults: [], labelKey: "shortcuts.action.open_shortcuts" },
+  { id: "open_crew", group: "global", defaults: [], labelKey: "shortcuts.action.open_crew" },
+  { id: "open_files", group: "global", defaults: [], labelKey: "shortcuts.action.open_files" },
 
-  { id: "switch_pane", group: "navigation", defaults: ["prefix+g"], labelKey: "shortcuts.action.switch_pane" },
+  // Since the Actions palette (ADR 0165) `prefix+g` opens Actions; the pane list keeps its action, unbound.
+  { id: "switch_pane", group: "navigation", defaults: [], labelKey: "shortcuts.action.switch_pane" },
   { id: "open_dashboard", group: "navigation", defaults: ["prefix+q"], labelKey: "shortcuts.action.open_dashboard" },
   { id: "new_space", group: "navigation", defaults: ["prefix+shift+n"], labelKey: "shortcuts.action.new_space" },
+  { id: "new_agent", group: "navigation", defaults: [], labelKey: "shortcuts.action.new_agent" },
+  { id: "rename_space", group: "navigation", defaults: [], labelKey: "shortcuts.action.rename_space" },
   { id: "previous_space", group: "navigation", defaults: ["prefix+k"], labelKey: "shortcuts.action.previous_space" },
   { id: "next_space", group: "navigation", defaults: ["prefix+j"], labelKey: "shortcuts.action.next_space" },
   { id: "navigate_mode", group: "navigation", defaults: ["prefix+w"], labelKey: "shortcuts.action.navigate_mode", opensMode: "navigate" },
@@ -87,6 +102,9 @@ export const ACTIONS = [
   { id: "previous_tab", group: "tabs", defaults: ["prefix+p"], labelKey: "shortcuts.action.previous_tab" },
   { id: "next_tab", group: "tabs", defaults: ["prefix+n"], labelKey: "shortcuts.action.next_tab" },
   { id: "switch_tab", group: "tabs", defaults: ["prefix+1..9"], labelKey: "shortcuts.action.switch_tab", indexed: true },
+  { id: "new_shell", group: "tabs", defaults: [], labelKey: "shortcuts.action.new_shell" },
+  { id: "rename_tab", group: "tabs", defaults: [], labelKey: "shortcuts.action.rename_tab" },
+  { id: "close_tab", group: "tabs", defaults: [], labelKey: "shortcuts.action.close_tab", destructive: true },
 
   { id: "focus_pane_left", group: "panes", defaults: ["prefix+h"], labelKey: "shortcuts.action.focus_pane_left" },
   { id: "focus_pane_right", group: "panes", defaults: ["prefix+l"], labelKey: "shortcuts.action.focus_pane_right" },
@@ -96,12 +114,19 @@ export const ACTIONS = [
   { id: "resize_mode", group: "panes", defaults: ["prefix+r"], labelKey: "shortcuts.action.resize_mode", opensMode: "resize" },
   { id: "resize_narrower", group: "panes", defaults: ["h", "left"], labelKey: "shortcuts.action.resize_narrower", scope: "resize" },
   { id: "resize_wider", group: "panes", defaults: ["l", "right"], labelKey: "shortcuts.action.resize_wider", scope: "resize" },
+  { id: "rename_pane", group: "panes", defaults: [], labelKey: "shortcuts.action.rename_pane" },
+  { id: "pin_pane", group: "panes", defaults: [], labelKey: "shortcuts.action.pin_pane" },
+  { id: "pane_settings", group: "panes", defaults: [], labelKey: "shortcuts.action.pane_settings" },
+  { id: "close_pane", group: "panes", defaults: [], labelKey: "shortcuts.action.close_pane", destructive: true },
 
   { id: "zen_mode", group: "view", defaults: ["prefix+z"], labelKey: "shortcuts.action.zen_mode" },
   { id: "toggle_sidebar", group: "view", defaults: ["prefix+b"], labelKey: "shortcuts.action.toggle_sidebar" },
   { id: "toggle_chat_terminal", group: "view", defaults: ["prefix+t"], labelKey: "shortcuts.action.toggle_chat_terminal" },
   { id: "focus_composer", group: "view", defaults: ["prefix+i"], labelKey: "shortcuts.action.focus_composer" },
   { id: "find", group: "view", defaults: ["prefix+/"], labelKey: "shortcuts.action.find" },
+  { id: "copy_output", group: "view", defaults: [], labelKey: "shortcuts.action.copy_output" },
+  { id: "conversation_history", group: "view", defaults: [], labelKey: "shortcuts.action.conversation_history" },
+  { id: "walky_messages", group: "view", defaults: [], labelKey: "shortcuts.action.walky_messages" },
 ] as const satisfies readonly ActionDef[];
 
 export type ActionId = (typeof ACTIONS)[number]["id"];

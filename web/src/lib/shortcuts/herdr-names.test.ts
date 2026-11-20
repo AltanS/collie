@@ -27,11 +27,11 @@ describe("the Herdr names table", () => {
     expect(HERDR_NAMES.get("new_workspace")).toBe("new_space");
     expect(HERDR_NAMES.get("zoom")).toBe("zen_mode");
     expect(HERDR_NAMES.get("workspace_picker")).toBe("navigate_mode");
-    expect(HERDR_NAMES.get("goto")).toBe("switch_pane");
+    expect(HERDR_NAMES.get("goto")).toBe("open_actions");
   });
 
   it("says Collie has no equal where the meaning differs", () => {
-    for (const name of ["focus_pane_up", "focus_pane_down", "close_pane", "detach"]) {
+    for (const name of ["focus_pane_up", "focus_pane_down", "close_workspace", "detach"]) {
       expect(HERDR_NAMES.has(name), name).toBe(true);
       expect(HERDR_NAMES.get(name), name).toBeNull();
     }
@@ -48,9 +48,9 @@ describe("a Herdr name in shortcuts.toml", () => {
   });
 
   it("says Collie has no such action when the name has no equal", () => {
-    const keymap = build({ close_pane: ["prefix+m"], detach: ["ctrl+q"] });
+    const keymap = build({ close_workspace: ["prefix+m"], detach: ["ctrl+q"] });
     expect(keymap.diagnostics.map((diagnostic) => diagnostic.message)).toEqual([
-      "`close_pane` is Herdr's name; Collie has no such action",
+      "`close_workspace` is Herdr's name; Collie has no such action",
       "`detach` is Herdr's name; Collie has no such action",
     ]);
     expect(keymap.diagnostics.map((diagnostic) => diagnostic.code)).toEqual(["herdr-name", "herdr-name"]);
@@ -60,6 +60,18 @@ describe("a Herdr name in shortcuts.toml", () => {
     const keymap = build({ zoom: ["prefix+m"] });
     expect(keymap.prefixed.get("z")).toEqual({ action: "zen_mode" });
     expect(keymap.prefixed.has("m")).toBe(false);
+  });
+
+  it("maps Herdr's goto to the Actions palette, and its rename_workspace to rename_space", () => {
+    expect(build({ goto: ["prefix+m"] }).diagnostics.map((diagnostic) => diagnostic.message)).toEqual(["`goto` is Herdr's name; write `open_actions`"]);
+    expect(HERDR_NAMES.get("rename_workspace")).toBe("rename_space");
+  });
+
+  it("takes the names both programs now share as Collie actions", () => {
+    const keymap = build({ close_pane: ["prefix+m"], rename_tab: ["prefix+e"] });
+    expect(keymap.diagnostics).toEqual([]);
+    expect(keymap.prefixed.get("m")).toEqual({ action: "close_pane" });
+    expect(keymap.prefixed.get("e")).toEqual({ action: "rename_tab" });
   });
 
   it("does not stop the rest of the block from loading", () => {
