@@ -79,8 +79,9 @@ Open it with the Actions button, or with the [prefix key](#prefix-key) and then 
 
 ## Navigate mode
 
-A mode of the keyboard that stays on until `Esc` or `Enter`. The keys `h`, `j`, `k`, `l`, the arrows
-and `1` to `9` move you between panes, spaces and tabs
+A mode of the keyboard that puts a focus ring on the rows of the sidebar. `j` and `k`, or the arrow
+keys, move the ring and change nothing else. `Enter` opens the focused row and leaves the mode. `Esc`
+leaves it and changes nothing
 ([Keyboard shortcuts](keyboard-shortcuts.md#navigate-mode-and-resize-mode)).
 
 ## Resize mode

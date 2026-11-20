@@ -63,7 +63,7 @@ describe("the mode bar on the screen", () => {
   it("on a dashboard-like screen names no tab and no pane key", () => {
     offer(DASHBOARD);
     showBar("prefix");
-    for (const word of ["new tab", "Previous tab / Next tab", "Go to tab", "Focus pane left / right", "switch pane", "Move in the sidebar", "Resize panes"]) {
+    for (const word of ["New tab", "Previous / next tab", "Go to tab", "Focus pane left / right", "Switch pane", "Move in the sidebar", "Resize panes"]) {
       expect(screen.queryByText(word)).toBeNull();
     }
     expect(screen.getByText("Settings")).toBeInTheDocument();
@@ -71,21 +71,21 @@ describe("the mode bar on the screen", () => {
 
   it("keeps the ways out and the way to the list on every screen", () => {
     showBar("prefix");
-    expect(screen.getByText("all shortcuts")).toBeInTheDocument();
-    expect(screen.getByText("cancel")).toBeInTheDocument();
+    expect(screen.getByText("All shortcuts")).toBeInTheDocument();
+    expect(screen.getByText("Cancel")).toBeInTheDocument();
   });
 
   it("keeps Enter and Esc in Resize mode", () => {
     offer(["resize_wider"]);
     showBar("resize");
-    expect(screen.getByText("done")).toBeInTheDocument();
-    expect(screen.getByText("leave")).toBeInTheDocument();
+    expect(screen.getByText("Done")).toBeInTheDocument();
+    expect(screen.getByText("Leave")).toBeInTheDocument();
   });
 
   it("names the tab and pane keys on a wide pane view", () => {
     offer(PANE_VIEW);
     showBar("prefix");
-    for (const word of ["new tab", "Previous tab / Next tab", "Go to tab", "Focus pane left / right", "Settings", "Dashboard", "zen"]) {
+    for (const word of ["New tab", "Previous / next tab", "Go to tab", "Focus pane left / right", "Settings", "Dashboard", "Zen mode"]) {
       expect(screen.getByText(word)).toBeInTheDocument();
     }
     expect(screen.queryByText("Show or hide the sidebar")).toBeNull();
@@ -93,14 +93,14 @@ describe("the mode bar on the screen", () => {
 
   it("follows the screen as handlers mount and unmount", () => {
     showBar("prefix");
-    expect(screen.queryByText("new tab")).toBeNull();
+    expect(screen.queryByText("New tab")).toBeNull();
     let release = () => {};
     act(() => {
       release = offer(["new_tab"]);
     });
-    expect(screen.getByText("new tab")).toBeInTheDocument();
+    expect(screen.getByText("New tab")).toBeInTheDocument();
     act(() => release());
-    expect(screen.queryByText("new tab")).toBeNull();
+    expect(screen.queryByText("New tab")).toBeNull();
   });
 });
 

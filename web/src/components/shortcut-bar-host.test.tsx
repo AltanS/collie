@@ -50,9 +50,9 @@ describe("ShortcutBarHost", () => {
     show("prefix");
     expect(bar()).toHaveAttribute("data-mode", "prefix");
     expect(screen.getByText("Prefix")).toBeInTheDocument();
-    expect(screen.getByText("new tab")).toBeInTheDocument();
-    expect(screen.getByText("all shortcuts")).toBeInTheDocument();
-    expect(screen.getByText("cancel")).toBeInTheDocument();
+    expect(screen.getByText("New tab")).toBeInTheDocument();
+    expect(screen.getByText("All shortcuts")).toBeInTheDocument();
+    expect(screen.getByText("Cancel")).toBeInTheDocument();
   });
 
   it("names the Navigate mode and its own keys, and leaves with Esc", () => {
@@ -63,8 +63,8 @@ describe("ShortcutBarHost", () => {
     expect(screen.getByText("Move:")).toBeInTheDocument();
     expect(screen.getByText("Open:")).toBeInTheDocument();
     expect(screen.getByText("Leave:")).toBeInTheDocument();
-    expect(screen.queryByText("done")).toBeNull();
-    expect(screen.queryByText("new tab")).toBeNull();
+    expect(screen.queryByText("Done")).toBeNull();
+    expect(screen.queryByText("New tab")).toBeNull();
   });
 
   it("reads Navigate mode as Move: j k ↑ ↓, Open: Enter, Leave: Esc", () => {
@@ -92,7 +92,7 @@ describe("ShortcutBarHost", () => {
   it("names the pairs as one entry each, verb first", () => {
     offer("previous_tab", "next_tab", "switch_tab", "focus_pane_left", "focus_pane_right", "previous_space", "next_space");
     show("prefix");
-    for (const label of ["Previous tab / Next tab", "Go to tab", "Focus pane left / right", "Previous / next space"]) {
+    for (const label of ["Previous / next tab", "Go to tab", "Focus pane left / right", "Previous / next space"]) {
       expect(screen.getByText(label)).toBeInTheDocument();
     }
   });
@@ -116,10 +116,10 @@ describe("ShortcutBarHost", () => {
   it("shows the keys of the live keymap, so a change in shortcuts.toml shows", () => {
     offer("new_tab");
     show("prefix", { new_tab: ["prefix+y"] });
-    const row = screen.getByText("new tab").parentElement;
+    const row = screen.getByText("New tab").parentElement;
     expect(row?.textContent).toContain("y");
     expect(row?.textContent).not.toContain("c");
     act(() => publishShortcutKeymap(keymapOf({ new_tab: [""] })));
-    expect(screen.queryByText("new tab")).toBeNull();
+    expect(screen.queryByText("New tab")).toBeNull();
   });
 });
