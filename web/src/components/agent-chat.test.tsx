@@ -66,6 +66,7 @@ import { ROOT_ROUTE_ID } from "@/lib/loaders";
 import { withHeaderHost } from "@/test/header-host";
 import { CROSSFADE_QUIET_MS } from "@/components/ui/crossfade-text";
 import { COLLAPSE_MS } from "./ui/collapse";
+import { runShortcutAction } from "@/lib/shortcuts/registry";
 import { AgentChat } from "./agent-chat";
 import { saveChatTail } from "@/lib/chat-tail";
 import { __resetMaskedHint, maskedHintRetired } from "@/lib/masked-hint";
@@ -147,6 +148,14 @@ async function openPaneMenu(user: User) {
 async function openFind(user: User) {
   await openPaneMenu(user);
   await user.click(screen.getByRole("button", { name: "Find in output" }));
+}
+
+
+// The Belt's pill opens Actions since ADR 0165; the pane list keeps its drag, its handle and its action.
+function openSwitcher(): void {
+  act(() => {
+    runShortcutAction("switch_pane");
+  });
 }
 
 describe("AgentChat — reply flow", () => {
@@ -1192,7 +1201,7 @@ describe("AgentChat — block-grammar scoping (an agent with no adapter)", () =>
     // above the whole chrome block.
     for (const text of [STATUS_TEXT, MENU_TEXT]) {
       const { container } = renderChat({ text });
-      const handle = screen.getByRole("button", { name: "Switch pane" });
+      const handle = screen.getByRole("button", { name: "Actions" });
       const belt = container.querySelector('[data-slot="composer-actions"]')!;
       // The composer's own box, reached through the actions belt inside it — the status band this
       // used to reach through is gone (composer.tsx says where it went).
@@ -1584,7 +1593,7 @@ describe("AgentChat \u2014 the pane menu in the header", () => {
     await waitFor(() => expect(screen.queryByRole("navigation", { name: "Panes" })).toBeNull());
     await waitFor(() => expect(container.querySelector('[data-slot="pane-identity-taps"]')).toBeNull());
     expect(container.querySelector('[data-slot="pane-lines"]')).not.toBeNull();
-    expect(screen.queryByRole("button", { name: "Switch pane" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Actions" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Files" })).toBeNull();
     await openPaneMenu(user);
     const sheet = screen.getByRole("dialog");
@@ -2408,7 +2417,7 @@ describe("the pane fits its viewport", () => {
     const kb = withSoftKeyboard();
     try {
       const { container } = renderChat({ text: STATUS_TEXT });
-      expect(screen.queryByRole("button", { name: "Switch pane" })).not.toBeNull();
+      expect(screen.queryByRole("button", { name: "Actions" })).not.toBeNull();
 
       // A soft keyboard only stands on a focused field (use-keyboard.ts), so the caret goes in first,
       // the way tapping the composer does on the phone.
@@ -2419,7 +2428,7 @@ describe("the pane fits its viewport", () => {
       // the tree is the a11y half of that claim: what is not on screen must not still be focusable.
       await waitFor(() => expect(screen.queryByText("[Opus 4.8] ~/webapp · main")).toBeNull());
       // …and the grip stays, keyboard or no keyboard. It is in no `Collapse` at all.
-      expect(screen.queryByRole("button", { name: "Switch pane" })).not.toBeNull();
+      expect(screen.queryByRole("button", { name: "Actions" })).not.toBeNull();
 
       // THE NAVIGATION ROWS ARE ON A DIFFERENT LIST NOW, and the distinction is the point. They
       // were once declined here outright — "the tab row is how you know where you are, and losing
@@ -2578,7 +2587,7 @@ describe("AgentChat — zen mode", () => {
     expect(screen.queryByRole("navigation", { name: /tabs/i })).not.toBeInTheDocument();
     expect(container.querySelector('[data-slot="chrome-block"]')).toBeNull();
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Switch pane" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Actions" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Pane actions" })).not.toBeInTheDocument();
 
     // The header ELEMENT stays, and here — with no strip band mounted above it — it is what
@@ -3265,9 +3274,8 @@ describe("AgentChat: Launch section in the switcher", () => {
 
   it("shows the Launch section in the switcher when launchers are declared", async () => {
     declareLaunchers();
-    const user = userEvent.setup();
     renderChat();
-    await user.click(screen.getByRole("button", { name: "Switch pane" }));
+    openSwitcher();
     expect(await screen.findByText("Launch")).toBeInTheDocument();
     expect(screen.getByText("Runs & quota")).toBeInTheDocument();
     expect(screen.getByText("rumen-peek")).toBeInTheDocument();
@@ -3277,7 +3285,7 @@ describe("AgentChat: Launch section in the switcher", () => {
     declareLaunchers();
     const user = userEvent.setup();
     renderChat();
-    await user.click(screen.getByRole("button", { name: "Switch pane" }));
+    openSwitcher();
     await screen.findByText("rumen-peek");
 
     await user.click(screen.getByText("Runs & quota"));
@@ -3308,7 +3316,7 @@ describe("AgentChat: Launch section in the switcher", () => {
     );
     const user = userEvent.setup();
     renderChat();
-    await user.click(screen.getByRole("button", { name: "Switch pane" }));
+    openSwitcher();
     await user.click(await screen.findByText("Runs & quota"));
     await waitFor(() => expect(posted).toEqual({ command: "rumen-peek", paneId: agent.paneId, requestId: A_REQUEST_ID }));
   });
@@ -3341,7 +3349,7 @@ describe("AgentChat: Launch section in the switcher", () => {
       declareNoPrompts(posted);
       const user = userEvent.setup();
       renderChat();
-      await user.click(screen.getByRole("button", { name: "Switch pane" }));
+      openSwitcher();
       await user.click(await screen.findByText("Claude, no prompts"));
       const sheet = await screen.findByRole("dialog", { name: "Start without prompts?" });
       expect(within(sheet).getByTestId("no-prompts-command")).toHaveTextContent("claude --yolo");
@@ -3358,7 +3366,7 @@ describe("AgentChat: Launch section in the switcher", () => {
       const agent = fixtureAgents[0]!;
       const user = userEvent.setup();
       renderChat();
-      await user.click(screen.getByRole("button", { name: "Switch pane" }));
+      openSwitcher();
       await user.click(await screen.findByText("Claude, no prompts"));
       await user.click(within(await screen.findByRole("dialog", { name: "Start without prompts?" })).getByRole("button", { name: "Start" }));
       await waitFor(() => expect(posted).toEqual([{ command: "claude --yolo", paneId: agent.paneId, requestId: A_REQUEST_ID }]));
@@ -3371,7 +3379,7 @@ describe("AgentChat: Launch section in the switcher", () => {
       rememberNoPromptsConfirm("", "claude --yolo");
       const user = userEvent.setup();
       renderChat();
-      await user.click(screen.getByRole("button", { name: "Switch pane" }));
+      openSwitcher();
       await user.click(await screen.findByText("Claude, no prompts"));
       await waitFor(() => expect(posted).toHaveLength(1));
       expect(screen.queryByRole("dialog", { name: "Start without prompts?" })).toBeNull();
@@ -3380,9 +3388,8 @@ describe("AgentChat: Launch section in the switcher", () => {
 
   it("is not offered on a read-only device", async () => {
     declareLaunchers();
-    const user = userEvent.setup();
     renderChat({ device: { enforced: true, device: "spare-phone", authorized: false } });
-    await user.click(screen.getByRole("button", { name: "Switch pane" }));
+    openSwitcher();
     // The sheet itself still opens (it's switch-only otherwise), but nothing in it offers a write
     // this device isn't authorised to make.
     expect(await screen.findByRole("dialog")).toBeInTheDocument();
@@ -3391,9 +3398,8 @@ describe("AgentChat: Launch section in the switcher", () => {
   });
 
   it("does not show the switch handle's launcher affordance when nothing is declared", async () => {
-    const user = userEvent.setup();
     renderChat();
-    await user.click(screen.getByRole("button", { name: "Switch pane" }));
+    openSwitcher();
     expect(screen.queryByText("Launch")).toBeNull();
   });
 });
@@ -3703,7 +3709,7 @@ describe("AgentChat — the hand setting", () => {
     expect(scrollerOf(container).className).toContain("[direction:rtl]");
     expect(boxOf(container).className).toMatch(/(?:^|\s)flex-row-reverse(?=\s|$)/);
     // The Switch block stands at the belt's left end.
-    expect(screen.getByRole("button", { name: /^Switch pane/ }).parentElement!.parentElement!.className).toMatch(
+    expect(screen.getByRole("button", { name: /^Actions/ }).parentElement!.parentElement!.className).toMatch(
       /(?:^|\s)left-0(?=\s|$)/,
     );
   });
@@ -5302,10 +5308,10 @@ describe("AgentChat — the focused column of a large screen's strip (ADR 0120)"
 
   it("hides the belt's Switch pill, which the sidebar replaces, and keeps it below 600 px", () => {
     const phone = renderChat();
-    expect(within(phone.container).queryByRole("button", { name: "Switch pane" })).not.toBeNull();
+    expect(within(phone.container).queryByRole("button", { name: "Actions" })).not.toBeNull();
     cleanup();
     const { container } = renderChat({ inStrip: true });
-    expect(within(container).queryByRole("button", { name: "Switch pane" })).toBeNull();
+    expect(within(container).queryByRole("button", { name: "Actions" })).toBeNull();
     // The belt itself stays, with the reply box under it.
     expect(within(container).getByRole("button", { name: "Keys" })).toBeInTheDocument();
     expect(within(container).getByPlaceholderText(/type a reply/i)).toBeInTheDocument();

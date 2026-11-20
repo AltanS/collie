@@ -1,5 +1,5 @@
 import type { ComponentProps } from "react";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import { createMemoryRouter, RouterProvider } from "react-router";
 
 import { asJsonString, parseJsonObject } from "@/lib/json";
@@ -30,7 +30,7 @@ vi.mock("@/lib/liveness", async (importOriginal) => ({
 }));
 
 import type { ActionId } from "@/lib/shortcuts/actions";
-import { __resetShortcutRegistry, runShortcutAction } from "@/lib/shortcuts/registry";
+import { __resetShortcutRegistry, isShortcutActionAvailable, runShortcutAction } from "@/lib/shortcuts/registry";
 import { clearStatus } from "@/lib/status";
 import { setZenEnabled, __resetZen } from "@/lib/zen";
 import { __resetStripsCollapsed } from "@/lib/strips-collapsed";
@@ -114,6 +114,26 @@ describe("AgentChat — desktop shortcuts", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(run("switch_pane")).toBe(true);
     expect(await screen.findByRole("dialog")).toBeInTheDocument();
+  });
+
+  it("close_pane opens the pane menu with Close armed, and closes nothing by itself", async () => {
+    renderChat();
+    expect(run("close_pane")).toBe(true);
+    const sheet = await screen.findByRole("dialog");
+    expect(within(sheet).getByRole("button", { name: /tap again to close/i })).toBeInTheDocument();
+  });
+
+  it("rename_pane opens the pane menu on its rename view", async () => {
+    renderChat();
+    expect(run("rename_pane")).toBe(true);
+    const sheet = await screen.findByRole("dialog");
+    expect(within(sheet).getByRole("textbox")).toBeInTheDocument();
+  });
+
+  it("the palette's pane commands answer here, and the dashboard ones do not", () => {
+    renderChat();
+    for (const id of ["pane_settings", "pin_pane", "open_files"] as const) expect(isShortcutActionAvailable(id), id).toBe(true);
+    expect(isShortcutActionAvailable("rename_space")).toBe(false);
   });
 
   it("focus_composer focuses the reply box", () => {

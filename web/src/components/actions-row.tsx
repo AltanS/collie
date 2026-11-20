@@ -1144,7 +1144,8 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, durable, sto
                 // and 7px right (into `pr-3`), 47px across.
                 className={cn(`${STRIP_ROW_PILL} ${PINNED_PILL}`, pinnedReach(!agents && !jobs && !pins && !clear && !changes && !zoom, true, hand))}
               >
-                <Icon name="pane-switcher" className={cn(BELT_ICON, "text-primary")} />
+                {/* The Actions mark since ADR 0165: this pill opens the Actions palette, not the pane list. */}
+                <Icon name="open-actions" className={cn(BELT_ICON, "text-primary")} />
                 {/* The needs-you mark (the triangle), on the mark's top-right corner, absolutely placed
                     so it never moves the belt. The chrome-coloured disc and ring cut it out of the
                     glyph it overlaps. 10px since 2026-10-14: at 12px the triangle read as heavy as the

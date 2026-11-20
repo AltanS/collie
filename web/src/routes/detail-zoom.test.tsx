@@ -97,7 +97,7 @@ describe("the pane's output, zoomed", () => {
     const router = makeRouter();
     render(<RouterProvider router={router} />);
     const pill = await screen.findByRole("button", { name: "Zoom output" });
-    expect(pill.nextElementSibling).toBe(screen.getByRole("button", { name: "Switch pane" }));
+    expect(pill.nextElementSibling).toBe(screen.getByRole("button", { name: "Actions" }));
     expect(zoomDialog()).toBeNull();
 
     await user.click(pill);

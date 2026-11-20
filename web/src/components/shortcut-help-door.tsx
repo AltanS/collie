@@ -49,6 +49,8 @@ export function ShortcutHelpDoor() {
   const keymap = useShortcutKeymap();
   // The key opens the list about the screen it was pressed on; the Settings row opens it about the keys.
   useShortcutHandler("help", () => openShortcutHelp("screen"));
+  // The Actions palette's "Keyboard shortcuts" row (ADR 0165): the whole list, as the Settings row opens it.
+  useShortcutHandler("open_shortcuts", () => openShortcutHelp("all"));
   if (keymap === null) return null;
   return (
     <BottomSheet open={isOpen} onClose={closeShortcutHelp} title={t("shortcuts.list.title")}>

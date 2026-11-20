@@ -16,6 +16,7 @@ import { UNREAD_SURFACE } from "@/lib/send-slot";
 import { readAgentLaunch, type AgentLaunch } from "@/lib/agent-startup";
 import type { AgentView } from "@/lib/types";
 import type { Surface } from "@/lib/surface/surface";
+import { runShortcutAction } from "@/lib/shortcuts/registry";
 import { AgentChat } from "./agent-chat";
 
 const liveness = vi.hoisted(() => ({ live: true }));
@@ -158,7 +159,10 @@ it.each(["agent", "command"] as const)("switcher carries the launch row's %s met
     http.post("/api/launch", () => HttpResponse.json({ ok: true, pane: { paneId: "new:p1", workspaceId: "new", workspaceLabel: "Kiro", tabId: "new:t1", cwd: "/home" } })),
   );
   const { router } = mount({ agentLaunch: undefined });
-  await userEvent.click(await screen.findByRole("button", { name: "Switch pane" }));
+  await screen.findByRole("button", { name: "Actions" });
+  act(() => {
+    runShortcutAction("switch_pane");
+  });
   await userEvent.click(await screen.findByText("Launch Kiro"));
   await waitFor(() => expect(router.state.location.pathname).toBe("/pane/new%3Ap1"));
   expect(readAgentLaunch(router.state.location.state, "new:p1")?.harness).toBe(kind === "agent" ? "kiro" : undefined);

@@ -93,6 +93,12 @@ interface PaneActionsSheetProps {
    */
   openInRename?: boolean;
   /**
+   * Open with the Close row already armed ("Tap again to close"), so one more tap closes. The Actions
+   * palette's Close pane (ADR 0165) opens the menu this way: the confirm a person sees is this sheet's
+   * own, and nothing closes without a tap on it. Read when the sheet opens, like {@link openInRename}.
+   */
+  armCloseOnOpen?: boolean;
+  /**
    * WHICH BODY THE PANE DRAWS, and the one place that value is written (ADR 0071's shape).
    *
    * Absent is the gate, as it is for find, history and zen: the pane view always passes it since
@@ -198,6 +204,23 @@ type Mode = "actions" | "rename";
 const ROW_ICON = "size-4 shrink-0 text-muted-foreground";
 
 /**
+ * Pin or unpin a pane on this device, the Pin to top row's act: the pin store's write, then the answer,
+ * either the caller's (the dashboard moves the row and shows it) or a toast. The Actions palette's
+ * `pin_pane` runs the same function from the pane view (ADR 0165).
+ */
+export function togglePanePin(input: {
+  pane: AgentView;
+  pinned: boolean;
+  herd: readonly AgentView[];
+  onPinChange?: ((pane: AgentView, pinned: boolean) => void) | undefined;
+}): void {
+  const next = !input.pinned;
+  setPinned(input.pane, next, input.herd);
+  if (input.onPinChange) input.onPinChange(input.pane, next);
+  else setStatus(next ? t("paneActions.pin.done") : t("paneActions.unpin.done"), "success");
+}
+
+/**
  * Where the body switch row takes the operator: the other body, or, while an agent view shows, the
  * standing body itself (the way back from the view, which leaves it on).
  */
@@ -222,6 +245,7 @@ export function PaneActionsSheet({
   onReport,
   onMessages,
   openInRename = false,
+  armCloseOnOpen = false,
   onZen,
   paneView,
   onPaneViewChange,
@@ -252,7 +276,7 @@ export function PaneActionsSheet({
   // success branch closes the sheet — and that is correct: the pane VANISHING is the outcome, and a
   // success `setStatus` on top of it would announce a fact the screen is already making.
   const closeEcho = useActionEcho();
-  const { pending, confirm, reset } = usePendingConfirm();
+  const { pending, confirm, reset, arm } = usePendingConfirm();
   const inputRef = useRef<HTMLInputElement>(null);
   // Rename and close are writes, and both are §10.3 writes to a specific machine — the PANE's, read
   // off the row rather than from the ambient scope, because a pane's host is the only thing that
@@ -296,6 +320,7 @@ export function PaneActionsSheet({
     if (!open) return;
     setLabel(pane?.paneLabel ?? "");
     reset();
+    if (armCloseOnOpen && pane && canClose.capable) arm(pane.paneId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, pane?.paneId]);
 
@@ -395,11 +420,8 @@ export function PaneActionsSheet({
    */
   function togglePin() {
     if (!pane) return;
-    const next = !pinned;
     onClose();
-    setPinned(pane, next, herd);
-    if (onPinChange) onPinChange(pane, next);
-    else setStatus(next ? t("paneActions.pin.done") : t("paneActions.unpin.done"), "success");
+    togglePanePin({ pane, pinned, herd, onPinChange });
   }
 
   const confirming = !!pane && pending === pane.paneId;

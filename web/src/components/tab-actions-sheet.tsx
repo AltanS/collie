@@ -33,6 +33,10 @@ interface TabActionsSheetProps {
   /** Fired after a successful close, with the closed tab id — the parent falls back to "All"/Home if
    *  it was the selected/viewed tab, or revalidates so it drops out of the strip. */
   onClosed: (tabId: string) => void;
+  /** Open on the rename view, as the pane sheet's `openInRename`: the Actions palette's Rename tab (ADR 0165). */
+  openInRename?: boolean;
+  /** Open with Close tab already armed, as the pane sheet's `armCloseOnOpen`: the palette's Close tab. */
+  armCloseOnOpen?: boolean;
 }
 
 type Mode = "actions" | "rename";
@@ -54,6 +58,8 @@ export function TabActionsSheet({
   savedCopy = false,
   onRenamed,
   onClosed,
+  openInRename = false,
+  armCloseOnOpen = false,
 }: TabActionsSheetProps) {
   useLocale();
   const [mode, setMode] = useState<Mode>("actions");
@@ -65,17 +71,23 @@ export function TabActionsSheet({
   // a spinner alone acknowledged nothing until the next poll dropped the tab out of the strip, and
   // this tap kills every pane in the tab, so it is the last one that should feel unheard.
   const closeEcho = useActionEcho();
-  const { pending, confirm, reset } = usePendingConfirm();
+  const { pending, confirm, reset, arm } = usePendingConfirm();
   const inputRef = useRef<HTMLInputElement>(null);
+  // The tab verbs the multiplexer underneath declares (M10/06) — asked per row, below, and asked of
+  // the machine the write will land on (M22/03), which is the same scope `hostBlock` reads.
+  const canRename = useMuxCapability("renameTab", scope);
+  const canClose = useMuxCapability("closeTab", scope);
 
   // Reset to the action list — and reprefill the label — whenever the sheet opens on a (new) tab, AND
   // whenever it closes, so reopening never lands you mid-rename. Intentionally NOT keyed on the live
-  // label, so a background poll landing while you type can't clobber your edit.
+  // label, so a background poll landing while you type can't clobber your edit. A door that names a
+  // view (the Actions palette's Rename tab or Close tab) opens on it instead.
   useEffect(() => {
-    setMode("actions");
+    setMode(open && openInRename && canRename.capable ? "rename" : "actions");
     if (!open) return;
     setLabel(tab?.label ?? "");
     reset();
+    if (armCloseOnOpen && tab && canClose.capable) arm(tab.tabId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, tab?.tabId]);
 
@@ -146,10 +158,6 @@ export function TabActionsSheet({
   // …and the same host is what decides whether either write may be attempted at all (§10.3). Same
   // gate as the pane sheet, one dimension up: undefined on a solo install and on a reachable host.
   const hostBlock = useHostWriteBlock(host);
-  // The tab verbs the multiplexer underneath declares (M10/06) — asked per row, below, and asked of
-  // the machine the write will land on (M22/03), which is the same scope `hostBlock` reads.
-  const canRename = useMuxCapability("renameTab", scope);
-  const canClose = useMuxCapability("closeTab", scope);
   // Closing a tab kills every pane in it — name the blast radius on the confirm so it's honest. The
   // count rides on the tab record (snapshot `pane_count`); fall back to a plain confirm if it's 0.
   const paneCount = tab?.paneCount ?? 0;

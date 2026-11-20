@@ -33,7 +33,18 @@ export function usePendingConfirm(timeoutMs = 3000) {
     [pending, clearTimer, reset, timeoutMs],
   );
 
+  // Arm `id` whatever was armed before, with the same disarm timer: a sheet that opens on its confirm
+  // (the Actions palette's Close pane, ADR 0165). The next `confirm(id)` is then the confirming tap.
+  const arm = useCallback(
+    (id: string): void => {
+      clearTimer();
+      setPending(id);
+      timer.current = setTimeout(() => setPending(null), timeoutMs);
+    },
+    [clearTimer, timeoutMs],
+  );
+
   useEffect(() => clearTimer, [clearTimer]);
 
-  return { pending, confirm, reset };
+  return { pending, confirm, reset, arm };
 }
