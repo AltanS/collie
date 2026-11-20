@@ -4,9 +4,9 @@ import { en } from "../i18n/messages/en";
 import { ACTIONS, GROUPS, MODES } from "./actions";
 
 // The glossary (docs/terminology.md) names the things the shortcuts move: a space, a tab, a pane in
-// the row of panes. These three words name other things in Herdr or in the old code, and a label that
-// uses one reads as a different feature. Whole words, any case, and the plural.
-const BANNED = ["workspace", "column", "zoom"] as const;
+// the row of panes. These words name other things (the switcher is the Spaces control of the dashboard header; the
+// rest are Herdr's or the old code's), and a label that uses one reads as a different feature. Whole words, any case, and the plural.
+const BANNED = ["workspace", "column", "zoom", "switcher"] as const;
 
 const BANNED_WORD = new RegExp(`\\b(${BANNED.join("|")})s?\\b`, "iu");
 

@@ -94,9 +94,9 @@ describe("the operator's file replaces an action whole", () => {
   });
 
   it("takes a list of bindings", () => {
-    const keymap = build({ open_switcher: ["prefix+g", "ctrl+k"] });
-    expect(keymap.prefixed.get("g")).toEqual({ action: "open_switcher" });
-    expect(keymap.direct.get("ctrl+k")).toEqual({ action: "open_switcher" });
+    const keymap = build({ switch_pane: ["prefix+g", "ctrl+k"] });
+    expect(keymap.prefixed.get("g")).toEqual({ action: "switch_pane" });
+    expect(keymap.direct.get("ctrl+k")).toEqual({ action: "switch_pane" });
   });
 
   it("keeps the unbound action's key free for another", () => {
@@ -124,16 +124,16 @@ describe("collisions", () => {
   });
 
   it("treats shift+/ and ? as one key", () => {
-    const keymap = build({ open_switcher: ["prefix+shift+/"] });
-    expect(keymap.prefixed.get("?")).toEqual({ action: "open_switcher" });
+    const keymap = build({ switch_pane: ["prefix+shift+/"] });
+    expect(keymap.prefixed.get("?")).toEqual({ action: "switch_pane" });
     expect(keymap.bindings.get("help")).toEqual([]);
     expect(keymap.diagnostics).toEqual([]);
   });
 
   it("ignores a repeat inside one action", () => {
-    const keymap = build({ open_switcher: ["prefix+g", "prefix+g"] });
+    const keymap = build({ switch_pane: ["prefix+g", "prefix+g"] });
     expect(keymap.diagnostics).toEqual([]);
-    expect(keymap.bindings.get("open_switcher")).toHaveLength(1);
+    expect(keymap.bindings.get("switch_pane")).toHaveLength(1);
   });
 
   it("drops one digit of a range and keeps the others", () => {
@@ -173,10 +173,10 @@ describe("the prefix", () => {
   });
 
   it("falls back to ctrl+b when the prefix is bad, and the rest of the file loads", () => {
-    const keymap = build({ prefix: ["nonsense"], open_switcher: ["prefix+m"] });
+    const keymap = build({ prefix: ["nonsense"], switch_pane: ["prefix+m"] });
     expect(keymap.prefix).toEqual([chord("b", { ctrl: true })]);
     expect(codes(keymap.diagnostics)).toEqual(["invalid-binding", "invalid-prefix"]);
-    expect(keymap.prefixed.get("m")).toEqual({ action: "open_switcher" });
+    expect(keymap.prefixed.get("m")).toEqual({ action: "switch_pane" });
   });
 
   it("falls back when the prefix is emptied", () => {
@@ -201,7 +201,7 @@ describe("the prefix", () => {
   });
 
   it("is reserved: a binding on the prefix key is refused", () => {
-    const keymap = build({ open_switcher: ["prefix+ctrl+b"], open_dashboard: ["ctrl+b"] });
+    const keymap = build({ switch_pane: ["prefix+ctrl+b"], open_dashboard: ["ctrl+b"] });
     expect(keymap.prefixed.has("ctrl+b")).toBe(false);
     expect(keymap.direct.has("ctrl+b")).toBe(false);
     expect(codes(keymap.diagnostics)).toEqual(["reserved", "reserved"]);
@@ -222,7 +222,7 @@ describe("the prefix", () => {
   });
 
   it("keeps Esc for cancel behind the prefix", () => {
-    const keymap = build({ open_switcher: ["prefix+esc"] });
+    const keymap = build({ switch_pane: ["prefix+esc"] });
     expect(codes(keymap.diagnostics)).toEqual(["reserved"]);
   });
 });
@@ -230,7 +230,7 @@ describe("the prefix", () => {
 describe("direct bindings", () => {
   it("must carry a modifier: a bare or shifted printable key is refused", () => {
     for (const binding of ["x", "shift+x", "X", "?", "space", "enter", "tab", "left", "esc", "shift+tab"]) {
-      const keymap = build({ open_switcher: [binding] });
+      const keymap = build({ switch_pane: [binding] });
       expect(codes(keymap.diagnostics), binding).toEqual(["unsafe-direct"]);
       expect(keymap.direct.size, binding).toBe(0);
     }
@@ -238,7 +238,7 @@ describe("direct bindings", () => {
 
   it("accept Ctrl, Alt or Meta, and an F key on its own", () => {
     for (const binding of ["ctrl+k", "alt+x", "cmd+k", "ctrl+shift+k", "f5", "shift+f5", "alt+left"]) {
-      const keymap = build({ open_switcher: [binding] });
+      const keymap = build({ switch_pane: [binding] });
       expect(keymap.diagnostics, binding).toEqual([]);
       expect(keymap.direct.size, binding).toBe(1);
     }
@@ -246,22 +246,22 @@ describe("direct bindings", () => {
 
   it("refuse the chords the browser keeps", () => {
     for (const binding of ["ctrl+w", "ctrl+t", "ctrl+n", "ctrl+tab", "ctrl+shift+n", "ctrl+l", "ctrl+shift+tab", "ctrl+shift+t", "ctrl+shift+w", "cmd+w", "cmd+t", "cmd+shift+n", "cmd+shift+t", "CTRL+w"]) {
-      const keymap = build({ open_switcher: [binding] });
+      const keymap = build({ switch_pane: [binding] });
       expect(codes(keymap.diagnostics), binding).toEqual(["browser-reserved"]);
       expect(keymap.direct.size, binding).toBe(0);
     }
   });
 
   it("let the browser's chords stand behind the prefix", () => {
-    const keymap = build({ open_switcher: ["prefix+ctrl+w"] });
+    const keymap = build({ switch_pane: ["prefix+ctrl+w"] });
     expect(keymap.diagnostics).toEqual([]);
-    expect(keymap.prefixed.get("ctrl+w")).toEqual({ action: "open_switcher" });
+    expect(keymap.prefixed.get("ctrl+w")).toEqual({ action: "switch_pane" });
   });
 
   it("run mod as Cmd on a Mac and Ctrl elsewhere", () => {
-    expect(build({ open_switcher: ["mod+k"] }, true).direct.has("meta+k")).toBe(true);
-    expect(build({ open_switcher: ["mod+k"] }, false).direct.has("ctrl+k")).toBe(true);
-    expect(build({ open_switcher: ["mod+w"] }, true).direct.size).toBe(0);
+    expect(build({ switch_pane: ["mod+k"] }, true).direct.has("meta+k")).toBe(true);
+    expect(build({ switch_pane: ["mod+k"] }, false).direct.has("ctrl+k")).toBe(true);
+    expect(build({ switch_pane: ["mod+w"] }, true).direct.size).toBe(0);
     expect(build({ prefix: ["mod+j"] }, true).prefix).toEqual([chord("j", { meta: true })]);
     expect(build({}, true).mac).toBe(true);
   });
@@ -269,27 +269,27 @@ describe("direct bindings", () => {
 
 describe("a bad binding is dropped with a diagnostic and the file still loads", () => {
   it("reports grammar errors with the action and the text", () => {
-    const keymap = build({ open_switcher: ["prefix+nope"], open_dashboard: ["prefix+m"] });
+    const keymap = build({ switch_pane: ["prefix+nope"], open_dashboard: ["prefix+m"] });
     expect(keymap.diagnostics).toEqual([
-      { action: "open_switcher", binding: "prefix+nope", code: "invalid-binding", message: 'prefix+nope: unknown key "nope"' },
+      { action: "switch_pane", binding: "prefix+nope", code: "invalid-binding", message: 'prefix+nope: unknown key "nope"' },
     ]);
     expect(keymap.prefixed.get("m")).toEqual({ action: "open_dashboard" });
-    expect(keymap.bindings.get("open_switcher")).toEqual([]);
+    expect(keymap.bindings.get("switch_pane")).toEqual([]);
   });
 
   it("keeps a bad binding from bringing the default back", () => {
-    const keymap = build({ open_switcher: ["prefix+nope"] });
+    const keymap = build({ switch_pane: ["prefix+nope"] });
     expect(keymap.prefixed.has("g")).toBe(false);
   });
 
   it("keeps the good bindings of one list", () => {
-    const keymap = build({ open_switcher: ["prefix+nope", "prefix+m"] });
-    expect(keymap.prefixed.get("m")).toEqual({ action: "open_switcher" });
+    const keymap = build({ switch_pane: ["prefix+nope", "prefix+m"] });
+    expect(keymap.prefixed.get("m")).toEqual({ action: "switch_pane" });
     expect(codes(keymap.diagnostics)).toEqual(["invalid-binding"]);
   });
 
   it("refuses a range on an action that takes no number", () => {
-    expect(codes(build({ open_switcher: ["prefix+1..9"] }).diagnostics)).toEqual(["range-not-indexed"]);
+    expect(codes(build({ switch_pane: ["prefix+1..9"] }).diagnostics)).toEqual(["range-not-indexed"]);
   });
 
   it("refuses a plain key on an indexed action", () => {
@@ -306,7 +306,7 @@ describe("a bad binding is dropped with a diagnostic and the file still loads", 
   });
 
   it("reports an action the table does not have", () => {
-    const keymap = build({ nonsense: ["prefix+m", "ctrl+k"], open_switcher: ["prefix+g"] });
+    const keymap = build({ nonsense: ["prefix+m", "ctrl+k"], switch_pane: ["prefix+g"] });
     expect(keymap.diagnostics).toEqual([
       { action: "nonsense", binding: "prefix+m, ctrl+k", code: "unknown-action", message: "nonsense is not an action" },
     ]);
@@ -317,6 +317,6 @@ describe("a bad binding is dropped with a diagnostic and the file still loads", 
     const user: UserShortcuts = JSON.parse('{"constructor":["prefix+m"],"__proto__":["x"]}');
     const keymap = build(user);
     expect(keymap.diagnostics.map((diagnostic) => diagnostic.action)).toEqual(["constructor", "__proto__"]);
-    expect(keymap.prefixed.get("g")).toEqual({ action: "open_switcher" });
+    expect(keymap.prefixed.get("g")).toEqual({ action: "switch_pane" });
   });
 });

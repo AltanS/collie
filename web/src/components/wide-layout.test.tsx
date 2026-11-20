@@ -1131,13 +1131,13 @@ describe("the keyboard", () => {
     await waitFor(() => expect(q(container, "aside")?.dataset.slot).toBe("wide-sidebar"));
     run("toggle_sidebar");
     await waitFor(() => expect(q(container, "aside")?.dataset.slot).toBe("rail"));
-    run("open_switcher");
+    run("switch_pane");
     await waitFor(() => expect(q(container, "aside")?.dataset.slot).toBe("wide-sidebar"));
   });
 
   it("offers nothing on the phone layout, where there is no sidebar or strip", async () => {
     await mount("w1:p1", 599);
-    for (const id of ["toggle_sidebar", "open_switcher", "focus_pane_left", "focus_pane_right", "remove_from_view", "resize_wider"] as const) {
+    for (const id of ["toggle_sidebar", "switch_pane", "focus_pane_left", "focus_pane_right", "remove_from_view", "resize_wider"] as const) {
       expect(run(id), id).toBe(false);
     }
   });
@@ -1218,7 +1218,7 @@ describe("the keyboard", () => {
     posture = "book";
     await mount("w1:p1", 1200);
     expect(run("toggle_sidebar")).toBe(false);
-    expect(run("open_switcher")).toBe(false);
+    expect(run("switch_pane")).toBe(false);
   });
 });
 

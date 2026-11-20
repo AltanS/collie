@@ -42,10 +42,10 @@
 # [keys]
 # prefix = "ctrl+b"
 
-# Show the shortcut list, open Settings, open the switcher, open the dashboard, make a new space.
+# Show the shortcut list, open Settings, switch pane, open the dashboard, make a new space.
 # help = "prefix+?"
 # settings = "prefix+s"
-# open_switcher = "prefix+g"
+# switch_pane = "prefix+g"
 # open_dashboard = "prefix+q"
 # new_space = "prefix+shift+n"
 

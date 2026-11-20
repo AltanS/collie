@@ -29,16 +29,25 @@ const MIRRORS: ReadonlyMap<ActionId, ActionId> = new Map<ActionId, ActionId>([
 ]);
 
 const handlers = new Map<ActionId, ShortcutHandler>();
+const availabilityListeners = new Set<() => void>();
 
 function ownerOf(id: ActionId): ActionId {
   return MIRRORS.get(id) ?? id;
 }
 
+function notifyAvailability(): void {
+  for (const listener of availabilityListeners) listener();
+}
+
 /** Answer `id` until the returned function is called. The newest answer wins. */
 export function registerShortcutHandler(id: ActionId, handler: ShortcutHandler): () => void {
+  const wasAnswered = handlers.has(id);
   handlers.set(id, handler);
+  if (!wasAnswered) notifyAvailability();
   return () => {
-    if (handlers.get(id) === handler) handlers.delete(id);
+    if (handlers.get(id) !== handler) return;
+    handlers.delete(id);
+    notifyAvailability();
   };
 }
 
@@ -53,6 +62,29 @@ export function runShortcutAction(id: ActionId, index?: number): boolean {
 /** Whether any key of the sticky mode has a handler now. A mode with none would only swallow keys. */
 export function hasShortcutTarget(mode: ModeId): boolean {
   return ACTIONS.some((action) => "scope" in action && action.scope === mode && handlers.has(ownerOf(action.id)));
+}
+
+/**
+ * Whether the action would do something on this screen now: a handler answers it, or, for the action
+ * that opens a sticky mode, the mode has a key with a target. A list of actions on a screen with no
+ * keyboard (the phone's actions sheet) hides the rows for which this is false.
+ */
+export function isShortcutActionAvailable(id: ActionId): boolean {
+  const def = ACTIONS.find((action) => action.id === id);
+  if (def === undefined) throw new Error(`No shortcut action ${id}`);
+  if ("opensMode" in def) return hasShortcutTarget(def.opensMode);
+  return handlers.has(ownerOf(id));
+}
+
+/**
+ * Call `listener` when an action gains or loses its handler, so an answer from
+ * {@link isShortcutActionAvailable} may have changed. A handler replaced by a newer one is no change.
+ */
+export function subscribeShortcutAvailability(listener: () => void): () => void {
+  availabilityListeners.add(listener);
+  return () => {
+    availabilityListeners.delete(listener);
+  };
 }
 
 /**
@@ -80,6 +112,8 @@ export function paneKeySink(): PaneKeySink | null {
 
 /** Test seam: nothing registered. */
 export function __resetShortcutRegistry(): void {
+  const wasAnswered = handlers.size > 0;
   handlers.clear();
   sink = null;
+  if (wasAnswered) notifyAvailability();
 }

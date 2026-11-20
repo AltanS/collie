@@ -27,7 +27,7 @@ describe("the Herdr names table", () => {
     expect(HERDR_NAMES.get("new_workspace")).toBe("new_space");
     expect(HERDR_NAMES.get("zoom")).toBe("zen_mode");
     expect(HERDR_NAMES.get("workspace_picker")).toBe("navigate_mode");
-    expect(HERDR_NAMES.get("goto")).toBe("open_switcher");
+    expect(HERDR_NAMES.get("goto")).toBe("switch_pane");
   });
 
   it("says Collie has no equal where the meaning differs", () => {

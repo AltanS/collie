@@ -109,10 +109,10 @@ describe("AgentChat — desktop shortcuts", () => {
     expect(run("find")).toBe(false);
   });
 
-  it("goto opens the switcher, the sheet the pull handle opens", async () => {
+  it("switch_pane opens the pane list, the sheet the pull handle opens", async () => {
     renderChat();
     expect(screen.queryByRole("dialog")).toBeNull();
-    expect(run("open_switcher")).toBe(true);
+    expect(run("switch_pane")).toBe(true);
     expect(await screen.findByRole("dialog")).toBeInTheDocument();
   });
 

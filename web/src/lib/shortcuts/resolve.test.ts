@@ -249,13 +249,13 @@ describe("the layout", () => {
   });
 
   it("matches a ctrl digit by its physical key", () => {
-    const resolver = make({ open_switcher: ["ctrl+1"] });
-    expect(resolver.press(ctrl("٣", { code: "Digit1" }))).toEqual({ type: "run", action: "open_switcher" });
+    const resolver = make({ switch_pane: ["ctrl+1"] });
+    expect(resolver.press(ctrl("٣", { code: "Digit1" }))).toEqual({ type: "run", action: "switch_pane" });
   });
 
   it("matches an alt letter by its physical key on a Mac, where Option types a symbol", () => {
-    const resolver = make({ open_switcher: ["alt+b"] }, true);
-    expect(resolver.press(tap("∫", { code: "KeyB", altKey: true }))).toEqual({ type: "run", action: "open_switcher" });
+    const resolver = make({ switch_pane: ["alt+b"] }, true);
+    expect(resolver.press(tap("∫", { code: "KeyB", altKey: true }))).toEqual({ type: "run", action: "switch_pane" });
   });
 
   it("does not move a key a Latin layout already named", () => {
@@ -264,12 +264,12 @@ describe("the layout", () => {
   });
 
   it("prefers the key over the physical key", () => {
-    const resolver = make({ open_switcher: ["ctrl+x"] });
-    expect(resolver.press(ctrl("x", { code: "KeyB" }))).toEqual({ type: "run", action: "open_switcher" });
+    const resolver = make({ switch_pane: ["ctrl+x"] });
+    expect(resolver.press(ctrl("x", { code: "KeyB" }))).toEqual({ type: "run", action: "switch_pane" });
   });
 
   it("retries the physical key for a ctrl-only or alt-only chord and nothing else", () => {
-    const resolver = make({ open_switcher: ["ctrl+shift+k"], open_dashboard: ["ctrl+alt+j"], zen_mode: ["cmd+k"], find: ["ctrl+k"] });
+    const resolver = make({ switch_pane: ["ctrl+shift+k"], open_dashboard: ["ctrl+alt+j"], zen_mode: ["cmd+k"], find: ["ctrl+k"] });
     expect(resolver.press(ctrl("к", { code: "KeyK", shiftKey: true }))).toEqual(PASS);
     expect(resolver.press(ctrl("о", { code: "KeyJ", altKey: true }))).toEqual(PASS);
     expect(resolver.press(tap("к", { code: "KeyK", metaKey: true }))).toEqual(PASS);
@@ -313,7 +313,7 @@ describe("the layout", () => {
   });
 
   it("never uses the physical key for a bare key in the normal mode, where it is typing", () => {
-    const resolver = make({ open_switcher: ["f3"] });
+    const resolver = make({ switch_pane: ["f3"] });
     expect(resolver.press(tap("с", { code: "KeyC" }))).toEqual(PASS);
     expect(resolver.press(tap("и", { code: "KeyB" }))).toEqual(PASS);
     expect(resolver.mode).toBe("normal");
@@ -328,40 +328,40 @@ describe("the layout", () => {
 
 describe("AltGr", () => {
   it("never fires a ctrl+alt chord on a character typed with AltGr", () => {
-    const resolver = make({ open_switcher: ["ctrl+alt+q"] });
+    const resolver = make({ switch_pane: ["ctrl+alt+q"] });
     // A German keyboard types `@` with AltGr+Q. Windows reports it as ctrl+alt and sets AltGraph.
     expect(resolver.press(tap("@", { code: "KeyQ", ctrlKey: true, altKey: true, altGraph: true }))).toEqual(PASS);
     expect(resolver.mode).toBe("normal");
   });
 
   it("fires the same chord on a US layout, where there is no AltGr", () => {
-    const resolver = make({ open_switcher: ["ctrl+alt+q"] });
-    expect(resolver.press(tap("q", { ctrlKey: true, altKey: true }))).toEqual({ type: "run", action: "open_switcher" });
+    const resolver = make({ switch_pane: ["ctrl+alt+q"] });
+    expect(resolver.press(tap("q", { ctrlKey: true, altKey: true }))).toEqual({ type: "run", action: "switch_pane" });
   });
 
   it("reads an AltGr character as itself behind the prefix", () => {
-    const resolver = make({ open_switcher: ["prefix+@"] });
+    const resolver = make({ switch_pane: ["prefix+@"] });
     resolver.press(ctrl("b"));
-    expect(resolver.press(tap("@", { code: "KeyQ", ctrlKey: true, altKey: true, altGraph: true }))).toEqual({ type: "run", action: "open_switcher" });
+    expect(resolver.press(tap("@", { code: "KeyQ", ctrlKey: true, altKey: true, altGraph: true }))).toEqual({ type: "run", action: "switch_pane" });
   });
 
   it("reads an AltGr character as itself when the system reports only AltGraph", () => {
-    const resolver = make({ open_switcher: ["prefix+@"] });
+    const resolver = make({ switch_pane: ["prefix+@"] });
     resolver.press(ctrl("b"));
-    expect(resolver.press(tap("@", { code: "KeyQ", altKey: true, altGraph: true }))).toEqual({ type: "run", action: "open_switcher" });
+    expect(resolver.press(tap("@", { code: "KeyQ", altKey: true, altGraph: true }))).toEqual({ type: "run", action: "switch_pane" });
   });
 });
 
 describe("a Mac's Cmd", () => {
   it("is the meta key", () => {
-    const resolver = make({ open_switcher: ["cmd+k"] }, true);
-    expect(resolver.press(tap("k", { metaKey: true }))).toEqual({ type: "run", action: "open_switcher" });
+    const resolver = make({ switch_pane: ["cmd+k"] }, true);
+    expect(resolver.press(tap("k", { metaKey: true }))).toEqual({ type: "run", action: "switch_pane" });
     expect(resolver.press(ctrl("k"))).toEqual(PASS);
   });
 
   it("is what mod means", () => {
-    const resolver = make({ open_switcher: ["mod+k"] }, true);
-    expect(resolver.press(tap("k", { metaKey: true }))).toEqual({ type: "run", action: "open_switcher" });
+    const resolver = make({ switch_pane: ["mod+k"] }, true);
+    expect(resolver.press(tap("k", { metaKey: true }))).toEqual({ type: "run", action: "switch_pane" });
   });
 
   it("can be the prefix", () => {

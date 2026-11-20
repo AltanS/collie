@@ -2373,7 +2373,7 @@ export function AgentChat({
   // out), the switcher is the pull handle (the strip's sidebar stands in for it), find is withheld in
   // Chat, and the Chat/Terminal choice is withdrawn on a pane with no screen.
   useShortcutHandler("zen_mode", zen ? () => setZen(false) : zenAvailable && display ? enterZen : undefined);
-  useShortcutHandler("open_switcher", pullHandle === undefined ? undefined : () => setDrawer("switcher"));
+  useShortcutHandler("switch_pane", pullHandle === undefined ? undefined : () => setDrawer("switcher"));
   useShortcutHandler("find", display && !chatShown && !agentView.showing ? openFind : undefined);
   useShortcutHandler("toggle_chat_terminal", gridless ? undefined : () => paneViewChange(chatShown ? "terminal" : "chat"));
   useShortcutHandler("focus_composer", () => composerRef.current?.focusInput());

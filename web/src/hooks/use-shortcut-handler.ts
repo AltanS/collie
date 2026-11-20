@@ -1,7 +1,14 @@
-import { useEffect, useLayoutEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef, useSyncExternalStore } from "react";
 
 import type { ActionId } from "@/lib/shortcuts/actions";
-import { registerPaneKeySink, registerShortcutHandler, type PaneKeySink, type ShortcutHandler } from "@/lib/shortcuts/registry";
+import {
+  isShortcutActionAvailable,
+  registerPaneKeySink,
+  registerShortcutHandler,
+  subscribeShortcutAvailability,
+  type PaneKeySink,
+  type ShortcutHandler,
+} from "@/lib/shortcuts/registry";
 
 /**
  * Answer a desktop shortcut while the calling component is mounted (M108 spec 03). `undefined` means
@@ -19,6 +26,18 @@ export function useShortcutHandler(id: ActionId, handler: ShortcutHandler | unde
     if (!isOffered) return undefined;
     return registerShortcutHandler(id, (index) => latest.current?.(index));
   }, [id, isOffered]);
+}
+
+/**
+ * Whether the action does something on this screen now (lib/shortcuts/registry.ts,
+ * `isShortcutActionAvailable`). It follows the handlers as they mount and unmount.
+ */
+export function useShortcutActionAvailable(id: ActionId): boolean {
+  return useSyncExternalStore(
+    subscribeShortcutAvailability,
+    () => isShortcutActionAvailable(id),
+    () => false,
+  );
 }
 
 /**

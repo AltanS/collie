@@ -69,7 +69,7 @@ is written `prefix+<key>`. A key inside a mode is a bare key.
 | --- | --- | --- | --- | --- |
 | `help` | `prefix+?` | General | Shows the shortcut list. | [Shortcut list](terminology.md#shortcut-list) |
 | `settings` | `prefix+s` | General | Opens Settings. | - |
-| `open_switcher` | `prefix+g` | Navigation | Opens the switcher, the list of spaces. On a large screen that is the sidebar. | [Space](terminology.md#space) |
+| `switch_pane` | `prefix+g` | Navigation | Opens the list of panes to switch to. On a narrow screen that is the Switch pane sheet, on a large screen the sidebar. | [Pane](terminology.md#pane) |
 | `open_dashboard` | `prefix+q` | Navigation | Goes to the dashboard. | - |
 | `new_space` | `prefix+shift+n` | Navigation | Opens the New page, to start a new space. | [Space](terminology.md#space) |
 | `previous_space` | `prefix+k` | Navigation | Goes to the space before this one. | [Space](terminology.md#space) |
@@ -170,7 +170,7 @@ Herdr's name for them. Write the Collie name:
 | --- | --- |
 | `new_workspace` | `new_space` |
 | `workspace_picker` | `navigate_mode` |
-| `goto` | `open_switcher` |
+| `goto` | `switch_pane` |
 | `zoom` | `zen_mode` |
 | `previous_workspace` | `previous_space` |
 | `next_workspace` | `next_space` |

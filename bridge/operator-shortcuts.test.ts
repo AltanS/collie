@@ -53,7 +53,7 @@ describe("validateOperatorShortcuts", () => {
         [keys]
         Zoom = "z"
         "new-tab" = "c"
-        open_switcher = 7
+        switch_pane = 7
         help = ["prefix+?", 3]
         settings = true
         find = { key = "prefix+/" }
@@ -63,7 +63,7 @@ describe("validateOperatorShortcuts", () => {
     );
     expect(out).toEqual([{ open_dashboard: ["prefix+q"] }]);
     expect(logged).toHaveLength(6);
-    for (const name of ["Zoom", "new-tab", "open_switcher", "help", "settings", "find"]) {
+    for (const name of ["Zoom", "new-tab", "switch_pane", "help", "settings", "find"]) {
       expect(logged.some((line) => line.includes(`"${name}"`))).toBe(true);
     }
   });

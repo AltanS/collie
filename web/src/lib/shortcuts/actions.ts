@@ -11,7 +11,7 @@
 //     never behind the prefix. The mode itself is opened by an action with `opensMode`.
 //
 // Every row needs a visible control in the app: a shortcut is a second path, never the only one.
-// Checked on 2026-11-19 against the app: every row has one (the Settings gear, the switcher mark,
+// Checked on 2026-11-19 against the app: every row has one (the Settings gear, the pane list,
 // the header's way home, New, the tab bar's "+", the strip's width presets, zen mode, the sidebar
 // toggle, the Chat/Terminal choice, the composer, the find bar) except two. `reload_config` is left
 // out: nothing in the app re-reads a file by hand, and `shortcuts.toml` reloads live. `help` stays: its
@@ -71,7 +71,7 @@ export const ACTIONS = [
   { id: "help", group: "global", defaults: ["prefix+?"], labelKey: "shortcuts.action.help" },
   { id: "settings", group: "global", defaults: ["prefix+s"], labelKey: "shortcuts.action.settings" },
 
-  { id: "open_switcher", group: "navigation", defaults: ["prefix+g"], labelKey: "shortcuts.action.open_switcher" },
+  { id: "switch_pane", group: "navigation", defaults: ["prefix+g"], labelKey: "shortcuts.action.switch_pane" },
   { id: "open_dashboard", group: "navigation", defaults: ["prefix+q"], labelKey: "shortcuts.action.open_dashboard" },
   { id: "new_space", group: "navigation", defaults: ["prefix+shift+n"], labelKey: "shortcuts.action.new_space" },
   { id: "previous_space", group: "navigation", defaults: ["prefix+k"], labelKey: "shortcuts.action.previous_space" },

@@ -312,7 +312,7 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
   const focusedKey = strip.focus;
   useShortcutHandler("toggle_sidebar", book ? undefined : () => setSidebarOpen(!open));
   // On the strip the sidebar IS the switcher (the pane view draws none), so opening it is "go to".
-  useShortcutHandler("open_switcher", book ? undefined : () => setSidebarOpen(true));
+  useShortcutHandler("switch_pane", book ? undefined : () => setSidebarOpen(true));
   useShortcutHandler("focus_pane_left", () => stepFocus(-1, false));
   useShortcutHandler("focus_pane_right", () => stepFocus(1, false));
   useShortcutHandler("cycle_pane_next", framed ? () => stepFocus(1, true) : undefined);

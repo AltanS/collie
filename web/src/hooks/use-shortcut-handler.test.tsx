@@ -1,9 +1,11 @@
-import { render } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { __resetShortcutRegistry, paneKeySink, runShortcutAction, type ShortcutHandler } from "@/lib/shortcuts/registry";
 
-import { usePaneKeySink, useShortcutHandler } from "./use-shortcut-handler";
+import { registerShortcutHandler } from "@/lib/shortcuts/registry";
+
+import { usePaneKeySink, useShortcutActionAvailable, useShortcutHandler } from "./use-shortcut-handler";
 
 afterEach(() => __resetShortcutRegistry());
 
@@ -39,6 +41,44 @@ describe("useShortcutHandler", () => {
     expect(runShortcutAction("zen_mode")).toBe(true);
     rerender(<Answers handler={undefined} />);
     expect(runShortcutAction("zen_mode")).toBe(false);
+  });
+});
+
+function Available({ id }: { id: "find" | "navigate_mode" }) {
+  return <p data-testid="available">{String(useShortcutActionAvailable(id))}</p>;
+}
+
+describe("useShortcutActionAvailable", () => {
+  it("follows a handler as it registers and goes", () => {
+    render(<Available id="find" />);
+    expect(screen.getByTestId("available")).toHaveTextContent("false");
+    let forget: () => void = () => undefined;
+    act(() => {
+      forget = registerShortcutHandler("find", vi.fn());
+    });
+    expect(screen.getByTestId("available")).toHaveTextContent("true");
+    act(() => forget());
+    expect(screen.getByTestId("available")).toHaveTextContent("false");
+  });
+
+  it("follows a component that answers the action", () => {
+    function Page({ shown }: { shown: boolean }) {
+      useShortcutHandler("find", shown ? vi.fn() : undefined);
+      return <Available id="find" />;
+    }
+    const { rerender } = render(<Page shown={false} />);
+    expect(screen.getByTestId("available")).toHaveTextContent("false");
+    rerender(<Page shown />);
+    expect(screen.getByTestId("available")).toHaveTextContent("true");
+  });
+
+  it("reads a mode opener through its keys", () => {
+    render(<Available id="navigate_mode" />);
+    expect(screen.getByTestId("available")).toHaveTextContent("false");
+    act(() => {
+      registerShortcutHandler("previous_space", vi.fn());
+    });
+    expect(screen.getByTestId("available")).toHaveTextContent("true");
   });
 });
 

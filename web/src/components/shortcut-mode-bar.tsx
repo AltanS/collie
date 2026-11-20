@@ -24,7 +24,7 @@ interface Hint {
 
 // In the order of importance, so a row that runs out of room loses the last ones.
 const PREFIX_HINTS: readonly Hint[] = [
-  { ids: ["open_switcher"], labelKey: "shortcuts.bar.switcher" },
+  { ids: ["switch_pane"], labelKey: "shortcuts.bar.switchPane" },
   { ids: ["new_tab"], labelKey: "shortcuts.bar.newTab" },
   { ids: ["previous_tab", "next_tab"], labelKey: "shortcuts.bar.tabs" },
   { ids: ["switch_tab"], labelKey: "shortcuts.bar.tab" },

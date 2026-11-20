@@ -21,7 +21,7 @@ export const HERDR_NAMES: ReadonlyMap<string, ActionId | null> = new Map<string,
   // The same thing under another name.
   ["new_workspace", "new_space"],
   ["workspace_picker", "navigate_mode"],
-  ["goto", "open_switcher"],
+  ["goto", "switch_pane"],
   ["zoom", "zen_mode"],
   ["previous_workspace", "previous_space"],
   ["next_workspace", "next_space"],
