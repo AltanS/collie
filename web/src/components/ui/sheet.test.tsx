@@ -657,7 +657,10 @@ describe("BottomSheet: the presentation by width class", () => {
         body
       </BottomSheet>,
     );
-    expect(container.firstElementChild).toBeNull();
+    // Only the room probe, which draws nothing: no panel, no scrim, no dialog.
+    expect(container.querySelector("[data-presentation]")).toBeNull();
+    expect(container.querySelector('button[aria-hidden="true"]')).toBeNull();
+    expect(container.firstElementChild?.getAttribute("data-slot")).toBe("sheet-room");
     rerender(
       <BottomSheet open onClose={vi.fn()} title="Switch pane" pull={120} pullFrom={40}>
         body
@@ -728,6 +731,104 @@ describe("BottomSheet: the presentation by width class", () => {
     expect(classes(panel)).not.toContain("max-w-screen-sm");
     // The widest body width, for a content that pages (PagerSheet); a column dialog publishes none.
     expect(panel.style.getPropertyValue("--sheet-body-width")).toContain("1200px");
+  });
+
+  // The website and the design reference draw the app in phone frames in the page: the stage carries a
+  // transform, so the sheet's fixed layer is laid out in a 390px box while the window is 1440px wide.
+  // jsdom lays nothing out, so the probe's box is given here, as the browser would measure it.
+  function roomOf(size: { width: number; height: number }) {
+    const real = Element.prototype.getBoundingClientRect;
+    return vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function (this: Element) {
+      if (this.getAttribute("data-slot") !== "sheet-room") return real.call(this);
+      return DOMRect.fromRect({ x: 0, y: 0, ...size });
+    });
+  }
+
+  it("draws the bottom sheet with its handle in a 390px transformed box, though the window is expanded", () => {
+    const spy = roomOf({ width: 390, height: 844 });
+    try {
+      const { container } = render(
+        <div style={{ transform: "translate(0)", width: 390, height: 844 }}>
+          <BottomSheet open onClose={vi.fn()} title="Pins">
+            body
+          </BottomSheet>
+        </div>,
+      );
+      const panel = panelOf(container);
+      expect(panel.dataset.presentation).toBe("sheet");
+      expect(container.querySelector('[data-slot="sheet-handle"]')).not.toBeNull();
+      expect(classes(panel)).toEqual(expect.arrayContaining(["rounded-t-md", "slide-in-from-bottom"]));
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("still peeks under a pull in a phone frame, where the layer is a bottom sheet", () => {
+    const spy = roomOf({ width: 390, height: 844 });
+    try {
+      const { container } = render(
+        <BottomSheet open={false} onClose={vi.fn()} title="Switch pane" pull={80}>
+          body
+        </BottomSheet>,
+      );
+      const panel = container.querySelector<HTMLElement>('div[style*="translateY"]');
+      expect(panel?.style.transform).toBe("translateY(max(0px, calc(100% - 80px)))");
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("draws the dialog when the layer's room is expanded too, and the sheet when it is only short", () => {
+    const wide = roomOf({ width: 1440, height: 900 });
+    const first = render(
+      <BottomSheet open onClose={vi.fn()} title="Pins">
+        body
+      </BottomSheet>,
+    );
+    expect(panelOf(first.container).dataset.presentation).toBe("dialog");
+    first.unmount();
+    wide.mockRestore();
+    const short = roomOf({ width: 1440, height: 400 });
+    try {
+      const { container } = render(
+        <BottomSheet open onClose={vi.fn()} title="Pins">
+          body
+        </BottomSheet>,
+      );
+      expect(panelOf(container).dataset.presentation).toBe("sheet");
+    } finally {
+      short.mockRestore();
+    }
+  });
+
+  it("keeps a full-screen sheet a bottom sheet on expanded when it asks for one (the tour)", () => {
+    const { container } = render(
+      <BottomSheet open onClose={vi.fn()} title="Tour" presentation="sheet" className="h-(--app-h) max-h-(--app-h) rounded-t-none">
+        body
+      </BottomSheet>,
+    );
+    const panel = panelOf(container);
+    expect(panel.dataset.presentation).toBe("sheet");
+    expect(classes(panel)).toEqual(expect.arrayContaining(["h-(--app-h)", "max-h-(--app-h)", "rounded-t-none"]));
+    expect(container.querySelector('[data-slot="sheet-handle"]')).not.toBeNull();
+  });
+
+  it("drops a bottom sheet's fixed height in a dialog, so it is as tall as its content", () => {
+    const { container } = render(
+      <BottomSheet open onClose={vi.fn()} title="Pins" className={cn("h-[85dvh] max-h-[85dvh]", TALL_SHEET_CLEARANCE)}>
+        body
+      </BottomSheet>,
+    );
+    const panel = panelOf(container);
+    expect(classes(panel)).toContain("h-auto");
+    expect(classes(panel)).not.toContain("h-[85dvh]");
+    width = 390;
+    const phone = render(
+      <BottomSheet open onClose={vi.fn()} title="Pins" className={cn("h-[85dvh] max-h-[85dvh]", TALL_SHEET_CLEARANCE)}>
+        body
+      </BottomSheet>,
+    );
+    expect(classes(panelOf(phone.container))).toEqual(expect.arrayContaining(["h-[85dvh]", "max-h-[85dvh]"]));
   });
 
   it("stays a bottom sheet on medium and compact, and the viewer size changes nothing there", () => {

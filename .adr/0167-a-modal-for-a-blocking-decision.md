@@ -57,7 +57,11 @@ room above an on-screen keyboard. It keeps its title row, its close button and i
 loses the grab handle, the pull down to close and the pull-up peek. It is at most 82% of the window tall
 and its body scrolls inside. `compact` and `medium`, and a foldable folded as a book or held as a
 tabletop, keep the bottom sheet as it was: there the thumb is at the bottom edge, or the middle of the
-window is the hinge. The component keeps its name.
+window is the hinge. So does a sheet whose own fixed layer has no expanded room: the website and the
+design reference draw the app in phone frames in the page, and a frame's transform holds the layer, so
+the sheet measures that box in the layout phase and stays a bottom sheet in a phone. No frame sets
+anything. The tour, a full-screen sheet on purpose, asks for the bottom sheet on every width
+(`presentation="sheet"`). The component keeps its name.
 
 - **One size word.** `size="viewer"` lets a sheet whose content is a picture or a document page
   (`ImageSheet`, `PagerSheet`) stand as wide as its picture, up to `min(92vw, 1200px)`, the picture

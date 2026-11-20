@@ -198,3 +198,29 @@ test.describe("at 390 x 844 the same sheets stay bottom sheets with the handle",
     await expectBottomSheet(page, dialog);
   });
 });
+
+// A PHONE FRAME IN A WIDE WINDOW KEEPS THE BOTTOM SHEET. The design reference (and the website, the same way)
+// draws the app in phone frames in the page, no iframe; a frame's transform makes it the containing block of
+// the sheet's fixed layer. The window is expanded, the layer's room is a phone's, so the sheet is a bottom
+// sheet inside the frame. Card 4 of the Pinned messages section opens its actions sheet at rest.
+test("at 1440 x 900 a sheet in a phone frame of the design reference is a bottom sheet inside the frame", async ({ page }) => {
+  await page.setViewportSize(WIDE);
+  await page.goto("http://127.0.0.1:4176/design.html#pins/pins-block-actions");
+  const card = page.locator('[data-state="pins-block-actions"]');
+  const frame = card.locator("[data-pg-frame]");
+  const dialog = frame.getByRole("dialog");
+  await expect(dialog).toBeVisible({ timeout: 30_000 });
+  await expectBottomSheetIn(dialog, await box(frame));
+});
+
+/** A bottom sheet with its handle, its panel standing on the frame's bottom edge and inside its sides. */
+async function expectBottomSheetIn(dialog: Locator, frame: { x: number; y: number; width: number; height: number }) {
+  const panel = panelOf(dialog);
+  await expect(panel).toHaveAttribute("data-presentation", "sheet");
+  await expect(handleOf(dialog)).toHaveCount(1);
+  await expect.poll(() => panel.evaluate((el) => el.getAnimations().length)).toBe(0);
+  const b = await box(panel);
+  expect(b.x).toBeGreaterThanOrEqual(frame.x - 1);
+  expect(b.x + b.width).toBeLessThanOrEqual(frame.x + frame.width + 1);
+  expect(Math.abs(b.y + b.height - (frame.y + frame.height))).toBeLessThanOrEqual(2);
+}

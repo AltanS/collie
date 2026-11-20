@@ -396,3 +396,78 @@ describe("ImageEditor sheet shell and native canvas tools", () => {
     expect(panelOf(dialog).style.transform).toBe("translateY(70px)");
   });
 });
+
+// ON A WIDE WINDOW THE EDITOR IS A VIEWER DIALOG (ui/sheet.tsx, `size="viewer"`): wider than the phone's
+// column, centred. The canvas maps a pointer through its own live box, so a crop drag and a stroke follow
+// the pointer at whatever size and place the dialog gives it. The box is put far from the origin here, at
+// a size unlike the canvas's own pixels, as a centred 1440px dialog would place it.
+describe("ImageEditor in a wide window", () => {
+  let ctx: CanvasRenderingContext2D;
+  beforeEach(() => {
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:editor");
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+    ctx = makeMock2dContext();
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockImplementation(() => ctx);
+    vi.stubGlobal(
+      "matchMedia",
+      (query: string) =>
+        // SAFETY: a stand-in for the browser's MediaQueryList with every member the app reads; a 1440 x 900 window, flat.
+        ({
+          matches: !query.includes("viewport-segments") && /min-width/.test(query),
+          media: query,
+          onchange: null,
+          addEventListener: () => {},
+          removeEventListener: () => {},
+          addListener: () => {},
+          removeListener: () => {},
+          dispatchEvent: () => false,
+        }) as MediaQueryList,
+    );
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  function openOnBox() {
+    render(<ImageEditor file={new File(["raw"], "shot.png", { type: "image/png" })} onConfirm={vi.fn()} onCancel={vi.fn()} onFail={vi.fn()} onReject={vi.fn()} />);
+    const dialog = screen.getByRole("dialog", { name: "Edit image" });
+    loadEditorImage(dialog, 200, 100);
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    const canvas = dialog.querySelector<HTMLCanvasElement>("[data-slot='image-editor-canvas']");
+    if (canvas === null) throw new Error("canvas missing");
+    vi.spyOn(canvas, "getBoundingClientRect").mockReturnValue(DOMRect.fromRect({ x: 300, y: 200, width: 800, height: 400 }));
+    return { dialog, canvas };
+  }
+  /** The client point at a share of the canvas's box. */
+  const at = (fx: number, fy: number) => ({ clientX: 300 + fx * 800, clientY: 200 + fy * 400 });
+
+  it("opens as a viewer dialog with no pull", () => {
+    const { dialog } = openOnBox();
+    const panel = dialog.querySelector<HTMLElement>("[data-presentation]")!;
+    expect(panel.dataset.presentation).toBe("dialog");
+    expect(panel.className).toContain("max-w-[min(92vw,1200px)]");
+    expect(dialog.querySelector('[data-slot="sheet-handle"]')).toBeNull();
+  });
+
+  it("a stroke lands where the pointer went on the canvas", () => {
+    const { canvas } = openOnBox();
+    fireEvent.click(screen.getByRole("radio", { name: "Draw" }));
+    fireEvent.pointerDown(canvas, { button: 0, pointerId: 1, ...at(0.1, 0.2) });
+    fireEvent.pointerMove(canvas, { pointerId: 1, ...at(0.5, 0.6) });
+    fireEvent.pointerUp(canvas, { pointerId: 1, ...at(0.5, 0.6) });
+    // The canvas is 200 x 100 of its own: a share of the box is the same share of its pixels.
+    expect(ctx.moveTo).toHaveBeenCalledWith(20, 20);
+    expect(ctx.lineTo).toHaveBeenCalledWith(100, 60);
+  });
+
+  it("a crop drag draws its box where the pointer went on the canvas", () => {
+    const { canvas } = openOnBox();
+    // The crop starts as the whole picture; its top-left handle is dragged in.
+    fireEvent.pointerDown(canvas, { button: 0, pointerId: 1, ...at(0, 0) });
+    fireEvent.pointerMove(canvas, { pointerId: 1, ...at(0.25, 0.3) });
+    fireEvent.pointerUp(canvas, { pointerId: 1, ...at(0.25, 0.3) });
+    // The crop's frame, among the corner handles' small boxes drawn after it.
+    expect(ctx.strokeRect).toHaveBeenCalledWith(50, 30, 150, 70);
+  });
+});

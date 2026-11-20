@@ -8,6 +8,8 @@ import { t as translate } from "@/lib/i18n";
 import { useFoldPosture } from "@/hooks/use-fold-posture";
 import { useLocale } from "@/hooks/use-locale";
 import { useWidthClass } from "@/hooks/use-width-class";
+import { hasResizeObserver } from "@/lib/env";
+import { EXPANDED_MIN_PX, WIDE_MIN_HEIGHT_PX } from "@/lib/wide-layout";
 
 // Minimal modal focus handling (no deps, no full trap): on open move focus into the panel so
 // keyboard / screen-reader users land inside the dialog; on close restore focus to whatever was
@@ -110,16 +112,54 @@ const VIEWER_BODY_W = `calc(${VIEWER_MAX_W} - 2rem - 2px)`;
 
 /**
  * How the sheet is drawn: from the bottom edge, or as a centred dialog. A dialog on the `expanded` width
- * class with the screen flat; a bottom sheet on `compact` and `medium`, where the thumb is at the bottom
- * edge, and on a foldable folded as a book or held as a tabletop, where the middle of the window is the
- * hinge. Read only while a sheet is up (`SheetLayer`), so a closed sheet listens to nothing.
+ * class with the screen flat, when the sheet's own layer has an expanded room too; a bottom sheet on
+ * `compact` and `medium`, where the thumb is at the bottom edge, on a foldable folded as a book or held as
+ * a tabletop, where the middle of the window is the hinge, and in a phone-size frame. Read only while a
+ * sheet is up (`SheetLayer`), so a closed sheet listens to nothing.
  */
 export type SheetPresentation = "sheet" | "dialog";
 
-function useSheetPresentation(): SheetPresentation {
+/**
+ * Whether a box the size of the sheet's fixed layer is an expanded room: at least `EXPANDED_MIN_PX` wide
+ * and `WIDE_MIN_HEIGHT_PX` tall. A box with no size at all has no layout to read (nothing laid out, or a
+ * test's DOM), and then the window decides alone.
+ */
+export function isExpandedRoom(room: { width: number; height: number }): boolean {
+  if (room.width === 0 && room.height === 0) return true;
+  return room.width >= EXPANDED_MIN_PX && room.height >= WIDE_MIN_HEIGHT_PX;
+}
+
+/**
+ * THE ROOM IS THE LAYER'S, NOT ONLY THE WINDOW'S. The website and the design reference draw the app's
+ * screens in phone frames in the page, no iframe, and a frame's stage carries a transform, so a `fixed`
+ * layer inside it is laid out in the stage. The width class still comes from the window, so a phone-size
+ * demo on a desktop would draw a dialog inside the phone. The probe is a `fixed inset-0` box in the
+ * layer: its box is the layer's containing block, the window or the stage, read in the layout phase
+ * before the first paint, and again when it resizes. No frame has to set anything.
+ */
+function useLayerRoom(probe: React.RefObject<HTMLElement | null>): boolean {
+  const [roomy, setRoomy] = React.useState(true);
+  React.useLayoutEffect(() => {
+    const el = probe.current;
+    if (el === null) return;
+    const read = () => setRoomy(isExpandedRoom(el.getBoundingClientRect()));
+    read();
+    const resizes = hasResizeObserver() ? new ResizeObserver(read) : null;
+    resizes?.observe(el);
+    window.addEventListener("resize", read);
+    return () => {
+      resizes?.disconnect();
+      window.removeEventListener("resize", read);
+    };
+  }, [probe]);
+  return roomy;
+}
+
+function useSheetPresentation(probe: React.RefObject<HTMLElement | null>, only: "auto" | "sheet"): SheetPresentation {
   const widthClass = useWidthClass();
   const posture = useFoldPosture();
-  return widthClass === "expanded" && posture === "flat" ? "dialog" : "sheet";
+  const roomy = useLayerRoom(probe);
+  return only === "auto" && widthClass === "expanded" && posture === "flat" && roomy ? "dialog" : "sheet";
 }
 
 // A minimal bottom sheet — no Radix, no portals, no extra deps. Renders nothing when closed.
@@ -181,6 +221,12 @@ interface BottomSheetProps {
    * `--sheet-body-width`. A bottom sheet ignores it.
    */
   size?: "column" | "viewer";
+  /**
+   * `auto` (the default): a centred dialog on a wide window, a bottom sheet elsewhere. `sheet`: a bottom
+   * sheet on every width class, for a sheet that is the whole screen on purpose while it is up (the tour,
+   * `tour-sheet.tsx`, its one caller). Nothing else passes it.
+   */
+  presentation?: "auto" | "sheet";
 }
 
 export function BottomSheet(props: BottomSheetProps) {
@@ -201,13 +247,15 @@ function SheetLayer({
   dragToDismiss = true,
   action,
   size = "column",
+  presentation: only = "auto",
 }: BottomSheetProps) {
   useLocale();
   const panelRef = React.useRef<HTMLDivElement>(null);
   const drag = React.useRef({ startY: 0, atTop: false, engaged: false, dy: 0 });
   const [dragY, setDragY] = React.useState(0);
   const titleId = React.useId();
-  const presentation = useSheetPresentation();
+  const probeRef = React.useRef<HTMLSpanElement>(null);
+  const presentation = useSheetPresentation(probeRef, only);
   const dialog = presentation === "dialog";
   const room = useModalRoom("center");
   // A peek never opened, so it must never claim focus or block the page behind it from the a11y
@@ -339,7 +387,11 @@ function SheetLayer({
   openedFromPeek.current = open && (openedFromPeek.current || continuingFromPeek);
   const skipEntrance = openedFromPeek.current;
 
-  if (!open && !peeking) return null;
+  // The room probe (`useLayerRoom`): a box the size of this layer's containing block, drawn nothing.
+  const probe = <span ref={probeRef} aria-hidden="true" data-slot="sheet-room" className="pointer-events-none invisible fixed inset-0" />;
+  // A pull the window's class turned down (a dialog never peeks) still measures the room: in a phone-size
+  // frame the layer is a bottom sheet after all, and the peek follows the finger there.
+  if (!open && !peeking) return pull > 0 ? probe : null;
 
   // Optional chaining is the jsdom guard here, not a `typeof` check: `matchMedia` is simply absent
   // on `window` in a test environment that hasn't polyfilled it, same as `navigator.vibrate` is
@@ -385,6 +437,7 @@ function SheetLayer({
       aria-hidden={peeking ? "true" : undefined}
       style={peeking ? { pointerEvents: "none" } : dialog ? room : undefined}
     >
+      {probe}
       {/* Backdrop: still dismisses on tap, but hidden from assistive tech — the ✕ in the header is
           the single accessible "Close", so the dialog isn't announced with a giant duplicate. Dismiss
           fires only when the pointer went DOWN on the backdrop too (see backdropArmed above).
@@ -495,8 +548,9 @@ function SheetLayer({
 /**
  * The panel of a sheet drawn as a dialog: the modal's look and entrance (none under reduced motion), the
  * body scrolling inside. The caller's `className` comes before the dialog's own corner and bottom padding,
- * so a bottom sheet's square top (`rounded-t-none`) or its safe-area clearance (`TALL_SHEET_CLEARANCE`)
- * gives way: a dialog has four round corners and stands clear of the bottom edge. Its height cap is the
+ * so a bottom sheet's square top (`rounded-t-none`), its safe-area clearance (`TALL_SHEET_CLEARANCE`) or
+ * its fixed height (`h-[85dvh]`, the key board editor and Pins) gives way: a dialog has four round
+ * corners, stands clear of the bottom edge and is as tall as its content. Its height cap is the
  * inline `DIALOG_MAX_H`, above any caller's `max-h-*`.
  */
 function dialogPanelClass(size: "column" | "viewer", className: string | undefined): string {
@@ -507,6 +561,6 @@ function dialogPanelClass(size: "column" | "viewer", className: string | undefin
     "motion-reduce:animate-none",
     size === "viewer" ? "w-fit min-w-[min(40rem,100%)] max-w-[min(92vw,1200px)]" : "w-full max-w-screen-sm",
     className,
-    "rounded-md pb-1",
+    "h-auto rounded-md pb-1",
   );
 }
