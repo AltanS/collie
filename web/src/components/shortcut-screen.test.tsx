@@ -128,7 +128,8 @@ describe("the shortcut list in the screen context", () => {
     const section = found(notHere(), "Not on this screen section");
     expect(within(section).getByText("Not on this screen")).toBeInTheDocument();
     expect(document.querySelectorAll('[data-slot="shortcut-list-not-here"]')).toHaveLength(1);
-    const available = DASHBOARD.length + 1;
+    // The help door answers `help` and the Actions palette's `open_shortcuts` on every screen (ADR 0165).
+    const available = DASHBOARD.length + 2;
     expect(section.querySelectorAll("li")).toHaveLength(ACTIONS.length - available);
     const row = within(section).getByText("Next tab").closest("li");
     expect(found(row, "row").querySelector("kbd")).not.toBeNull();
@@ -149,7 +150,9 @@ describe("the shortcut list in the screen context", () => {
 
   it("finds an action that works here in the groups, and the section goes when nothing is left over", async () => {
     openOnScreen(DASHBOARD);
-    await userEvent.type(screen.getByRole("textbox", { name: "Filter shortcuts" }), "settings");
+    // "shortcut" names only rows the help door answers here ("settings" also names the pane's settings
+    // since ADR 0165, which does nothing on the dashboard).
+    await userEvent.type(screen.getByRole("textbox", { name: "Filter shortcuts" }), "shortcut");
     expect(notHere()).toBeNull();
     expect(within(sheet()).getByRole("region", { name: "General" })).toBeInTheDocument();
   });

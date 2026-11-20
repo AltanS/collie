@@ -97,7 +97,8 @@ import { PaneMeta } from "@/components/pane-meta";
 import { BranchLabel } from "@/components/ui/branch-label";
 import { paneGitHead } from "@/lib/git-head";
 import { CacheSheet } from "@/components/cache-sheet";
-import { PaneActionsSheet } from "@/components/pane-actions-sheet";
+import { PaneActionsSheet, togglePanePin } from "@/components/pane-actions-sheet";
+import { openActionsPalette } from "@/lib/actions-palette/state";
 import { CardWaitingCtx } from "@/components/chat-cards";
 import { chatStatusKey, SavedCopyRow, SessionStream, sharedFolderLine, type QueuedCardAction, type QueuedCardResult } from "@/components/session-stream";
 import { readingRefusal } from "@/components/send-notice";
@@ -161,7 +162,7 @@ import { openReport, signalTrouble, unreadDialogReport } from "@/lib/report/stor
 import { unreadDialogScreen } from "@/lib/report/screen";
 import { answerRouteFor, cardsOnOlderMember, holdAnswerRouteFor, textRouteFor } from "@/lib/send-path";
 import { useSessionCard, wearsExperimental } from "@/lib/session-cards";
-import { usePins } from "@/lib/pins";
+import { pinMatcher, usePins } from "@/lib/pins";
 import { paneFilesDir } from "@/lib/file-paths";
 import { changeLoginPath, changesPath, filesPath, historyPath, trickSessionPath, newPath, panePath, spacePath } from "@/lib/nav";
 import { beltMarksOf, beltTapHandlers } from "@/components/belt-trick-mark";
@@ -490,6 +491,10 @@ export function AgentChat({
   // Whether the pane's own multiplexer can rename it: gates the Rename row in Pane settings, the way
   // the ⋮ sheet gates its own (components/pane-actions-sheet.tsx asks the same question).
   const canRenamePane = useMuxCapability("renamePane", { host: agent?.host, session: scope?.session });
+  // …and close it, for the Actions palette's Close pane, which opens the ⋮ sheet on that row (ADR 0165).
+  const canClosePane = useMuxCapability("closePane", { host: agent?.host, session: scope?.session });
+  // Whether this machine opens a tab by hand, for the palette's New shell (the tab bar "+" asks the same).
+  const canCreateTab = useMuxCapability("createTab", scope);
   /**
    * The ONE reason this pane currently refuses a write, or undefined when it accepts them. Every
    * write handler below starts with it, so there is a single place that decides both which gates
@@ -548,8 +553,13 @@ export function AgentChat({
   // flag and not a drawer value, because the drawer is which sheet and this is how it opens. It
   // lasts until the ⋮ sheet is no longer the open one, so a later ⋮ tap opens the list as ever.
   const [renameOnOpen, setRenameOnOpen] = useState(false);
+  // The Actions palette's Close pane opens the ⋮ sheet with its Close row armed (ADR 0165), by the same
+  // kind of flag, for the same reason, and for as long.
+  const [armCloseOnOpen, setArmCloseOnOpen] = useState(false);
   useEffect(() => {
-    if (drawer !== "paneMenu") setRenameOnOpen(false);
+    if (drawer === "paneMenu") return;
+    setRenameOnOpen(false);
+    setArmCloseOnOpen(false);
   }, [drawer]);
 
   // ── ZEN MODE — chrome-free, mirror-only viewing ───────────────────────────────
@@ -762,8 +772,10 @@ export function AgentChat({
     !inStrip && (agents.length + shellPanes.length > 0 || launchers.length > 0)
       ? {
           ref: sheetPull.ref,
-          onClick: () => setDrawer("switcher"),
-          label: t(elsewhereNeedsYou ? "chat.switcher.ariaNeedsYou" : "chat.switcher.aria"),
+          // The pill opens the Actions palette (ADR 0165); the drag up on the belt, and the pane-nav handle's,
+          // still bring up the Switch pane sheet.
+          onClick: openActionsPalette,
+          label: t(elsewhereNeedsYou ? "actions.open.ariaNeedsYou" : "actions.open.aria"),
           alert: elsewhereNeedsYou,
         }
       : undefined;
@@ -2377,6 +2389,51 @@ export function AgentChat({
   useShortcutHandler("find", display && !chatShown && !agentView.showing ? openFind : undefined);
   useShortcutHandler("toggle_chat_terminal", gridless ? undefined : () => paneViewChange(chatShown ? "terminal" : "chat"));
   useShortcutHandler("focus_composer", () => composerRef.current?.focusInput());
+
+  // ── The Actions palette's commands (ADR 0165): each runs what the pane menu's row, or the belt's
+  // control, already runs, and is offered on exactly the terms that row is drawn on.
+  const paneWrites = agent !== undefined && !readOnly && !savedCopyWrites && hostBlock === undefined;
+  useShortcutHandler("copy_output", display && canCopyOutput ? () => void copyOutput() : undefined);
+  useShortcutHandler("conversation_history", !gridless && historyAvailable ? () => nav.down(historyPath(paneId, scope)) : undefined);
+  useShortcutHandler(
+    "walky_messages",
+    messagesSheet
+      ? () => {
+          setWalkyFocus(null);
+          setDrawer("messages");
+        }
+      : undefined,
+  );
+  useShortcutHandler("pane_settings", gridless && !programReceipts ? undefined : () => setDrawer("paneSettings"));
+  useShortcutHandler("pin_pane", agent !== undefined && !gridless ? () => togglePanePin({ pane: agent, pinned: pinMatcher(pins)(agent), herd }) : undefined);
+  useShortcutHandler(
+    "rename_pane",
+    paneWrites && canRenamePane.capable
+      ? () => {
+          setRenameOnOpen(true);
+          setDrawer("paneMenu");
+        }
+      : undefined,
+  );
+  useShortcutHandler(
+    "close_pane",
+    paneWrites && canClosePane.capable
+      ? () => {
+          setArmCloseOnOpen(true);
+          setDrawer("paneMenu");
+        }
+      : undefined,
+  );
+  useShortcutHandler("open_files", agent?.cwd ? () => nav.down(filesEntryPath) : undefined);
+  // New shell is the tab bar "+"'s plain create, a shell in a new tab of this space ("Just a shell").
+  useShortcutHandler(
+    "new_shell",
+    agent !== undefined && !gridless && canCreateTab.capable && !creatingTab.has(tabCreateKey(agent.workspaceId, scope))
+      ? () => void spaceActions.newTab(agent.workspaceId)
+      : undefined,
+  );
+  // New agent is the Switch pane sheet's New button: the New page, as the dashboard's.
+  useShortcutHandler("new_agent", newEntry.offered && rootData?.stale !== true ? newEntry.open : undefined);
 
   // A trick this session proposed (package I): Collie's own card, last in whichever body is on screen (Chat, the
   // mirror, or an agent view standing in for both), in that body's own scroll like a message (session-trick-card.tsx), never a band of its own. Opening its code brings
@@ -4050,6 +4107,7 @@ export function AgentChat({
           // A durable conversation: the writes only, and Close names what it closes.
           conversation={gridless}
           openInRename={renameOnOpen}
+          armCloseOnOpen={armCloseOnOpen}
           // THE BODY SWITCH. `chatNote` is why this pane keeps the terminal when it does. One
           // standing per-device value, written here and nowhere else.
           // No Terminal row on a pane with no screen: Chat is its only view.

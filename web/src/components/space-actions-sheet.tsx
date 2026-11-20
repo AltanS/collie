@@ -28,6 +28,8 @@ interface SpaceActionsSheetProps {
   savedCopy?: boolean;
   /** Fired after a successful rename so the parent can revalidate (the name lands on the next poll). */
   onRenamed: () => void;
+  /** Open on the rename view: the Actions palette's Rename space (ADR 0165). */
+  openInRename?: boolean;
 }
 
 type Mode = "actions" | "rename";
@@ -46,6 +48,7 @@ export function SpaceActionsSheet({
   readOnly = false,
   savedCopy = false,
   onRenamed,
+  openInRename = false,
 }: SpaceActionsSheetProps) {
   useLocale();
   const [mode, setMode] = useState<Mode>("actions");
@@ -56,7 +59,7 @@ export function SpaceActionsSheet({
   // Reset to the action list, and reprefill the name, whenever the sheet opens on a (new) space and whenever it
   // closes. Not keyed on the live label, so a background poll landing while you type cannot clobber your edit.
   useEffect(() => {
-    setMode("actions");
+    setMode(open && openInRename ? "rename" : "actions");
     if (!open) return;
     setLabel(space?.label ?? "");
     // eslint-disable-next-line react-hooks/exhaustive-deps

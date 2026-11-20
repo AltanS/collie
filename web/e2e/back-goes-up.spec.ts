@@ -6,6 +6,7 @@ import { fixtureSnapshot } from "@/test/handlers";
 
 import { installApiStub } from "./fixtures/api";
 import { bottomBack, headerBack } from "./fixtures/back";
+import { actionsButton, openSwitcher } from "./fixtures/actions";
 
 // BACK GOES UP ONE LEVEL (ADR 0067). On an iPhone the edge swipe IS browser history back, so every
 // case here drives `page.goBack()` as the swipe and asserts it lands one level up: never on the
@@ -46,7 +47,7 @@ test("A: dashboard, pane A, switcher to pane B, then back is the dashboard", asy
   await paneRow(page, "claude").click();
   await landed(page, PANE_A);
 
-  await page.getByRole("button", { name: en["chat.switcher.aria"] }).click();
+  await openSwitcher(page);
   // The sheet's row names its status ("codex logo working codex", #696), so the word is optional.
   await page.getByRole("dialog", { name: en["chat.switcher.aria"] }).getByRole("button", { name: /^codex logo (?:.+ )?codex/u }).click();
   await landed(page, PANE_B);
@@ -148,12 +149,12 @@ test("E: a cold deep link to a pane, then back is the dashboard", async ({ page 
   // The installed app on iOS: `navigator.standalone`. A notification tap or a relaunch lands here.
   await page.addInitScript(() => Object.defineProperty(navigator, "standalone", { value: true }));
   await page.goto(PANE_A);
-  await expect(page.getByRole("button", { name: en["chat.switcher.aria"] })).toBeVisible();
+  await expect(actionsButton(page)).toBeVisible();
 
   // A reload on the deep page does not seed a second time.
   const before = await page.evaluate(() => history.length);
   await page.reload();
-  await expect(page.getByRole("button", { name: en["chat.switcher.aria"] })).toBeVisible();
+  await expect(actionsButton(page)).toBeVisible();
   expect(await page.evaluate(() => history.length)).toBe(before);
 
   await page.goBack();
@@ -164,7 +165,7 @@ test("E: a cold deep link to a pane, then back is the dashboard", async ({ page 
 test("E2: a deep link in a plain browser tab gets no seeded history", async ({ page }) => {
   // A desktop deep link opened in a new tab: not the installed app, no notification marker.
   await page.goto(PANE_A);
-  await expect(page.getByRole("button", { name: en["chat.switcher.aria"] })).toBeVisible();
+  await expect(actionsButton(page)).toBeVisible();
   // The router's own stamp at index 0: nothing was put behind the entry.
   expect(await page.evaluate(() => JSON.stringify(history.state))).toContain('"idx":0');
 });
@@ -172,7 +173,7 @@ test("E2: a deep link in a plain browser tab gets no seeded history", async ({ p
 test("E3: a window a notification opened is seeded, and loses its marker", async ({ page }) => {
   // `openWindow` in the service worker adds `from=notification` (lib/notification-open).
   await page.goto(`${PANE_A}?from=notification`);
-  await expect(page.getByRole("button", { name: en["chat.switcher.aria"] })).toBeVisible();
+  await expect(actionsButton(page)).toBeVisible();
   await expect.poll(() => page.evaluate(() => location.search)).toBe("");
   await page.goBack();
   await landed(page, "/");

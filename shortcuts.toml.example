@@ -45,10 +45,11 @@
 # [keys]
 # prefix = "ctrl+b"
 
-# Show the shortcut list, open Settings, switch pane, open the dashboard, make a new space.
+# Show the shortcut list, open Settings, open Actions (the commands of this screen and the panes to
+# go to, in one list you search), open the dashboard, make a new space.
 # help = "prefix+?"
 # settings = "prefix+s"
-# switch_pane = "prefix+g"
+# open_actions = "prefix+g"
 # open_dashboard = "prefix+q"
 # new_space = "prefix+shift+n"
 
@@ -89,6 +90,26 @@
 # toggle_chat_terminal = "prefix+t"
 # focus_composer = "prefix+i"
 # find = "prefix+/"
+
+# Actions with no key of their own. Each is a row of Actions, so you can run it by its name there,
+# and you can give it a key here. `close_pane` and `close_tab` open the menu with Close ready: one
+# more tap closes.
+# switch_pane = []
+# open_shortcuts = []
+# open_crew = []
+# open_files = []
+# new_agent = []
+# new_shell = []
+# rename_space = []
+# rename_tab = []
+# close_tab = []
+# rename_pane = []
+# pin_pane = []
+# pane_settings = []
+# close_pane = []
+# copy_output = []
+# conversation_history = []
+# walky_messages = []
 
 # One action can have several bindings. Write a list, for example `["prefix+c", "ctrl+alt+c"]`.
 # An unbound action has an empty value: `""` or `[]`.

@@ -3,6 +3,7 @@ import { expect, test, type BrowserContext, type Page } from "@playwright/test";
 import { en } from "@/lib/i18n/messages/en";
 
 import { fill, installApiStub } from "./fixtures/api";
+import { actionsButton, openSwitcher } from "./fixtures/actions";
 
 // THE OWNER'S FIVE TILES, in a real browser. «при закрытии и открытии браузера оставались те же
 // проекты в которых я работал до закрытия браузера». One browser context is one browser: its pages
@@ -81,7 +82,7 @@ const STATUS_WORDS = [
 /** A row of the switcher or the wide sidebar: the mark on its logo may say the pane's status, so the name is "codex logo working codex ...". */
 const sidebarRow = (agent: Agent) => ({ name: new RegExp(`^${agent} logo (?:(?:${STATUS_WORDS}) )?${agent}`, "u") });
 
-const paneSwitcher = (page: Page) => page.getByRole("button", { name: en["chat.switcher.aria"] });
+const paneSwitcher = (page: Page) => actionsButton(page);
 
 /** The wide layout has a pane rail instead of the switcher, and no phone header. */
 const isWide = (page: Page) => (page.viewportSize()?.width ?? 0) >= 1024;
@@ -121,7 +122,7 @@ async function moveToPane(page: Page, agent: Agent) {
     await page.getByRole("complementary", { name: en["wide.sidebar.label"] }).getByRole("button", row).click();
     return;
   }
-  await paneSwitcher(page).click();
+  await openSwitcher(page);
   await page.getByRole("dialog", { name: en["chat.switcher.aria"] }).getByRole("button", row).click();
 }
 
@@ -223,7 +224,7 @@ test("@oracle:requirement @req:SLOT-4 a restored tile keeps storing: the next re
 
   const restored = await openTab(context, "/slot/1");
   await paneShown(restored, PANE_A);
-  await paneSwitcher(restored).click();
+  await openSwitcher(restored);
   await restored.getByRole("dialog", { name: en["chat.switcher.aria"] }).getByRole("button", sidebarRow("codex")).click();
   await paneShown(restored, PANE_B);
   await slotRecorded(restored, 1, PANE_B);

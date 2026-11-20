@@ -6,6 +6,7 @@ import { fixtureAgents, fixtureChanges, fixtureCleanChanges, fixtureCommit } fro
 
 import { installApiStub, seedChangesOnly } from "./fixtures/api";
 import { expectBottomBack, headerBack } from "./fixtures/back";
+import { actionsButton } from "./fixtures/actions";
 
 // THE CHANGES VIEW ON A SMALL PHONE (ADR 0065). The list and one file's diff at 375x812, the
 // narrowest iPhone still sold, in a real engine: jsdom cannot say whether a long diff line wraps or
@@ -72,7 +73,7 @@ test("the belt's Files pill opens Files, the list groups by repo, and a diff wra
   await page.goto(`/pane/${encodeURIComponent(PANE.paneId)}`);
   const pill = page.getByRole("button", { name: en["chat.changes.label"] });
   const zoom = page.getByRole("button", { name: en["zoom.open"] });
-  const switcher = page.getByRole("button", { name: en["chat.switcher.aria"] });
+  const switcher = actionsButton(page);
   await expect(pill).toBeVisible();
   const [p, z, s] = [(await pill.boundingBox())!, (await zoom.boundingBox())!, (await switcher.boundingBox())!];
   // Same box as the mark, on the same line: 37px square at the belt's default 1.15 scale (it was

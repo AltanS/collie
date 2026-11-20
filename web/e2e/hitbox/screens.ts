@@ -3,6 +3,7 @@ import type { Page } from "@playwright/test";
 import { partKey, type MenuRow, type WireTrickInfo, type WireTrickPart } from "@/lib/tricks/schema";
 import { fixtureKiroChat, fixtureKiroHistory, fixtureKiroSnapshot, fixtureLaunchersWithAgents, KIRO_PANE_ID } from "@/test/handlers";
 
+import { openSwitcher } from "../fixtures/actions";
 import { installApiStub, installCrewWorld, installPaneWorld, paneCapture } from "../fixtures/api";
 import { finger, press } from "./touch";
 import { installWorld, type SnapshotControl } from "./world";
@@ -64,7 +65,7 @@ export const SCREENS: ScreenRecipe[] = [
   { id: "session-terminal", group: "Session", title: "Session, Terminal view", world: "plain", path: "/pane/w2%3Ap1", prefs: { paneView: "terminal" } },
   { id: "session-agent-view", group: "Session", title: "Session, agent view", world: "kiro", path: `${PANE}`, prefs: { paneView: "view" } },
   { id: "session-actions-sheet", group: "Session", title: "Session sheet with trick groups", world: "kiro", path: PANE, open: (p) => tapByName(p, "Pane actions") },
-  { id: "sheet-pane-switcher", group: "Session", title: "Switch pane sheet, with its New button", world: "kiro", path: PANE, open: (p) => tapByName(p, "Switch pane") },
+  { id: "sheet-pane-switcher", group: "Session", title: "Switch pane sheet, with its New button", world: "kiro", path: PANE, open: (p) => openSwitcher(p) },
   { id: "session-pane-settings", group: "Session", title: "Pane settings (name line)", world: "kiro", path: PANE, open: (p) => tapByName(p, /^Pane settings for /u) },
   { id: "session-history", group: "Session", title: "Session History", world: "kiro", path: `${PANE}/history` },
   { id: "session-zoom", group: "Session", title: "Zoomed output", world: "plain", path: "/pane/w2%3Ap1/zoom", prefs: { paneView: "terminal" }, still: true, open: (p) => p.waitForTimeout(2500) },

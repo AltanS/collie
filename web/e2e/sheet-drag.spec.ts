@@ -4,6 +4,7 @@ import { en } from "@/lib/i18n/messages/en";
 
 import { installApiStub } from "./fixtures/api";
 import { keepPhoneLayout } from "./fixtures/layout";
+import { openSwitcher } from "./fixtures/actions";
 
 // A SLOW DRAG DOWN ON THE OPEN SWITCH PANE SHEET FOLLOWS THE FINGER, frame by frame, through a poll.
 //
@@ -41,7 +42,7 @@ test.beforeEach(async ({ page }, testInfo) => {
 
 test("a slow drag down on the open switcher follows the finger through a poll", async ({ page }) => {
   await page.goto(`/pane/${encodeURIComponent("w1:p1")}`);
-  await page.getByRole("button", { name: en["chat.switcher.aria"] }).click();
+  await openSwitcher(page);
   const dialog = page.getByRole("dialog", { name: en["chat.switcher.title"] });
   await expect(dialog).toBeVisible();
   const panel = dialog.locator(':scope > div[tabindex="-1"]');
@@ -112,7 +113,7 @@ for (const from of ["close", "new", "above-new"] as const) {
   for (const travel of [40, 120] as const) {
     test(`a drag of ${travel}px that starts on ${from} ${travel > 90 ? "closes the sheet" : "settles back"} and never opens the New page`, async ({ page }) => {
       await page.goto(`/pane/${encodeURIComponent("w1:p1")}`);
-      await page.getByRole("button", { name: en["chat.switcher.aria"] }).click();
+      await openSwitcher(page);
       const dialog = page.getByRole("dialog", { name: en["chat.switcher.title"] });
       await expect(dialog).toBeVisible();
       const panel = dialog.locator(':scope > div[tabindex="-1"]');

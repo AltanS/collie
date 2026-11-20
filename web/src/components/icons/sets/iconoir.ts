@@ -204,6 +204,7 @@ export const ICONOIR = {
   "notifications-snooze": "bell-off", // snooze notifications · lucide BellOff
   "offline": "wifi-off", // the phone is offline · lucide WifiOff
   "ok": "check", // a calm tick in a notice: it went through · lucide Check
+  "open-actions": "input-search", // open the Actions palette (belt and header) · lucide TextSearch
   "open-beside": "view-columns-2", // open beside the current pane · lucide Columns2
   "open-external": "open-new-window", // open in another place · lucide ExternalLink
   "open-here": "data-transfer-both", // open here · lucide Replace

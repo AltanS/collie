@@ -8,7 +8,8 @@
 // Source: `[keys]` of Herdr's `src/config/model.rs` (`KeysConfig`, its `Default` impl). Only ids that
 // Collie does not use itself are listed. An id both programs share (`help`, `settings`, `new_tab`,
 // `previous_tab`, `next_tab`, `switch_tab`, `focus_pane_left`, `focus_pane_right`, `cycle_pane_next`,
-// `cycle_pane_previous`, `resize_mode`, `toggle_sidebar`) is a normal action and needs no row. Herdr's
+// `cycle_pane_previous`, `resize_mode`, `toggle_sidebar`, and since the Actions palette `rename_pane`,
+// `rename_tab`, `close_pane`, `close_tab`) is a normal action and needs no row. Herdr's
 // `[[keys.command]]` and `[keys.indexed]` are tables, not names, and Collie's reader skips them.
 //
 // A string value is the Collie id that means the same thing. `null` is "no equal in Collie": the name
@@ -21,7 +22,8 @@ export const HERDR_NAMES: ReadonlyMap<string, ActionId | null> = new Map<string,
   // The same thing under another name.
   ["new_workspace", "new_space"],
   ["workspace_picker", "navigate_mode"],
-  ["goto", "switch_pane"],
+  // Herdr's `goto` opens a searchable list of places; Collie's equal is the Actions palette (ADR 0165).
+  ["goto", "open_actions"],
   ["zoom", "zen_mode"],
   ["previous_workspace", "previous_space"],
   ["next_workspace", "next_space"],
@@ -29,6 +31,7 @@ export const HERDR_NAMES: ReadonlyMap<string, ActionId | null> = new Map<string,
   ["navigate_workspace_down", "navigate_down"],
   ["navigate_pane_left", "navigate_left"],
   ["navigate_pane_right", "navigate_right"],
+  ["rename_workspace", "rename_space"],
 
   // The name exists in Herdr, and Collie has no action of that meaning. `focus_pane_up` and
   // `focus_pane_down` move to the pane above and below in a split; Collie has no such layout, and its
@@ -39,12 +42,7 @@ export const HERDR_NAMES: ReadonlyMap<string, ActionId | null> = new Map<string,
   ["navigate_pane_up", null],
   ["navigate_pane_down", null],
   ["detach", null],
-  ["close_pane", null],
-  ["close_tab", null],
   ["close_workspace", null],
-  ["rename_workspace", null],
-  ["rename_tab", null],
-  ["rename_pane", null],
   ["new_worktree", null],
   ["open_worktree", null],
   ["remove_worktree", null],

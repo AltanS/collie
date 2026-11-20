@@ -18,6 +18,7 @@ import type { Scope } from "@/lib/scope";
 import { t } from "@/lib/i18n";
 import { useLocale } from "@/hooks/use-locale";
 import { useRevealActive } from "@/hooks/use-reveal-active";
+import { useShortcutHandler } from "@/hooks/use-shortcut-handler";
 
 interface SpaceStripProps {
   workspaces: WorkspaceView[];
@@ -72,6 +73,8 @@ export function SpaceStrip({
   onRenamed,
 }: SpaceStripProps) {
   const [sheetSpace, setSheetSpace] = useState<WorkspaceView | null>(null);
+  // Whether the sheet opens on its rename view: the Actions palette's Rename space (ADR 0165).
+  const [renameDoor, setRenameDoor] = useState(false);
   const newSpace = useMuxCapability("createSpace", scope);
   // A durable program makes no space by hand, but it offers starters, and `onNewSpace` opens the New
   // page, which lists exactly those (route space.tsx). So the "+" is drawn for either (M51 spec 08).
@@ -80,6 +83,18 @@ export function SpaceStrip({
   // such declaration, or no callback to revalidate with, a space chip stays a plain switch and opens nothing.
   const renameOpen = useMuxDeclared("renameSpace", scope);
   const actionsEnabled = renameOpen && onRenamed !== undefined;
+  // The space open here, renamed from the Actions palette (ADR 0165): only where this strip offers the
+  // sheet, for the selected space, on a device that may write. The sheet speaks for a quiet machine.
+  const openSpace = selected === null ? undefined : workspaces.find((w) => w.workspaceId === selected);
+  useShortcutHandler(
+    "rename_space",
+    actionsEnabled && openSpace !== undefined && readOnly !== true && savedCopy !== true
+      ? () => {
+          setRenameDoor(true);
+          setSheetSpace(openSpace);
+        }
+      : undefined,
+  );
   // Whether the multiplexer underneath can hold more than one space AT ALL (bridge/mux/
   // capabilities.ts `spaces`). Not "how many are there right now": one space out of many is a herd
   // the operator is about to add to, while one space out of one is a level their multiplexer does
@@ -148,8 +163,8 @@ export function SpaceStrip({
               )}
               onClick={() => onSelect(w.workspaceId)}
               // Long-press (and a tap on the already-active chip) opens the space sheet, like a tab's.
-              onLongPress={actionsEnabled ? () => setSheetSpace(w) : undefined}
-              onTapActive={actionsEnabled ? () => setSheetSpace(w) : undefined}
+              onLongPress={actionsEnabled ? () => { setRenameDoor(false); setSheetSpace(w); } : undefined}
+              onTapActive={actionsEnabled ? () => { setRenameDoor(false); setSheetSpace(w); } : undefined}
             />
           ))}
         {/* Hidden when the multiplexer cannot open a space (M10/06). No explanation HERE: this strip
@@ -177,6 +192,7 @@ export function SpaceStrip({
           readOnly={readOnly}
           savedCopy={savedCopy}
           onRenamed={onRenamed}
+          openInRename={renameDoor}
         />
       )}
     </>

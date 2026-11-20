@@ -50,7 +50,9 @@ import type { ChangesLookup } from "@/lib/api";
 import { t } from "@/lib/i18n";
 import { prefetchFolders } from "@/lib/folders";
 import { glideForward } from "@/lib/glide";
-import { hillPath, homePath, trickSessionPath, spaceChangesPath, spacePath } from "@/lib/nav";
+import { hillPath, homePath, newPath, trickSessionPath, spaceChangesPath, spacePath } from "@/lib/nav";
+import { useShortcutHandler } from "@/hooks/use-shortcut-handler";
+import { ActionsButton } from "@/components/actions-palette";
 import { resolveIsolatedPrefKeys, workspaceGroupKey, type WorkspaceGroup } from "@/lib/pane-groups";
 import { panePlaceParts } from "@/lib/pane-name";
 import { scopeKey, type Scope } from "@/lib/scope";
@@ -291,6 +293,18 @@ export function HomeRoute() {
   });
   const fabOffered = view === "dashboard" && newEntry.offered;
   const openNew = newEntry.open;
+  // The Actions palette's New agent… and New shell on the dashboard (ADR 0165): the New page, as the New
+  // button opens it, and for New shell the same page with Shell already chosen. Offered where that button is.
+  useShortcutHandler("new_agent", fabOffered ? openNew : undefined);
+  useShortcutHandler(
+    "new_shell",
+    fabOffered && !screenless
+      ? () => {
+          if (data.stale === true) return openNew();
+          nav.down(newPath({ machine: data.scope.host, session: data.scope.session, pick: "shell" }));
+        }
+      : undefined,
+  );
   // Hidden while a sheet is up (it would sit dimmed under the backdrop, a second create entry next
   // to the one being used) and while the keyboard is (the dashboard's filter field raises it, and
   // the button would ride up over the list). Neither moves anything: the layer is fixed.
@@ -407,6 +421,8 @@ export function HomeRoute() {
             {/* Host first, then session — outer dimension first, and the two are deliberately
                 different shapes (bordered server pill vs filled layers capsule) so a glance can tell
                 "change machine" from "change session on this machine". Both self-hide. */}
+            {/* The Actions palette (ADR 0165): this screen's commands and the panes to go to, in one list. */}
+            <ActionsButton />
             <ServerSwitcher servers={data.servers} scope={data.scope} agents={data.agents} />
             <SessionSwitcher sessions={sessionsHere} scope={data.scope} viewAll={data.viewAll} />
           </>

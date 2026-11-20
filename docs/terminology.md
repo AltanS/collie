@@ -70,6 +70,13 @@ The list of every keyboard action with its keys, opened with the [prefix key](#p
 `?`. It also names each line of `shortcuts.toml` that Collie dropped, and why
 ([Keyboard shortcuts](keyboard-shortcuts.md#the-actions)).
 
+## Actions
+
+The searchable list of everything Collie can do on this screen, and of the panes to go to. An action
+is one thing Collie can do, by a key or by its name. A pane's own actions also sit in its pane menu.
+Open it with the Actions button, or with the [prefix key](#prefix-key) and then `g`
+([Keyboard shortcuts](keyboard-shortcuts.md#the-actions)).
+
 ## Navigate mode
 
 A mode of the keyboard that stays on until `Esc` or `Enter`. The keys `h`, `j`, `k`, `l`, the arrows

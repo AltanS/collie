@@ -20,15 +20,54 @@ describe("the action table", () => {
     for (const action of ACTIONS) expect(groups.has(action.group), action.id).toBe(true);
   });
 
-  it("binds every action by default", () => {
-    for (const action of ACTIONS) expect(action.defaults.length, action.id).toBeGreaterThan(0);
+  it("binds every action by default but the Actions palette's own commands, which a person may bind", () => {
+    const unbound = ACTIONS.filter((action) => action.defaults.length === 0).map((action) => action.id);
+    expect(unbound.toSorted()).toEqual(
+      [
+        "close_pane",
+        "close_tab",
+        "conversation_history",
+        "copy_output",
+        "new_agent",
+        "new_shell",
+        "open_crew",
+        "open_files",
+        "open_shortcuts",
+        "pane_settings",
+        "pin_pane",
+        "rename_pane",
+        "rename_space",
+        "rename_tab",
+        "switch_pane",
+        "walky_messages",
+      ].toSorted(),
+    );
+    for (const action of ACTIONS) {
+      if (action.defaults.length > 0) continue;
+      expect("scope" in action || "opensMode" in action || "indexed" in action, action.id).toBe(false);
+    }
+  });
+
+  it("opens Actions with prefix+g, the key Switch pane had", () => {
+    const keymap = buildKeymap({ defaults: ACTIONS });
+    expect(keymap.prefixed.get("g")).toEqual({ action: "open_actions" });
+    expect(keymap.bindings.get("switch_pane")).toEqual([]);
+  });
+
+  it("marks only the two closes as destructive", () => {
+    const destructive = ACTIONS.filter((action) => "destructive" in action && action.destructive === true).map((action) => action.id);
+    expect(destructive.toSorted()).toEqual(["close_pane", "close_tab"]);
   });
 
   it("loads its own defaults with no diagnostic, on every platform", () => {
     for (const mac of [false, true]) {
       const keymap = buildKeymap({ defaults: ACTIONS, mac });
       expect(keymap.diagnostics, `mac ${mac}`).toEqual([]);
-      for (const action of ACTIONS) expect(keymap.bindings.get(action.id)?.length, action.id).toBeGreaterThan(0);
+      for (const action of ACTIONS) {
+        const bound = keymap.bindings.get(action.id)?.length ?? 0;
+        if (action.defaults.length === 0) expect(bound, action.id).toBe(0);
+        else expect(bound, action.id).toBeGreaterThan(0);
+      }
     }
   });
 

@@ -29,7 +29,8 @@ export function ActionRow({
   onClick,
 }: {
   icon: ReactNode;
-  label: string;
+  /** The row's words. A node only to carry marks (the Actions palette's matched letters); no behaviour hangs on it. */
+  label: ReactNode;
   hint?: string;
   /** The row stays and reads as not yet available (dimmed, no tap). Absent on every other row. */
   disabled?: boolean;
@@ -75,7 +76,8 @@ export function DestructiveActionRow({
   onClick,
 }: {
   icon: ReactNode;
-  label: string;
+  /** As {@link ActionRow}'s: a node only to carry marks. */
+  label: ReactNode;
   confirmLabel: string;
   closingLabel: string;
   armed: boolean;

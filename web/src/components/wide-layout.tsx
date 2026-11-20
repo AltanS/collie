@@ -6,6 +6,7 @@ import { Icon } from "@/components/icons/icon";
 import { ActionRow } from "@/components/action-sheet-rows";
 import { ThreadSidebar } from "@/components/agent-sidebar";
 import { SettingsGear, useHeaderDock } from "@/components/app-header";
+import { ActionsButton } from "@/components/actions-palette";
 import { useHostHealth } from "@/components/crew-provider";
 import { StatusDot } from "@/components/status-badge";
 import { TabStrip } from "@/components/tab-strip";
@@ -579,6 +580,8 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
           </div>
           {bookPair && <span aria-hidden className="fold-gutter shrink-0" />}
           {bookPair && <span aria-hidden className="flex-1" />}
+          {/* The Actions palette (ADR 0165), the large screen's door to it: the belt here has no Actions pill. */}
+          <ActionsButton />
           <Button variant="ghost" size="lg" className="size-11 px-0" aria-label={t("wide.space.previous")} disabled={spaceAt <= 0} onClick={() => moveSpace(-1)}>
             <Icon name="space-prev" className="size-5" />
           </Button>

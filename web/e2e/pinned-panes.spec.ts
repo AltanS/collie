@@ -5,6 +5,7 @@ import type { ChangesResponse, SnapshotResponse } from "@/lib/types";
 import { fixtureChanges, fixtureSnapshot } from "@/test/handlers";
 
 import { installApiStub } from "./fixtures/api";
+import { openSwitcher } from "./fixtures/actions";
 
 // A PANE CAN BE PINNED (ADR 0070, issue 286). A pinned pane leads the dashboard's Dashboard (with the needs-you switch on or off) and
 // Changes lists and the switcher, under the summary line, in place order, and is listed once. The
@@ -167,7 +168,7 @@ test("switcher: the Pinned section leads the sheet and each pane is listed once"
   await mainRow(page, "claude").click();
   await expect(page).toHaveURL(new RegExp(`/pane/${encodeURIComponent("w1:p1")}$`, "u"));
 
-  await page.getByRole("button", { name: en["chat.switcher.aria"] }).click();
+  await openSwitcher(page);
   const sheet = page.getByRole("dialog", { name: en["chat.switcher.aria"] });
   await expect(pinnedGroup(sheet)).toBeVisible();
   await expect(row(pinnedGroup(sheet), "codex")).toBeVisible();
@@ -190,7 +191,7 @@ test("switcher: the New button in the title row lands where the dashboard's New 
 
   const pane = new RegExp(`/pane/${encodeURIComponent("w1:p1")}$`, "u");
   await page.goto(`/pane/${encodeURIComponent("w1:p1")}`);
-  await page.getByRole("button", { name: en["chat.switcher.aria"] }).click();
+  await openSwitcher(page);
   const sheet = page.getByRole("dialog", { name: en["chat.switcher.aria"] });
   const create = sheet.getByRole("button", { name: en["home.new.label"], exact: true });
   await expect(create).toBeVisible();

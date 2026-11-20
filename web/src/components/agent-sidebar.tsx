@@ -647,7 +647,7 @@ function Section({
 const ROW_RULES =
   "[&>*+*]:relative [&>*+*]:before:pointer-events-none [&>*+*]:before:absolute [&>*+*]:before:inset-x-2 [&>*+*]:before:-top-px [&>*+*]:before:h-px [&>*+*]:before:bg-rule";
 
-function PaneRow({
+export function PaneRow({
   id,
   pane,
   active,

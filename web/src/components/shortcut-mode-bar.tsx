@@ -29,6 +29,8 @@ interface Hint {
 
 // In the order of importance, so a row that runs out of room loses the last ones.
 const PREFIX_HINTS: readonly Hint[] = [
+  { ids: ["open_actions"], labelKey: "shortcuts.bar.actions" },
+  // Unbound by default since the Actions palette; it shows here once a person binds it.
   { ids: ["switch_pane"], labelKey: "shortcuts.bar.switchPane" },
   { ids: ["new_tab"], labelKey: "shortcuts.bar.newTab" },
   { ids: ["previous_tab", "next_tab"], labelKey: "shortcuts.bar.tabs" },

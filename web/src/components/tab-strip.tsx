@@ -22,6 +22,7 @@ import { tabCellTitle, type TabTitle } from "@/lib/pane-name";
 import { statusLabel } from "@/lib/types";
 import type { AgentView, TabView } from "@/lib/types";
 import { useMuxCapability, useMuxDeclared } from "@/lib/mux-capability";
+import { useAmbientHost, useHostWriteBlock } from "@/components/crew-provider";
 import type { Scope } from "@/lib/scope";
 import { t as translate } from "@/lib/i18n";
 import { useLocale } from "@/hooks/use-locale";
@@ -221,6 +222,12 @@ export function TabStrip({
   const look = useTabLook();
   const step = STEP[useWidthClass()];
   const [sheetTab, setSheetTab] = useState<TabView | null>(null);
+  // How the sheet opens: on its list (a hold), or on the view the Actions palette named (ADR 0165).
+  const [sheetDoor, setSheetDoor] = useState<"list" | "rename" | "close">("list");
+  const openSheet = (tab: TabView, door: "list" | "rename" | "close") => {
+    setSheetDoor(door);
+    setSheetTab(tab);
+  };
   // Asked of the machine these tabs live on (M22/03); absent scope is the lead, as everywhere.
   const newTab = useMuxCapability("createTab", scope);
   const startersOpen = useMuxDeclared("starters", scope) && onNewStarters !== undefined;
@@ -253,6 +260,17 @@ export function TabStrip({
   useShortcutHandler("previous_tab", canStep ? () => toTabAt((at - 1 + wsTabs.length) % wsTabs.length) : undefined);
   useShortcutHandler("next_tab", canStep ? () => toTabAt((at + 1) % wsTabs.length) : undefined);
   useShortcutHandler("switch_tab", allowAll ? undefined : (index) => (index === undefined ? undefined : toTabAt(index - 1)));
+  // The open tab's Rename and Close, the Actions palette's (ADR 0165): the sheet a hold on the tab opens,
+  // on its rename view, or with Close tab armed. Only where the strip offers that sheet, for the tab open
+  // here, on a device and a machine that may write, and on a multiplexer that does it.
+  const openTab = allowAll ? undefined : wsTabs[at];
+  const tabHost = useAmbientHost(scope?.host);
+  const tabHostBlock = useHostWriteBlock(tabHost);
+  const tabWrites = actionsEnabled && readOnly !== true && savedCopy !== true && tabHostBlock === undefined;
+  const canRenameTab = useMuxCapability("renameTab", scope).capable;
+  const canCloseTab = useMuxCapability("closeTab", scope).capable;
+  useShortcutHandler("rename_tab", openTab !== undefined && tabWrites && canRenameTab ? () => openSheet(openTab, "rename") : undefined);
+  useShortcutHandler("close_tab", openTab !== undefined && tabWrites && canCloseTab ? () => openSheet(openTab, "close") : undefined);
 
   if (wsTabs.length === 0) return null;
 
@@ -345,8 +363,8 @@ export function TabStrip({
                 onClick={() => onSelect(t.tabId)}
                 // Long-press (and a tap on the already-active tab) opens the actions sheet — only when
                 // the parent wired the actions; otherwise the tabs stay plain tap-to-switch.
-                onLongPress={actionsEnabled ? () => setSheetTab(t) : undefined}
-                onTapActive={actionsEnabled ? () => setSheetTab(t) : undefined}
+                onLongPress={actionsEnabled ? () => openSheet(t, "list") : undefined}
+                onTapActive={actionsEnabled ? () => openSheet(t, "list") : undefined}
               />
               );
             })}
@@ -400,6 +418,8 @@ export function TabStrip({
           savedCopy={savedCopy}
           onRenamed={onRenamed}
           onClosed={onClosed}
+          openInRename={sheetDoor === "rename"}
+          armCloseOnOpen={sheetDoor === "close"}
         />
       )}
     </>
