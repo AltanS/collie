@@ -13,6 +13,10 @@ import { useEffect } from "react";
 // itself is never held up. Only touch events count, so a desktop pointer, a wheel, a programmatic
 // scroll (a send that snaps to the tail, a pin, find) and the scroll the keyboard's own resize causes
 // never release anything. A second finger cancels the gesture: two fingers are the pane switch.
+//
+// A PER-DEVICE SWITCH TURNS IT OFF (Settings, Appearance, "Scroll closes the keyboard"; DashPrefs
+// .scrollClosesKeyboard). On by default. Off is for a person who reads back and keeps typing, so the
+// keyboard stays up through the scroll.
 
 /** The upward reading travel, in px of finger movement, before the keyboard is released. */
 export const RELEASE_TRAVEL_PX = 24;
@@ -44,10 +48,10 @@ function onlyTouch(event: TouchEvent): Point | null {
   return touch === undefined ? null : { x: touch.clientX, y: touch.clientY };
 }
 
-/** Releases the keyboard on a finger scroll up inside `reading` (see the header). */
-export function useReadingReleasesKeyboard(reading: HTMLElement | null): void {
+/** Releases the keyboard on a finger scroll up inside `reading` (see the header), unless `enabled` is false. */
+export function useReadingReleasesKeyboard(reading: HTMLElement | null, enabled = true): void {
   useEffect(() => {
-    if (reading === null) return;
+    if (reading === null || !enabled) return;
     let start: Point | null = null;
     const onStart = (event: TouchEvent) => {
       start = onlyTouch(event);
@@ -77,5 +81,5 @@ export function useReadingReleasesKeyboard(reading: HTMLElement | null): void {
       reading.removeEventListener("touchend", onEnd);
       reading.removeEventListener("touchcancel", onEnd);
     };
-  }, [reading]);
+  }, [reading, enabled]);
 }

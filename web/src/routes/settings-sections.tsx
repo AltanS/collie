@@ -28,6 +28,7 @@ import { LanguageControl } from "@/components/language-control";
 import { ClearNotificationsControl } from "@/components/clear-notifications-control";
 import { NotifyPrefsControl } from "@/components/notify-prefs-control";
 import { EnterSendsControl } from "@/components/enter-sends-control";
+import { ScrollClosesKeyboardControl } from "@/components/scroll-closes-keyboard-control";
 import { PaneNavControl } from "@/components/pane-nav-control";
 import { PaneOrderControl } from "@/components/pane-order-control";
 import { WideLayoutControl } from "@/components/wide-layout-control";
@@ -148,6 +149,10 @@ export function SettingsAppearanceRoute() {
           both are about a keyboard and a screen big enough to have one. Off until the person turns it on;
           stored per device. */}
       <EnterSendsControl />
+      {/* Whether a finger scroll up in a pane closes the keyboard (hooks/use-reading-releases-keyboard.ts).
+          Under Enter sends, because both decide how the reply box and a keyboard meet. On by default;
+          stored per device. */}
+      <ScrollClosesKeyboardControl />
       {/* How the pane screen moves between panes and spaces by gesture (ADR 0121): Two fingers,
           Joystick or Off. Beside Large-screen layout, because both decide how the pane screen is
           arranged and moved through. Stored per device with the hand. */}

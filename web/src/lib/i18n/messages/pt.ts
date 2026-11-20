@@ -188,6 +188,9 @@ export const pt: Dictionary = {
   "settings.enterSends.title": "Enter envia",
   "settings.enterSends.hint":
     "Com um teclado físico, Enter envia a mensagem e Shift+Enter adiciona uma nova linha. Com o teclado na tela, Enter sempre adiciona uma nova linha.",
+  "settings.scrollClosesKeyboard.title": "Rolar fecha o teclado",
+  "settings.scrollClosesKeyboard.hint":
+    "Rolar um painel para trás com o dedo recolhe o teclado na tela, e a caixa de resposta mantém o rascunho. Desativado mantém o teclado aberto enquanto você relê.",
   "settings.paneNav.title": "Navegação por painéis",
   "settings.paneNav.twoFingers": "Dois dedos",
   "settings.paneNav.joystick": "Joystick",

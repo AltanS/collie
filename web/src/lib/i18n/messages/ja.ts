@@ -189,6 +189,9 @@ export const ja: Dictionary = {
   "settings.enterSends.title": "Enter で送信",
   "settings.enterSends.hint":
     "物理キーボードでは、Enter でメッセージを送信し、Shift+Enter で改行します。画面上のキーボードでは、Enter は常に改行です。",
+  "settings.scrollClosesKeyboard.title": "スクロールでキーボードを閉じる",
+  "settings.scrollClosesKeyboard.hint":
+    "ペインを指で過去へスクロールすると画面キーボードが閉じ、返信ボックスの下書きは残ります。オフにすると、読み返している間もキーボードは開いたままです。",
   "settings.paneNav.title": "ペインの移動",
   "settings.paneNav.twoFingers": "2本指",
   "settings.paneNav.joystick": "ジョイスティック",

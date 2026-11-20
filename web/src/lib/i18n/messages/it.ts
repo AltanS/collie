@@ -192,6 +192,9 @@ export const it: Dictionary = {
   "settings.enterSends.title": "Invio invia",
   "settings.enterSends.hint":
     "Con una tastiera fisica, Invio invia il messaggio e Maiusc+Invio aggiunge una nuova riga. Con la tastiera sullo schermo, Invio aggiunge sempre una nuova riga.",
+  "settings.scrollClosesKeyboard.title": "Lo scorrimento chiude la tastiera",
+  "settings.scrollClosesKeyboard.hint":
+    "Scorrendo indietro un riquadro con il dito, la tastiera su schermo si chiude e la casella di risposta conserva la bozza. Disattivato, la tastiera resta aperta mentre rileggi.",
   "settings.paneNav.title": "Navigazione tra riquadri",
   "settings.paneNav.twoFingers": "Due dita",
   "settings.paneNav.joystick": "Joystick",
