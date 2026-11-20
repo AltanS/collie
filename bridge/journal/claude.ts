@@ -1116,23 +1116,6 @@ export function handedOverTo(lines: readonly string[]): string | null {
   return null;
 }
 
-/**
- * Real filesystem source rooted at Claude's projects directory.
- *
- * Resolution is by UUID SCAN, not by reconstructing the mangled project-directory name from the
- * pane's cwd. The mangling is lossy (every non-alphanumeric becomes "-") and, worse, a pane's
- * reported cwd drifts as the agent works — a subdirectory cwd would derive a directory that doesn't
- * exist. Session uuids are globally unique, so scanning the project dirs for `<uuid>.jsonl` is both
- * correct and cheap (measured: ~14 ms across 306 logs, and the hit is then cached).
- *
- * MORE THAN ONE ROOT is normal here: `CLAUDE_CONFIG_DIR` gives each Claude profile its own projects
- * tree, and a herd can hold panes from several (issue #92). The roots are searched IN ORDER and the
- * first one holding the uuid wins — and that is not a heuristic, it is the same global uniqueness the
- * scan already relies on: two roots cannot disagree about who a uuid belongs to. No profile detection
- * exists or is needed. The root that produced a hit is remembered with it, because everything after
- * resolution (continuation-following, and the containment check that guards it) must stay inside THAT
- * root rather than whichever root happened to be configured first.
- */
 /** Bounds on the shared per-directory sibling metadata snapshot for continuation following. */
 const DIR_SCAN_MAX = 64;
 /** Matches CacheTracker's 5 s floor so N panes in one project folder share a single directory scan. */
@@ -1156,6 +1139,23 @@ export interface ClaudeTranscriptSourceDeps {
   readonly readdir?: (path: string) => Promise<readonly string[]>;
 }
 
+/**
+ * Real filesystem source rooted at Claude's projects directory.
+ *
+ * Resolution is by UUID SCAN, not by reconstructing the mangled project-directory name from the
+ * pane's cwd. The mangling is lossy (every non-alphanumeric becomes "-") and, worse, a pane's
+ * reported cwd drifts as the agent works — a subdirectory cwd would derive a directory that doesn't
+ * exist. Session uuids are globally unique, so scanning the project dirs for `<uuid>.jsonl` is both
+ * correct and cheap (measured: ~14 ms across 306 logs, and the hit is then cached).
+ *
+ * MORE THAN ONE ROOT is normal here: `CLAUDE_CONFIG_DIR` gives each Claude profile its own projects
+ * tree, and a herd can hold panes from several (issue #92). The roots are searched IN ORDER and the
+ * first one holding the uuid wins — and that is not a heuristic, it is the same global uniqueness the
+ * scan already relies on: two roots cannot disagree about who a uuid belongs to. No profile detection
+ * exists or is needed. The root that produced a hit is remembered with it, because everything after
+ * resolution (continuation-following, and the containment check that guards it) must stay inside THAT
+ * root rather than whichever root happened to be configured first.
+ */
 export class ClaudeTranscriptSource implements TranscriptSource {
   private readonly pathCache = new Map<string, { path: string; root: string }>();
 
@@ -1363,27 +1363,6 @@ export class ClaudeTranscriptSource implements TranscriptSource {
   }
 
   /**
-   * Follow a rotated conversation to the log it actually continues in.
-   *
-   * The id Herdr reports can name a FROZEN PREFIX (see {@link conversationRoot}), so serving it
-   * verbatim silently drops everything since the rotation. We look for siblings sharing this log's
-   * root uuid and prefer the most recently written one.
-   *
-   * Two guards keep this from making things worse:
-   *  - a candidate must be at least as large as the log we already have, so following can never show
-   *    LESS history than not following;
-   *  - only the first line of each sibling is read (plus a stat), so the scan is a few milliseconds
-   *    over a directory of ~40 logs. That matters, because `resolve` runs on the cache tracker's
-   *    floor tick as well as on a History tap.
-   *
-   * A sibling whose own end records a hand-over is never picked: {@link handedOverTo} is Claude
-   * Code's statement that the conversation left it, and that outranks a guess from size and mtime.
-   *
-   * Known limit: a `/fork` of the same conversation shares the root too, so a fork being written more
-   * recently than the pane's own session would win. That needs a per-pane session id Herdr doesn't
-   * expose; showing the freshest branch of the right conversation beats showing a stale one.
-   */
-  /**
    * Return a shared short-TTL `(size, mtimeMs)` snapshot for `.jsonl` siblings in `dir`.
    * Re-scans immediately when `stat(dir).mtimeMs` changes (a new rotation file created or deleted)
    * or after {@link DIR_SCAN_TTL_MS} (so in-place writes to existing siblings and transient `stat`
@@ -1444,6 +1423,28 @@ export class ClaudeTranscriptSource implements TranscriptSource {
     }
   }
 
+  /**
+   * Follow a rotated conversation to the log it actually continues in.
+   *
+   * The id Herdr reports can name a FROZEN PREFIX (see {@link conversationRoot}), so serving it
+   * verbatim silently drops everything since the rotation. We look for siblings sharing this log's
+   * root uuid and prefer the most recently written one.
+   *
+   * Two guards keep this from making things worse:
+   *  - a candidate must be at least as large as the log we already have, so following can never show
+   *    LESS history than not following;
+   *  - only the first line of each sibling is read, and the sibling sizes and times now come from the
+   *    shared snapshot of {@link dirEntries}, at most {@link DIR_SCAN_TTL_MS} old (the pane's own file is
+   *    still read fresh), so the scan is a few milliseconds over a directory of ~40 logs. That matters, because `resolve` runs on the cache tracker's
+   *    floor tick as well as on a History tap.
+   *
+   * A sibling whose own end records a hand-over is never picked: {@link handedOverTo} is Claude
+   * Code's statement that the conversation left it, and that outranks a guess from size and mtime.
+   *
+   * Known limit: a `/fork` of the same conversation shares the root too, so a fork being written more
+   * recently than the pane's own session would win. That needs a per-pane session id Herdr doesn't
+   * expose; showing the freshest branch of the right conversation beats showing a stale one.
+   */
   private async followContinuation(path: string, root: string): Promise<string> {
     const dir = dirname(path);
     const selfName = basename(path);

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdir, readdir, rm, stat, utimes } from "node:fs/promises";
+import { mkdir, readdir, rm, stat, symlink, utimes } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -195,6 +195,104 @@ describe("ClaudeTranscriptSource — continuation scan caching", () => {
       expect(fs.readdirCalls).toBe(1);
     } finally {
       await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a sibling not yet grown past the pane's own log is not followed inside the TTL, and is after it", async () => {
+    const { dir, project } = await makeLargeProject(10);
+    let clock = Date.now();
+    try {
+      // NEW starts smaller and cold, so OLD wins on the first scan.
+      const newPath = join(project, `${NEW}.jsonl`);
+      await Bun.write(newPath, row(ROOT, "one"));
+      const coldSec = Date.now() / 1000 - 7200;
+      await utimes(newPath, coldSec, coldSec);
+
+      const src = new ClaudeTranscriptSource(dir, { now: () => clock, stat, readdir });
+      expect(await src.resolve({ kind: "id", value: OLD })).toEndWith(`${OLD}.jsonl`);
+
+      // Grow NEW in place past OLD without touching the directory mtime.
+      await Bun.write(newPath, [row(ROOT, "one"), row("u2", "two"), row("u3", "three")].join("\n"));
+      const futureSec = Date.now() / 1000 + 5;
+      await utimes(newPath, futureSec, futureSec);
+
+      // Inside the TTL the snapshot still holds the old size and time: the old path stays.
+      clock += DIR_SCAN_TTL_MS - 1;
+      expect(await src.resolve({ kind: "id", value: OLD })).toEndWith(`${OLD}.jsonl`);
+
+      clock += 1;
+      expect(await src.resolve({ kind: "id", value: OLD })).toEndWith(`${NEW}.jsonl`);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a scan whose readdir fails is not cached: the next resolve scans again and follows the sibling", async () => {
+    const { dir, project } = await makeLargeProject(10);
+    const newPath = join(project, `${NEW}.jsonl`);
+    await Bun.write(newPath, [row(ROOT, "one"), row("u2", "two"), row("u3", "three")].join("\n"));
+    const futureSec = Date.now() / 1000 + 5;
+    await utimes(newPath, futureSec, futureSec);
+
+    const clock = Date.now();
+    let failProjectOnce = true;
+    try {
+      const src = new ClaudeTranscriptSource(dir, {
+        now: () => clock,
+        stat,
+        readdir(path: string) {
+          // Only the sibling scan of the project folder fails, not the walk over the root.
+          if (failProjectOnce && path === project) {
+            failProjectOnce = false;
+            return Promise.reject(new Error("transient EIO"));
+          }
+          return readdir(path);
+        },
+      });
+
+      expect(await src.resolve({ kind: "id", value: OLD })).toEndWith(`${OLD}.jsonl`);
+      // Same clock, same directory mtime: only an uncached failure lets this scan again.
+      expect(await src.resolve({ kind: "id", value: OLD })).toEndWith(`${NEW}.jsonl`);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  // The snapshot holds names, sizes and times, never a verdict on containment. A sibling swapped for a
+  // symlink out of the root inside the TTL (same name, so the snapshot still lists it as the winner,
+  // and the directory mtime put back so no rescan fires) must still be refused at the point of use.
+  test("a sibling swapped for a symlink out of the root inside the TTL is never followed", async () => {
+    const { dir, project } = await makeLargeProject(10);
+    const outside = `${dir}-outside`;
+    const clock = Date.now();
+    try {
+      await mkdir(outside, { recursive: true });
+      const secret = join(outside, "secret.jsonl");
+      await Bun.write(secret, Array(50).fill(row(ROOT, "secret")).join("\n"));
+
+      const newPath = join(project, `${NEW}.jsonl`);
+      await Bun.write(newPath, [row(ROOT, "one"), row("u2", "two"), row("u3", "three")].join("\n"));
+      const futureSec = Math.floor(Date.now() / 1000) + 5;
+      await utimes(newPath, futureSec, futureSec);
+      const dirSec = Math.floor(Date.now() / 1000) - 600;
+      await utimes(project, dirSec, dirSec);
+
+      const src = new ClaudeTranscriptSource(dir, { now: () => clock, stat, readdir });
+      // The first resolve fills the snapshot and legitimately follows the real sibling.
+      expect(await src.resolve({ kind: "id", value: OLD })).toEndWith(`${NEW}.jsonl`);
+
+      // Swap it for a symlink to the outside file, and restore the directory mtime to its exact value.
+      await rm(newPath);
+      await symlink(secret, newPath);
+      await utimes(project, dirSec, dirSec);
+
+      // Same clock, same directory mtime: the snapshot is reused and still lists NEW as the winner.
+      const resolved = await src.resolve({ kind: "id", value: OLD });
+      expect(resolved).toEndWith(`${OLD}.jsonl`);
+      expect(resolved).not.toContain(outside);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+      await rm(outside, { recursive: true, force: true });
     }
   });
 });
