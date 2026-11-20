@@ -3,6 +3,9 @@ import { join } from "node:path";
 import { binaryName, type Host } from "../bridge/host.ts";
 import { DURABLE_MUX } from "../bridge/mux/durable/adapter.ts";
 import { HERDR_CORE_MUX } from "../bridge/mux/herdr-core/adapter.ts";
+import { REX_MUX } from "../bridge/mux/rex/adapter.ts";
+import { badRexEndpoint, globalArgs, noRexBinaryMessage, resolveRexBinary, rexBinaryCandidates } from "../bridge/mux/rex/exec.ts";
+import { parseApiRevision, primaryListener, untestedRevisionNote } from "../bridge/mux/rex/protocol.ts";
 import { buildMuxRegistry, DEFAULT_MUX, factoryFor, muxEndpointVar, muxNames } from "../bridge/mux/registry.ts";
 import { TMUX_MUX, TMUX_VERSION_ARGS } from "../bridge/mux/tmux/adapter.ts";
 import { resolveTmuxBinary, TMUX_BINARY_CANDIDATES, tmuxServerArgs, tmuxServerLabel } from "../bridge/mux/tmux/exec.ts";
@@ -426,6 +429,7 @@ export interface MuxSettings {
   readonly tmuxBin: string;
   readonly zellijBin: string;
   readonly ternBin: string;
+  readonly rexBin: string;
   readonly origin: MuxOrigin;
 }
 
@@ -445,6 +449,7 @@ export function muxSettings(deps: MuxDeps): MuxSettings {
   const tmuxBin = (env.COLLIE_TMUX_BIN ?? "").trim();
   const zellijBin = (env.COLLIE_ZELLIJ_BIN ?? "").trim();
   const ternBin = (env.COLLIE_TERN_BIN ?? "").trim();
+  const rexBin = (env.COLLIE_REX_BIN ?? "").trim();
   const named = explicitMux(env);
   if (named !== null) {
     return {
@@ -453,13 +458,14 @@ export function muxSettings(deps: MuxDeps): MuxSettings {
       tmuxBin,
       zellijBin,
       ternBin,
+      rexBin,
       origin: { kind: "explicit" },
     };
   }
   const found = probeMuxes(deps);
   const only = found.length === 1 ? found[0] : undefined;
   if (only === undefined) {
-    return { name: DEFAULT_MUX, endpoint: "", tmuxBin, zellijBin, ternBin, origin: { kind: "undecided", found } };
+    return { name: DEFAULT_MUX, endpoint: "", tmuxBin, zellijBin, ternBin, rexBin, origin: { kind: "undecided", found } };
   }
   return {
     name: only.mux,
@@ -467,6 +473,7 @@ export function muxSettings(deps: MuxDeps): MuxSettings {
     tmuxBin,
     zellijBin,
     ternBin,
+    rexBin,
     origin: { kind: "auto", evidence: only.evidence },
   };
 }
@@ -506,6 +513,7 @@ export function muxFinding(deps: MuxDeps): Finding {
   }
   if (settings.name === TMUX_MUX) return tmuxMux(deps, settings);
   if (settings.name === ZELLIJ_MUX) return zellijMux(deps, settings);
+  if (settings.name === REX_MUX) return rexMux(deps, settings);
   // A durable program is asked by the six `durable-*` rows (and `durable-lead` in a crew), so this
   // line defers to them as the Herdr line defers to `herdr-socket`.
   if (settings.name === DURABLE_MUX) return ok("mux", `${DURABLE_MUX}, see the durable-* lines${originSuffix(settings.origin)}`);
@@ -518,6 +526,49 @@ export function muxFinding(deps: MuxDeps): Finding {
     `${settings.name} — registered, but \`collie doctor\` has no liveness probe for it`,
     `ask that multiplexer whether it is running, by hand; \`collie doctor\` reports ${TMUX_MUX} and ${ZELLIJ_MUX}`,
   );
+}
+
+/**
+ * Rex, in ONE invocation: `rex api call server.status`, the call the bridge makes once at start. It
+ * names the server's address and its API revision, and it never starts a server (`--autostart=false`
+ * comes from the adapter's own {@link globalArgs}).
+ */
+function rexMux(deps: MuxDeps, settings: MuxSettings): Finding {
+  const dotenv = join(deps.ctx.configDir, ".env");
+  const candidates = rexBinaryCandidates(deps.ctx.home, deps.ctx.env.REX_BIN_DIR ?? "");
+  const binary = resolveRexBinary(settings.rexBin, (p) => deps.files.exists(p), candidates);
+  if (binary === null) {
+    return bad(
+      "mux",
+      `rex — ${noRexBinaryMessage(settings.rexBin, candidates)} (a Herdr plugin action gets no login shell, so PATH` +
+        " is never consulted)",
+      `install Rex, or set COLLIE_REX_BIN to its absolute path in ${dotenv}, then \`collie restart\``,
+    );
+  }
+  const endpointProblem = badRexEndpoint(settings.endpoint);
+  if (endpointProblem !== null) {
+    return bad("mux", `rex — ${endpointProblem}`, `fix ${muxEndpointVar(REX_MUX)} in ${dotenv}, then \`collie restart\``);
+  }
+  const asked = deps.exec.capture(binary, [...globalArgs(settings.endpoint), "api", "call", "server.status"]);
+  if (!asked.found) {
+    return bad("mux", `rex — ${binary} could not be run`, `set COLLIE_REX_BIN to a rex that runs, in ${dotenv}, then \`collie restart\``);
+  }
+  const named = settings.endpoint.trim();
+  if (asked.code !== 0) {
+    return bad(
+      "mux",
+      `rex — ${binary} answered, but no Rex server did${named === "" ? "" : ` at ${named}`}: ${firstLine(asked.stderr)}`,
+      "start it with `rex server start` (or `rex server install` to start it at boot); Collie never starts one",
+    );
+  }
+  const endpoint = primaryListener(asked.stdout) ?? (named === "" ? "the server rex finds by itself" : named);
+  const revision = parseApiRevision(asked.stdout);
+  const detail = `rex · ${binary} · ${endpoint} · API revision ${revision === null ? "not named" : String(revision)}`;
+  const note = revision === null ? null : untestedRevisionNote(revision);
+  if (note !== null) {
+    return warn("mux", `${detail} · ${note}`, "Collie still drives it; if a pane reads or sends wrongly, report it with this revision");
+  }
+  return ok("mux", detail + originSuffix(settings.origin));
 }
 
 /** The first non-empty line of a tool's complaint — a doctor line is one line. */

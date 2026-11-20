@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// THE THROWAWAY LAYER of mux conformance: tmux, zellij and tuios, each started fresh, probed, typed
+// THE THROWAWAY LAYER of mux conformance: tmux, zellij, tuios and rex, each started fresh, probed, typed
 // into, and torn down.
 //
 //   bun scripts/mux-e2e.ts                  # every multiplexer this box has
@@ -12,7 +12,7 @@
 //
 // IT AIMS ONLY AT ITS OWN INSTANCES. Every multiplexer runs under one temporary root: its own HOME
 // (no shell rc, no mux config), XDG dirs, TMPDIR, a tmux socket path, a ZELLIJ_SOCKET_DIR and a
-// tuios runtime dir. The probe and the send both run as children given that environment and no
+// tuios runtime dir, which is also where a rex server puts its socket. The probe and the send both run as children given that environment and no
 // other, and the adapters are pointed at the instance this run created; nothing enumerates or targets
 // the operator's sessions. That separates configuration and endpoints. It is not a process or
 // filesystem sandbox.
@@ -29,10 +29,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { HOST } from "../bridge/host.ts";
+import { REX_BINARY_OPTION } from "../bridge/mux/rex/adapter.ts";
 import { buildMuxRegistry, createMux, muxEndpointVar } from "../bridge/mux/registry.ts";
 import type { MuxAdapter } from "../bridge/mux/types.ts";
 
-const MUXES = ["tmux", "zellij", "tuios"] as const;
+const MUXES = ["tmux", "zellij", "tuios", "rex"] as const;
 export type Mux = (typeof MUXES)[number];
 
 const SESSION = "collie-e2e";
@@ -127,11 +128,25 @@ function isolatedEnv(root: string): IsolatedEnv {
 function endpointOf(mux: Mux, env: IsolatedEnv, root: string): string {
   if (mux === "tmux") return join(root, "tmux.sock");
   if (mux === "zellij") return SESSION;
+  // A rex server started with this run's XDG_RUNTIME_DIR listens under it (probed on rex 0.0.1795019727).
+  if (mux === "rex") return `unix://${join(env.XDG_RUNTIME_DIR, "rex", "server.sock")}`;
   return join(env.XDG_RUNTIME_DIR, "tuios", "tuios.sock");
 }
 
 async function start(mux: Mux, env: IsolatedEnv, root: string): Promise<void> {
   const cwd = env.HOME;
+  if (mux === "rex") {
+    // A server of this run's own, then one session in it. `--autostart=false` on the second, so a
+    // server that did not come up fails here rather than starting a second one somewhere else.
+    for (const argv of [
+      ["rex", "server", "start"],
+      ["rex", "--autostart=false", "-S", endpointOf(mux, env, root), "new", SESSION, "--", SHELL, "--norc", "--noprofile"],
+    ]) {
+      const r = await run(argv, env, cwd);
+      if (r.code !== 0) throw new Error(`${argv.slice(0, 3).join(" ")} exited ${String(r.code)}: ${r.out.trim()}`);
+    }
+    return;
+  }
   const argv =
     mux === "tmux"
       ? ["tmux", "-S", endpointOf(mux, env, root), "-f", "/dev/null", "new-session", "-d", "-s", SESSION, "-x", "120", "-y", "40", `${SHELL} --norc --noprofile`]
@@ -148,6 +163,7 @@ function stopCommands(mux: Mux, env: IsolatedEnv, root: string): string[][] {
   // `delete-session --force` kills a running session first; a kill-session before it leaves nothing
   // to delete, and that second command then exits 2.
   if (mux === "zellij") return [["zellij", "delete-session", "--force", SESSION]];
+  if (mux === "rex") return [["rex", "--autostart=false", "-S", endpointOf(mux, env, root), "server", "stop"]];
   return [["tuios", "kill-server"]];
 }
 
@@ -224,7 +240,10 @@ async function e2e(mux: Mux): Promise<Result> {
     await start(mux, env, root);
     started = true;
 
-    const probe = await run(["bun", join(import.meta.dir, "mux-probe.ts"), "--mux", mux], { ...env, [muxEndpointVar(mux)]: endpoint }, join(import.meta.dir, ".."));
+    // COLLIE_REX_BIN travels with the children, as the endpoint does: the isolated HOME hides every
+    // prefix the rex adapter probes for a binary, and a Mac holds none of them outside the app bundle.
+    const childEnv = { ...env, [muxEndpointVar(mux)]: endpoint, COLLIE_REX_BIN: process.env.COLLIE_REX_BIN ?? "" };
+    const probe = await run(["bun", join(import.meta.dir, "mux-probe.ts"), "--mux", mux], childEnv, join(import.meta.dir, ".."));
     const checks = probe.out.split("\n").filter((l) => /^\s+[✓✗·]/.test(l));
     lines.push(`probe exit ${String(probe.code)}, ${String(checks.filter((l) => l.includes("✓")).length)} checks passed`);
     lines.push(...checks.filter((l) => !l.includes("✓")).map((l) => l.trim()));
@@ -233,7 +252,7 @@ async function e2e(mux: Mux): Promise<Result> {
     // A child, like the probe: the adapter spawns its multiplexer's CLI with Bun's environment as it
     // was at startup, and Bun.spawn does not see a later write to process.env, so an in-process
     // adapter would reach the operator's zellij socket dir instead of this run's.
-    const send = await run(["bun", import.meta.path, SEND_FLAG, mux, endpoint], env, join(import.meta.dir, ".."));
+    const send = await run(["bun", import.meta.path, SEND_FLAG, mux, endpoint], childEnv, join(import.meta.dir, ".."));
     lines.push(send.out.trim());
 
     const ok = probe.code === 0 && checks.length > 0 && send.code === 0;
@@ -248,7 +267,11 @@ async function e2e(mux: Mux): Promise<Result> {
 /** The child half: one send and read back, run under the isolated environment it was given. */
 async function sendChild(mux: string, endpoint: string): Promise<never> {
   try {
-    const adapter = createMux(buildMuxRegistry(), mux, { endpoint, timeoutMs: 10_000, options: {} });
+    const adapter = createMux(buildMuxRegistry(), mux, {
+      endpoint,
+      timeoutMs: 10_000,
+      options: { [REX_BINARY_OPTION]: process.env.COLLIE_REX_BIN ?? "" },
+    });
     const paneId = await firstPane(adapter);
     const problems = await sendAndReadBack(adapter, paneId);
     console.log(problems.length === 0 ? `send and read back through the adapter on pane ${paneId}: ok` : problems.join("; "));
