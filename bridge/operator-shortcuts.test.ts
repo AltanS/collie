@@ -76,9 +76,9 @@ describe("validateOperatorShortcuts", () => {
       return i.toString(26).replace(/[0-9a-p]/g, (c) => String.fromCharCode("a".charCodeAt(0) + Number.parseInt(c, 26)));
     }
 
-    function run(keys: Record<string, unknown>) {
+    function run(keys: Record<string, string | string[]>) {
       const logged: string[] = [];
-      const out = validateOperatorShortcuts({ keys } as never, (m) => logged.push(m));
+      const out = validateOperatorShortcuts({ keys }, (m) => logged.push(m));
       return { out: out[0] ?? {}, logged };
     }
 
@@ -134,7 +134,7 @@ describe("validateOperatorShortcuts", () => {
         (m) => logged.push(m),
       );
       expect(logged).toHaveLength(3);
-      for (const line of logged) expect(line).not.toMatch(/[\u0000-\u001f\u007f]/);
+      for (const line of logged) expect([...line].some((ch) => ch.charCodeAt(0) < 32 || ch.charCodeAt(0) === 127)).toBe(false);
       expect(logged[0]).toContain('"a\\nb"');
       expect(logged[2]?.length).toBeLessThan(200);
     });
