@@ -33,7 +33,7 @@ import { CollieMark } from "@/components/collie-mark";
 import { TourHost } from "@/components/tour-sheet";
 import { TrickFloatLayer } from "@/components/trick-float-layer";
 import { describeThrownError } from "@/lib/api-error-message";
-import { findPane, paneRowKey } from "@/lib/hosts";
+import { findPane, leadHost, paneRowKey } from "@/lib/hosts";
 import { homePath } from "@/lib/nav";
 import { scopeFromUrl } from "@/lib/session";
 import { noteLeadName, noteSnapshotCrew, noteSnapshotRun } from "@/lib/update-run-store";
@@ -125,10 +125,12 @@ export function RootLayout() {
   // instead, once a live snapshot says nothing waits on it any more.
   useNotificationSweep(data);
   // Which picture each pane shows (ADR 0160), for the next cold open and for a push's icon.
+  // The lead's id goes with it: a push from the lead's own session names no host, so the worker's map does not either.
   const agents = data.agents;
+  const lead = leadHost(data.servers);
   useEffect(() => {
-    rememberPanePictures(agents);
-  }, [agents]);
+    rememberPanePictures(agents, lead);
+  }, [agents, lead]);
   // THE PUSH RACE. `usePushSetup` can raise the browser's permission prompt on its own, behind the
   // tour's backdrop, so it waits until the tour has decided it is not showing. "pending" is what
   // makes this correct rather than racy: a child's effect runs before the parent's, but the state it

@@ -454,6 +454,20 @@ export interface PushMessage {
 }
 
 /**
+ * The `data` a push carries to the service worker: the fields it deep-links and looks the project picture
+ * up by (web/src/lib/push-decision.ts). Each one only when the message has it.
+ */
+export function pushPayloadData(msg: PushMessage): PushPayloadData {
+  const data: PushPayloadData = { paneId: msg.paneId };
+  if (msg.session !== undefined) data.session = msg.session;
+  if (msg.host !== undefined) data.host = msg.host;
+  if (msg.machine !== undefined) data.machine = msg.machine;
+  if (msg.target !== undefined) data.target = msg.target;
+  if (msg.decision !== undefined) data.decision = msg.decision;
+  return data;
+}
+
+/**
  * A push message with its words masked (`bridge/redact.ts`): the body, and the title. A push crosses
  * a third-party push service and shows on a lock screen, so it is the last place a secret should be.
  *
@@ -684,12 +698,7 @@ export class Push {
     // pre-multi-session, pre-crew shape.
     const { topic, ...raw } = message;
     const msg = this.cfg.redact ? redactPushMessage(raw) : raw;
-    const data: PushPayloadData = { paneId: msg.paneId };
-    if (msg.session !== undefined) data.session = msg.session;
-    if (msg.host !== undefined) data.host = msg.host;
-    if (msg.machine !== undefined) data.machine = msg.machine;
-    if (msg.target !== undefined) data.target = msg.target;
-    if (msg.decision !== undefined) data.decision = msg.decision;
+    const data = pushPayloadData(msg);
     // Per-message collapse topic — update and load alerts must not share the herd slot (see above).
     const base =
       msg.type === "update" ? UPDATE_SEND_OPTIONS : msg.type === "machine" ? MACHINE_SEND_OPTIONS : SEND_OPTIONS;

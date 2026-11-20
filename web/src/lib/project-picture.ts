@@ -118,6 +118,27 @@ const failed = new Map<string, { until: number; wait: number }>();
 const loading = new Map<string, Promise<void>>();
 /** One retry timer per failed copy key: it fires when the wait ends, not only when a row draws again. */
 const retryTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+// THE WORKER'S HALF IS REPAIRED, NOT TRUSTED (round 17). The small copies and the pane memory live in
+// localStorage; the banners and the map the worker reads live in Cache Storage. The two can part: a stuck
+// update's escape (lib/pwa.ts) deletes every Cache and keeps localStorage, and so may the browser. Before,
+// the page then saw its copy and an unchanged map and wrote neither again, so every push came without its
+// picture while the dashboard still showed it (the operator's phone, 2026-11-20). Now each page life writes
+// the map once, and checks once per picture that its banner is in the Cache, drawing it again when not.
+/** Banner URLs this page life has seen in the Cache, or written there. */
+const bannersHeld = new Set<string>();
+/** The map this page life last wrote to the Cache, as its JSON, or null for none yet. */
+let mapWritten: string | null = null;
+
+// THE LEAD'S OWN PANES, AS A PUSH NAMES THEM (round 17). In a crew the merged snapshot tags the lead's own
+// panes with the lead's id, while the lead's own push names no host at all (bridge/push.ts). The worker
+// reads by the push's words, so the map and the banners name the lead's panes with no host.
+let leadHost: string | null = null;
+
+/** A pane's machine as its push names it: none for the lead's own panes, the member's id for a member's. */
+function pushHost(host: string | null | undefined): string | null {
+  return host === undefined || host === null || host === "" || host === leadHost ? null : host;
+}
 const listeners = new Set<() => void>();
 let snapshot = 0;
 
@@ -195,6 +216,8 @@ if (globalThis.window !== undefined) {
 export async function forgetProjectPictures(): Promise<void> {
   copies = new Map();
   panes = new Map();
+  bannersHeld.clear();
+  mapWritten = null;
   failed.clear();
   clearRetries(() => true);
   write(COPIES_KEY, null);
@@ -281,6 +304,9 @@ export function __resetProjectPictures(): void {
   on = true;
   copies = new Map();
   panes = new Map();
+  bannersHeld.clear();
+  mapWritten = null;
+  leadHost = null;
   failed.clear();
   clearRetries(() => true);
   loading.clear();
@@ -298,6 +324,8 @@ export function __reloadProjectPictures(): void {
   on = read(SWITCH_KEY) !== "off";
   copies = readTable(COPIES_KEY, isCopy);
   panes = readTable(PANES_KEY, isPane);
+  bannersHeld.clear();
+  mapWritten = null;
   failed.clear();
   clearRetries(() => true);
   loading.clear();
@@ -328,7 +356,7 @@ function keepCopy(key: string, url: string): void {
 function bannerKeyOf(key: string): string {
   const cut = key.lastIndexOf("\u0000");
   const host = key.slice(0, cut);
-  return bannerCopyKey(location.origin, basePath(), host === "" ? null : host, key.slice(cut + 1));
+  return bannerCopyKey(location.origin, basePath(), pushHost(host), key.slice(cut + 1));
 }
 
 /**
@@ -341,7 +369,9 @@ async function keepBannerCopy(host: string | null | undefined, version: string, 
   if (storage === undefined || !on) return;
   try {
     const cache = await storage.open(projectPictureCacheName(basePath()));
-    await cache.put(bannerCopyKey(location.origin, basePath(), host, version), new Response(png, { headers: { "content-type": "image/png" } }));
+    const url = bannerCopyKey(location.origin, basePath(), pushHost(host), version);
+    await cache.put(url, new Response(png, { headers: { "content-type": "image/png" } }));
+    bannersHeld.add(url);
     const kept = new Set([...copies.keys()].map(bannerKeyOf));
     const map = paneMapKey(location.origin, basePath());
     for (const request of await cache.keys()) {
@@ -352,12 +382,21 @@ async function keepBannerCopy(host: string | null | undefined, version: string, 
   }
 }
 
+/** The map the worker reads: every remembered pane, keyed as its push names it. Written when it differs from this page life's last write. */
 async function writePaneMap(): Promise<void> {
   const storage: CacheStorage | undefined = globalThis.caches;
   if (storage === undefined || !on) return;
+  const table: Record<string, string> = {};
+  for (const [key, version] of panes) {
+    const cut = key.indexOf("\u0000");
+    table[paneKey({ host: pushHost(key.slice(0, cut)), paneId: key.slice(cut + 1) })] = version;
+  }
+  const json = JSON.stringify(table);
+  if (json === mapWritten) return;
   try {
     const cache = await storage.open(projectPictureCacheName(basePath()));
-    await cache.put(paneMapKey(location.origin, basePath()), new Response(JSON.stringify(Object.fromEntries(panes)), { headers: { "content-type": "application/json" } }));
+    await cache.put(paneMapKey(location.origin, basePath()), new Response(json, { headers: { "content-type": "application/json" } }));
+    mapWritten = json;
   } catch {
     // As above: the push shows the Collie icon.
   }
@@ -366,7 +405,32 @@ async function writePaneMap(): Promise<void> {
 /** Fetch, check, decode and keep one machine's version, once at a time. Never rejects. */
 export function loadPicture(version: string, host?: string | null): Promise<void> {
   const key = copyKey(host, version);
-  if (!on || copies.has(key)) return Promise.resolve();
+  if (!on) return Promise.resolve();
+  if (copies.has(key)) return holdBanner(version, host);
+  return drawPicture(version, host);
+}
+
+/** A copy the page holds: check once per page life that the worker's banner of it is in the Cache too. */
+async function holdBanner(version: string, host: string | null | undefined): Promise<void> {
+  const storage: CacheStorage | undefined = globalThis.caches;
+  if (storage === undefined) return;
+  const url = bannerCopyKey(location.origin, basePath(), pushHost(host), version);
+  if (bannersHeld.has(url)) return;
+  try {
+    const held = await (await storage.open(projectPictureCacheName(basePath()))).match(url);
+    if (held !== undefined) {
+      bannersHeld.add(url);
+      return;
+    }
+  } catch {
+    return;
+  }
+  await drawPicture(version, host);
+}
+
+/** Fetch, check, decode and keep one machine's version, once at a time: the copy and the banner. */
+function drawPicture(version: string, host: string | null | undefined): Promise<void> {
+  const key = copyKey(host, version);
   const retry = failed.get(key);
   if (retry !== undefined && clock() < retry.until) return Promise.resolve();
   const running = loading.get(key);
@@ -413,8 +477,9 @@ export function loadPicture(version: string, host?: string | null): Promise<void
  * every pane of a snapshot: the map is rebuilt from it, so a pane that left the herd or changed its
  * picture loses its old entry at once. Writes only when something changed.
  */
-export function rememberPanePictures(list: readonly Pick<AgentView, "paneId" | "picture" | "host" | "session">[]): void {
+export function rememberPanePictures(list: readonly Pick<AgentView, "paneId" | "picture" | "host" | "session">[], lead?: string | null): void {
   if (!on) return;
+  leadHost = lead ?? null;
   const next = new Map<string, string>();
   for (const pane of list) {
     const version = panePicture(pane);
@@ -434,9 +499,11 @@ export function rememberPanePictures(list: readonly Pick<AgentView, "paneId" | "
   clearRetries((k) => !shown.has(k));
   for (const key of failed.keys()) if (!shown.has(key)) failed.delete(key);
   const same = next.size === panes.size && [...next].every(([k, v]) => panes.get(k) === v);
-  if (same) return;
-  panes = next;
-  writeTable(PANES_KEY, panes);
+  if (!same) {
+    panes = next;
+    writeTable(PANES_KEY, panes);
+  }
+  // Written even when nothing changed: the first call of a page life puts back a map the Cache lost.
   void writePaneMap();
 }
 
