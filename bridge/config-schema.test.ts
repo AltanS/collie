@@ -97,6 +97,13 @@ function scan(): Found[] {
     .toSorted((a, b) => a.env.localeCompare(b.env));
 }
 
+/**
+ * The first scan reads every source file under bridge/ and cli/. On Linux that takes well under a
+ * second. On the Windows VM, cold after a fresh checkout, it took 5 to 14 s (the stage/next run,
+ * 2026-11-20), and 0.04 to 0.4 s once the files were cached.
+ */
+const COLD_TREE_MS = 30_000;
+
 describe("the schema names every setting", () => {
   test("every COLLIE_* name in bridge/ and cli/ has a row or a named exemption", () => {
     const missing = scan()
@@ -108,7 +115,7 @@ describe("the schema names every setting", () => {
         ? ""
         : `add a row to bridge/config-schema.ts for: ${missing.join(", ")}`,
     ).toEqual([]);
-  });
+  }, COLD_TREE_MS);
 
   test("the exemption list is live — every entry is still a name the tree uses", () => {
     const found = new Set(scan().map((f) => f.env));

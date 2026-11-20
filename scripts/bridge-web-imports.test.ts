@@ -115,6 +115,13 @@ function walk(): Walk {
   return { findings, reached: seen.size };
 }
 
+/**
+ * The walk reads every file reachable from bridge/ and cli/, and the web files they reach. On Linux that takes well under a
+ * second. On the Windows VM, cold after a fresh checkout, it took 5 to 14 s (the stage/next run,
+ * 2026-11-20), and 0.04 to 0.4 s once the files were cached.
+ */
+const COLD_TREE_MS = 30_000;
+
 describe("bridge and CLI imports stay within the root install", () => {
   test("the web-only package list is not empty (the guard reads web/package.json)", () => {
     expect(WEB_ONLY.has("clsx")).toBe(true);
@@ -126,7 +133,7 @@ describe("bridge and CLI imports stay within the root install", () => {
     expect(reached).toBeGreaterThan(100);
     const lines = findings.map(({ chain, what }) => `${what}: ${chain.map((path) => relative(ROOT, path)).join(" -> ")}`);
     expect(lines).toEqual([]);
-  });
+  }, COLD_TREE_MS);
 
   test("the walk follows @/ and relative imports into the web tree", () => {
     expect(resolveLocal(join(ROOT, "bridge", "x.ts"), "@/lib/tricks/layout")).toBe(join(WEB_SRC, "lib", "tricks", "layout.ts"));
