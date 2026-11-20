@@ -26,7 +26,7 @@ import { useRowDrag, useVerticalSwipe, type DropTarget } from "@/hooks/use-row-d
 import { useShortcutHandler } from "@/hooks/use-shortcut-handler";
 import { tabCreateKey, useSpaceActions } from "@/hooks/use-spaces";
 import { useStripSnap } from "@/hooks/use-strip-snap";
-import { useWidthGlide } from "@/hooks/use-width-glide";
+import { useViewGlide } from "@/hooks/use-view-glide";
 import { queueBeltIntent, type BeltIntent } from "@/lib/belt-intent";
 import { writeRefusal } from "@/lib/host-health";
 import { hostKey, hostName, isMultiHost, paneRowKey } from "@/lib/hosts";
@@ -72,6 +72,8 @@ import {
   spaceKeyOf,
   spacesInOrder,
   spaceSwipe,
+  springEasing,
+  springRestMs,
   stepWidth,
   stripGeometry,
   type Places,
@@ -237,9 +239,10 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
     const target = key === strip.focus && next.focus !== null ? byColumn.get(next.focus) : undefined;
     if (target !== undefined) goTo(target);
   };
-  // A width the person picks GLIDES (hooks/use-width-glide.ts); every other change of the bases, a
-  // window that crosses wide mode, a column that opens or closes, is drawn in one frame as before.
-  const { claim: claimGlide, run: runGlide, gliding } = useWidthGlide(scroller);
+  // A width the person picks GLIDES on the view's spring (hooks/use-view-glide.ts); every other change of
+  // the bases, a window that crosses wide mode, a column that opens or closes, is drawn in one frame as
+  // before. The strip's own scroll to the focus moves on the same spring.
+  const { claim: claimGlide, run: runGlide, follow: followView, gliding } = useViewGlide(scroller);
   const resize = (next: SpaceStrip) => {
     if (spaceKey === null) return;
     const drawn = fractionsOf(next).join(",");
@@ -407,9 +410,9 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
     const lefts = cols.map((c) => c.offsetLeft);
     const widths = cols.map((c) => c.offsetWidth);
     const to = followTarget(focusAt, lefts, widths, node.scrollLeft, node.clientWidth, node.scrollWidth);
-    if (to !== null) node.scrollTo?.({ left: to, behavior: reduced ? "auto" : "smooth" });
+    if (to !== null) followView(to, { reduced, onEnd: measure });
     measure();
-  }, [focusAt, signature, stripWidth, wide, reduced, measure, book, runGlide]);
+  }, [focusAt, signature, stripWidth, wide, reduced, measure, book, runGlide, followView]);
 
   // ── Wheel and trackpad settle on a column start; the focus follows the view, as in niri ─────
   // Touch is the browser's own momentum and mandatory snap. After a wheel gesture settles, a focused
@@ -954,6 +957,11 @@ function Rail({ spaces, hereKey, onSelect }: { spaces: readonly WorkspaceGroup[]
   );
 }
 
+/** The position strip's segments while a width glides: the view's spring from rest over a full-strip
+ *  change, as a CSS `linear()` easing sampled from it (lib/wide-layout.ts `springEasing`). */
+const POSITION_GLIDE_MS = springRestMs(1120);
+const POSITION_GLIDE = `width ${POSITION_GLIDE_MS}ms ${springEasing(POSITION_GLIDE_MS)}`;
+
 /** Where the strip is: one segment per column, the focused one solid, the visible window framed.
  *  It floats over the strip's top edge and takes no row of its own: shown while the strip moves, it
  *  fades out once the strip rests, the way an overlay scroll bar does. It never takes a pointer. */
@@ -988,8 +996,8 @@ function PositionStrip({
         {widths.map((w, i) => (
           <span
             key={i}
-            className={cn("h-full", i === focus ? "bg-foreground" : "bg-muted-foreground/40", glide && "transition-[width] duration-[240ms] ease-out motion-reduce:transition-none")}
-            style={{ width: `${(w / total) * 100}%` }}
+            className={cn("h-full", i === focus ? "bg-foreground" : "bg-muted-foreground/40", glide && "motion-reduce:transition-none!")}
+            style={{ width: `${(w / total) * 100}%`, transition: glide ? POSITION_GLIDE : undefined }}
           />
         ))}
         <span className="pointer-events-none absolute inset-y-[-1px] border border-foreground" style={{ left: `${view.start * 100}%`, width: `${view.size * 100}%` }} />

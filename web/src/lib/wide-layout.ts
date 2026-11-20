@@ -386,31 +386,66 @@ export function restingScroll(geometry: StripGeometry, focusAt: number, scrollLe
   return to === null ? clamped : Math.min(Math.max(to, 0), end);
 }
 
-/**
- * CSS `ease-out`, `cubic-bezier(0, 0, 0.58, 1)`, at time `t` from 0 to 1: the curve the app's in-flow
- * motion uses (ui/collapse.tsx), solved for x by bisection, so a glide driven from script draws the
- * same path a CSS transition would. Monotonic, 0 at 0 and 1 at 1.
- */
-export function easeOut(t: number): number {
-  if (t <= 0) return 0;
-  if (t >= 1) return 1;
-  let lo = 0;
-  let hi = 1;
-  for (let i = 0; i < 40; i += 1) {
-    const mid = (lo + hi) / 2;
-    if (easeOutX(mid) < t) lo = mid;
-    else hi = mid;
-  }
-  return easeOutY((lo + hi) / 2);
+// ── The view's spring ───────────────────────────────────────────────────────────────────────────
+//
+// The strip moves the way niri moves its view and resizes its windows: a critically damped spring.
+// niri's defaults for `window-resize` and `horizontal-view-movement` are
+// `spring damping-ratio=1.0 stiffness=800 epsilon=0.0001` (niri wiki, "Configuration: Animations";
+// `src/animation/spring.rs` fixes the mass at 1 and stops once the value is within `epsilon` of its end,
+// in the value's own units). With mass 1 and damping ratio 1 the motion has one rate, ω = √stiffness:
+//   x(t) = to + (A + B·t)·e^(−ω·t),  A = x0 − to,  B = v0 + ω·A.
+// From rest it never passes its end; started with a velocity toward the end it may pass it a little.
+
+/** niri's stiffness for a resize and a view movement. */
+export const VIEW_STIFFNESS = 800;
+
+/** A spring's place and speed (units per second) at a moment. */
+export interface SpringState {
+  readonly x: number;
+  readonly v: number;
 }
 
-// The ease-out Bezier with P0 = P1 = (0, 0), P2 = (0.58, 1), P3 = (1, 1), at parameter s: the P1 term
-// is zero on both axes.
-function easeOutX(s: number): number {
-  return 3 * (1 - s) * s * s * 0.58 + s * s * s;
+/** Where a critically damped spring of mass 1 stands `t` seconds after it left `x0` at speed `v0`. */
+export function springAt(x0: number, to: number, v0: number, t: number, stiffness: number = VIEW_STIFFNESS): SpringState {
+  const w = Math.sqrt(stiffness);
+  const a = x0 - to;
+  const b = v0 + w * a;
+  const e = Math.exp(-w * t);
+  return { x: to + (a + b * t) * e, v: (b - w * (a + b * t)) * e };
 }
-function easeOutY(s: number): number {
-  return 3 * (1 - s) * s * s + s * s * s;
+
+/** Half a CSS pixel: a spring this close to its end draws its end. */
+export const REST_PX = 0.5;
+/** Slower than this (CSS px a second) a spring moves under half a pixel in a 60 Hz frame. */
+export const REST_SPEED = REST_PX * 60;
+
+/**
+ * The stop rule: niri's epsilon, read in CSS pixels. A spring rests once it is within half a pixel of its
+ * end AND so slow that the next frame would not move it half a pixel; `unit` is a pixel's worth of the
+ * value (1 for px, the strip's width for a fraction of it).
+ */
+export function springRests(state: SpringState, to: number, unit: number = 1): boolean {
+  return Math.abs(state.x - to) * unit <= REST_PX && Math.abs(state.v) * unit < REST_SPEED;
+}
+
+/** How long a spring from rest over `distance` px takes to rest, in ms, by the rule above. */
+export function springRestMs(distance: number, stiffness: number = VIEW_STIFFNESS): number {
+  for (let ms = 0; ms <= 3000; ms += 1) if (springRests(springAt(distance, 0, 0, ms / 1000, stiffness), 0)) return ms;
+  return 3000;
+}
+
+/**
+ * A CSS `linear()` easing that draws the spring from rest over `durationMs`, sampled `steps` times: for
+ * a CSS transition that must read like the spring (the position strip). The last point is exactly 1.
+ */
+export function springEasing(durationMs: number, steps: number = 24, stiffness: number = VIEW_STIFFNESS): string {
+  const points: string[] = [];
+  for (let i = 0; i <= steps; i += 1) {
+    const t = (durationMs / 1000) * (i / steps);
+    const p = i === steps ? 1 : 1 - springAt(1, 0, 0, t, stiffness).x;
+    points.push(String(Math.round(p * 10000) / 10000));
+  }
+  return `linear(${points.join(", ")})`;
 }
 
 /** Where a dragged row at `x` would land: the insert index (0 = before the first column, n = after
