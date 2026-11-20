@@ -5300,7 +5300,7 @@ describe("outcome at the thumb", () => {
 
   it("refused draft_present: Add to it, Replace and Cancel, with the draft kept", async () => {
     await send(() => sendAnswer("x", "refused", "draft_present", { offers: ["append", "replace", "cancel"], surface: wayOutCase("draft").surface }));
-    const strip = await screen.findByTestId("send-offer-sheet");
+    const strip = await screen.findByTestId("send-offer-modal");
     for (const word of ["Add to it", "Replace", "Cancel"]) expect(strip).toHaveTextContent(word);
     expect(screen.getByRole("textbox")).toHaveValue("hello there");
     expect(header()).toBe("");

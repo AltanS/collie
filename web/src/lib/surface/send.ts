@@ -514,6 +514,10 @@ export interface SendAnswer {
   readonly offers: readonly SendOffer[];
   /** The hash of the rows, for the commit tap after `prepare` or `unconfirmed`. */
   readonly rowsHash?: string;
+  /** On `draft_present`: the box's text in the read the hash covers, masked, lines joined by `\n`, at most 2000 characters. */
+  readonly draftText?: string;
+  /** On `draft_present`: {@link draftText} was cut at its limit. */
+  readonly draftCut?: true;
   /** A sentence for the person: which verb route a reserved lead belongs to, or what moved. */
   readonly detail?: string;
   /** True when the same id came back and this is the stored receipt. */

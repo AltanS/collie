@@ -14,6 +14,20 @@ const MENU: Surface = {
 };
 
 describe("readSendReply", () => {
+  it("reads a draft_present answer's quoted draft and its cut mark, and nothing from an answer without one", () => {
+    const refused = { receipt: { outcome: "refused", reason: "draft_present" }, offers: ["append", "replace", "cancel"], rowsHash: "0abc12" };
+    expect(readSendReply({ ...refused, draftText: "line one\nline two" })).toMatchObject({ draftText: "line one\nline two" });
+    expect(readSendReply({ ...refused, draftText: "line one\nline two" })).not.toHaveProperty("draftCut");
+    expect(readSendReply({ ...refused, draftText: "head", draftCut: true })).toMatchObject({ draftText: "head", draftCut: true });
+    expect(readSendReply(refused)).not.toHaveProperty("draftText");
+    expect(readSendReply({ ...refused, draftText: "" })).not.toHaveProperty("draftText");
+    expect(readSendReply({ ...refused, draftText: 7 })).not.toHaveProperty("draftText");
+    // Past the bridge's 2000 characters the phone cuts it too, and says so.
+    const long = readSendReply({ ...refused, draftText: "x".repeat(2100) });
+    expect(long?.draftText).toHaveLength(2000);
+    expect(long?.draftCut).toBe(true);
+  });
+
   it("reads the outcome, reason, offers, rows hash, surface and detail, and drops an offer it does not know", () => {
     expect(
       readSendReply({

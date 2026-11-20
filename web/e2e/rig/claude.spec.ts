@@ -368,7 +368,7 @@ test.describe("claude", () => {
         const refusal = model.answers.find((answer) => answer.path === "/api/send");
         const refusedDraft = refusal?.outcome === "refused" && refusal.reason === "draft_present";
         notes.push(tapWords(model));
-        // The draft offers open as a sheet (trial, 2026-11-20): found by its role and title. Each row's name
+        // The draft offers open as a modal (trial, 2026-11-20): found by its role and title. Each button's name
         // is its label and the line under it, so a row is matched by the start of its name.
         const strip = page.getByRole("dialog", { name: message("composer.protocol.draftSheet.title") });
         const stripShown = await strip

@@ -122,7 +122,7 @@ describe("Composer on the Send Protocol (M56 specs 05 and 06)", () => {
     renderComposer();
     await user.type(screen.getByPlaceholderText(/type a reply/i), "new words");
     await user.click(screen.getByRole("button", { name: "Send" }));
-    const sheet = await screen.findByTestId("send-offer-sheet");
+    const sheet = await screen.findByTestId("send-offer-modal");
     expect(sheet).toHaveTextContent("Add to it");
     expect(sheet).toHaveTextContent("Replace");
     expect(sheet).toHaveTextContent("Cancel");
@@ -162,9 +162,9 @@ describe("Composer on the Send Protocol (M56 specs 05 and 06)", () => {
     await user.click(screen.getByRole("button", { name: "Send" }));
     expect(await screen.findByText("Your queued message is back in the agent as a draft. Use its card.")).toBeInTheDocument();
     expect(screen.queryByText("The box already holds a draft. Add to it, replace it, or cancel.")).toBeNull();
-    // The sheet carries the sentence, because the notice waits behind it.
-    expect(screen.getByTestId("send-offer-sheet")).toHaveTextContent("Use its card.");
-    expect(screen.getByTestId("send-offer-sheet")).toHaveTextContent("Replace");
+    // The modal carries the sentence, because the notice waits behind it.
+    expect(screen.getByTestId("send-offer-modal")).toHaveTextContent("Use its card.");
+    expect(screen.getByTestId("send-offer-modal")).toHaveTextContent("Replace");
   });
 
   it("a slash command onto a draft offers Replace and Cancel only, says so, and Replace sends it as a replace", async () => {
@@ -176,7 +176,7 @@ describe("Composer on the Send Protocol (M56 specs 05 and 06)", () => {
     renderComposer();
     await user.type(screen.getByPlaceholderText(/type a reply/i), "/model");
     await user.click(screen.getByRole("button", { name: "Send" }));
-    const sheet = await screen.findByTestId("send-offer-sheet");
+    const sheet = await screen.findByTestId("send-offer-modal");
     expect(sends[0]).toMatchObject({ text: "/model", mode: "command" });
     expect(sheet).not.toHaveTextContent("Add to it");
     expect(sheet).toHaveTextContent("Replace");
@@ -215,7 +215,7 @@ describe("Composer on the Send Protocol (M56 specs 05 and 06)", () => {
     await user.click(await screen.findByRole("button", { name: /^Replace/ }));
     await waitFor(() => expect(sends).toHaveLength(2));
     expect(sends[1]).toMatchObject({ text: "new words", mode: "replace", rowsHash: "0abc12" });
-    // The offer is back, the same words as the first time (the sheet's title; its notice waits behind it),
+    // The offer is back, the same words as the first time (the modal's title; its notice waits behind it),
     // and the text stays in the field.
     expect(await screen.findByRole("dialog", { name: "The box already holds a draft" })).toBeInTheDocument();
     expect(field).toHaveValue("new words");
@@ -294,10 +294,10 @@ describe("Composer on the Send Protocol (M56 specs 05 and 06)", () => {
   });
 });
 
-// The draft offers open as a sheet (trial, 2026-11-20, send-offer-sheet.tsx): Add to it, Replace and Cancel act on a
-// draft the person may have typed at the desk, so they are a choice in the app's modal, each row with its line. Every
-// other offer set keeps the strip under the field.
-describe("the draft offers as a sheet", () => {
+// The draft offers open as a modal (trial, 2026-11-20, send-offer-modal.tsx): Add to it, Replace and Cancel act on a
+// draft the person may have typed at the desk, so they are a blocking choice in the app's modal (ui/modal.tsx,
+// centred), with the draft the bridge read and one bordered button per choice. Every other offer set keeps the strip.
+describe("the draft offers as a modal", () => {
   const DRAFT = { body: { receipt: receipt("refused", "draft_present"), offers: ["append", "replace", "cancel"] } };
   const NOTICE = "The box already holds a draft. Add to it, replace it, or cancel.";
   const field = () => screen.getByPlaceholderText(/type a reply/i);
@@ -308,18 +308,25 @@ describe("the draft offers as a sheet", () => {
     return screen.findByRole("dialog", { name: "The box already holds a draft" });
   }
 
-  it("opens the sheet with three rows and their lines, and draws no strip and no notice", async () => {
+  it("opens a centred modal with three buttons and their lines, and draws no strip and no notice", async () => {
     const user = userEvent.setup();
     bridge([DRAFT]);
     renderComposer();
-    await refuse(user, "new words");
+    const dialog = await refuse(user, "new words");
+    expect(dialog).toHaveAttribute("aria-modal", "true");
+    expect(dialog).toHaveAttribute("data-placement", "center");
     expect(screen.queryByTestId("send-offers")).toBeNull();
     expect(screen.queryByText(NOTICE)).toBeNull();
     expect(screen.getByRole("button", { name: /^Add to it/ })).toHaveTextContent("Your message goes after the draft. Both are sent as one message.");
     const replace = screen.getByRole("button", { name: /^Replace/ });
     expect(replace).toHaveTextContent("The draft is deleted. Only your message is sent.");
-    // Replace wipes the desk's draft: it wears the destructive row.
+    // Replace wipes the desk's draft: it wears the destructive outline. Add to it the caution one.
     expect(replace.className).toContain("text-destructive");
+    expect(replace.className).toContain("border-destructive/60");
+    expect(screen.getByRole("button", { name: /^Add to it/ }).className).toContain("border-status-working/60");
+    // No draft text in the answer: no quote and no label.
+    expect(screen.queryByText("In the agent's box")).toBeNull();
+    expect(dialog.querySelector('[data-slot="offer-draft"]')).toBeNull();
     expect(screen.getByRole("button", { name: /^Cancel/ })).toHaveTextContent("Nothing is sent. Your message stays here.");
   });
 
@@ -336,7 +343,7 @@ describe("the draft offers as a sheet", () => {
   it.each([
     ["Add to it", "append", " more words"],
     ["Replace", "replace", "more words"],
-  ])("%s sends its offer as a new request and closes the sheet", async (row, mode, text) => {
+  ])("%s sends its offer as a new request and closes the modal", async (row, mode, text) => {
     const user = userEvent.setup();
     const { sends } = bridge([DRAFT, { body: { receipt: receipt("sent"), offers: [] } }]);
     renderComposer();
@@ -347,7 +354,7 @@ describe("the draft offers as a sheet", () => {
     expect(sends[1]).toMatchObject({ text, mode });
   });
 
-  it("Cancel closes the sheet, sends nothing and keeps the text", async () => {
+  it("Cancel closes the modal, sends nothing and keeps the text", async () => {
     const user = userEvent.setup();
     const { sends } = bridge([DRAFT]);
     renderComposer();
@@ -361,7 +368,12 @@ describe("the draft offers as a sheet", () => {
   });
 
   it.each([
-    ["the close button", () => fireEvent.click(screen.getByRole("button", { name: "Close" }))],
+    ["the scrim", () => {
+      const scrim = document.querySelector('[data-slot="send-offer-modal"]')?.previousElementSibling;
+      if (!(scrim instanceof HTMLElement)) throw new Error("no scrim");
+      fireEvent.pointerDown(scrim);
+      fireEvent.click(scrim);
+    }],
     ["Escape", () => fireEvent.keyDown(window, { key: "Escape" })],
   ])("a close without a choice (%s) drops the offer, hides the notice and sends nothing", async (_how, close) => {
     const user = userEvent.setup();
@@ -377,24 +389,45 @@ describe("the draft offers as a sheet", () => {
     expect(field()).toHaveValue("keep me");
   });
 
-  // ADR 0166 in the sheet: a tap over a draft that changed at the desk meets the same refusal again, with
-  // the new draft's hash. The sheet opens again over it, and the next tap carries the new hash, never the old.
+  it("quotes the draft the bridge read, under its label, and draws the cut line only when it was cut", async () => {
+    const user = userEvent.setup();
+    bridge([
+      { body: { receipt: receipt("refused", "draft_present"), offers: ["append", "replace", "cancel"], rowsHash: "0aaa11", draftText: "fix the login\nthen the tests" } },
+      { body: { receipt: receipt("refused", "draft_present"), offers: ["append", "replace", "cancel"], rowsHash: "0bbb22", draftText: "a very long draft", draftCut: true } },
+    ]);
+    renderComposer();
+    const dialog = await refuse(user, "words");
+    const quote = dialog.querySelector('[data-slot="offer-draft"]');
+    expect(quote).toHaveTextContent("In the agent's box");
+    expect(quote?.querySelector("blockquote")?.textContent).toBe("fix the login\nthen the tests");
+    expect(dialog.querySelector('[data-slot="offer-draft-cut"]')).toBeNull();
+    await user.click(screen.getByRole("button", { name: /^Replace/ }));
+    const again = await screen.findByRole("dialog", { name: "The box already holds a draft" });
+    await waitFor(() => expect(again.querySelector('[data-slot="offer-draft-cut"]')).toHaveTextContent("…"));
+    expect(again).toHaveTextContent("a very long draft");
+  });
+
+  // ADR 0166 in the modal: a tap over a draft that changed at the desk meets the same refusal again, with
+  // the new draft's hash and text. The modal opens again over it and quotes the NEW draft, never the old one,
+  // and the next tap carries the new hash.
   it.each([
     ["Replace", "replace", "Add to it", "append"],
     ["Add to it", "append", "Replace", "replace"],
-  ])("after %s over a changed draft the sheet opens again, and %s's next tap carries the new hash", async (first, firstMode, second, secondMode) => {
+  ])("after %s over a changed draft the modal opens again, and %s's next tap carries the new hash", async (first, firstMode, second, secondMode) => {
     const user = userEvent.setup();
     const { sends } = bridge([
-      { body: { receipt: receipt("refused", "draft_present"), offers: ["append", "replace", "cancel"], rowsHash: "0aaa11" } },
-      { body: { receipt: receipt("refused", "draft_present"), offers: ["append", "replace", "cancel"], rowsHash: "0bbb22" } },
+      { body: { receipt: receipt("refused", "draft_present"), offers: ["append", "replace", "cancel"], rowsHash: "0aaa11", draftText: "draft A at the desk" } },
+      { body: { receipt: receipt("refused", "draft_present"), offers: ["append", "replace", "cancel"], rowsHash: "0bbb22", draftText: "draft B typed since" } },
       { body: { receipt: receipt("sent"), offers: [] } },
     ]);
     renderComposer();
-    await refuse(user, "words");
+    expect(await refuse(user, "words")).toHaveTextContent("draft A at the desk");
     await user.click(screen.getByRole("button", { name: new RegExp(`^${first}`) }));
     await waitFor(() => expect(sends).toHaveLength(2));
     expect(sends[1]).toMatchObject({ mode: firstMode, rowsHash: "0aaa11" });
-    expect(await screen.findByRole("dialog", { name: "The box already holds a draft" })).toBeInTheDocument();
+    const again = await screen.findByRole("dialog", { name: "The box already holds a draft" });
+    await waitFor(() => expect(again).toHaveTextContent("draft B typed since"));
+    expect(again).not.toHaveTextContent("draft A at the desk");
     expect(screen.queryByTestId("send-offers")).toBeNull();
     expect(screen.queryByText(NOTICE)).toBeNull();
     expect(field()).toHaveValue("words");
@@ -404,18 +437,18 @@ describe("the draft offers as a sheet", () => {
     expect(sends[2]).toMatchObject({ mode: secondMode, rowsHash: "0bbb22" });
   });
 
-  it("the rows wait while a launch starts, as the strip's buttons do", async () => {
+  it("the buttons wait while a launch starts, as the strip's buttons do", async () => {
     const user = userEvent.setup();
     const { sends } = bridge([DRAFT]);
     renderComposer();
     await refuse(user, "wait");
     setStarting(true);
     for (const row of [/^Add to it/, /^Replace/, /^Cancel/]) expect(screen.getByRole("button", { name: row })).toBeDisabled();
-    await user.click(screen.getByRole("button", { name: /^Replace/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^Replace/ }));
     expect(sends).toHaveLength(1);
   });
 
-  it("another offer set (Submit and Discard) keeps the strip and opens no sheet", async () => {
+  it("another offer set (Submit and Discard) keeps the strip and opens no modal", async () => {
     const user = userEvent.setup();
     bridge([{ body: { receipt: receipt("typed_not_submitted", "changed"), offers: ["submit", "discard", "keys"] } }]);
     renderComposer();
@@ -423,7 +456,7 @@ describe("the draft offers as a sheet", () => {
     await user.click(screen.getByRole("button", { name: "Send" }));
     expect(await screen.findByTestId("send-offers")).toHaveTextContent("Submit");
     expect(screen.queryByRole("dialog")).toBeNull();
-    expect(screen.queryByTestId("send-offer-sheet")).toBeNull();
+    expect(screen.queryByTestId("send-offer-modal")).toBeNull();
   });
 });
 

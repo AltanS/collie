@@ -173,6 +173,17 @@ export const CAUTION_ACTION =
  */
 export const CAUTION_ACTION_TAP = "relative before:absolute before:inset-x-0 before:-inset-y-[7px] before:content-['']";
 
+/** The caution tone's ink, for a title that names a caution outside a Notice (the draft offers' modal). */
+export const CAUTION_ACCENT = TONE.caution.accent;
+
+/**
+ * The caution colours of {@link CAUTION_ACTION} with no size: a tall, full-width choice button that
+ * holds a label and a line under it (the draft offers' modal, send-offer-modal.tsx). The caller gives
+ * the box. Keep it in step with {@link CAUTION_ACTION}.
+ */
+export const CAUTION_CHOICE =
+  "shadow-none border-status-working/60 bg-transparent text-status-working hover:bg-status-working/15 hover:text-status-working active:bg-status-working/15";
+
 /**
  * The same floor for a 32px square ghost icon button (the offers' ✕): 30px padding box, 7px out on
  * all four sides is 44 by 44. Safe only because it is LAST in its row, with nothing to its right, and

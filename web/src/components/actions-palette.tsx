@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
+import { useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { useLocation } from "react-router";
 
 import { ActionRow, DestructiveActionRow } from "@/components/action-sheet-rows";
@@ -7,12 +7,12 @@ import { useCrew } from "@/components/crew-provider";
 import { Icon } from "@/components/icons/icon";
 import { SectionHeader } from "@/components/section-header";
 import { MatchText } from "@/components/ui/match-text";
+import { Modal } from "@/components/ui/modal";
 import { SearchField } from "@/components/ui/search-field";
 import { useAvailableShortcutActions, useShortcutHandler } from "@/hooks/use-shortcut-handler";
 import { useLocale } from "@/hooks/use-locale";
 import { useNav } from "@/hooks/use-nav";
 import { openForCount, useDashPrefs } from "@/hooks/use-dash-prefs";
-import { useVisibleHeight } from "@/hooks/use-visible-height";
 import { availableCommands, isDestructive, suggestedCommands, type PaletteCommand } from "@/lib/actions-palette/commands";
 import { hitKey, searchPalette, type CommandEntry, type Hit } from "@/lib/actions-palette/rank";
 import { closeActionsPalette, openActionsPalette, useActionsPaletteOpen } from "@/lib/actions-palette/state";
@@ -97,14 +97,6 @@ export function ActionsPalette({ openPane, onClose }: ActionsPaletteProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const typed = query.trim() !== "";
-
-  // Focus on open, inside the tap that opened it, so the soft keyboard comes up; give the focus back on close.
-  useLayoutEffect(() => {
-    // SAFETY: `activeElement` is `Element | null`; only its optional `focus` is called on the way out.
-    const before = document.activeElement as HTMLElement | null;
-    inputRef.current?.focus({ preventScroll: true });
-    return () => before?.focus?.({ preventScroll: true });
-  }, []);
 
   const herd = useMemo(() => [...data.agents, ...data.shellPanes], [data.agents, data.shellPanes]);
   const hereKey = openPane === undefined ? null : paneRowKey(openPane);
@@ -244,126 +236,96 @@ export function ActionsPalette({ openPane, onClose }: ActionsPaletteProps) {
     <PaletteRow key={row.key} row={row} highlighted={row.key === current} here={hereKey} onRun={run} />
   );
   const highlightedPane = current?.startsWith(ALL_PANES_KEY) ? current.slice(ALL_PANES_KEY.length) : null;
-  // The panel's room: from its top down to a small margin, above the keyboard. `--app-h` follows the
-  // keyboard where the browser resizes the page for it; the visible height covers the one that only
-  // overlays it (iOS). On a large screen at most 70% of the window.
-  const visible = useVisibleHeight();
-  const roomStyle: CSSProperties & Record<"--palette-room", string> = { "--palette-room": `${visible}px` };
-
+  // The shell (scrim, panel, focus, Escape, the room above the keyboard) is the shared modal's, at the top
+  // (ui/modal.tsx, ADR 0167). The panel's room: from its top down to a small margin, above the keyboard.
+  // On a large screen at most 70% of the window. The field takes the focus on open, inside the tap that
+  // opened it, so the soft keyboard comes up.
   return (
-    <div
-      className="fixed inset-x-0 top-0 z-50 flex h-(--app-h) flex-col items-center px-3 pt-[calc(0.75rem+env(safe-area-inset-top))]"
-      style={roomStyle}
+    <Modal
+      placement="top"
+      onClose={onClose}
+      label={t("actions.title")}
+      initialFocus={inputRef}
+      slot="actions-palette"
+      scrimSlot="actions-palette-scrim"
+      className="max-h-[calc(min(var(--app-h),var(--modal-room))-1.5rem-env(safe-area-inset-top))] w-full max-w-[560px] lg:max-h-[min(70dvh,calc(var(--modal-room)-1.5rem-env(safe-area-inset-top)))]"
     >
-      {/* The scrim: a tap that went down AND up on it closes, so the release of the tap that opened
-          the palette never closes it again (ui/sheet.tsx, the backdrop's rule). */}
-      <Scrim onClose={onClose} />
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label={t("actions.title")}
-        data-slot="actions-palette"
-        // Rounded with the house radius, a uniform border and a soft shadow; no accent edge (DESIGN.md).
-        className="relative z-10 flex max-h-[calc(min(var(--app-h),var(--palette-room))-1.5rem-env(safe-area-inset-top))] w-full max-w-[560px] flex-col overflow-hidden rounded-md border border-border bg-card shadow-2xl duration-150 animate-in fade-in slide-in-from-top-2 lg:max-h-[min(70dvh,calc(var(--palette-room)-1.5rem-env(safe-area-inset-top)))]"
-      >
-        <div className="shrink-0 p-2">
-          <SearchField
-            ref={inputRef}
-            value={query}
-            onChange={changeQuery}
-            placeholder={t("actions.search.placeholder")}
-            label={t("actions.search.placeholder")}
-            enterKeyHint="go"
-            onKeyDown={onKeyDown}
-            trailing={
-              <button
-                type="button"
-                aria-label={typed ? t("actions.search.clear") : t("common.closeAria")}
-                onClick={() => {
-                  if (!typed) return onClose();
-                  changeQuery("");
-                  inputRef.current?.focus({ preventScroll: true });
-                }}
-                className="absolute right-0 top-0 flex size-11 items-center justify-center rounded-md text-muted-foreground hover:text-foreground"
-              >
-                <Icon name="clear" className="size-4" aria-hidden />
-              </button>
-            }
-          />
-        </div>
-        <div
-          ref={listRef}
-          data-slot="actions-palette-list"
-          // The list scrolls inside itself. Its lower edge fades over the bottom padding, so a row cut by
-          // the edge reads as "more below", and the last row scrolls clear of the fade.
-          className="min-h-0 flex-1 overflow-y-auto overscroll-contain border-t border-rule pb-6 [mask-image:linear-gradient(to_bottom,black_calc(100%-1.5rem),transparent)]"
-        >
-          {typed ? (
-            rows.typed.length === 0 ? (
-              <p className="px-4 py-8 text-center text-sm text-muted-foreground">{t("actions.empty", { query: query.trim() })}</p>
-            ) : (
-              <div className="flex flex-col gap-0.5 p-1">{rows.typed.map(rowAt)}</div>
-            )
-          ) : (
-            <div className="flex flex-col gap-2 p-1">
-              {rows.recent.length > 0 && <Block label={t("actions.recent")}>{rows.recent.map(rowAt)}</Block>}
-              {rows.suggested.length > 0 && <Block label={t("actions.suggested")}>{rows.suggested.map(rowAt)}</Block>}
-              {/* ALL PANES: the Switch pane sheet's own list (agent-sidebar.tsx), with the props that sheet
-                  gives it, so scrolling down lands in the switcher a person knows. Its own filter field
-                  is off: the palette's field is the search. No order toggle and no Launch rows. */}
-              <Block label={t("actions.allPanes")} slot="actions-all-panes">
-                <ThreadSidebar
-                  agents={data.agents}
-                  shellPanes={data.shellPanes}
-                  currentPaneKey={hereKey ?? ""}
-                  onSelect={openPaneRow}
-                  trickSessions={data.trickSessions}
-                  onSelectTrick={openTrick}
-                  tabs={data.tabs}
-                  servers={data.servers}
-                  workspaces={data.workspaces}
-                  scope={data.scope}
-                  sessions={data.sessions}
-                  pins={pins}
-                  shellsOpen={openForCount(dash.prefs.shellsOpen, data.shellPanes.length)}
-                  onShellsOpenChange={dash.setShellsOpen}
-                  order={dash.prefs.paneOrder}
-                  className="px-0 py-1"
-                  filter={false}
-                  highlightedKey={highlightedPane}
-                />
-              </Block>
-            </div>
-          )}
-        </div>
+      <div className="shrink-0 p-2">
+        <SearchField
+          ref={inputRef}
+          value={query}
+          onChange={changeQuery}
+          placeholder={t("actions.search.placeholder")}
+          label={t("actions.search.placeholder")}
+          enterKeyHint="go"
+          onKeyDown={onKeyDown}
+          trailing={
+            <button
+              type="button"
+              aria-label={typed ? t("actions.search.clear") : t("common.closeAria")}
+              onClick={() => {
+                if (!typed) return onClose();
+                changeQuery("");
+                inputRef.current?.focus({ preventScroll: true });
+              }}
+              className="absolute right-0 top-0 flex size-11 items-center justify-center rounded-md text-muted-foreground hover:text-foreground"
+            >
+              <Icon name="clear" className="size-4" aria-hidden />
+            </button>
+          }
+        />
       </div>
-    </div>
+      <div
+        ref={listRef}
+        data-slot="actions-palette-list"
+        // The list scrolls inside itself. Its lower edge fades over the bottom padding, so a row cut by
+        // the edge reads as "more below", and the last row scrolls clear of the fade.
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain border-t border-rule pb-6 [mask-image:linear-gradient(to_bottom,black_calc(100%-1.5rem),transparent)]"
+      >
+        {typed ? (
+          rows.typed.length === 0 ? (
+            <p className="px-4 py-8 text-center text-sm text-muted-foreground">{t("actions.empty", { query: query.trim() })}</p>
+          ) : (
+            <div className="flex flex-col gap-0.5 p-1">{rows.typed.map(rowAt)}</div>
+          )
+        ) : (
+          <div className="flex flex-col gap-2 p-1">
+            {rows.recent.length > 0 && <Block label={t("actions.recent")}>{rows.recent.map(rowAt)}</Block>}
+            {rows.suggested.length > 0 && <Block label={t("actions.suggested")}>{rows.suggested.map(rowAt)}</Block>}
+            {/* ALL PANES: the Switch pane sheet's own list (agent-sidebar.tsx), with the props that sheet
+                gives it, so scrolling down lands in the switcher a person knows. Its own filter field
+                is off: the palette's field is the search. No order toggle and no Launch rows. */}
+            <Block label={t("actions.allPanes")} slot="actions-all-panes">
+              <ThreadSidebar
+                agents={data.agents}
+                shellPanes={data.shellPanes}
+                currentPaneKey={hereKey ?? ""}
+                onSelect={openPaneRow}
+                trickSessions={data.trickSessions}
+                onSelectTrick={openTrick}
+                tabs={data.tabs}
+                servers={data.servers}
+                workspaces={data.workspaces}
+                scope={data.scope}
+                sessions={data.sessions}
+                pins={pins}
+                shellsOpen={openForCount(dash.prefs.shellsOpen, data.shellPanes.length)}
+                onShellsOpenChange={dash.setShellsOpen}
+                order={dash.prefs.paneOrder}
+                className="px-0 py-1"
+                filter={false}
+                highlightedKey={highlightedPane}
+              />
+            </Block>
+          </div>
+        )}
+      </div>
+    </Modal>
   );
 }
 
 function isDestructiveRow(row: Row): boolean {
   return row.kind === "command" && isDestructive(row.command.id);
-}
-
-function Scrim({ onClose }: { onClose: () => void }) {
-  const armed = useRef(false);
-  return (
-    <button
-      type="button"
-      aria-hidden="true"
-      tabIndex={-1}
-      data-slot="actions-palette-scrim"
-      className="absolute inset-0 bg-black/50 duration-150 animate-in fade-in"
-      onPointerDown={() => {
-        armed.current = true;
-      }}
-      onClick={() => {
-        if (!armed.current) return;
-        armed.current = false;
-        onClose();
-      }}
-    />
-  );
 }
 
 function Block({ label, slot, children }: { label: string; slot?: string; children: ReactNode }) {

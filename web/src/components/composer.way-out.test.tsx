@@ -146,7 +146,7 @@ describe("the way out", () => {
     const { onToggle } = mount("draft");
     await user.type(screen.getByPlaceholderText("Type a reply…"), "new words");
     await user.click(screen.getByRole("button", { name: "Send" }));
-    const strip = await screen.findByTestId("send-offer-sheet");
+    const strip = await screen.findByTestId("send-offer-modal");
     for (const word of ["Add to it", "Replace", "Cancel"]) expect(strip).toHaveTextContent(word);
     expect(screen.getByRole("textbox")).toHaveValue("new words");
     expect(statusLine()).toBe("");

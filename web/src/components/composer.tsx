@@ -36,7 +36,7 @@ import { SectionLabel } from "@/components/ui/section-label";
 import { Collapse } from "@/components/ui/collapse";
 import { BottomSheet } from "@/components/ui/sheet";
 import { SendOfferStrip } from "@/components/send-offer-strip";
-import { opensAsSheet, SendOfferSheet } from "@/components/send-offer-sheet";
+import { offerDraft, opensAsModal, SendOfferModal, type OfferDraft } from "@/components/send-offer-modal";
 import { HeldCard, drawnHeldRows, type HeldAction } from "@/components/composer-held";
 import { offerMode, type SendNote } from "@/lib/send-protocol";
 import { SecretField } from "@/components/secret-field";
@@ -1045,7 +1045,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // render's fresh closure — the latest-value ref says that outright, as `noticeNoEchoRef` does.
   const clearComposedDraftRef = useRef(clearComposedDraft);
   clearComposedDraftRef.current = clearComposedDraft;
-  const [protocolOffer, setProtocolOffer] = useState<{ text: string; isDraft: boolean; rowsHash: string | null; offers: readonly SendOffer[]; capAck: boolean } | null>(null);
+  const [protocolOffer, setProtocolOffer] = useState<{ text: string; isDraft: boolean; rowsHash: string | null; offers: readonly SendOffer[]; capAck: boolean; draft: OfferDraft | null } | null>(null);
   const [uploading, setUploading] = useState(false);
   const activeUploadsRef = useRef(0);
   // Pending-send preview: set when a confirmed send is still not echoed `SEND_SLOW_MS` after the tap, cleared when the
@@ -2603,7 +2603,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       // A resend makes no offer: an offer would carry the row's text, which may be masked. A sign-in code
       // makes none either: an offer keeps the text for a later tap, and a code is never kept (the M102 review, A).
       const offered = reading.offers.length > 0 && resend === undefined && !secret;
-      setProtocolOffer(offered ? { text: t, isDraft, rowsHash: reply.rowsHash, offers: reading.offers, capAck: reading.cap !== null } : null);
+      setProtocolOffer(offered ? { text: t, isDraft, rowsHash: reply.rowsHash, offers: reading.offers, capAck: reading.cap !== null, draft: offerDraft(reply) } : null);
       // The revision the answer read: a Send again that waits for another send turns on once a later read differs.
       const refusal = { ...readingRefusal(reading), atRevision: (reply.surface ?? shownSurface).revision };
       // A screen Collie cannot read: the pane opens its card, with the person's Keys pad and "Type it
@@ -2872,9 +2872,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // (M102 spec 04). Only that one: a later refusal (a link that is down, a lock) has words the card does not.
   const cannotTellInScreen = cannotTellFacts !== null && (cannotTellInView ?? true);
   const cardStandsIn = cannotTellInScreen && unknownAnswer !== null && shownRefusalKey === unknownAnswer.noticeKey;
-  // The draft offers open as a sheet (trial, send-offer-sheet.tsx), which says the refusal itself: its notice waits.
-  const draftSheetOpen = protocolOffer !== null && opensAsSheet(protocolOffer.offers);
-  const refusalShown = sendRefusal !== null && shownRefusalKey !== hiddenRefusalKey && !underPasswordNotice && !cardStandsIn && !draftSheetOpen;
+  // The draft offers open as a modal (trial, send-offer-modal.tsx), which says the refusal itself: its notice waits.
+  const draftModalOpen = protocolOffer !== null && opensAsModal(protocolOffer.offers);
+  const refusalShown = sendRefusal !== null && shownRefusalKey !== hiddenRefusalKey && !underPasswordNotice && !cardStandsIn && !draftModalOpen;
   // The offers' ✕, and the sheet's close without a choice: the offer goes, its notice hides, nothing is sent.
   const dismissOffers = () => {
     setProtocolOffer(null);
@@ -4282,8 +4282,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         {/* The Send Protocol's offers (M56 spec 05), at the thumb: Add / Replace / Cancel on a draft,
             Submit / Discard on text that was typed and not sent, and the second tap on a screen
             Collie cannot read. Each is a new request; the ✕ drops the strip and sends nothing. */}
-        <Collapse open={protocolOffer !== null && !draftSheetOpen}>
-          {protocolOffer !== null && !draftSheetOpen && (
+        <Collapse open={protocolOffer !== null && !draftModalOpen}>
+          {protocolOffer !== null && !draftModalOpen && (
             <SendOfferStrip
               offers={protocolOffer.offers}
               disabled={starting || sending || locked}
@@ -4295,9 +4295,10 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             />
           )}
         </Collapse>
-        {draftSheetOpen && (
-          <SendOfferSheet
+        {draftModalOpen && (
+          <SendOfferModal
             offers={protocolOffer.offers}
+            draft={protocolOffer.draft}
             disabled={starting || sending || locked}
             onOffer={onProtocolOffer}
             onDismiss={dismissOffers}

@@ -78,6 +78,13 @@ export interface SendReply {
    * typed again and no key went out. The person presses Enter on the Keys pad.
    */
   readonly textAlreadyTyped?: true;
+  /**
+   * On a `draft_present` refusal: the box's text as the bridge read it, in the read its `rowsHash` covers
+   * (ADR 0166), masked. Absent when the bridge could not read the box whole, on a sign-in field, and from
+   * an older bridge. `draftCut`: the text was cut at the bridge's limit.
+   */
+  readonly draftText?: string;
+  readonly draftCut?: true;
 }
 
 const PROFILE_STATUSES: readonly ProfileStatus[] = ["verified", "provisional", "revoked"];
@@ -160,6 +167,7 @@ export function readSendReply(body: JsonValue | undefined): SendReply | null {
     ...awaitingOf(receipt?.awaitingEventUntil),
     ...draftSeenOf(receipt?.draftSeen),
     ...alreadyTypedOf(receipt?.textAlreadyTyped),
+    ...draftTextOf(node.draftText, node.draftCut),
   };
 }
 
@@ -174,6 +182,19 @@ function awaitingOf(value: JsonValue | undefined): { awaitingUntil?: number } {
 /** The receipt's `textAlreadyTyped` as the field to spread: only a literal true counts. */
 function alreadyTypedOf(value: JsonValue | undefined): { textAlreadyTyped?: true } {
   return value === true ? { textAlreadyTyped: true } : {};
+}
+
+/** The bridge's limit for a quoted draft; a longer one is cut here too, and marked cut. */
+const DRAFT_TEXT_MAX = 2000;
+
+/** The answer's quoted draft as the fields to spread: a non-empty string, kept to the bridge's 2000 characters. */
+function draftTextOf(text: JsonValue | undefined, cut: JsonValue | undefined): Pick<SendReply, "draftText" | "draftCut"> {
+  const value = asJsonString(text);
+  if (value === undefined || value === "") return {};
+  const kept = [...value];
+  const over = kept.length > DRAFT_TEXT_MAX;
+  const draftText = over ? kept.slice(0, DRAFT_TEXT_MAX).join("") : value;
+  return cut === true || over ? { draftText, draftCut: true } : { draftText };
 }
 
 function draftSeenOf(value: JsonValue | undefined): { draftSeen?: true } {

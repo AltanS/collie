@@ -54,5 +54,7 @@ command in it is an action of the shortcut table.**
   row of Actions. If people miss the tap, the answer is a pane row in Recent, not a second pill.
 - Rename space works only on the space's page, where the space strip registers it; the dashboard does
   not ask which space. A palette that asks would be a second rename flow.
+- The palette's shell (the scrim, the panel, the focus, Escape, the room above the keyboard) is the
+  shared modal of [0167](./0167-a-modal-for-a-blocking-decision.md), at its top placement.
 - Revisit when a command needs an argument the screen cannot supply (a target pane, a folder): the
   palette has no second step today.
