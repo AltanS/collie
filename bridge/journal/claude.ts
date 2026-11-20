@@ -27,7 +27,7 @@
 // Claude writes when a session is compacted.
 
 import { readdir, stat } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 
 import { observedClaim, type Sourced } from "../cache/claims.ts";
 import type { CacheProbe, ChoiceOnly } from "../cache/engine.ts";
@@ -54,6 +54,7 @@ import { choicesBeforeFirstTurn, claudeResets, effortChosenAfter, lastTwoTurns, 
 // from there for the same reason. The rule it enforces is not pi's, though: a journal is an AGENT's
 // output, so an `http://` value in a block never becomes a fetch the phone makes.
 import { resolveImage } from "./pi.ts";
+import { liftedSpelling } from "../../web/src/lib/harness/claude/paste.ts";
 import {
   containedRealpath,
   exists,
@@ -1202,6 +1203,29 @@ export function handedOverTo(lines: readonly string[]): string | null {
   return null;
 }
 
+/** Bounds on the shared per-directory sibling metadata snapshot for continuation following. */
+const DIR_SCAN_MAX = 64;
+/** Matches CacheTracker's 5 s floor so N panes in one project folder share a single directory scan. */
+export const DIR_SCAN_TTL_MS = 5_000;
+
+interface DirFileMeta {
+  readonly size: number;
+  readonly mtimeMs: number;
+}
+
+interface DirScan {
+  readonly dirMtimeMs: number;
+  readonly scannedAt: number;
+  readonly files: ReadonlyMap<string, DirFileMeta>;
+}
+
+/** Optional seams for testing continuation directory caching without stubbing node:fs globally. */
+export interface ClaudeTranscriptSourceDeps {
+  readonly now?: () => number;
+  readonly stat?: (path: string) => Promise<DirFileMeta>;
+  readonly readdir?: (path: string) => Promise<readonly string[]>;
+}
+
 /**
  * Real filesystem source rooted at Claude's projects directory.
  *
@@ -1228,15 +1252,29 @@ export class ClaudeTranscriptSource implements TranscriptSource {
    */
   private readonly handOvers = new Map<string, { size: number; mtimeMs: number; next: string | null }>();
 
+  /**
+   * Shared short-TTL per-directory `.jsonl` stat snapshots for {@link followContinuation}, plus
+   * in-flight coalescing, so N panes in a large project folder share one scan per tick instead of
+   * executing N full `readdir` + `stat` sweeps.
+   */
+  private readonly dirScans = new Map<string, DirScan>();
+  private readonly inFlightDirScans = new Map<string, Promise<ReadonlyMap<string, DirFileMeta> | null>>();
+
   private readonly rootsNow: () => string[];
+  private readonly now: () => number;
+  private readonly statFs: (path: string) => Promise<DirFileMeta>;
+  private readonly readdirFs: (path: string) => Promise<readonly string[]>;
 
   /** The roots now: fixed, or the live list an added account joins (M101). */
   private get roots(): string[] {
     return this.rootsNow();
   }
 
-  constructor(roots: RootSource) {
+  constructor(roots: RootSource, deps: ClaudeTranscriptSourceDeps = {}) {
     this.rootsNow = rootReader(roots);
+    this.now = deps.now ?? Date.now;
+    this.statFs = deps.stat ?? stat;
+    this.readdirFs = deps.readdir ?? readdir;
   }
 
   async resolve(ref: AgentSessionRef): Promise<string | null> {
@@ -1246,13 +1284,15 @@ export class ClaudeTranscriptSource implements TranscriptSource {
     const sessionId = ref.value;
     const cached = this.pathCache.get(sessionId);
     if (cached !== undefined) {
-      // Re-verify: a cached path can vanish when a session is deleted.
+      // Re-verify per-root containment on every hit: exists() follows symlinks, so a file replaced
+      // by an outward link after the first resolve would otherwise be served.
       //
       // The cache memoises only the EXPENSIVE part — the global scan that maps a uuid to its file,
       // which never changes. Continuation-following must still run on every call, because the
       // conversation rotates into a new file WHILE the bridge is up: caching its result would pin the
       // answer to whatever was true at the first request and go stale minutes later.
-      if (await exists(cached.path)) return this.follow(cached.path, cached.root);
+      const real = await containedRealpath(cached.path, cached.root);
+      if (real !== null) return this.follow(real, cached.root);
       this.pathCache.delete(sessionId);
     }
 
@@ -1330,9 +1370,9 @@ export class ClaudeTranscriptSource implements TranscriptSource {
    */
   private async scanRoot(sessionId: string, root: string): Promise<string | null> {
     const file = `${sessionId}.jsonl`;
-    let dirs: string[];
+    let dirs: readonly string[];
     try {
-      dirs = await readdir(root);
+      dirs = await this.readdirFs(root);
     } catch {
       return null; // this projects dir doesn't exist — a profile that isn't on this machine
     }
@@ -1412,6 +1452,67 @@ export class ClaudeTranscriptSource implements TranscriptSource {
   }
 
   /**
+   * Return a shared short-TTL `(size, mtimeMs)` snapshot for `.jsonl` siblings in `dir`.
+   * Re-scans immediately when `stat(dir).mtimeMs` changes (a new rotation file created or deleted)
+   * or after {@link DIR_SCAN_TTL_MS} (so in-place writes to existing siblings and transient `stat`
+   * failures are picked up on the next tick). Concurrent callers for the same directory share one
+   * in-flight scan.
+   */
+  private async dirEntries(dir: string): Promise<ReadonlyMap<string, DirFileMeta> | null> {
+    const pending = this.inFlightDirScans.get(dir);
+    if (pending !== undefined) return pending;
+
+    const at = this.now();
+    let dirMtimeMs: number;
+    try {
+      dirMtimeMs = (await this.statFs(dir)).mtimeMs;
+    } catch {
+      return null;
+    }
+
+    // Re-check after the async stat so callers that raced into statFs(dir) still coalesce.
+    const inFlight = this.inFlightDirScans.get(dir);
+    if (inFlight !== undefined) return inFlight;
+
+    const cached = this.dirScans.get(dir);
+    if (cached !== undefined && at - cached.scannedAt < DIR_SCAN_TTL_MS && dirMtimeMs === cached.dirMtimeMs) {
+      return cached.files;
+    }
+
+    const scan = (async (): Promise<ReadonlyMap<string, DirFileMeta> | null> => {
+      let names: readonly string[];
+      try {
+        names = await this.readdirFs(dir);
+      } catch {
+        return null;
+      }
+      const files = new Map<string, DirFileMeta>();
+      for (const name of names) {
+        if (!name.endsWith(".jsonl")) continue;
+        try {
+          const st = await this.statFs(join(dir, name));
+          files.set(name, { size: st.size, mtimeMs: st.mtimeMs });
+        } catch {
+          continue;
+        }
+      }
+      if (!this.dirScans.has(dir) && this.dirScans.size >= DIR_SCAN_MAX) {
+        const oldest = this.dirScans.keys().next().value;
+        if (oldest !== undefined) this.dirScans.delete(oldest);
+      }
+      this.dirScans.set(dir, { dirMtimeMs, scannedAt: this.now(), files });
+      return files;
+    })();
+
+    this.inFlightDirScans.set(dir, scan);
+    try {
+      return await scan;
+    } finally {
+      this.inFlightDirScans.delete(dir);
+    }
+  }
+
+  /**
    * Follow a rotated conversation to the log it actually continues in.
    *
    * The id Herdr reports can name a FROZEN PREFIX (see {@link conversationRoot}), so serving it
@@ -1421,8 +1522,9 @@ export class ClaudeTranscriptSource implements TranscriptSource {
    * Two guards keep this from making things worse:
    *  - a candidate must be at least as large as the log we already have, so following can never show
    *    LESS history than not following;
-   *  - only the first line of each sibling is read (plus a stat), so the scan is a few milliseconds
-   *    over a directory of ~40 logs. That matters, because `resolve` runs on the cache tracker's
+   *  - only the first line of each sibling is read, and the sibling sizes and times now come from the
+   *    shared snapshot of {@link dirEntries}, at most {@link DIR_SCAN_TTL_MS} old (the pane's own file is
+   *    still read fresh), so the scan is a few milliseconds over a directory of ~40 logs. That matters, because `resolve` runs on the cache tracker's
    *    floor tick as well as on a History tap.
    *
    * A sibling whose own end records a hand-over is never picked: {@link handedOverTo} is Claude
@@ -1434,29 +1536,25 @@ export class ClaudeTranscriptSource implements TranscriptSource {
    */
   private async followContinuation(path: string, root: string): Promise<string> {
     const dir = dirname(path);
+    const selfName = basename(path);
     let self: LogStamp;
     try {
-      const st = await stat(path);
+      const st = await this.statFs(path);
       self = { root: conversationRoot(await head(path)), size: st.size, mtimeMs: st.mtimeMs };
     } catch {
       return path;
     }
     if (self.root === null) return path;
 
+    const entries = await this.dirEntries(dir);
+    if (entries === null) return path;
+
     let best = { path, size: self.size, mtimeMs: self.mtimeMs };
-    let names: string[];
-    try {
-      names = await readdir(dir);
-    } catch {
-      return path;
-    }
-    for (const name of names) {
-      if (!name.endsWith(".jsonl")) continue;
+    for (const [name, st] of entries) {
+      if (name === selfName) continue;
+      if (st.mtimeMs <= best.mtimeMs || st.size < self.size) continue;
       const candidate = join(dir, name);
-      if (candidate === path) continue;
       try {
-        const st = await stat(candidate);
-        if (st.mtimeMs <= best.mtimeMs || st.size < self.size) continue;
         // Containment AGAIN, before a byte of the candidate is read. The directory got here from a
         // path `resolve` already validated, but a sibling INSIDE it can still be a symlink out of the
         // root — and anything that writes into the projects tree can plant one. Following it would
@@ -1516,6 +1614,8 @@ export function claudeJournal(roots: RootSource): JournalAdapter {
     sendQueuedNow: ["ctrl+Enter"],
     // The `queue-operation` rows are the queue (createQueueTracker): the cards come from them (ADR 0122).
     recordsQueue: true,
+    // A picture's path is written `[Image #N]` in the queue row and the prompt (the paste grammar's own rule).
+    spellsSend: liftedSpelling,
   };
 }
 

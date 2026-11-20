@@ -24,6 +24,7 @@ import {
 } from "./live.ts";
 import { NO_CHANGE, noUnknowns, parseWith, type PendingTool, rememberPending, type RowReducer } from "./reduce.ts";
 import type { ReceiptQueued } from "./receipt-queue.ts";
+import { liftedSpelling } from "../../web/src/lib/harness/claude/paste.ts";
 import { QueuedSends } from "../surface/queued.ts";
 import { TranscriptStore } from "./store.ts";
 import { redactEntry } from "./text.ts";
@@ -1244,6 +1245,81 @@ describe("what is queued, from the receipts", () => {
       ...(body!.queuedSends ?? []).map((card) => card.text),
     ];
     expect(shown).toContain("/compact keep the plan");
+  });
+
+  // A PICTURE SENT WHILE THE AGENT WORKS (field case 2026-11-20). Claude Code writes the attached path as
+  // `[Image #N]` in its queue row, so the place never equalled the send by text: the card said `[Image #24]`
+  // and the phone's own line for the send (the bubble with the clock) found no card with its text and stayed
+  // beside it. The adapter's spelling (`spellsSend`, Claude's paste grammar) lets the place take the send.
+  describe("a picture's path, which the journal writes as `[Image #N]`", () => {
+    const SHOT = "/home/ope/.local/state/collie/uploads/w7C_pF-mvtrpn7j-e4f81595.png";
+    const SHOT2 = "/home/ope/.local/state/collie/uploads/w7C_pF-mvtrpn7k-0a1b2c3d.png";
+    const sent = (...texts: string[]): ReceiptQueued[] =>
+      texts.map((text, i) => ({ requestId: `req-shot-${String(i).padStart(4, "0")}`, text, at: AT + i * 1_000, state: "queued" }));
+    const claudeLike = (fx: ReturnType<typeof fakeJournal>): JournalAdapter => ({ ...fx.adapter, recordsQueue: true, spellsSend: liftedSpelling });
+
+    test("a picture sent alone: one card, in the send's own words", async () => {
+      const fx = fakeJournal([say("u1"), queue("[Image #24]")]);
+      const body = await windows(fx).window(claudeLike(fx), ref(), { limit: 10 }, sent(SHOT));
+      expect(body!.queued).toEqual([SHOT]);
+      expect("queuedSends" in body!).toBe(false);
+    });
+
+    test("words and a picture in one message: the place takes the send's words", async () => {
+      const fx = fakeJournal([say("u1"), queue("look at the header [Image #3]")]);
+      const body = await windows(fx).window(claudeLike(fx), ref(), { limit: 10 }, sent(`look at the header ${SHOT}`));
+      expect(body!.queued).toEqual([`look at the header ${SHOT}`]);
+    });
+
+    test("two pictures in one message need two tokens: one token is another message", async () => {
+      const both = `${SHOT} ${SHOT2}`;
+      const fx = fakeJournal([say("u1"), queue("[Image #7] [Image #8]")]);
+      expect((await windows(fx).window(claudeLike(fx), ref(), { limit: 10 }, sent(both)))!.queued).toEqual([both]);
+      const one = fakeJournal([say("u1"), queue("[Image #7]")]);
+      expect((await windows(one).window(claudeLike(one), ref(), { limit: 10 }, sent(both)))!.queued).toEqual(["[Image #7]"]);
+    });
+
+    test("two pictures sent as two messages, two places: each place takes one send", async () => {
+      const fx = fakeJournal([say("u1"), queue("[Image #5]", "[Image #6]")]);
+      const body = await windows(fx).window(claudeLike(fx), ref(), { limit: 10 }, sent(SHOT, SHOT2));
+      expect(body!.queued).toEqual([SHOT, SHOT2]);
+    });
+
+    test("two pictures sent as two messages, one place: the place hides one of them, never both", async () => {
+      const fx = fakeJournal([say("u1"), queue("[Image #5]")]);
+      // A harness whose receipt cards draw (the flag off): the send no place takes keeps its card.
+      const drawing: JournalAdapter = { ...fx.adapter, spellsSend: liftedSpelling };
+      const body = await windows(fx).window(drawing, ref(), { limit: 10 }, sent(SHOT, SHOT2));
+      expect(body!.queued).toEqual([SHOT]);
+      expect(body!.queuedSends).toEqual([{ requestId: "req-shot-0001", state: "queued", text: SHOT2 }]);
+    });
+
+    test("one place takes one of two identical plain texts, not both", async () => {
+      const fx = fakeJournal([say("u1"), queue("yes")]);
+      const body = await windows(fx).window(fx.adapter, ref(), { limit: 10 }, sent("yes", "yes"));
+      expect(body!.queued).toEqual(["yes"]);
+      expect(body!.queuedSends).toEqual([{ requestId: "req-shot-0001", state: "queued", text: "yes" }]);
+    });
+
+    test("a plain text keeps the journal's own words", async () => {
+      const fx = fakeJournal([say("u1"), queue("second   message")]);
+      const body = await windows(fx).window(claudeLike(fx), ref(), { limit: 10 }, sent("second message"));
+      expect(body!.queued).toEqual(["second   message"]);
+      expect("queuedSends" in body!).toBe(false);
+    });
+
+    test("delivered, the prompt `[Image #24]` closes the send, so no stale words fill a later place", async () => {
+      const fx = fakeJournal([say("u1"), askAt("p2", "[Image #24]", AT + 30_000), blindQueue(1)]);
+      const body = await windows(fx).window(claudeLike(fx), ref(), { limit: 10 }, sent(SHOT));
+      expect(body!.queued).toEqual([]);
+    });
+
+    test("with no spelling of its own, a harness matches by text only", async () => {
+      const fx = fakeJournal([say("u1"), queue("[Image #24]")]);
+      const recording: JournalAdapter = { ...fx.adapter, recordsQueue: true };
+      const body = await windows(fx).window(recording, ref(), { limit: 10 }, sent(SHOT));
+      expect(body!.queued).toEqual(["[Image #24]"]);
+    });
   });
 
   test("no open sends leave the body byte-identical to before", async () => {

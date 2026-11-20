@@ -59,7 +59,6 @@ import { asWindow } from "./model-window.ts";
 import { type Cursor, NO_CURSOR, type ReadSince } from "./cursor.ts";
 import {
   containedRealpath,
-  exists,
   FIRST_TAIL_BYTES,
   head,
   loadTail,
@@ -623,7 +622,8 @@ export function codexHistoryBase(firstLine: string): HistoryBase | null {
  * resumed conversation re-reports its NEW id and the pane record follows it.
  */
 export class CodexTranscriptSource implements TranscriptSource {
-  private readonly pathCache = new Map<string, { path: string; at: number }>();
+  // The root must travel with the cached path so cache hits re-check per-root symlink containment.
+  private readonly pathCache = new Map<string, { path: string; root: string; at: number }>();
 
   private readonly rootsNow: () => string[];
 
@@ -644,8 +644,9 @@ export class CodexTranscriptSource implements TranscriptSource {
     if (ref.kind !== "id" || !isCodexSessionId(ref.value)) return null;
     const sessionId = ref.value.toLowerCase();
     const cached = this.pathCache.get(sessionId);
-    if (cached !== undefined && this.now() - cached.at < CODEX_RESCAN_MS && (await exists(cached.path))) {
-      return cached.path;
+    if (cached !== undefined && this.now() - cached.at < CODEX_RESCAN_MS) {
+      const real = await containedRealpath(cached.path, cached.root);
+      if (real !== null) return real;
     }
     this.pathCache.delete(sessionId);
 
@@ -656,7 +657,7 @@ export class CodexTranscriptSource implements TranscriptSource {
       // A hit that failed containment is `null` too — that root has nothing it may serve for this
       // uuid either way, and the next root is asked on its own terms (files.ts header).
       if (hit === null) continue;
-      this.pathCache.set(sessionId, { path: hit, at: this.now() });
+      this.pathCache.set(sessionId, { path: hit, root, at: this.now() });
       return hit;
     }
     return null;

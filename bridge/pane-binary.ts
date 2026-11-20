@@ -17,7 +17,8 @@
 //    the process's folder; a bare name (the shell found it on its own PATH, which the bridge does not
 //    know) by the process's executable, when the host shows it (`/proc/<pid>/exe` on Linux) and it is
 //    not an interpreter: a program that renamed itself (`process.title`) runs as node or bun, and that
-//    file prints the interpreter's version, not the agent's.
+//    file prints the interpreter's version, not the agent's. An executable with another name than
+//    argv[0] is read through the process's own PATH entry that resolves to it ({@link underItsName}).
 //  • argv[0] is an interpreter and an argument is the harness's script: the same interpreter (absolute,
 //    the process's executable, or the bare name the version read resolves on its PATH) with the
 //    script, made absolute against the process's folder.
@@ -33,7 +34,7 @@
 // keeps its answer for {@link FOREGROUND_REUSE_MS}, so the launch window's read and the profile's read
 // of one send are one call. No harness is named here: the binaries come from the profiles.
 
-import { readFileSync, readlinkSync } from "node:fs";
+import { readFileSync, readlinkSync, realpathSync } from "node:fs";
 
 import { findProfile, loadProfiles, profileForPlatform, type Profile } from "../web/src/lib/surface/profile.ts";
 import { HOST, paneSurfacePlatform, WSL_FLAGS, type Host } from "./host.ts";
@@ -114,6 +115,8 @@ export interface ProcessProbe {
   /** The named variables of the process's environment (`/proc/<pid>/environ`), or null. Absent: none can be read. */
   // Only `names` leave the probe: an environment can hold secrets (API keys), so the rest is dropped here.
   readonly environOf?: (pid: number, names: readonly string[]) => ProcessEnvironment | null;
+  /** The file `path` names once every link is followed (`realpath`), or null. Absent: no link is followed. */
+  readonly realpathOf?: (path: string) => string | null;
 }
 
 /** Some of a process's environment variables by name, as `/proc/<pid>/environ` holds them. */
@@ -167,7 +170,15 @@ export function procProbe(host: Host = HOST): ProcessProbe {
       return null;
     }
   };
-  return { cmdlineOf: cmdline, exeOf: (pid) => link(pid, "exe"), cwdOf: (pid) => link(pid, "cwd"), environOf: environ };
+  const realpath = (path: string): string | null => {
+    if (host.platform !== "linux") return null;
+    try {
+      return realpathSync(path);
+    } catch {
+      return null;
+    }
+  };
+  return { cmdlineOf: cmdline, exeOf: (pid) => link(pid, "exe"), cwdOf: (pid) => link(pid, "cwd"), environOf: environ, realpathOf: realpath };
 }
 
 /** The program a pane runs for a harness, as the version read runs it. */
@@ -204,7 +215,7 @@ export function paneBinaryOf(
   const [first] = found.process.argv;
   if (first === undefined) return null;
   if (found.script === undefined) {
-    const file = absolute(first, cwd, host) ?? (bare(first, host) && exe !== null && !isInterpreter(exe) ? exe : null);
+    const file = absolute(first, cwd, host) ?? (bare(first, host) && exe !== null && !isInterpreter(exe) ? underItsName(first, exe, pid, probe, host) : null);
     return file === null ? null : { harness: found.harness, command: [file] };
   }
   // An interpreter's script is a file the interpreter opened from its folder, bare name or not.
@@ -319,6 +330,26 @@ function absolute(word: string, cwd: () => string | null, host: Host): string | 
 function joinCwd(word: string, cwd: () => string | null, host: Host): string | null {
   const folder = cwd();
   return folder === null ? null : host.path.resolve(folder, word);
+}
+
+/**
+ * The file a bare `name` ran as. `exe` when it carries that name; otherwise the first entry of the
+ * process's own PATH (`/proc/<pid>/environ`) that resolves to `exe`. A multi-call binary (busybox, a
+ * tool manager's launcher behind a link named for the tool) picks what it does by the name it runs
+ * as, so `exe` run under its own name answers for another program. `exe` when the probe cannot read
+ * that PATH or follow a link, or no entry is the same file.
+ */
+function underItsName(name: string, exe: string, pid: number | undefined, probe: ProcessProbe, host: Host): string {
+  if (pid === undefined || programName(exe) === programName(name)) return exe;
+  const path = probe.environOf?.(pid, ["PATH"])?.["PATH"];
+  const realpathOf = probe.realpathOf;
+  if (path === undefined || realpathOf === undefined) return exe;
+  const entry = path
+    .split(host.path.delimiter)
+    .filter((folder) => host.path.isAbsolute(folder))
+    .map((folder) => host.path.join(folder, name))
+    .find((candidate) => realpathOf(candidate) === exe);
+  return entry ?? exe;
 }
 
 /** A probe answer a version read can run: Linux marks a file gone since the start ` (deleted)`. */

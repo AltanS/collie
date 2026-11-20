@@ -6,7 +6,7 @@ import { useShortcutHandler } from "@/hooks/use-shortcut-handler";
 import { noteKeyPress } from "@/lib/hardware-keyboard";
 import { isCatchingUp, isLocked } from "@/lib/idle";
 import { markKeyboardHintDone } from "@/lib/keyboard-hint";
-import { homePath, newPath, settingsPath } from "@/lib/nav";
+import { homePath, newPath, resolveHomeScope, settingsPath } from "@/lib/nav";
 import { useOperatorShortcuts, type OperatorShortcutsWire } from "@/lib/operator-config";
 import type { Scope } from "@/lib/scope";
 import { ACTIONS } from "@/lib/shortcuts/actions";
@@ -152,10 +152,13 @@ export function useShortcutKeyboard(routeKey: string): Keymap {
 /** The actions that need nothing but the router: Settings, the dashboard, New. */
 function useRootHandlers(scope: Scope): void {
   const nav = useNav();
-  const { pathname } = useLocation();
+  const { pathname, search, state } = useLocation();
   useShortcutHandler("settings", pathname.startsWith("/settings") ? undefined : () => nav.down(settingsPath(scope)));
-  // Up, not down, and `upTo` the named parent: the dashboard is every route's ancestor (ADR 0067).
-  useShortcutHandler("open_dashboard", pathname === "/" ? undefined : () => nav.upTo(homePath(scope)));
+  // Up, not down, and `upTo` the named parent: the dashboard is every route's ancestor (ADR 0067). A
+  // screen whose address names no machine (a trick's Session, or New, which names it as `?machine=`)
+  // goes home to the one it came from or names, as the header's mark does there (`resolveHomeScope`).
+  const home = scope.host !== undefined ? scope : resolveHomeScope(pathname, search, state);
+  useShortcutHandler("open_dashboard", pathname === "/" ? undefined : () => nav.upTo(homePath(home)));
   useShortcutHandler(
     "new_space",
     pathname === "/new" ? undefined : () => nav.down(newPath({ machine: scope.host, session: scope.session })),

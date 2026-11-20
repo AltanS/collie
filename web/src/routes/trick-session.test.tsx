@@ -284,6 +284,37 @@ describe("the Dashboard's bar on a trick's Session (amended 2026-11-10)", () => 
     await waitFor(() => expect(where()).toBe("/hill"));
     expect(router.state.historyAction).toBe("REPLACE");
   });
+
+  it("a tab steps back with POP and preserves the host or session scope carried in state.from", async () => {
+    await serveTricks();
+    const hostRouter = mount({ pathname: TRICK_PATH, state: { from: "/?h=peer" } }, home(), "/?h=peer");
+    await screen.findByRole("heading", { name: "Browser leg" });
+    fireEvent.click(within(bar()).getByRole("button", { name: "Dashboard" }));
+    await waitFor(() =>
+      expect(`${hostRouter.state.location.pathname}${hostRouter.state.location.search}`).toBe("/?h=peer"),
+    );
+    expect(hostRouter.state.historyAction).toBe("POP");
+
+    const sessionRouter = mount({ pathname: TRICK_PATH, state: { from: "/?s=work" } }, home(), "/?s=work");
+    await screen.findAllByRole("heading", { name: "Browser leg" });
+    const bars = screen.getAllByRole("navigation", { name: "Dashboard views" });
+    fireEvent.click(within(bars[bars.length - 1]!).getByRole("button", { name: "Dashboard" }));
+    await waitFor(() =>
+      expect(`${sessionRouter.state.location.pathname}${sessionRouter.state.location.search}`).toBe("/?s=work"),
+    );
+    expect(sessionRouter.state.historyAction).toBe("POP");
+  });
+
+  it("the Hill item carries the host and session scope from state.from onto /hill", async () => {
+    await serveTricks();
+    const router = mount({ pathname: TRICK_PATH, state: { from: "/?h=peer&s=work" } }, home({ hill: true }), "/?h=peer&s=work");
+    await screen.findByRole("heading", { name: "Browser leg" });
+    const hill = bar().querySelector<HTMLElement>('[data-slot="tab-link"][data-link="hill"]')!;
+    fireEvent.click(hill);
+    await waitFor(() => expect(`${router.state.location.pathname}${router.state.location.search}`).toBe("/hill?h=peer&s=work"));
+    expect(router.state.historyAction).toBe("REPLACE");
+    expect(router.state.location.state).toEqual({ from: "/?h=peer&s=work" });
+  });
 });
 
 // A DRAFT BUTTON (1.29.1): `does = "draft"` puts its text into the EMPTY reply box of the session the page was

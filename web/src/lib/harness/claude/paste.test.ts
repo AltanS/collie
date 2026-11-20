@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { collapsesAsPaste, isPastePlaceholderOnly, liftableImagePaths, liftedPaste, pasteCarriesSend } from "./paste";
+import { collapsesAsPaste, isPastePlaceholderOnly, liftableImagePaths, liftedPaste, liftedSpelling, pasteCarriesSend } from "./paste";
 
 // The paste-placeholder grammar (.adr/0010). Every shape below was live-probed on 2026-08-06 in the
 // collie-demo sandbox; the rejections are the load-bearing half — a `true` here fires the submit key
@@ -294,5 +294,38 @@ describe("isPastePlaceholderOnly", () => {
     expect(isPastePlaceholderOnly("[Pasted text #1 +3 lines] and the tail")).toBe(false);
     expect(isPastePlaceholderOnly("please review the diff")).toBe(false);
     expect(isPastePlaceholderOnly("")).toBe(false);
+  });
+});
+
+// The journal's spelling of a send (journal/receipt-queue.ts): a queue row or a prompt writes `[Image #N]` where
+// the box showed the token. A yes hides a waiting message as a duplicate, so every near miss is a no.
+describe("liftedSpelling — a queue row that wrote the picture as a token", () => {
+  const shot = "/home/you/.local/state/collie/uploads/w1_p1-mf3x9q-0a1b2c3d.png";
+  const shot2 = "/home/you/.local/state/collie/uploads/w1_p1-mf3x9r-1b2c3d4e.jpg";
+
+  it("takes a picture sent alone as its one token", () => {
+    expect(liftedSpelling(shot, "[Image #24]")).toBe(true);
+  });
+
+  it("takes words and a picture, wherever the token sits, white space folded", () => {
+    expect(liftedSpelling(`look at the header ${shot}`, "look at the header [Image #3]")).toBe(true);
+    expect(liftedSpelling(`look at the header ${shot}`, "[Image #3]look at  the header")).toBe(true);
+    expect(liftedSpelling(`look at the header\n${shot}\nand fix it`, "look at the header\n[Image #3]\nand fix it")).toBe(true);
+  });
+
+  it("takes two pictures only as two tokens", () => {
+    expect(liftedSpelling(`${shot} ${shot2}`, "[Image #7] [Image #8]")).toBe(true);
+    expect(liftedSpelling(`${shot} ${shot2}`, "[Image #7]")).toBe(false);
+    expect(liftedSpelling(shot, "[Image #7] [Image #8]")).toBe(false);
+  });
+
+  it("refuses other words beside the token", () => {
+    expect(liftedSpelling(`look at the header ${shot}`, "look at the footer [Image #3]")).toBe(false);
+    expect(liftedSpelling(shot, "[Image #24] and more")).toBe(false);
+  });
+
+  it("refuses a send with no upload path, and a plain text, whatever the row says", () => {
+    expect(liftedSpelling("/tmp/elsewhere.png", "[Image #1]")).toBe(false);
+    expect(liftedSpelling("plain words", "plain words")).toBe(false);
   });
 });

@@ -389,4 +389,12 @@ export interface JournalAdapter {
    * say are queued. Data, so the shared code names no harness.
    */
   readonly recordsQueue?: true;
+  /**
+   * Whether `written`, a text this harness's journal holds for a message (a queued place or a prompt), can be
+   * its own spelling of `sent`, the text Collie sent, when the two are not equal by text. Claude Code writes
+   * each attached picture's path as `[Image #N]`, so a screenshot sent while the agent works never equals its
+   * queue row (journal/receipt-queue.ts, ONE PLACE, ONE SEND). OPTIONAL: absent, only an equal text is the
+   * same message. STRICT: a wrong yes hides a message that still waits, a wrong no only shows it twice.
+   */
+  readonly spellsSend?: (sent: string, written: string) => boolean;
 }

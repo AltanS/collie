@@ -158,20 +158,20 @@ describe("procBeaconLiveness", () => {
 
   test("on macOS a beacon is live while ps returns the stored lstart", async () => {
     const ps = fakePs(() => LSTART);
-    expect(await sweepOne(procBeaconLiveness({ platform: "darwin", readText: () => null, run: ps.run }))).toBe("live");
+    expect(await sweepOne(procBeaconLiveness({ platform: "darwin", readText: () => null, run: ps.run, isAlive: () => true }))).toBe("live");
     expect(ps.runs).toEqual([["/bin/ps", "-o", "lstart=", "-p", String(PID)]]);
   });
 
   test("on macOS a beacon is expired once the start differs (a reused pid) or ps answers nothing", async () => {
     for (const answer of ["Mon Nov  2 10:15:34 2026\n", "", null]) {
-      expect(await sweepOne(procBeaconLiveness({ platform: "darwin", readText: () => null, run: fakePs(() => answer).run }))).toBe("expired");
+      expect(await sweepOne(procBeaconLiveness({ platform: "darwin", readText: () => null, run: fakePs(() => answer).run, isAlive: () => true }))).toBe("expired");
     }
   });
 
   test("on macOS one pid runs ps once per cache window, so a herd poll does not fork per beacon per pass", async () => {
     let clock = 1000;
     const ps = fakePs(() => LSTART);
-    const liveness = procBeaconLiveness({ platform: "darwin", readText: () => null, run: ps.run, now: () => clock });
+    const liveness = procBeaconLiveness({ platform: "darwin", readText: () => null, run: ps.run, isAlive: () => true, now: () => clock });
     expect(await liveness.startTimeOf(PID)).toBe(STORED);
     clock += COMMAND_PROBE_CACHE_MS - 1;
     expect(await liveness.startTimeOf(PID)).toBe(STORED);
@@ -208,5 +208,73 @@ describe("procBeaconLiveness", () => {
     expect(readStartTimeSync(PID, { platform: "win32", readText: () => null, run: () => LSTART, native: () => 42 })).toBe(42);
     expect(readStartTimeSync(PID, { platform: "win32", readText: () => null, run: () => LSTART, native: () => null })).toBeNull();
     expect(readStartTimeSync(PID, { platform: "freebsd", readText: () => null, run: () => LSTART, native: () => 42 })).toBeNull();
+  });
+
+  test("on macOS a dead pid short-circuits via isAlive without forking ps", async () => {
+    const ps = fakePs(() => LSTART);
+    const liveness = procBeaconLiveness({
+      platform: "darwin",
+      readText: () => null,
+      run: ps.run,
+      isAlive: (pid) => pid === PID,
+    });
+    expect(await liveness.startTimeOf(PID + 1)).toBeNull();
+    expect(await liveness.startTimeOf(PID + 2)).toBeNull();
+    expect(ps.runs).toEqual([]);
+    expect(await liveness.startTimeOf(PID)).toBe(STORED);
+    expect(ps.runs).toHaveLength(1);
+  });
+
+  test("on macOS the default pid check lets a live pid through to ps once", async () => {
+    const ps = fakePs(() => LSTART);
+    const liveness = procBeaconLiveness({ platform: "darwin", readText: () => null, run: ps.run });
+    expect(await liveness.startTimeOf(process.pid)).toBe(STORED);
+    expect(ps.runs).toEqual([["/bin/ps", "-o", "lstart=", "-p", String(process.pid)]]);
+  });
+
+  test("on macOS the default pid check reads a free pid as null without running ps", async () => {
+    let free = 4_194_000;
+    while (free > 1) {
+      try {
+        process.kill(free, 0);
+      } catch (error) {
+        if (error instanceof Error && "code" in error && error.code === "ESRCH") break;
+      }
+      free--;
+    }
+    const ps = fakePs(() => LSTART);
+    const liveness = procBeaconLiveness({ platform: "darwin", readText: () => null, run: ps.run });
+    expect(await liveness.startTimeOf(free)).toBeNull();
+    expect(ps.runs).toEqual([]);
+  });
+
+  test("on macOS the default pid check refuses pid 0 and -1, which process.kill would answer for a group or every process", async () => {
+    const ps = fakePs(() => LSTART);
+    const liveness = procBeaconLiveness({ platform: "darwin", readText: () => null, run: ps.run });
+    expect(await liveness.startTimeOf(0)).toBeNull();
+    expect(await liveness.startTimeOf(-1)).toBeNull();
+    expect(ps.runs).toEqual([]);
+  });
+
+  test("on macOS overflowing 256 live pids evicts only the oldest entries instead of clearing the whole cache", async () => {
+    let clock = 1000;
+    const ps = fakePs(() => LSTART);
+    const liveness = procBeaconLiveness({
+      platform: "darwin",
+      readText: () => null,
+      run: ps.run,
+      isAlive: () => true,
+      now: () => clock,
+    });
+    for (let pid = 1; pid <= 260; pid++) {
+      expect(await liveness.startTimeOf(pid)).toBe(STORED);
+    }
+    const afterFirstPass = ps.runs.length;
+    expect(afterFirstPass).toBe(260);
+    clock += 100;
+    for (let pid = 10; pid <= 260; pid++) {
+      expect(await liveness.startTimeOf(pid)).toBe(STORED);
+    }
+    expect(ps.runs.length - afterFirstPass).toBe(0);
   });
 });

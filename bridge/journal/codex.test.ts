@@ -389,6 +389,19 @@ describe("CodexTranscriptSource — several sessions roots", () => {
     );
     await rm(base, { recursive: true, force: true });
   });
+
+  test("a cached rollout replaced by a symlink out of its root is refused", async () => {
+    const { base, a } = await fixture();
+    const log = join(a, "2026", "08", "11", `rollout-2026-08-11T09-00-00-${A}.jsonl`);
+    const src = new CodexTranscriptSource(a, () => 0);
+    expect(await src.resolve({ kind: "id", value: A })).toBe(log);
+
+    await rm(log);
+    await symlink(join(base, "outside.jsonl"), log);
+
+    expect(await src.resolve({ kind: "id", value: A })).toBeNull();
+    await rm(base, { recursive: true, force: true });
+  });
 });
 
 // ── custom_tool_call: the shape codex reaches for most (spec M41/12) ─────────

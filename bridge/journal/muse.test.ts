@@ -998,6 +998,23 @@ describe("MuseTranscriptSource resolve", () => {
     const source = museJournal([join(root, "2026")]).source;
     await expect(source.resolve({ kind: "id", value: UUID_A })).resolves.toBeNull();
   });
+
+  test("a cached log replaced by a symlink out of its root is refused", async () => {
+    const base = await fixtureRoot();
+    const root = join(base, "sessions");
+    const log = sessionLog(root, "2026-10-02", UUID_A, [metadataRow("/a")]);
+    const source = museJournal([root]).source;
+    await expect(source.resolve({ kind: "id", value: UUID_A })).resolves.toBe(log);
+
+    const outside = join(base, "outside.jsonl");
+    writeFileSync(outside, `${metadataRow("/secret")}\n`);
+    const { rm, symlink } = await import("node:fs/promises");
+    await rm(log);
+    await symlink(outside, log);
+
+    await expect(source.resolve({ kind: "id", value: UUID_A })).resolves.toBeNull();
+    await rm(base, { recursive: true, force: true });
+  });
 });
 
 describe("museJournal discover", () => {
@@ -1279,5 +1296,19 @@ describe("museSessionNameReader", () => {
     expect(controls).toEqual([]);
     expect([...shown].length).toBe(RENAME_TITLE_MAX);
     expect(shown.endsWith("…")).toBe(true);
+  });
+});
+
+// A picture's path as Muse writes it back (`[Image #N]`, N in attach order): the live window asks the adapter
+// whether a queued place or a prompt is the send Collie made (journal/receipt-queue.ts).
+describe("museJournal — the spelling of a send with a picture", () => {
+  const spells = museJournal(tmpdir()).spellsSend;
+  test("a chip in place of the path is the same send, a chip too many or other words are not", () => {
+    expect(spells?.("look /tmp/a.png", "look [Image #1]")).toBe(true);
+    expect(spells?.("/tmp/a.png", "[Image #1] [Image #2]")).toBe(false);
+    expect(spells?.("look /tmp/a.png", "see [Image #1]")).toBe(false);
+  });
+  test("a text with no chip is matched by its words alone, never here", () => {
+    expect(spells?.("open /tmp/x", '"open /tmp/x"')).toBe(false);
   });
 });
