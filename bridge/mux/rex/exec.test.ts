@@ -72,6 +72,14 @@ describe("defaultRexSocket", () => {
   });
 });
 
+/**
+ * Rex has no Windows build (a Linux server, a macOS app: docs/multiplexers.md), and these two cases run a
+ * `sh` script and `/usr/bin/echo` as the rex binary, so they are left out on Windows. The kill past the
+ * cap was checked there by hand on 2026-11-20: SpawnRexExec on a compiled endless printer answered
+ * OUTPUT_CAPPED_CODE after 2.9 s, and no copy of the child was left running.
+ */
+const NO_REX_ON_WINDOWS = process.platform === "win32";
+
 describe("a child's output is capped", () => {
   test("the whole capture may be large, every other call small", () => {
     expect(outputCapFor(["capture", "-b", "block:x", "--format=vt"])).toBe(CAPTURE_OUTPUT_CAP);
@@ -80,7 +88,7 @@ describe("a child's output is capped", () => {
     expect(CALL_OUTPUT_CAP).toBe(2 * 1024 * 1024);
   });
 
-  test("a child that never stops printing is killed past the cap, and the answer says so", async () => {
+  test.skipIf(NO_REX_ON_WINDOWS)("a child that never stops printing is killed past the cap, and the answer says so", async () => {
     // A stand-in that prints for ever, whatever it is asked: the shape of a rex that answers without end.
     const dir = mkdtempSync(join(tmpdir(), "rex-cap-"));
     const endless = join(dir, "rex");
@@ -95,7 +103,7 @@ describe("a child's output is capped", () => {
     expect(performance.now() - started).toBeLessThan(10_000);
   });
 
-  test("an answer under the cap arrives whole", async () => {
+  test.skipIf(NO_REX_ON_WINDOWS)("an answer under the cap arrives whole", async () => {
     const exec = new SpawnRexExec("/usr/bin/echo", "", 5_000);
     const result = await exec.run(["ls", "--json"]);
     expect(result).toEqual({ code: 0, stdout: "--autostart=false --color=never ls --json\n", stderr: "" });
