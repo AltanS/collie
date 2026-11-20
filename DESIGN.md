@@ -35,7 +35,7 @@ afterwards. A copy-paste gives you six places to remember instead.
 | --- | --- |
 | `ui/add-button.tsx` | The "+" at the end of a row that makes one more of what the row holds: a space, a tab. The one look for New is a dashed circle, 28px or 32px; the busy spinner swaps in place. **One exception:** in the pane screen's 30px tab row the "+" is a bare glyph in a 24px box (`face="bare"`), drawn like the fold chevron beside it, because there the ring read as a placeholder (decided 2026-11-06). The caller passes the tap reach, because only the call site can measure what sits around it. |
 | `ui/branch-label.tsx` | The branch a pane's folder is on, on one line: a branch glyph and the name in 11px mono, or a commit glyph and `detached @abc1234`. A long name gives way in the middle and keeps its last eight characters. The screen reader hears the whole name in words. Owns no tap and no height of its own; the caller's line box holds it. `ranges` marks matched letters through `MatchText` and follows the split to the half a mark falls in. The dashboard row's line 2, the pane header's workspace line, and the Files header. |
-| `ui/button.tsx` | Every clickable control with a label. Six variants, one box. Exports `buttonVariants` so a real `<a>` can wear the clothes. |
+| `ui/button.tsx` | Every clickable control with a label. Six variants, one box. Exports `buttonVariants` so a real `<a>` can wear the clothes, and the shared marks: `FOCUS_RING` (and `FOCUS_RING_INSET` for a row against a clipping edge), `HOVER_FILL`, and `TRIGGER_OPEN`, the one look of a control whose menu, dock or dialog is open (see "An open menu shows on its button", section 2). |
 | `ui/badge.tsx` | A small static label pill. Not a status chip — it carries no dot and no tap floor. The `ok` variant (the done token on a 15 percent ground of itself) marks a thing settled, as Morph's "Answered". The `value` variant (the foreground at medium weight on `muted`, one `--border` hairline) is a VALUE a person set or reads a row for, on a trick's detail pages: the timer, the places, the run line, a path, a setting. `components/trick-value.tsx` wraps it and lets it wrap inside a sentence. |
 | `ui/card.tsx` | A filled panel on `--card` with its own edge. The Settings surface. |
 | `ui/bottom-bar.tsx` | The band at the foot of a screen that holds its own controls: a rule above, the page colour, the safe area under the buttons. It owns the band and nothing in it. The Changes screen's Previous / Next pair, the Back it repeats on a phone (§12), and the New page's summary line and Start. |
@@ -199,6 +199,14 @@ surface between the 1px state border and the focus mark, so the two read as two 
 rather than one 4px smear. Outline is the right tool here for the same reasons it is the
 wrong tool for state: it never reflows, it paints above everything, and it is transient.
 Outside `ring-*` for state is retired.
+
+### An open menu shows on its button
+
+A control that opens a menu, a dock or a dialog carries `aria-expanded` and, while that is `true`, wears the
+"on" look (`bg-control-on text-control-on-foreground`, the belt's open dock) through `TRIGGER_OPEN` in
+`ui/button.tsx`: one constant, fill and ink only, no border and no size, in both themes, and it wins over
+hover. It follows the open state on every width: the pane's three dots, the open tab and the open Space
+chip stay lit while their menu stands beside them on a wide window or their sheet covers the page on a phone.
 
 ### A hold shows itself in paint, from one place
 
