@@ -62,7 +62,7 @@ import {
   type RowReducer,
 } from "./reduce.ts";
 import { RENAME_TITLE_MAX, shortLine } from "../mux/durable/clean.ts";
-import { containedRealpath, exists, head, loadTail, readSinceFile, rootList, statFile } from "./files.ts";
+import { containedRealpath, head, loadTail, readSinceFile, rootList, statFile } from "./files.ts";
 import { isBlobHash, resolveImage, type InlineImage } from "./pi.ts";
 import { clamp, MAX_RESULT_CHARS, MAX_TEXT_CHARS, oneLine, stripAnsi, summarizeToolInput } from "./text.ts";
 import { parseUnifiedDiff } from "./diff.ts";
@@ -843,7 +843,8 @@ export function createMuseReducer(): RowReducer {
  * and resolving a pane to one would show the operator somebody else's turn as their own.
  */
 export class MuseTranscriptSource implements TranscriptSource {
-  private readonly pathCache = new Map<string, string>();
+  // The root must travel with the cached path so cache hits re-check per-root symlink containment.
+  private readonly pathCache = new Map<string, { path: string; root: string }>();
 
   private readonly roots: string[];
 
@@ -856,7 +857,8 @@ export class MuseTranscriptSource implements TranscriptSource {
     const sessionId = ref.value.toLowerCase();
     const cached = this.pathCache.get(sessionId);
     if (cached !== undefined) {
-      if (await exists(cached)) return cached;
+      const real = await containedRealpath(cached.path, cached.root);
+      if (real !== null) return real;
       this.pathCache.delete(sessionId);
     }
 
@@ -865,7 +867,7 @@ export class MuseTranscriptSource implements TranscriptSource {
       // A hit that failed containment is `null` too — that root has nothing it may serve for this
       // uuid either way, and the next root is asked on its own terms (files.ts header).
       if (hit === null) continue;
-      this.pathCache.set(sessionId, hit);
+      this.pathCache.set(sessionId, { path: hit, root });
       return hit;
     }
     return null;

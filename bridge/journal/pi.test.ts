@@ -887,6 +887,19 @@ describe("PiTranscriptSource — path refs are confined to the root", () => {
     expect(await src.resolve({ kind: "id", value: "ffffffff-ffff-ffff-ffff-ffffffffffff" })).toBeNull();
     await rm(base, { recursive: true, force: true });
   });
+
+  test("a cached id path replaced by a symlink out of the root is refused", async () => {
+    const { base, root, log } = await fixture();
+    const src = new PiTranscriptSource(root);
+    expect(await src.resolve({ kind: "id", value: SID })).toBe(log);
+
+    const outside = join(base, "outside.jsonl");
+    await rm(log);
+    await symlink(outside, log);
+
+    expect(await src.resolve({ kind: "id", value: SID })).toBeNull();
+    await rm(base, { recursive: true, force: true });
+  });
 });
 
 // pi names a new session before it writes the file (#526). Observed on pi 0.87.1 under Herdr: on
