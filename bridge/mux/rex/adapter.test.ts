@@ -134,7 +134,7 @@ describe("a read takes the tail of the output, not the whole scrollback", () => 
   async function filled() {
     const fake = new FakeRex();
     const rex = new RecordingRex(fake);
-    const adapter = new RexMux(rex);
+    const adapter = new RexMux(rex, { log: () => undefined });
     const pane = (await adapter.snapshot()).panes[0]!;
     fake.fillHistory(pane.paneId, history);
     rex.calls.length = 0;
@@ -219,7 +219,7 @@ describe("an API revision the adapter was not probed on is named once", () => {
     const fake = new FakeRex();
     fake.apiRevision = 20;
     const lines: string[] = [];
-    const adapter = new RexMux(fake, (line) => lines.push(line));
+    const adapter = new RexMux(fake, { log: (line) => lines.push(line) });
     expect((await adapter.snapshot()).panes.length).toBeGreaterThan(0);
     await adapter.snapshot();
     expect(lines).toEqual(["[mux] Rex API revision 20 was not tested with Collie (tested: 18, 19)"]);
@@ -227,8 +227,54 @@ describe("an API revision the adapter was not probed on is named once", () => {
 
   test("a tested revision writes nothing", async () => {
     const lines: string[] = [];
-    const adapter = new RexMux(new FakeRex(), (line) => lines.push(line));
+    const adapter = new RexMux(new FakeRex(), { log: (line) => lines.push(line) });
     await adapter.snapshot();
+    expect(lines).toEqual([]);
+  });
+});
+
+describe("a screen read that falls back to the whole output says so, at most once in ten minutes", () => {
+  const VIEWPORT: MuxGridRequest = { scope: "viewport", lines: 60, styling: "preserve" };
+  const history = Array.from({ length: 5000 }, (_, i) => `build step ${String(i).padStart(5, "0")} finished in 12 ms`);
+
+  async function filled() {
+    const fake = new FakeRex();
+    const lines: string[] = [];
+    const clock = { now: 1_000_000 };
+    const adapter = new RexMux(fake, { log: (line) => lines.push(line), now: () => clock.now });
+    const pane = (await adapter.snapshot()).panes[0]!;
+    fake.fillHistory(pane.paneId, history);
+    return { fake, adapter, lines, clock, paneId: pane.paneId };
+  }
+
+  test("a dropped result is named once; the next line counts what it held back", async () => {
+    const { fake, adapter, lines, clock, paneId } = await filled();
+    expect((await adapter.readGrid(paneId, VIEWPORT)).ok).toBe(true);
+    expect(lines).toEqual([]);
+    fake.forgetResults = true;
+    await adapter.readGrid(paneId, VIEWPORT);
+    await adapter.readGrid(paneId, VIEWPORT);
+    await adapter.readGrid(paneId, VIEWPORT);
+    expect(lines).toEqual(["[mux] a Rex screen read moved the whole output, because the stored result was not there to read"]);
+    clock.now += 10 * 60_000;
+    await adapter.readGrid(paneId, VIEWPORT);
+    expect(lines[1]).toBe(
+      "[mux] a Rex screen read moved the whole output, because the stored result was not there to read (2 more since the last such line)",
+    );
+  });
+
+  test("a broken row check is named with its reason, on the mirror's poll too", async () => {
+    const { fake, adapter, lines, paneId } = await filled();
+    fake.vtRowStart = "";
+    await adapter.readGrid(paneId, { scope: "recent", lines: 600, styling: "preserve" });
+    expect(lines).toEqual(["[mux] a Rex screen read moved the whole output, because the first row of the tail did not open with ESC [ 0 m"]);
+  });
+
+  test("Load older and the unwrapped text fall back without a line", async () => {
+    const { fake, adapter, lines, paneId } = await filled();
+    fake.forgetResults = true;
+    expect((await adapter.readGrid(paneId, { scope: "recent", lines: 4000, styling: "preserve", purpose: "older" })).ok).toBe(true);
+    expect((await adapter.readLogicalText(paneId, 30)).ok).toBe(true);
     expect(lines).toEqual([]);
   });
 });

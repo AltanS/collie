@@ -123,6 +123,15 @@ export const REX_READABLE_LINES = 100_000;
  * runs 70 to 300 bytes. The maximum keeps the JSON form of the tail inside one `blob_read`, whose own
  * ceiling is 960 KiB counted as a JSON string, even when every byte is an escape (`\u001b`, 6 bytes).
  */
+/** At most one "the read moved the whole output" line in this long; the next one counts the rest. */
+const FALLBACK_LOG_EVERY_MS = 10 * 60_000;
+
+/** What a {@link RexMux} takes besides its `rex`: where its log lines go, and its clock. */
+export interface RexMuxOptions {
+  readonly log?: (line: string) => void;
+  readonly now?: () => number;
+}
+
 const TAIL_BYTES_PER_ROW = 512;
 const TAIL_MIN_BYTES = 64 * 1024;
 const TAIL_MAX_BYTES = 160 * 1024;
@@ -259,10 +268,19 @@ export class RexMux implements MuxAdapter {
   /** Whether the server's API revision was asked: once per adapter, on the first good snapshot. */
   private revisionAsked = false;
 
+  /** When the last fallback line was written, and how many viewport fallbacks it has not named. */
+  private lastFallbackLine = Number.NEGATIVE_INFINITY;
+  private fallbacksUnlogged = 0;
+  private readonly log: (line: string) => void;
+  private readonly now: () => number;
+
   constructor(
     private readonly exec: RexExec,
-    private readonly log: (line: string) => void = (line) => console.log(line),
-  ) {}
+    options: RexMuxOptions = {},
+  ) {
+    this.log = options.log ?? ((line) => console.log(line));
+    this.now = options.now ?? Date.now;
+  }
 
   async reachable(): Promise<boolean> {
     try {
@@ -296,7 +314,8 @@ export class RexMux implements MuxAdapter {
     // Rex's output is always screen AND scrollback, so a viewport read keeps the last screenful,
     // sized by the terminal's own rows, and every read takes only the tail it needs (captureTail).
     const [captured, sized] = await Promise.all([
-      this.captureTail(paneId, request.lines, false),
+      // Every read but Load older (`purpose: "older"`) is one the phone repeats on each poll.
+      this.captureTail(paneId, request.lines, false, request.purpose !== "older"),
       request.scope === "viewport" ? this.attemptRun(["block", "call", "-b", paneId, "size"]) : Promise.resolve(null),
     ]);
     if (!captured.ok) return captured;
@@ -320,7 +339,7 @@ export class RexMux implements MuxAdapter {
   /** The same rows with soft wraps joined: `--unwrap`, probed, joins lines the terminal wrapped. */
   async readLogicalText(paneId: string, lines: number): Promise<MuxOutcome<string>> {
     if (!isRexId("block", paneId)) return notRexId("block", paneId);
-    const result = await this.captureTail(paneId, lines, true);
+    const result = await this.captureTail(paneId, lines, true, false);
     if (!result.ok) return result;
     const captured = keepSgrOnly(result.value.text).split("\n");
     return muxOk(captured.slice(Math.max(0, captured.length - lines)).join("\n"));
@@ -341,7 +360,11 @@ export class RexMux implements MuxAdapter {
    * server kept only a few results and dropped this one, the part did not reach the end, the rows do
    * not start where a row starts, or there are fewer rows than asked (Load older).
    */
-  private async captureTail(paneId: string, rows: number, unwrap: boolean): Promise<MuxOutcome<RexCapture>> {
+  private async captureTail(paneId: string, rows: number, unwrap: boolean, viewport: boolean): Promise<MuxOutcome<RexCapture>> {
+    const fallBack = (reason: string): Promise<MuxOutcome<RexCapture>> => {
+      if (viewport) this.noteFallback(reason);
+      return this.captureWhole(paneId, unwrap);
+    };
     const budget = Math.min(TAIL_MAX_BYTES, Math.max(TAIL_MIN_BYTES, rows * TAIL_BYTES_PER_ROW));
     const first = await this.attemptRun(["block", "call", "-b", paneId, "format", JSON.stringify({ format: "vt", unwrap, max_bytes: budget })]);
     if (!first.ok) return first;
@@ -355,15 +378,35 @@ export class RexMux implements MuxAdapter {
     const offset = Math.max(0, head.total - budget);
     const read = await this.attemptRun(["block", "call", "-b", paneId, "blob_read", JSON.stringify({ id: head.id, offset, max_bytes: BLOB_READ_MAX })]);
     const part = read.ok ? safeBlobPart(read.value.stdout) : null;
-    if (part === null || !part.eof) return this.captureWhole(paneId, unwrap);
+    if (!read.ok) return fallBack("the stored result was not there to read");
+    if (part === null) return fallBack("the stored result did not parse");
+    if (!part.eof) return fallBack("the tail did not reach the end of the output");
     const rowStart = offset === 0 ? 0 : part.data.indexOf("\r\n") + 2;
-    if (rowStart < 2 && offset > 0) return this.captureWhole(paneId, unwrap);
+    if (rowStart < 2 && offset > 0) return fallBack("the tail held no row break");
     const text = part.data.slice(rowStart);
     const tailRows = text.split("\r\n");
     const firstFilled = tailRows.find((row) => row !== "");
-    if (firstFilled !== undefined && !firstFilled.startsWith(VT_ROW_START)) return this.captureWhole(paneId, unwrap);
-    if (offset > 0 && tailRows.length < rows) return this.captureWhole(paneId, unwrap);
+    if (firstFilled !== undefined && !firstFilled.startsWith(VT_ROW_START)) return fallBack("the first row of the tail did not open with ESC [ 0 m");
+    if (offset > 0 && tailRows.length < rows) return fallBack(`the tail held ${String(tailRows.length)} rows of the ${String(rows)} asked`);
     return muxOk({ text, cut: offset > 0 });
+  }
+
+  /**
+   * One log line when a screen read had to move the whole output, at most one every ten minutes. A
+   * Rex update that breaks the tail's row check would bring back the multi-megabyte reads without a
+   * word otherwise. Load older and the unwrapped text are left out: they ask for more rows than a short
+   * output holds, and fall back by design.
+   */
+  private noteFallback(reason: string): void {
+    const now = this.now();
+    if (now - this.lastFallbackLine < FALLBACK_LOG_EVERY_MS) {
+      this.fallbacksUnlogged += 1;
+      return;
+    }
+    const held = this.fallbacksUnlogged > 0 ? ` (${String(this.fallbacksUnlogged)} more since the last such line)` : "";
+    this.log(`[mux] a Rex screen read moved the whole output, because ${reason}${held}`);
+    this.lastFallbackLine = now;
+    this.fallbacksUnlogged = 0;
   }
 
   /** The whole screen and scrollback, the read every tail falls back to. */
