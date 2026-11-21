@@ -2339,3 +2339,135 @@ svg[data-mark].mark-steps .ct-tw {
 :root[data-th="2"] [data-slot="header-dock-trail"] {
   margin-left: calc(-0.5rem - 1px);
 }
+/* ── 3 THREE PLANES, ONE LINE. Navigation, header and content each take one of DESIGN.md's planes: the bar
+   the recess, the header the page, the content the paper (a column without focus: header half a step
+   below its page). The selected tab is marked by a 3px bar in the focus frame's colour, standing on the
+   bar's firm lower edge right above the work. On a large screen the header is ONE 48px line: the name,
+   its branch, and the place line at the right beside the controls, on one baseline. */
+:root[data-th="3"] [data-slot="space-header"],
+:root[data-th="3"] header[data-slot="app-header"],
+:root[data-th="3"] [data-slot="column-header"] {
+  border-bottom-color: var(--sh-edge);
+}
+
+:root[data-th="3"] [data-slot="space-header"] [data-slot="tab-strip"] {
+  align-self: stretch;
+}
+
+:root[data-th="3"] [data-slot="space-header"] [data-slot="tab-strip"] > div,
+:root[data-th="3"] [data-slot="space-header"] [data-slot="tab-strip"] > div > div {
+  align-self: stretch;
+  align-items: stretch;
+}
+
+:root[data-th="3"] [data-slot="space-header"] [data-slot="tab"] {
+  height: auto;
+}
+
+:root[data-th="3"] [data-slot="tab"][aria-current] {
+  box-shadow: inset 0 -4px 0 0 var(--sh-frame);
+}
+
+:root[data-th="3"] [data-slot="tab-strip"]:not([data-slot="space-header"] *) [data-slot="tab"][aria-current] {
+  box-shadow: inset 0 -4px 0 0 var(--tab-active);
+}
+
+:root[data-th="3"] [data-slot="wide-layout"] section[data-focused] header[data-slot="app-header"] {
+  background-color: var(--background);
+}
+
+:root[data-th="3"] [data-slot="wide-layout"] [data-slot="column-header"] {
+  background-color: color-mix(in oklch, var(--background), var(--surface-recess));
+}
+
+:root[data-th="3"] [data-slot="wide-layout"] [data-slot="header-row"] {
+  min-height: 48px;
+  padding-block: 2px;
+}
+
+:root[data-th="3"] [data-slot="wide-layout"] [data-slot="pane-lines"] {
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+}
+
+:root[data-th="3"] [data-slot="wide-layout"] [data-slot="pane-lines"] > div {
+  height: 20px;
+  align-items: center;
+}
+
+:root[data-th="3"] [data-slot="wide-layout"] [data-slot="pane-lines"] > div:last-child {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+:root[data-th="3"] [data-slot="wide-layout"] [data-slot="pane-identity-taps"] {
+  flex-direction: row;
+}
+
+:root[data-th="3"] [data-slot="wide-layout"] [data-slot="column-header"] {
+  min-height: 48px;
+}
+
+:root[data-th="3"] [data-slot="wide-layout"] [data-slot="column-header"] > button {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+:root[data-th="3"] [data-slot="wide-layout"] [data-slot="column-header"] [data-slot="column-header-line"] {
+  flex: 1 1 0;
+  align-items: center;
+}
+
+:root[data-th="3"] header[data-slot="app-header"]:not([data-slot="wide-layout"] *) {
+  background-color: var(--background);
+}
+
+:root[data-th="3"] [data-slot="tab-strip"]:not([data-slot="space-header"] *) {
+  background-color: var(--surface-recess);
+}
+
+:root[data-th="3"] [data-slot="space-header"] > div:first-child {
+  align-self: stretch;
+}
+
+:root[data-th="3"] [data-slot="space-header"] > div:first-child > :not([data-slot="tab-strip"]) {
+  align-self: center;
+}
+
+:root[data-th="3"] [data-slot="space-header"] [data-slot="tab-strip"] {
+  margin-bottom: -1px;
+}
+
+/* 3: one line. The name gives way before the branch and the place line; everything sits on one centre. */
+:root[data-th="3"] [data-slot="wide-layout"] [data-slot="pane-lines"] > div:first-child {
+  flex: 0 1 auto;
+  max-width: 55%;
+}
+
+:root[data-th="3"] [data-slot="wide-layout"] [data-slot="pane-lines"] > div:last-child > *,
+:root[data-th="3"] [data-slot="wide-layout"] [data-slot="pane-meta"] {
+  align-self: center;
+  align-items: center;
+}
+
+:root[data-th="3"] [data-slot="wide-layout"] [data-slot="column-header"] > button > div:first-child {
+  flex: 0 1 auto;
+  max-width: 55%;
+  min-width: 0;
+}
+
+/* 3, round three: the tab row fills the bar, so the 3px mark stands on the bar's lower edge; and a
+   column without focus keeps the focused header's 48px, so both bodies start on one line. */
+:root[data-th="3"] [data-slot="space-header"] [data-slot="tab-strip"] > div {
+  height: 100%;
+}
+
+:root[data-th="3"] [data-slot="wide-layout"] [data-slot="column-header"] {
+  padding-block: 2px;
+}
+
+:root[data-th="3"] [data-slot="space-header"] [data-slot="tab-strip"] > div > button {
+  align-self: center;
+}
