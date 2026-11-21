@@ -529,7 +529,7 @@ Each half takes any of these, in four groups.
 
 ### The optional tokens
 
-Three more tokens are optional, and they are the reason for version 3. They are not among the 43, and a theme
+Five more tokens are optional, and they are the reason for version 3. They are not among the 43, and a theme
 may leave them out.
 
 | Token | Meaning |
@@ -537,10 +537,14 @@ may leave them out.
 | `pane-active` | The frame of the active pane column on a large screen. |
 | `tab-active` | The top edge of the open tab and the ring of the open pane, when the theme sets `tabs` to `folder`. |
 | `find` | The ground under a found or matched piece of text: a hit of Find in Chat, and the marked letters of the session filter. Give it an alpha, because it lies over the surface under the text and the text keeps its own colour. |
+| `surface-recess` | On a large screen, the ground of the sidebar and the tab strip: one step below the page. |
+| `surface-paper` | On a large screen, the ground of the pane you are working in: the lightest surface on the screen. |
 
 When a theme leaves out `pane-active` in a half, that half takes the ink of the theme Collie. When it
 leaves out `tab-active`, that half takes its own text colour, so a folder tab draws its top edge in ink.
-When it leaves out `find`, that half takes the amber of the theme Collie.
+When it leaves out `find`, that half takes the amber of the theme Collie. A theme may set `surface-recess` and
+`surface-paper` but need not: a half that leaves them out takes its own page 0.05 darker and its own card 0.05
+lighter, so the pane you work in stays the lightest surface in every theme.
 Collie measures each one only in a half that sets it. See [The contrast report](#the-contrast-report). A file
 that sets one of them must say [version 3](#versions).
 

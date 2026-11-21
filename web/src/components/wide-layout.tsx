@@ -10,7 +10,7 @@ import { ActionsButton } from "@/components/actions-palette";
 import { useHostHealth } from "@/components/crew-provider";
 import { StatusDot } from "@/components/status-badge";
 import { TabStrip } from "@/components/tab-strip";
-import { ColumnControls, ColumnHeader, PaneColumnBody, columnFrame } from "@/components/strip-column";
+import { ColumnControls, ColumnHeader, NAV_EDGE, PaneColumnBody, columnFrame } from "@/components/strip-column";
 import { Button } from "@/components/ui/button";
 import { PaneGlyph } from "@/components/ui/pane-glyph";
 import { BottomSheet } from "@/components/ui/sheet";
@@ -100,6 +100,9 @@ import { setSidebarOpen, setSpaceStrip, spaceStrip, useSidebarOpen, useSpaceStri
 
 /** A press that travels further than this is a scroll, not a tap. */
 const TAP_SLOP_PX = 10;
+
+/** The sidebar and the rail stand on the recess; see the aside below. */
+const SIDEBAR_PLANE = cn(NAV_EDGE, "bg-surface-recess [--card:var(--surface-recess)] [--accent:var(--surface-paper)]");
 
 /** On a column: its scrollers pass a sideways overscroll up to the strip (important, to win over the
  *  transcript list's own `overscroll-contain`). Vertical overscroll is untouched. */
@@ -508,8 +511,12 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
         // Folded with one column, the sidebar fills the left segment; with two, it is the rail.
         // `pt-[env(safe-area-inset-top)]`: the sidebar and the tab row beside it are the layout's top
         // edge, so the two of them clear the status bar; the header docked lower down does not
-        // (app-header.tsx). The card paints under the bar, so the strip it reserves is the panel's own.
-        className={cn("flex shrink-0 flex-col border-r border-rule bg-card pt-[env(safe-area-inset-top)]", book && sidebarShown && "fold-left-full")}
+        // (app-header.tsx). The recess paints under the bar, so the strip it reserves is the panel's own.
+        // THE RECESS (DESIGN.md §4, "The large screen's three planes"): the navigation stands one step
+        // below the page, and the step is the cut, so its right edge is only the faint `NAV_EDGE`. The list inside is the
+        // phone's switcher too, which stands on a card; here `--card` and `--accent` are re-pointed, so its
+        // grounds and the status marks backed with them take the recess, and the selected row the paper.
+        className={cn("flex shrink-0 flex-col border-r", SIDEBAR_PLANE, "pt-[env(safe-area-inset-top)]", book && sidebarShown && "fold-left-full")}
         style={book && sidebarShown ? undefined : { width: sidebarShown ? SIDEBAR_WIDTH[widthClass] : RAIL_WIDTH }}
       >
         <SidebarTop open={sidebarShown} setMark={setMark} toggle={!book} />
@@ -561,7 +568,10 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
           // The row keeps its 48px and the status bar's inset goes on top of it, in the row's own
           // ground, beside the sidebar's (the aside above says why). With no inset it is 48px as before.
           className={cn(
-            "flex h-[calc(3rem+env(safe-area-inset-top))] shrink-0 touch-none items-center gap-1 border-b border-rule bg-band-ground pt-[env(safe-area-inset-top)]",
+            // On the recess with the sidebar: the step down to the page (the open tab) and up to the paper
+            // (the focused column) is the cut, so the edge under it is only the faint `NAV_EDGE`.
+            NAV_EDGE,
+            "flex h-[calc(3rem+env(safe-area-inset-top))] shrink-0 touch-none items-center gap-1 border-b bg-surface-recess pt-[env(safe-area-inset-top)] [--band-ground:var(--surface-recess)] [--chrome:var(--surface-recess)]",
             bookPair ? "pr-1" : "pl-4 pr-1",
           )}
         >
@@ -642,7 +652,8 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
             data-gliding={gliding || undefined}
             onScroll={onStripScroll}
             className={cn(
-              "relative flex min-h-0 flex-1 overflow-y-hidden",
+              // The strip's own ground, seen around the add column, is the recess too.
+              "relative flex min-h-0 flex-1 overflow-y-hidden bg-surface-recess",
               book ? "overflow-x-hidden" : "overflow-x-auto",
               book || drag !== null ? "snap-none overscroll-x-contain" : STRIP_SNAP_CLASSES,
             )}
@@ -670,7 +681,9 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
                     // whose pane holds a wide line (a mirror row, a table, a status footer) grew past
                     // its 100% basis and the strip scrolled sideways inside the content. Out of wide
                     // mode the inline `minWidth` below is not set, so this is the column's floor.
-                    "flex h-full min-w-0 shrink-0 border-r border-rule",
+                    // The seam between two columns is a component edge (`--border`), not a region's rule:
+                    // a line stays quieter than the step between the planes it separates (§4).
+                    "flex h-full min-w-0 shrink-0 border-r border-border",
                     COLUMN_SNAP_CLASSES,
                     // A sideways wheel over a column must reach the strip. The transcript list is
                     // `overscroll-contain` on both axes for the phone, which stopped the chain inside
@@ -700,9 +713,10 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
                     goTo(pane);
                   }}
                 >
-                  {/* THE FRAME: reserved on every column, drawn on the focused one while the strip shows more
-                      than one, so a focus change recolours and moves nothing (DESIGN.md §2). */}
-                  <div data-slot="column-frame" className={cn("relative flex min-w-0 flex-1 flex-col overflow-hidden bg-background", columnFrame(isFocus, framed))}>
+                  {/* THE PLANE AND THE FRAME: the focused column is the paper inside the focus frame, also when
+                      it is the only one; the frame is reserved on every column, so a focus change recolours and
+                      moves nothing (DESIGN.md §2, §4). */}
+                  <div data-slot="column-frame" className={cn("relative flex min-w-0 flex-1 flex-col overflow-hidden", columnFrame(isFocus))}>
                     {isFocus ? (
                       <>
                         <div ref={setRow} data-slot="column-head" className="shrink-0" />

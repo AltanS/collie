@@ -17,6 +17,7 @@ import type { ActionId } from "@/lib/shortcuts/actions";
 import { __resetShortcutRegistry, runShortcutAction } from "@/lib/shortcuts/registry";
 import { statusLabel, type AgentView, type DeviceAuth, type TabView } from "@/lib/types";
 import { __resetWideLayoutStore, setWideLayoutMode } from "@/lib/wide-layout-store";
+import { FOCUS_FRAME, NAV_EDGE, PAGE_PLANE, PAPER_PLANE } from "@/components/strip-column";
 import { DetailRoute } from "@/routes/detail";
 import { withHeaderHost } from "@/test/header-host";
 import { server } from "@/test/setup";
@@ -246,11 +247,17 @@ describe("the page under the layout", () => {
 });
 
 describe("the sidebar", () => {
-  it("is a raised panel with the mark, the word and an open toggle, and the header docks in the focused column", async () => {
+  it("stands on the recess with the mark, the word and an open toggle, and the header docks in the focused column", async () => {
     const { container } = await mount("w1:p1", 1200);
     const aside = q(container, "aside")!;
     expect(aside.dataset.slot).toBe("wide-sidebar");
-    expect(aside.className).toContain("bg-card");
+    expect(aside.className).toContain("bg-surface-recess");
+    // The phone's switcher list inside it stands on a card and marks its row with the accent: here both
+    // are re-pointed, so the list takes the recess and the selected row the paper.
+    expect(aside.className).toContain("[--card:var(--surface-recess)]");
+    expect(aside.className).toContain("[--accent:var(--surface-paper)]");
+    expect(aside.className).toContain(NAV_EDGE);
+    expect(aside.className).not.toContain("border-rule");
     expect(aside.style.width).toBe("320px");
     // One image: Collie in the text colour, then three inked letters (components/collie-wordmark.tsx).
     expect(q(aside, '[data-slot="sidebar-word"] svg')?.getAttribute("aria-label")).toBe("ColliePWA");
@@ -408,19 +415,50 @@ describe("the strip", () => {
     await waitFor(() => expect(columns(container).map((c) => c.dataset.colKey)).toEqual([key(A1), key(A3)]));
   });
 
-  it("frames the focused column on all four sides, and reserves the frame on every column", async () => {
+  it("puts the focused column on the paper inside the frame, one column too, and reserves the frame on every column", async () => {
     const { container } = await mount("w1:p1", 1200);
     const lone = q(columns(container)[0]!, '[data-slot="column-frame"]')!;
-    // One column: the frame stays off, its width still reserved.
+    // One column: it has the focus, so it is the paper inside the frame (Altan's screenshot was this state).
     expect(lone.className).toContain("border-2");
-    expect(lone.className).toContain("border-transparent");
+    expect(lone.className).toContain(FOCUS_FRAME);
+    expect(lone.className).toContain("bg-surface-paper");
 
     await openBesideFromSidebar(container, A2);
     const [other, focused] = columns(container).map((c) => q(c, '[data-slot="column-frame"]')!);
     expect(focused!.className).toContain("border-2");
-    expect(focused!.className).toContain("border-pane-active");
+    expect(focused!.className).toContain(FOCUS_FRAME);
+    expect(focused!.className).toContain(PAPER_PLANE);
     expect(other!.className).toContain("border-2");
     expect(other!.className).toContain("border-transparent");
+    expect(other!.className).toContain(PAGE_PLANE);
+    expect(other!.className).not.toContain("bg-surface-paper");
+  });
+
+  it("puts the navigation on the recess: the tab strip and the strip's own ground, with only the faint edge under the tab strip", async () => {
+    const { container } = await mount("w1:p1", 1200);
+    const header = q(container, '[data-slot="space-header"]')!;
+    expect(header.className).toContain("bg-surface-recess");
+    expect(header.className).toContain(NAV_EDGE);
+    expect(header.className).not.toContain("border-rule");
+    expect(header.className).not.toContain("bg-band-ground");
+    expect(q(container, '[data-slot="strip"]')!.className).toContain("bg-surface-recess");
+    // The seam between two columns is a component edge, quieter than a region's rule.
+    expect(columns(container)[0]!.className).toContain("border-border");
+    expect(columns(container)[0]!.className).not.toContain("border-rule");
+  });
+
+  it("draws the seam under a column header once: the body under it opens with no rule", async () => {
+    const { container } = await mount("w1:p1", 1200);
+    await openBesideFromSidebar(container, A2);
+    const other = columns(container).find((c) => !c.hasAttribute("data-focused"))!;
+    expect(q(other, '[data-slot="column-header"]')!.className).toContain("border-b");
+    expect(q(other, '[data-slot="column-body"]')!.className).toContain("border-transparent");
+    // The focused column's reading area loses its own top rule under the pane header, in both planes.
+    for (const frame of columns(container).map((c) => q(c, '[data-slot="column-frame"]')!)) {
+      expect(frame.className).toContain("[&_[data-slot=pane-reading]]:border-t-transparent");
+      expect(frame.className).toContain("[&_[data-slot=composer-actions]]:bg-muted/20");
+      expect(frame.className).toContain("[&_[data-slot=belt-track]]:bg-transparent");
+    }
   });
 
   it("a tap on the pins mark in a column without focus leaves a pins intent for that pane (M90)", async () => {
