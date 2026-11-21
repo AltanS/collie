@@ -1,6 +1,6 @@
 {
   "name": "collie",
-  "version": "1.29.1",
+  "version": "1.30.0",
   "description": "Lets Collie on this machine send prompts, WalkyTalky messages and permission answers to this session as data.",
   "author": { "name": "Collie", "url": "https://colliepwa.dev" },
   "homepage": "https://colliepwa.dev",
