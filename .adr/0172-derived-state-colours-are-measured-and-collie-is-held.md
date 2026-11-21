@@ -30,7 +30,7 @@ cannot hold one token against another: relative colour reads one colour at a tim
    in the direction the relation took until the value meets its floor, and the other way when that direction runs
    out of range. Hue and chroma stay. The floors:
    - a hover 0.04 in OKLab off its ground; a selected and an open fill 0.06;
-   - the ring 3:1 on the page, card, recess, paper, band and muted fill;
+   - the ring 3:1 on the page, card, recess, paper, band, muted fill and each plane's hover and selected fill;
    - the foreground and the muted ink keep 4.5:1 on a plane and on a fill, or what they have on the page when the
      theme gives less, and a plane stays on the page's side of the ink;
    - a plane 0.025 off its neighbour. Collie's own steps are 0.045 to 0.06.

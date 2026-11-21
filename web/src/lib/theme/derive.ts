@@ -376,13 +376,15 @@ function pushTiers(start: Lab, direction: 1 | -1, tiers: readonly Floor[], score
 
 /**
  * THE RING. Collie's relation: the theme's own `--ring`. Floor: 3:1 against every ground it is drawn on, the page,
- * the card, the three planes, the band (`secondary`) and the muted fill. Not against a filled primary button: the
+ * the card, the three planes, the band (`secondary`), the muted fill, and each plane's hover and selected fill. Not against a filled primary button: the
  * house ring stands 2px off the box, so the gap, a ground, is on both its sides; and Collie's own dark ring is 1.9:1
  * against its white primary, so that floor would move the ring Altan approved.
  */
 function ring(w: Work): void {
   const page = w.colour("background");
-  const grounds = [page, w.colour("card"), made(w, "surface-recess"), made(w, "surface-paper"), w.colour("secondary"), w.colour("muted")];
+  // A focused row is often the hovered or the selected one, and its neighbour may be: the fills are grounds too.
+  const fills = PLANES.flatMap((plane) => [made(w, `state-hover-${plane}`), made(w, `state-on-${plane}`)]);
+  const grounds = [page, w.colour("card"), made(w, "surface-recess"), made(w, "surface-paper"), w.colour("secondary"), w.colour("muted"), ...fills];
   const start = w.colour("ring");
   const worst = (c: Lab) => Math.min(...grounds.map((g) => contrast(c, g)));
   w.out.ring = pushLightness(start, awayFrom(start, page), (c, m) => worst(c) >= RING_FLOOR + (m ? MARGIN.ratio : 0), worst);

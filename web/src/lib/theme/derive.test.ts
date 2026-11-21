@@ -112,6 +112,10 @@ function brokenFloors(tokens: Half, d: DerivedHalf): string[] {
     ["paper", ground.paper],
     ["band", token("secondary")],
     ["muted", token("muted")],
+    ...PLANES.flatMap((plane) => [
+      [`hover on the ${plane}`, at(`state-hover-${plane}`)] as const,
+      [`selected on the ${plane}`, at(`state-on-${plane}`)] as const,
+    ]),
   ] as const) {
     if (contrast(ring, g) < RING_FLOOR - 0.01) out.push(`ring on the ${name} ${contrast(ring, g).toFixed(2)}`);
   }

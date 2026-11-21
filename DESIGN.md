@@ -1192,7 +1192,7 @@ colours Collie painted on 2026-11-21 (`web/e2e/themes/collie-states.json`), with
 | `--state-hover-<plane>` | the accent on the page and the paper; the paper on the recess | 0.04 off its ground; the foreground and the muted ink as readable as on the page |
 | `--state-on-<plane>` | the same as the hover | 0.06 off its ground; the same inks |
 | `--state-open-<plane>` | `--control-on` | 0.06 off its ground; the on-colour's ink as readable as on the tint |
-| `--ring` | the theme's own ring | 3:1 on the page, the card, the recess, the paper, the band and the muted fill |
+| `--ring` | the theme's own ring | 3:1 on the page, the card, the recess, the paper, the band, the muted fill and each plane's hover and selected fill |
 
 A pushed value lands 0.006 past a distance floor and 0.1 past a ratio floor, because the screen rounds it to 8 bits.
 A fill on the page that has to move is also kept off the recess, because a strip of the recess with no plane class
