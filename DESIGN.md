@@ -523,10 +523,12 @@ lightest fill.
 the cut: the sidebar and the tab strip close with a faint edge (the recess 30% toward `--border`), the seam
 between two columns is a `--border`, not a `--rule`, and the rule under a pane header is drawn once.
 
-**The focus has a frame as well as a plane.** The focused column wears a 2px frame, the theme's
-`--pane-active` mixed 65% into the page (in light no lighter than L 0.55, so a light accent such as
-Nightwatch's amber still holds), at 3:1 or more against the paper and against the plane beside it,
-with one column in the strip too. It carries the focus where the paper cannot: the Terminal view, whose
+**The focus has a frame as well as a plane.** The focused column wears a 1px hairline in `--pane-active`
+(ADR 0174), with one column in the strip too. In Collie that is the "on" ink (`--control-on-foreground`)
+mixed into the page in OKLab, 70% in light and 60% in dark: a quiet blue line, not a grey ring that reads as a
+click's leftover keyboard focus. The token is derived (§14): `deriveTokens` holds it at 3:1 or more against the
+three grounds it touches, the recess at its left, the page at its right and the paper inside, in every theme, and
+a theme that sets its own `pane-active` has that colour go through the same mix in place of the "on" ink. It carries the focus where the paper cannot: the Terminal view, whose
 mirror stays dark, and a theme whose page is black, where the recess clamps to the page. The frame is
 reserved on every column, so a focus change recolours and moves nothing (§2). `e2e/wide-planes.spec.ts`
 holds the order, the frame and the still boxes in every bundled theme, both halves.
@@ -1101,7 +1103,7 @@ come from `light-dark()`.
 
 `popover` and `popover-foreground` stay aliases of `card` and are not in a theme file.
 
-`pane-active` (1.24.0) is the frame of the pane you are working in on a large screen, and nothing else. It is outside the 43 but a theme can set it: from schema version 3 it is an optional token in either half. A theme that leaves it out keeps the `:root` pair in index.css, so every file written before version 3 reads and exports unchanged; a file that sets it must say version 3. The contrast report holds it to 3:1 on `background` in a half that sets it. Nightwatch sets its own, a warm sky for its amber palette.
+`pane-active` (1.24.0) is the frame of the pane you are working in on a large screen, and nothing else. It is outside the 43 but a theme can set it: from schema version 3 it is an optional token in either half. Since ADR 0174 it is a derived token like `surface-recess` and `surface-paper`: the `:root` pair is the "on" ink mixed into the page (70% light, 60% dark, in OKLab), the file for `collie` holds no value, and a theme that leaves it out takes that relation over its own tokens, so every file written before version 3 reads and exports unchanged; a file that sets it must say version 3. A theme's own value goes through the same mix in place of the "on" ink, so it is drawn as quiet as Collie's, and `deriveTokens` holds the frame at 3:1 on the recess, the page and the paper, so it may move the mix. The contrast report holds it to 3:1 on `background` in a half that sets it. Nightwatch sets its own, a warm amber for its palette.
 
 `tab-active` is the second optional token, and it marks the open tab and the open pane for a theme whose surface word `tabs` is `folder` (`lib/tab-look.ts`): the 2px top edge of the open folder tab and the 1px ring of the open pane. It has the same rules as `pane-active` (version 3, a `:root` pair that is the foreground ink of each half, 3:1 on `background` in a half that sets it). Under the word `plain` (the word a theme gets when it names none; the Collie theme names `folder`) the tab row and the pane row are drawn exactly as they were, and `tab-active` is read by nothing. On the large screen both words are drawn in the space bar on the same parts (ADR 0171): the bar ends on `--edge-firm` with a 6px page band under it. `folder` cuts the open tab from that band, the page colour with the firm edge on its top and sides (`tab-active` is not read there); `plain` draws no card and puts a 2px bar of the theme's ink (`--foreground`) under the open tab, as wide as the tab, square ends. In both the open tab is full ink and semibold and every other tab regular weight in `muted-foreground`, and the resting status rings are drawn at full stroke. The column frame's colour is never used in the bar or a header. `composer` is the third word that sets no CSS (`field` or `box`); `lib/composer-layout.ts` reads it.
 
@@ -1212,5 +1214,6 @@ the box, so a ground is on both its sides, and Collie's dark ring is 1.9:1 again
 `bg-accent` that is not swept yet gets the floor too. `HOVER_FILL`, `TRIGGER_OPEN`, the ghost and outline buttons and
 the pane row read the variables. Never write a new `hover:bg-muted/60` or `bg-accent` for a state.
 
-**A floor on a theme's own text is not built.** A theme whose own text is under 4.5:1 is the schema question. When it
-is decided, it is one more step in `STEPS`, before the planes.
+**A theme's own text is never adjusted.** A theme whose own text is under 4.5:1 is warned about and applied as it is,
+with no adjustment at load and no refusal (Altan, 2026-11-21). The state colours work from that ink, so
+`deriveReport` can name a floor that cannot be met; that is accepted.

@@ -448,7 +448,6 @@
  },
  "selected-fill-close": {
   "pane-actions@1440 harbour-dark": 1,
-  "pane-two-columns@1440 gen-04-mid-grey": 1,
   "pane-two-columns@1440 gen-19-flat": 2,
   "settings-notifications@1440 gen-19-flat": 1
  },
@@ -463,10 +462,5 @@
   "pane-menu@390 harbour-light": 1,
   "pane-menu@390 nightwatch-dark": 1,
   "pane-menu@390 nightwatch-light": 1
- },
- "frame-on-mid-ground": {
-  "pane-two-columns@1440 gen-04-mid-grey": 1,
-  "pane-two-columns@1440 gen-16-inverted-halves": 1,
-  "pane-two-columns@1440 gen-17-inverted-halves": 1
  }
 }

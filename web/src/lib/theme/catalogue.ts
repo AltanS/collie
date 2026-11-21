@@ -289,7 +289,7 @@ const TOKEN_WORDS = {
   "host-7": { group: "Host", what: "One of the ten colours that tell your machines apart." },
   "host-8": { group: "Host", what: "One of the ten colours that tell your machines apart." },
   "host-9": { group: "Host", what: "One of the ten colours that tell your machines apart." },
-  "pane-active": { group: "Optional", what: "The frame of the active pane column on a large screen. A half that leaves it out takes the ink of the theme Collie." },
+  "pane-active": { group: "Optional", what: "The frame of the active pane column on a large screen. Collie mixes it into the page, 70% in light and 60% in dark; a half that leaves it out mixes its own \"on\" ink (`control-on-foreground`) instead." },
   "tab-active": { group: "Optional", what: "The top edge of the open tab and the ring of the open pane, when the theme sets `tabs` to `folder`. A half that leaves it out takes its own text colour." },
   "surface-recess": { group: "Optional", what: "On a large screen, the ground of the sidebar and the tab strip: one step below the page. A half that leaves it out takes the page, 0.05 darker." },
   "surface-paper": { group: "Optional", what: "On a large screen, the ground of the pane you are working in: the lightest surface on the screen. A half that leaves it out takes, in light, the card 0.05 lighter, and in dark, the point halfway between the page and the card 0.05 lighter." },

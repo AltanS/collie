@@ -334,27 +334,23 @@ const IN_EITHER_PLANE =
   "[&_[data-slot=composer-actions]]:bg-muted/20 [&_[data-slot=belt-track]]:bg-transparent [&_[data-slot=pane-reading]]:border-t-transparent";
 
 /**
- * THE FOCUS FRAME: the theme's `--pane-active` mixed 65% into the page. At full strength it was the
- * brightest mark on the screen (18:1); mixed, it holds 3:1 or more against the paper inside it and the page
- * or the recess beside it in every shipped theme (`e2e/wide-planes.spec.ts` measures it), so the focus
- * still reads where the paper cannot show it: the Terminal view, whose mirror stays dark, and a theme whose
- * page is black.
- *
- * IN LIGHT THE MIX IS CLAMPED AT L 0.55. A light `--pane-active` (Nightwatch's amber, L 0.56) mixed into a
- * near-white page came out at L 0.70, 2.0:1 against the recess, under the 3:1 rule. The clamp darkens only
- * the frame, never the theme's own tokens, and leaves a frame already darker than 0.55 (Collie's ink) as it
- * is. L 0.55 holds 3:1 against any light recess down to L 0.88 (`e2e/wide-planes.spec.ts` measures every
- * bundled light half, from the painted pixels). Dark needs no clamp: the mix sits far above the page
- * there, so `dark:` takes the plain mix. Not one `light-dark()` around both: Chromium computed that value
- * but painted the border in the paper's colour, so the frame vanished while `getComputedStyle` said 3.6:1.
+ * THE FOCUS FRAME: a 1px hairline in `--pane-active`, on the paper (ADR 0174). Since the pane-frame round of
+ * 2026-11-21 that token is a derived colour: Collie's relation is the "on" ink (`--control-on-foreground`) mixed
+ * into the page in OKLab, 70% in light and 60% in dark (index.css), and `deriveTokens` (lib/theme/derive.ts) holds
+ * it at 3:1 or more against the three grounds it touches, the recess or the page beside it and the paper inside
+ * it, in every theme. A theme that sets its own `pane-active` has it mixed the same way. The old 2px frame of the ink
+ * mixed 65% into the page was a grey ring a pixel from the keyboard focus ring (`--ring`, also 2px grey), so it
+ * read as a click's leftover focus; the coloured hairline does not. It carries the focus where the paper cannot:
+ * the Terminal view, whose mirror stays dark, and a theme whose page is black.
  */
-export const FOCUS_FRAME =
-  "border-[oklch(from_color-mix(in_oklch,var(--pane-active)_65%,var(--background))_min(l,0.55)_c_h)] dark:border-[color-mix(in_oklch,var(--pane-active)_65%,var(--background))]";
+export const FOCUS_FRAME = "border-pane-active";
 
 /**
- * The class a column's frame takes: the plane, and the 2px frame, reserved on every column and drawn on the
- * focused one, with one column in the strip too, so a focus change recolours and moves nothing (§2).
+ * The class a column's frame takes: the plane, and the 1px frame, reserved on every column and drawn on the
+ * focused one, with one column in the strip too, so a focus change recolours and moves nothing (§2). `border-[1px]`
+ * and not `border`: the bare width follows a theme's `border` word (2px under `strong`, Nightwatch), and the
+ * hairline is 1px in every theme (`border-px` is no width to tailwind-merge, which dropped it beside the colour).
  */
 export function columnFrame(focused: boolean): string {
-  return cn("border-2", IN_EITHER_PLANE, focused ? cn(PAPER_PLANE, FOCUS_FRAME) : cn(PAGE_PLANE, "border-transparent"));
+  return cn("border-[1px]", IN_EITHER_PLANE, focused ? cn(PAPER_PLANE, FOCUS_FRAME) : cn(PAGE_PLANE, "border-transparent"));
 }

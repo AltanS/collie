@@ -7,9 +7,10 @@ import { installWideChatWorld, openColumns } from "./fixtures/wide-chat";
 // focus on the page, the focused column on the paper, and the paper is the lightest of the three in both
 // halves of every shipped theme, so the eye lands on the work. jsdom computes no colour, so the order is
 // read here: each plane's background composited from the root down, as the screen shows it, then held to
-// recess <= page < paper in OKLCH lightness. The frame around the focused column holds 3:1 against the
-// paper inside it and the plane beside it; a focus change recolours and moves no box; and the phone draws
-// nothing from the planes.
+// recess <= page < paper in OKLCH lightness. The frame around the focused column, a 1px hairline in the derived
+// `--pane-active` (ADR 0174), holds 3:1 against the paper inside it, the recess at its left and the page at its
+// right, read from the painted pixels; a focus change recolours and moves no box; and the phone draws nothing from
+// the planes.
 
 test.use({ serviceWorkers: "block" });
 
@@ -128,7 +129,7 @@ for (const [scheme, theme] of [
   ["light", "nightwatch"],
   ["dark", "daylight"],
 ] as const) {
-  test(`the focused column is the lightest plane, inside a 3:1 frame (${scheme}${theme ? `, ${theme}` : ""})`, async ({ page }) => {
+  test(`the focused column is the lightest plane, inside a 3:1 hairline (${scheme}${theme ? `, ${theme}` : ""})`, async ({ page }) => {
     await page.setViewportSize(VIEW);
     await wear(page, scheme, theme);
     await openColumns(page, ["w1:p1", "w1:p2"], "w1:p1");
@@ -155,11 +156,18 @@ for (const [scheme, theme] of [
     expect(contrast(g["paper:edge"]!, g.paper!)).toBeGreaterThanOrEqual(3);
     expect(contrast(g["paper:edge"]!, g.page!)).toBeGreaterThanOrEqual(3);
     expect(contrast(g["paper:edge"]!, g.recess!)).toBeGreaterThanOrEqual(3);
-    // And the screen paints it: the frame's left edge, halfway down, is the colour the styles name.
+    // And the screen paints it, 1px wide: the left edge, halfway down, against the paper inside and the recess beside
+    // it (the sidebar); the right edge against the page of the column beside it.
     const box = (await page.locator(FOCUSED).boundingBox())!;
-    const edge = await painted(page, Math.floor(box.x), Math.floor(box.y + box.height / 2));
-    expect(contrast(edge, g.paper!)).toBeGreaterThanOrEqual(3);
-    expect(contrast(edge, g.page!)).toBeGreaterThanOrEqual(3);
+    const mid = Math.floor(box.y + box.height / 2);
+    const left = await painted(page, Math.round(box.x), mid);
+    const right = await painted(page, Math.round(box.x + box.width) - 1, mid);
+    expect(contrast(left, g.paper!)).toBeGreaterThanOrEqual(3);
+    expect(contrast(left, g.recess!)).toBeGreaterThanOrEqual(3);
+    expect(contrast(right, g.paper!)).toBeGreaterThanOrEqual(3);
+    expect(contrast(right, g.page!)).toBeGreaterThanOrEqual(3);
+    // One pixel: the next pixel in is the paper, not a second row of the frame.
+    expect(contrast(await painted(page, Math.round(box.x) + 1, mid), g.paper!)).toBeLessThan(1.1);
   });
 }
 

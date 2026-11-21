@@ -592,8 +592,8 @@ describe("applyTheme checks the theme again", () => {
     store.addImported(theme);
     store.setActiveTheme("markup");
     expect(inline()).toHaveLength(43);
-    // The 43 colour tokens, the 11 derived ones that are not among them (the ring is), and the flat ground.
-    expect(root().style.length).toBe(56);
+    // The 43 colour tokens, the 12 derived ones that are not among them (the ring is), and the flat ground.
+    expect(root().style.length).toBe(57);
     for (let i = 0; i < root().style.length; i += 1) {
       const name = root().style.item(i);
       // The flat ground the theme says for itself is the one non-colour property, from a closed table.

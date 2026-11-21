@@ -307,7 +307,7 @@ export async function runContrast(page: Page, opts: R5Options): Promise<R5Result
       if (d < STATE_FLOOR) breaks.push({ rule: "open", el: p.el, ink: hex(fill), ground: hex(around), value: round(d, 3), floor: STATE_FLOOR, text: `${round(contrast(fill, around))}:1` });
     }
     if (p.kind === "focused-pane" && p.peer !== undefined) {
-      // The 2px frame, read halfway down the left edge; the paper inside it; the plane beside it.
+      // The 1px frame (ADR 0174), read halfway down the left edge; the paper inside it; the plane beside it.
       const frameBox = dev({ x: p.box.x + 0.5, y: p.box.y + p.box.h * 0.4, w: 1, h: p.box.h * 0.2 });
       const paperBox = dev({ x: p.box.x + 8, y: p.box.y + p.box.h * 0.4, w: 24, h: p.box.h * 0.2 });
       const besideBox = dev({ x: p.box.x - 6, y: p.box.y + p.box.h * 0.4, w: 4, h: p.box.h * 0.2 });

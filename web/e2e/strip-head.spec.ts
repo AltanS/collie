@@ -88,7 +88,7 @@ for (const { id, scheme, look, own } of CASES) {
   });
 }
 
-test("the band costs the transcript nothing: both bodies start 111px down, where they did", async ({ page }) => {
+test("the band costs the transcript nothing: both bodies start 110px down, a pixel higher with the 1px frame", async ({ page }) => {
   await wear(page, "collie", "dark", "folder");
   await openTwoColumns(page);
   const band = (await page.locator('[data-slot="space-band"]').boundingBox())!;
@@ -96,9 +96,10 @@ test("the band costs the transcript nothing: both bodies start 111px down, where
   expect(band.height).toBe(6);
   const focused = await page.locator(`${FOCUSED} header[data-slot="app-header"]`).evaluate((el) => Math.round(el.getBoundingClientRect().bottom));
   const other = await page.locator(`${OTHER} [data-slot="column-header"]`).evaluate((el) => Math.round(el.getBoundingClientRect().bottom));
-  expect(focused).toBe(111);
-  // A column without focus has no 1px of its own header border under the row: 110, as before the band.
-  expect(other).toBe(110);
+  // 111 with the old 2px frame; the hairline of ADR 0174 is 1px, so the column's content starts a pixel higher.
+  expect(focused).toBe(110);
+  // A column without focus has no 1px of its own header border under the row: 109.
+  expect(other).toBe(109);
 });
 
 test("the bar reads as three groups: the controls stand behind one hairline", async ({ page }) => {

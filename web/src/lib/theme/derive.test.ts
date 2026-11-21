@@ -11,6 +11,7 @@ import {
   deriveReport,
   deriveTokens,
   EDGE_FLOOR,
+  FRAME_FLOOR,
   distance,
   HOVER_FLOOR,
   parseColour,
@@ -60,6 +61,11 @@ function cssMixOklch(x: Lab, y: Lab, share: number): Lab {
   return [x[0] * share + y[0] * (1 - share), c * Math.cos(h), c * Math.sin(h)];
 }
 
+/** CSS `color-mix(in oklab, x <share>, y)`, written out here on its own, for the pane frame's expected value. */
+function cssMixOklab(x: Lab, y: Lab, share: number): Lab {
+  return [x[0] * share + y[0] * (1 - share), x[1] * share + y[1] * (1 - share), x[2] * share + y[2] * (1 - share)];
+}
+
 describe("Collie is the reference", () => {
   for (const half of ["light", "dark"] as const) {
     it(`${half}: every derived token is Collie's own value, within 0.02`, () => {
@@ -83,6 +89,7 @@ describe("Collie is the reference", () => {
         "state-open-paper": token("control-on"),
         ring: token("ring"),
         "edge-firm": cssMixOklch(token("foreground"), page, 0.58),
+        "pane-active": cssMixOklab(token("control-on-foreground"), page, half === "light" ? 0.7 : 0.6),
       } satisfies Record<keyof DerivedHalf, Lab>;
       for (const name of DERIVED_TOKENS) expect(distance(at(name), expected[name]), `${half} ${name}`).toBeLessThanOrEqual(REFERENCE_TOLERANCE);
     });
@@ -105,11 +112,37 @@ describe("index.css holds the relations derive.ts mirrors", () => {
     "--state-open-recess: var(--control-on);",
     "--state-open-paper: var(--control-on);",
     "--edge-firm: color-mix(in oklch, var(--foreground) 58%, var(--background));",
+    "--pane-active: light-dark(color-mix(in oklab, var(--control-on-foreground) 70%, var(--background)), color-mix(in oklab, var(--control-on-foreground) 60%, var(--background)));",
   ]) {
     it(line.slice(0, line.indexOf(":")), () => {
       expect(css).toContain(`  ${line}\n`);
     });
   }
+});
+
+describe("the pane frame (ADR 0174)", () => {
+  it("fills no pane-active from Collie, so a value that reaches deriveTokens is always the theme's own", () => {
+    expect(COLLIE.light?.["pane-active"]).toBeUndefined();
+    expect(COLLIE.dark?.["pane-active"]).toBeUndefined();
+    expect(filled(read("harbour")).light["pane-active"]).toBeUndefined();
+    expect(filled(read("nightwatch")).dark["pane-active"]).toBe(read("nightwatch").dark?.["pane-active"]);
+  });
+
+  it("mixes a theme's own pane-active into the page by the half's share, as Collie's on ink is", () => {
+    for (const half of ["light", "dark"] as const) {
+      const tokens = filled(read("nightwatch"))[half];
+      const page = parseColour(tokens.background ?? "");
+      const relation = cssMixOklab(parseColour(tokens["pane-active"] ?? "", page), page, half === "light" ? 0.7 : 0.6);
+      const d = deriveTokens(tokens, half);
+      const frame = parseColour(d["pane-active"]);
+      const worst = Math.min(...[page, parseColour(d["surface-recess"]), parseColour(d["surface-paper"])].map((g) => contrast(frame, g)));
+      expect(worst, half).toBeGreaterThanOrEqual(FRAME_FLOOR);
+      // Dark: the mix of the amber holds 3:1, so the frame is the relation itself (3.8:1, where the amber alone was
+      // 14:1). Light: 70% of the amber into a near-white page is 2.6:1 on the recess, so the floor darkens it.
+      if (half === "dark") expect(distance(frame, relation)).toBeLessThanOrEqual(REFERENCE_TOLERANCE);
+      if (half === "light") expect(frame[0]).toBeLessThan(relation[0]);
+    }
+  });
 });
 
 /** Every floor of one derived half, as the list of the ones that fail. */
@@ -152,8 +185,10 @@ function brokenFloors(tokens: Half, d: DerivedHalf): string[] {
     if (open < STATE_FLOOR - 1e-3) out.push(`open on the ${plane} ${open.toFixed(3)}`);
   }
   const edge = at("edge-firm");
+  const frame = at("pane-active");
   for (const [name, g] of [["page", page], ["recess", ground.recess], ["paper", ground.paper]] as const) {
     if (contrast(edge, g) < EDGE_FLOOR - 0.01) out.push(`firm edge on the ${name} ${contrast(edge, g).toFixed(2)}`);
+    if (contrast(frame, g) < FRAME_FLOOR - 0.01) out.push(`pane frame on the ${name} ${contrast(frame, g).toFixed(2)}`);
   }
   const ring = at("ring");
   for (const [name, g] of [

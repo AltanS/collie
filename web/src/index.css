@@ -364,14 +364,17 @@
      7.3:1 light, 9.2:1 dark. */
   --control-on: light-dark(oklch(0.88 0.06 235), oklch(0.34 0.06 240));
   --control-on-foreground: light-dark(oklch(0.32 0.12 245), oklch(0.92 0.06 235));
-  /* The frame of the pane you are working in on a large screen (ADR 0120): a sky-200 in the dark
-     half; a stronger blue in the light half, where a pale frame would vanish on white. */
-  --pane-active: light-dark(oklch(0.14 0 0), oklch(0.985 0 0));
+  /* The frame of the pane you are working in on a large screen (ADR 0120, ADR 0174): a 1px hairline in the
+     "on" ink mixed into the page in OKLab, 70% in light and 60% in dark, so a quiet blue line and not a grey
+     ring beside the focus ring. A DERIVED token (schema.ts DERIVED_THEME_TOKENS): the file for `collie` holds no
+     value, and `deriveTokens` (lib/theme/derive.ts) holds every other theme's at 3:1 on the recess, the page and
+     the paper; a theme that sets its own `pane-active` has it mixed the same way, in place of the "on" ink. */
+  --pane-active: light-dark(color-mix(in oklab, var(--control-on-foreground) 70%, var(--background)), color-mix(in oklab, var(--control-on-foreground) 60%, var(--background)));
   /* The open folder tab's top edge and the open pane's ring (theme surface word `tabs: folder`,
      lib/tab-look.ts). Drawn only under that word. The default is the foreground ink of each half
      (the same two values as --foreground above), so a theme that sets the word and not the colour
-     draws its folder edge in ink. A pair and not var(--foreground), like --pane-active: the theme
-     file for `collie` holds every optional token, and a theme that sets one half is filled from it. */
+     draws its folder edge in ink. A pair and not var(--foreground): the theme file for `collie` holds
+     every optional token but the derived ones, and a theme that sets one half is filled from it. */
   --tab-active: light-dark(oklch(0.14 0 0), oklch(0.985 0 0));
   /* The ground of a found or matched piece of text: Find in Chat, and the letters a list filter matches
      (ui/match-text.tsx). A ground with alpha, laid over whatever the text sits on, so the ink on top
@@ -379,7 +382,7 @@
      The default is the amber the app drew as a literal before it had this token: Tailwind 4.3.1's
      amber-300 at 70% in the light half (oklch(87.9% 0.169 91.605 / 0.7)) and amber-500 at 40% in the
      dark half (oklch(76.9% 0.188 70.08 / 0.4)), written here as the same oklch with alpha, so the pixel
-     is the one it replaced. A pair, like --pane-active: the theme file for `collie` holds every optional
+     is the one it replaced. A pair, like --tab-active: the theme file for `collie` holds every optional
      token, and a theme that sets one half is filled from it. */
   --find: light-dark(oklch(0.879 0.169 91.605 / 0.7), oklch(0.769 0.188 70.08 / 0.4));
   --secondary: light-dark(oklch(0.915 0.004 80), oklch(0.28 0.003 80));
