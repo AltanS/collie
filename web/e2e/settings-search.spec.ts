@@ -88,6 +88,22 @@ for (const size of SIZES) {
     }
   });
 
+  test(`${size.name}: the diff layout of Files is found by "side by side" and says where it is, with no link`, async ({ browser }, testInfo) => {
+    onlyOnce(testInfo);
+    const page = await openAt(browser, testInfo, size);
+    try {
+      await openSettings(page);
+      await field(page).fill("side by side");
+      const row = hit(page, "files.diffLayout");
+      // The matched words are marked, so the label is cut into pieces: read its start.
+      await expect(row).toContainText("Unified or");
+      await expect(row).toContainText(en["settings.where.filesDiff"]);
+      await expect(row.locator("button, a")).toHaveCount(0);
+    } finally {
+      await page.context().close();
+    }
+  });
+
   test(`${size.name}: Escape clears the field and the list comes back`, async ({ browser }, testInfo) => {
     onlyOnce(testInfo);
     const page = await openAt(browser, testInfo, size);
