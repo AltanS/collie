@@ -1496,6 +1496,24 @@ describe("AgentChat \u2014 the pane menu in the header", () => {
     expect(menu.className).not.toMatch(/before:-inset-3/);
   });
 
+  // "My menu is open" (ui/button.tsx `TRIGGER_OPEN`): the three dots carry `aria-expanded` and `aria-haspopup`
+  // and read the sheet's own open state, on every width. The look is CSS keyed on the attribute, so the
+  // attribute following the sheet is the whole contract here; the engine check is e2e/wide-sheets.spec.ts.
+  it("says it is open while its menu is open, and not before or after", async () => {
+    const user = userEvent.setup();
+    renderChat();
+    const menu = screen.getByRole("button", { name: "Pane actions" });
+    expect(menu).toHaveAttribute("aria-haspopup", "dialog");
+    expect(menu).toHaveAttribute("aria-expanded", "false");
+    expect(menu.className).toContain("aria-expanded:bg-control-on");
+    await openPaneMenu(user);
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    expect(menu).toHaveAttribute("aria-expanded", "true");
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(menu).toHaveAttribute("aria-expanded", "false");
+  });
+
   // \u00a72: no state may move content. Opening the menu must not touch the row that triggered it \u2014
   // the sheet is a fixed overlay mounted OUTSIDE the header, so the row's own box is untouched.
   it("leaves the header row's geometry alone when the menu opens", async () => {

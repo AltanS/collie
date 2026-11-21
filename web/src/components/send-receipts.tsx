@@ -20,6 +20,7 @@ import { t } from "@/lib/i18n";
 import type { Scope } from "@/lib/scope";
 import type { SendReceiptRow, SendStep } from "@/lib/surface/send";
 import { cn } from "@/lib/utils";
+import { FOCUS_RING_INSET, HOVER_FILL } from "@/components/ui/button";
 
 interface SendReceiptsProps {
   paneId: string | undefined;
@@ -70,7 +71,7 @@ export function SendReceiptsView({ rows, now = Date.now() }: { rows: readonly Se
                   type="button"
                   aria-expanded={expanded}
                   onClick={() => setOpen(expanded ? null : row.requestId)}
-                  className="flex min-h-9 w-full flex-col gap-0.5 rounded-md px-2.5 py-1.5 text-left text-xs"
+                  className={cn("flex min-h-9 w-full flex-col gap-0.5 rounded-md px-2.5 py-1.5 text-left text-xs", FOCUS_RING_INSET, HOVER_FILL)}
                 >
                   <span className="flex w-full items-center gap-2">
                     <span className="font-medium">{t(receiptLabelKey(row.outcome))}</span>

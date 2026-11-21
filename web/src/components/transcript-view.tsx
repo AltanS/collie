@@ -6,6 +6,7 @@ import { DividedLine } from "@/components/ui/divided-line";
 import { JournalImage } from "@/components/journal-image";
 import { MarkdownText } from "@/components/markdown-text";
 import { cn } from "@/lib/utils";
+import { FOCUS_RING_INSET } from "@/components/ui/button";
 import { splitHighlight } from "@/lib/transcript-search";
 import type { Scope } from "@/lib/scope";
 import type { TranscriptEntry, TranscriptPart } from "@/lib/types";
@@ -96,7 +97,7 @@ function ToolPart({
         onClick={() => expandable && setToggled({ query: q, open: !open })}
         disabled={!expandable}
         aria-expanded={expandable ? open : undefined}
-        className="flex w-full items-center gap-1.5 px-2 py-1.5 text-left disabled:opacity-100"
+        className={cn("flex w-full items-center gap-1.5 px-2 py-1.5 text-left disabled:opacity-100 enabled:hover:bg-accent", FOCUS_RING_INSET)}
       >
         {isError ? (
           <Icon name="error" className="size-3.5 shrink-0 text-destructive" />

@@ -4,6 +4,38 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 import { PRESS_REACH_SOFT } from "@/components/ui/tap-target";
 
+/**
+ * The house focus mark, outside the box: a 2px outline held 2px off the edge. Every control that can take
+ * the keyboard wears it; `Button` carries it in its base string.
+ */
+export const FOCUS_RING = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring";
+
+/**
+ * The same mark drawn INSIDE the box, for a row that is flush with a clipping edge (a card, a scroller): an
+ * outside outline would be cut off there. Same width, same colour.
+ */
+export const FOCUS_RING_INSET = "focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring";
+
+/**
+ * The house hover for a control with no fill of its own: the `accent` fill, as the ghost button's. A pointer
+ * only (Tailwind wraps `hover:` in `(hover: hover)`), so a touch never leaves a stuck fill.
+ */
+export const HOVER_FILL = "hover:bg-accent";
+
+/**
+ * "MY MENU IS OPEN", ONE LOOK FOR EVERY TRIGGER. A control that opens a menu, a dock or a dialog beside it
+ * and carries `aria-expanded` wears the app's "on" look while that attribute is `true`: the `control-on`
+ * fill and ink that the belt gives an open dock (`ON` in `actions-row.tsx`) and the switch gives an on
+ * track. It reads the ATTRIBUTE, not a second prop, so the look and the screen reader's word cannot part.
+ *
+ * Fill and ink only: no border, no size, no layout (DESIGN.md section 2). Open wins over hover, which is
+ * why the hover variant is pinned to the same fill: an open control hovered must not repaint as a
+ * hovered one. Both themes, since `--control-on` is a `light-dark()` pair. A control whose `aria-expanded`
+ * is `false` or absent shows nothing, so the constant is safe on every state of one button.
+ */
+export const TRIGGER_OPEN =
+  "aria-expanded:bg-control-on aria-expanded:text-control-on-foreground aria-expanded:hover:bg-control-on aria-expanded:hover:text-control-on-foreground";
+
 // Every variant shares ONE box. `border border-transparent` lives in the base string, so a
 // component that flips `default` ↔ `outline` (nav-tray's keypad, the quick-reply dock) no longer
 // gains and loses 1px on all four sides mid-press: only the border's COLOUR changes. `outline` just
@@ -17,7 +49,7 @@ import { PRESS_REACH_SOFT } from "@/components/ui/tap-target";
 // silently painting nothing.
 const buttonVariants = cva(
   [
-    "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md border border-transparent text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring active:scale-[0.98] select-none",
+    `inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md border border-transparent text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 ${FOCUS_RING} active:scale-[0.98] select-none`,
     // While pressed, the scale's share of the hit area is given back (ui/tap-target.ts).
     PRESS_REACH_SOFT,
   ],

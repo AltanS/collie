@@ -27,6 +27,7 @@ import {
 } from "@/lib/diff-highlight";
 import { parseUnifiedDiff, type DiffRow } from "@/lib/unified-diff";
 import { cn } from "@/lib/utils";
+import { FOCUS_RING, FOCUS_RING_INSET, HOVER_FILL } from "@/components/ui/button";
 import { Icon } from "@/components/icons/icon";
 
 // The Changes view's two drawings (ADR 0065): the list of changed files, grouped by repo, and one
@@ -328,7 +329,7 @@ function TreeRows({
                 aria-label={tn("changes.tree.folderAria", node.fileCount, { name: node.label })}
                 onClick={() => onToggle(folderKey(repo.relPath, node.key))}
                 style={indent(node.depth)}
-                className={cn("flex min-h-11 w-full items-center gap-3 py-2 pr-3.5 text-left transition-colors active:bg-muted", LIST_ROW_CORNERS)}
+                className={cn("flex min-h-11 w-full items-center gap-3 py-2 pr-3.5 text-left transition-colors active:bg-muted", FOCUS_RING_INSET, HOVER_FILL, LIST_ROW_CORNERS)}
               >
                 <Icon
                   name="disclosure"
@@ -356,7 +357,7 @@ function TreeRows({
               type="button"
               onClick={() => onOpen({ repo: repo.relPath, path: node.file.path })}
               style={indent(node.depth)}
-              className={cn("flex min-h-11 w-full items-center gap-3 py-2 pr-3.5 text-left transition-colors active:bg-muted", LIST_ROW_CORNERS)}
+              className={cn("flex min-h-11 w-full items-center gap-3 py-2 pr-3.5 text-left transition-colors active:bg-muted", FOCUS_RING_INSET, HOVER_FILL, LIST_ROW_CORNERS)}
             >
               <StatusLetter status={node.file.status} />
               <MiddleTruncate text={node.name} className="flex-1 font-mono text-[13px] font-medium text-foreground" />
@@ -453,7 +454,9 @@ export function ChangesFilterButton({
       onClick={onClick}
       className={cn(
         "relative flex size-11 shrink-0 items-center justify-center rounded-md transition-colors",
-        active ? "bg-primary/10 text-primary" : open ? "bg-muted text-foreground" : "text-muted-foreground active:bg-muted",
+        FOCUS_RING,
+        // Its own open look (`bg-muted`) stays: while a filter is on, the primary tint says "filtering", not "open".
+        active ? "bg-primary/10 text-primary hover:bg-primary/15" : open ? "bg-muted text-foreground" : cn("text-muted-foreground active:bg-muted", HOVER_FILL),
       )}
     >
       <Icon name="filter" className="size-5" />

@@ -121,6 +121,19 @@ describe("the Actions palette", () => {
     expect(palette()).toBeInTheDocument();
   });
 
+  it("the header button says the palette is open while it stands", async () => {
+    const user = userEvent.setup();
+    mount();
+    const button = screen.getByRole("button", { name: "Actions" });
+    expect(button).toHaveAttribute("aria-haspopup", "dialog");
+    expect(button).toHaveAttribute("aria-expanded", "false");
+    await user.click(button);
+    expect(palette()).toBeInTheDocument();
+    expect(button).toHaveAttribute("aria-expanded", "true");
+    await user.keyboard("{Escape}");
+    expect(button).toHaveAttribute("aria-expanded", "false");
+  });
+
   it("closes on × with an empty field, and × clears a typed one first", async () => {
     const user = userEvent.setup();
     mount();

@@ -11,6 +11,7 @@ import { t } from "@/lib/i18n";
 import type { WireCodeFile, WireCodeIndex, WireCodeIndexFile } from "@/lib/tricks/code-wire";
 import { markWord } from "@/lib/tricks/code-words";
 import { cn } from "@/lib/utils";
+import { FOCUS_RING, HOVER_FILL } from "@/components/ui/button";
 
 // "READ THE CODE": THE CODE OF A TRICK, ONE FOLD FOR EACH FILE (2026-11-17, package F), in a trick's About sheet
 // (components/trick-about-sheet.tsx). What a person can read before a switch on, and after.
@@ -152,7 +153,7 @@ function CodeFold({ fact, read }: { fact: WireCodeIndexFile; read: (file: string
         aria-controls={open ? id : undefined}
         data-slot="trick-code-toggle"
         onClick={toggle}
-        className={cn(ROW, "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring")}
+        className={cn(ROW, FOCUS_RING, HOVER_FILL)}
       >
         <span className="min-w-0 flex-1 font-mono text-xs break-all">{fact.file}</span>
         {fact.flagged > 0 && (

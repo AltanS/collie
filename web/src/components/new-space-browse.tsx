@@ -2,7 +2,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { Icon } from "@/components/icons/icon";
 
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, FOCUS_RING_INSET, HOVER_FILL } from "@/components/ui/button";
 import { Collapse } from "@/components/ui/collapse";
 import { LIST_ROW_CORNERS, ListGroup } from "@/components/ui/list-group";
 import { fetchFolderBrowse, type FilesAnswer } from "@/lib/api";
@@ -72,7 +72,7 @@ export function browseCrumbs(path: string, home: string): Crumb[] {
 }
 
 const ROW =
-  "flex min-h-11 w-full items-center gap-2.5 px-3.5 py-1.5 text-left transition-colors active:bg-muted focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring";
+  `flex min-h-11 w-full items-center gap-2.5 px-3.5 py-1.5 text-left transition-colors active:bg-muted ${FOCUS_RING_INSET} ${HOVER_FILL}`;
 
 export function FolderBrowse({ value, home, scope, onNavigate, onUse, read = fetchFolderBrowse }: FolderBrowseProps) {
   useLocale();

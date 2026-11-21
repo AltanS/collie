@@ -12,6 +12,7 @@ import { worstTriage, type TriageKey } from "@/lib/triage";
 import { statusLabel, type ServerSummary } from "@/lib/types";
 import type { WorkspaceGroup } from "@/lib/pane-groups";
 import { cn } from "@/lib/utils";
+import { FOCUS_RING, HOVER_FILL, TRIGGER_OPEN } from "@/components/ui/button";
 import { Icon } from "@/components/icons/icon";
 
 // The two controls under the dashboard's summary line (2026-10-07): the workspace filter on the left,
@@ -160,7 +161,7 @@ export function WorkspaceFilter({
         aria-expanded={open}
         aria-labelledby={`${labelId} ${valueId}`}
         onClick={() => setOpen(true)}
-        className="flex h-11 w-full items-center rounded-lg border border-border bg-background pl-3 pr-8 text-left text-sm text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+        className={cn("flex h-11 w-full items-center rounded-lg border border-border bg-background pl-3 pr-8 text-left text-sm text-foreground", FOCUS_RING, HOVER_FILL, TRIGGER_OPEN)}
       >
         <span id={valueId} className="min-w-0 truncate">
           {choiceLabel(chosen)}

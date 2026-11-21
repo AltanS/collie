@@ -1,6 +1,7 @@
 import { useId, type MouseEvent, type ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
+import { FOCUS_RING, TRIGGER_OPEN } from "@/components/ui/button";
 import { UnseenMark } from "@/components/ui/unseen-mark";
 import { STRIP_TAP_TARGET } from "@/components/ui/labelled-strip";
 import { useLongPress } from "@/hooks/use-long-press";
@@ -63,6 +64,12 @@ interface ChipProps {
    * for a menu beside it.
    */
   onTapActive?: (trigger: HTMLElement) => void;
+  /**
+   * The menu {@link onTapActive} opens is open. The chip then carries `aria-expanded` and the shared open
+   * look (`TRIGGER_OPEN`, ui/button.tsx), on every width: on a phone the sheet covers part of the page and
+   * the chip above it still says what it opened. Meaningful only on the active chip with `onTapActive`.
+   */
+  menuOpen?: boolean;
 }
 
 // Pill button shared by the space and tab strips: active fill, an optional desktop-focus ring, and
@@ -85,6 +92,7 @@ export function Chip({
   onClick,
   onLongPress,
   onTapActive,
+  menuOpen = false,
 }: ChipProps) {
   useLocale();
   const longPress = useLongPress(onLongPress);
@@ -92,6 +100,8 @@ export function Chip({
   // A chip named by its act keeps its status in words as its DESCRIPTION: `aria-label` replaces
   // everything the button holds, the sr-only status word and the unseen mark's name included.
   const named = ariaLabel !== undefined;
+  // The active chip opens a menu when it is wired for one: that chip, and only it, answers hover and the open look.
+  const opensMenu = active && onTapActive !== undefined;
   const statusWords =
     !named || !status ? null : status === "ready" ? t("home.row.unseen") : statusLabel(TRIAGE_STATUS[status]);
 
@@ -114,6 +124,8 @@ export function Chip({
       role={radio ? "radio" : undefined}
       aria-checked={radio ? active : undefined}
       aria-current={!radio && active ? "true" : undefined}
+      aria-haspopup={opensMenu ? "dialog" : undefined}
+      aria-expanded={opensMenu ? menuOpen : undefined}
       aria-label={ariaLabel}
       aria-describedby={statusWords === null ? undefined : descriptionId}
       className={cn(
@@ -135,10 +147,13 @@ export function Chip({
         // that takes the drawn 34px box to a 46px TOUCH box. min-w-11 is the same floor in the other
         // axis: every chip but "All" is already past 44px wide, and "All" measured 43.
         STRIP_TAP_TARGET,
-        "flex min-w-11 shrink-0 select-none items-center justify-center gap-1.5 [-webkit-touch-callout:none] whitespace-nowrap rounded-md border border-transparent px-3 py-1.5 text-sm font-medium transition-colors active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+        "flex min-w-11 shrink-0 select-none items-center justify-center gap-1.5 [-webkit-touch-callout:none] whitespace-nowrap rounded-md border border-transparent px-3 py-1.5 text-sm font-medium transition-colors active:scale-95",
+        FOCUS_RING,
         active
-          ? "bg-primary text-primary-foreground"
+          ? cn("bg-primary text-primary-foreground", opensMenu && "hover:bg-primary/90")
           : "bg-muted text-muted-foreground hover:bg-muted/70",
+        // After the fills above so the open look is the last word; it matches only while `aria-expanded` is true.
+        opensMenu && TRIGGER_OPEN,
         ring && !active && "border-primary/40",
         dimmed && !active && "bg-transparent border-dashed border-border text-muted-foreground/60 line-through",
       )}

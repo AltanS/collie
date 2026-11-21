@@ -221,6 +221,103 @@ test.describe("at 1440 x 900 the pane's three-dots menu opens beside its button"
   });
 });
 
+// A BUTTON SHOWS THAT ITS MENU IS OPEN (ui/button.tsx `TRIGGER_OPEN`). The three dots in a pane's header and the
+// open tab wear the app's "on" look while their menu stands: a different fill, the same box, `aria-expanded`
+// true. Escape gives the focus back to the button and the keyboard ring is drawn on it. jsdom reads no cascade,
+// so the computed colours and the outline are read in a real engine.
+interface Look {
+  bg: string;
+  box: number[];
+  outlineStyle: string;
+  outlineWidth: number;
+  shadow: string;
+}
+
+async function lookOf(l: Locator): Promise<Look> {
+  return l.evaluate((el) => {
+    const s = getComputedStyle(el);
+    const r = el.getBoundingClientRect();
+    return {
+      bg: s.backgroundColor,
+      box: [r.x, r.y, r.width, r.height].map((n) => Math.round(n * 100) / 100),
+      outlineStyle: s.outlineStyle,
+      outlineWidth: parseFloat(s.outlineWidth),
+      shadow: s.boxShadow,
+    };
+  });
+}
+
+/** The colour has finished its transition: two reads 60ms apart agree. */
+async function settledLook(l: Locator): Promise<Look> {
+  let last = await lookOf(l);
+  for (let i = 0; i < 20; i += 1) {
+    await l.page().waitForTimeout(60);
+    const next = await lookOf(l);
+    if (next.bg === last.bg) return next;
+    last = next;
+  }
+  return last;
+}
+
+/** A ring the keyboard can see: an outline that is drawn, or a shadow. */
+function expectRing(look: Look) {
+  const outlined = look.outlineStyle !== "none" && look.outlineWidth > 0;
+  expect(outlined || look.shadow !== "none").toBe(true);
+}
+
+test.describe("at 1440 x 900 a button shows that its menu is open", () => {
+  test.beforeEach(async ({ page }) => {
+    await page.setViewportSize(WIDE);
+  });
+
+  test("the three dots light up while the menu is open, keep their box, and take the ring back on Escape", async ({ page }) => {
+    await kiroPane(page);
+    const opener = page.getByRole("button", { name: en["chat.paneMenu.aria"], exact: true });
+    await expect(opener).toHaveAttribute("aria-expanded", "false");
+    await page.mouse.move(2, 2);
+    const rest = await settledLook(opener);
+    await opener.click();
+    await expect(opener).toHaveAttribute("aria-expanded", "true");
+    const dialog = page.getByRole("dialog").filter({ has: page.getByRole("button", { name: en["chat.history.label"], exact: true }) });
+    await expect(dialog).toBeVisible();
+    // The pointer still rests on the button: the open fill wins over the hover fill.
+    const open = await settledLook(opener);
+    expect(open.bg).not.toBe(rest.bg);
+    expect(open.box).toEqual(rest.box);
+    await page.mouse.move(2, 2);
+    const apart = await settledLook(opener);
+    expect(apart.bg).toBe(open.bg);
+    await expectEscapeReturnsFocus(page, dialog, opener);
+    await expect(opener).toHaveAttribute("aria-expanded", "false");
+    const back = await settledLook(opener);
+    expect(back.box).toEqual(rest.box);
+    expectRing(back);
+  });
+
+  test("the open tab lights up while its menu is open, keeps its box, and takes the ring back on Escape", async ({ page }) => {
+    await kiroPane(page);
+    const strip = page.getByRole("navigation", { name: en["space.tabStrip.title"] });
+    const tab = strip.locator('button[aria-current="true"]').first();
+    await expect(tab).toHaveAttribute("aria-expanded", "false");
+    await page.mouse.move(2, 2);
+    const rest = await settledLook(tab);
+    await tab.click();
+    await expect(tab).toHaveAttribute("aria-expanded", "true");
+    const dialog = page.getByRole("dialog").filter({ has: page.getByRole("button", { name: en["space.tab.rename"], exact: true }) });
+    await expect(dialog).toBeVisible();
+    const open = await settledLook(tab);
+    expect(open.bg).not.toBe(rest.bg);
+    expect(open.box).toEqual(rest.box);
+    await page.mouse.move(2, 2);
+    expect((await settledLook(tab)).bg).toBe(open.bg);
+    await expectEscapeReturnsFocus(page, dialog, tab);
+    await expect(tab).toHaveAttribute("aria-expanded", "false");
+    const back = await settledLook(tab);
+    expect(back.box).toEqual(rest.box);
+    expectRing(back);
+  });
+});
+
 test.describe("at 390 x 844 the same sheets stay bottom sheets with the handle", () => {
   test.beforeEach(async ({ page }) => {
     await page.setViewportSize(PHONE);
@@ -229,6 +326,18 @@ test.describe("at 390 x 844 the same sheets stay bottom sheets with the handle",
   test("the pane menu", async ({ page }) => {
     const { dialog } = await openPaneMenu(page);
     await expectBottomSheet(page, dialog);
+  });
+
+  test("the three dots show the open look while the bottom sheet is open", async ({ page }) => {
+    await kiroPane(page);
+    const opener = page.getByRole("button", { name: en["chat.paneMenu.aria"], exact: true });
+    const rest = await settledLook(opener);
+    await opener.click();
+    await expectBottomSheet(page, page.getByRole("dialog").filter({ has: page.getByRole("button", { name: en["chat.history.label"], exact: true }) }));
+    await expect(opener).toHaveAttribute("aria-expanded", "true");
+    const open = await settledLook(opener);
+    expect(open.bg).not.toBe(rest.bg);
+    expect(open.box).toEqual(rest.box);
   });
 
   test("the Attachment view", async ({ page }) => {
