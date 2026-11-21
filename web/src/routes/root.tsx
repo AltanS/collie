@@ -31,6 +31,7 @@ import { AppHeaderHost } from "@/components/app-header";
 import { StripHost } from "@/components/ui/strip-host";
 import { ScreenTransition } from "@/components/screen-transition";
 import { ReportDoor } from "@/components/report-door";
+import { NewOverlayHost } from "@/components/new-overlay";
 import { CrewProvider } from "@/components/crew-provider";
 import { CollieMark } from "@/components/collie-mark";
 import { TourHost } from "@/components/tour-sheet";
@@ -199,6 +200,8 @@ export function RootLayout() {
       {/* Report a problem (ADR 0123): the one sheet the composer's card, the pane menu and Settings open
           through lib/report/store.ts. Renders nothing until the first open, and loads the sheet then. */}
       <ReportDoor />
+      {/* LAB (desktop pass 2): New over the screen it was called from, on a large screen with `?ns=` on. */}
+      <NewOverlayHost />
       {/* `relative` makes this column the containing block of last resort, so its `overflow-hidden`
           also clips an absolute element no closer box contains (an `sr-only` word deep in a list).
           Without it such an element grew the DOCUMENT, and the page scrolled under the header

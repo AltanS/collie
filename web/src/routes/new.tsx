@@ -1,6 +1,6 @@
 import { Icon } from "@/components/icons/icon";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
-import { useLocation } from "react-router";
+import { Navigate, useLocation } from "react-router";
 
 import { PickCaption } from "@/components/accounts-meter";
 import { AgentIcon } from "@/components/agent-icon";
@@ -24,6 +24,8 @@ import { Switch } from "@/components/ui/switch";
 import { ToastViewport } from "@/components/ui/toast-viewport";
 import { useLocale } from "@/hooks/use-locale";
 import { useNav } from "@/hooks/use-nav";
+import { useWidthClass } from "@/hooks/use-width-class";
+import { labNs, withOver } from "@/lib/lab-ns";
 import { useNoPromptsGuard } from "@/hooks/use-no-prompts-guard";
 import { useSpaceActions } from "@/hooks/use-spaces";
 import { checkRun, clearRecentRuns, planWorktree, removeRecentRun, type StartWhat } from "@/lib/api";
@@ -87,6 +89,7 @@ import { setStatus } from "@/lib/status";
 import { shortenHome } from "@/lib/shorten-home";
 import type { WorktreeBaseChoice, WorktreeFolderChoice, WorktreePlanResponse } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { NewOverlayBody } from "@/components/new-overlay-body";
 import { branchOffName, mintRequestId } from "@/lib/worktree-name";
 
 // THE NEW PAGE (M48 spec 01, card 4.3; a page since 1.19.0, it was a bottom sheet before). One screen
@@ -112,10 +115,24 @@ export function NewRoute() {
   const { search } = useLocation();
   useLocale();
   useHoldReload("new-page", true);
+  // LAB (desktop pass 2): on a large screen with a proposal on, `/new` is New over the dashboard.
+  const overDashboard = useWidthClass() === "expanded" && labNs() !== 0;
+  if (overDashboard) {
+    const at = readNewAt(search);
+    return <Navigate replace to={withOver(homePath({ host: at.machine, session: at.session }), `/new${search}`)} />;
+  }
   return <NewPage key={search} search={search} />;
 }
 
-function NewPage({ search }: { search: string }) {
+/**
+ * LAB (desktop pass 2): how the page is framed. `page` is today's screen. The rest draw the same form over
+ * the screen it was called from (components/new-overlay.tsx): `panel` one column with today's foot, `two`
+ * what at the left and where at the right with the foot under both, `three` what, where and the worktree
+ * with the foot under the third.
+ */
+export type NewFrame = "page" | "panel" | "two" | "three";
+
+export function NewPage({ search, frame = "page", onClose }: { search: string; frame?: NewFrame; onClose?: () => void }) {
   useLocale();
   const nav = useNav();
   const data = useRootData();
@@ -574,31 +591,8 @@ function NewPage({ search }: { search: string }) {
   }
   const backLabel = t("newPage.back");
 
-  return (
-    <div className="mx-auto flex min-h-0 w-full max-w-screen-sm flex-1 flex-col">
-      <RouteHeader
-        width="column"
-        override={
-          <>
-            <Button
-              variant="ghost"
-              size="icon"
-              // 44px, the tap floor every control in this row shares. size="icon" alone is 36px.
-              className="size-11"
-              onClick={() => nav.up(homePath({ host: at.machine, session: at.session }))}
-              aria-label={backLabel}
-            >
-              <Icon name="back" className="size-5" />
-            </Button>
-            <h1 className="min-w-0 truncate text-lg font-semibold tracking-tight">
-              {offer.startersOnly ? t("newPage.starters.title") : besidePane !== undefined ? t("newPage.title.inSpace") : t("home.new.label")}
-            </h1>
-          </>
-        }
-      />
-      {/* `relative` for the reason SettingsPage gives: an `sr-only` deep in the page would escape the
-          scroller and grow the document's own scrollbar. */}
-      <BandMain base={16} className="relative flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4">
+  const what_ = (
+    <>
         {multiHost && from === undefined && besidePane === undefined && (
           <MachineSelect
             chosen={chosen}
@@ -773,6 +767,10 @@ function NewPage({ search }: { search: string }) {
           )}
         </div>
 
+    </>
+  );
+  const where_ = (
+    <>
         {showWhere ? (
           <div className="flex flex-col gap-2">
             <label className="flex flex-col gap-1">
@@ -795,6 +793,10 @@ function NewPage({ search }: { search: string }) {
           <p className="text-xs text-muted-foreground">{t("newPage.where.pinned", { folder: shortenHome(pinned, home) })}</p>
         ) : null}
 
+    </>
+  );
+  const branch_ = (
+    <>
         <Collapse open={branchShown}>
           {branchShown ? (
             <BranchBlock
@@ -818,11 +820,10 @@ function NewPage({ search }: { search: string }) {
             />
           ) : null}
         </Collapse>
-      </BandMain>
-
-      {/* The foot: what Start will do, in one line, then Start. A sibling UNDER the scroller, so it
-          stays above the keyboard (the viewport resizes with it) and clear of the home indicator. */}
-      <BottomBar className="flex flex-col gap-2 px-4">
+    </>
+  );
+  const summary_ = (
+    <>
         {/* One reserved cell holds the summary and, when a Start was refused, the refusal in its
             place, in the same box, so neither moves anything (DESIGN.md §2). Two summary lines are
             reserved, so a longer sentence moves nothing either. */}
@@ -856,6 +857,10 @@ function NewPage({ search }: { search: string }) {
             </p>
           ) : null}
         </Collapse>
+    </>
+  );
+  const start_ = (
+    <>
         <Button ref={startButton} onClick={startNow} disabled={blocked || busy} aria-busy={busy || undefined} className="h-11">
           {/* All three words share one reserved box, so the button keeps its width (DESIGN.md §2). */}
           <OneOf
@@ -868,8 +873,10 @@ function NewPage({ search }: { search: string }) {
             ]}
           />
         </Button>
-      </BottomBar>
-
+    </>
+  );
+  const tail_ = (
+    <>
       {/* The status line, for what this page publishes itself (a folder star that failed, a worktree
           whose agent did not start). Every other route with writes mounts one; this one did not, so
           its statuses were published to nothing and showed up on the next screen. Lifted above the
@@ -880,6 +887,64 @@ function NewPage({ search }: { search: string }) {
 
       {/* "Start without prompts?", the one question before a launcher that skips permission prompts. */}
       {noPromptsSheet}
+    </>
+  );
+  const title = offer.startersOnly ? t("newPage.starters.title") : besidePane !== undefined ? t("newPage.title.inSpace") : t("home.new.label");
+
+  if (frame !== "page") {
+    return (
+      <NewOverlayBody
+        frame={frame}
+        title={title}
+        onClose={onClose ?? (() => nav.up(homePath({ host: at.machine, session: at.session })))}
+        what={what_}
+        where={where_}
+        branch={branch_}
+        summary={summary_}
+        start={start_}
+        tail={tail_}
+      />
+    );
+  }
+
+  return (
+    <div className="mx-auto flex min-h-0 w-full max-w-screen-sm flex-1 flex-col">
+      <RouteHeader
+        width="column"
+        override={
+          <>
+            <Button
+              variant="ghost"
+              size="icon"
+              // 44px, the tap floor every control in this row shares. size="icon" alone is 36px.
+              className="size-11"
+              onClick={() => nav.up(homePath({ host: at.machine, session: at.session }))}
+              aria-label={backLabel}
+            >
+              <Icon name="back" className="size-5" />
+            </Button>
+            <h1 className="min-w-0 truncate text-lg font-semibold tracking-tight">
+              {title}
+            </h1>
+          </>
+        }
+      />
+      {/* `relative` for the reason SettingsPage gives: an `sr-only` deep in the page would escape the
+          scroller and grow the document's own scrollbar. */}
+      <BandMain base={16} className="relative flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4">
+        {what_}
+        {where_}
+        {branch_}
+      </BandMain>
+
+      {/* The foot: what Start will do, in one line, then Start. A sibling UNDER the scroller, so it
+          stays above the keyboard (the viewport resizes with it) and clear of the home indicator. */}
+      <BottomBar className="flex flex-col gap-2 px-4">
+        {summary_}
+        {start_}
+      </BottomBar>
+
+      {tail_}
     </div>
   );
 }

@@ -1,9 +1,10 @@
 import { Icon } from "@/components/icons/icon";
 import { useMemo, useRef, useState } from "react";
-import { useLocation } from "react-router";
+import { Navigate, useLocation } from "react-router";
 
 import { AgentIcon } from "@/components/agent-icon";
 import { RouteHeader } from "@/components/app-header";
+import { OverlayHead } from "@/components/new-overlay-body";
 import { useCrew } from "@/components/crew-provider";
 import { LauncherAddedList } from "@/components/launcher-added-list";
 import { LauncherHowSheet } from "@/components/launcher-how-sheet";
@@ -20,6 +21,8 @@ import { Switch } from "@/components/ui/switch";
 import { ToastViewport } from "@/components/ui/toast-viewport";
 import { useLocale } from "@/hooks/use-locale";
 import { useNav } from "@/hooks/use-nav";
+import { useWidthClass } from "@/hooks/use-width-class";
+import { labNs, withOver } from "@/lib/lab-ns";
 import { addLauncher, type AddLauncherAsk } from "@/lib/api";
 import { describeApiError, describeThrownError } from "@/lib/api-error-message";
 import { leadHost } from "@/lib/hosts";
@@ -32,7 +35,7 @@ import {
   togglePick,
 } from "@/lib/launcher-add";
 import { launchersKey, useLaunchers } from "@/lib/launchers";
-import { newPath, readNewAddKind, readNewAt } from "@/lib/nav";
+import { homePath, newPath, readNewAddKind, readNewAt } from "@/lib/nav";
 import { visibleLine } from "@/lib/no-prompts";
 import { useHoldReload } from "@/lib/reload-guard";
 import type { Scope } from "@/lib/scope";
@@ -53,6 +56,12 @@ export function NewAddRoute() {
   const { search } = useLocation();
   useLocale();
   useHoldReload("new-add-page", true);
+  // LAB (desktop pass 2): on a large screen with a proposal on, `/new/add` is Add over the dashboard.
+  const overDashboard = useWidthClass() === "expanded" && labNs() !== 0;
+  if (overDashboard) {
+    const at = readNewAt(search);
+    return <Navigate replace to={withOver(homePath({ host: at.machine, session: at.session }), `/new/add${search}`)} />;
+  }
   return <NewAddPage key={search} search={search} />;
 }
 
@@ -62,7 +71,7 @@ type Kind = "agent" | "command";
 const FIELD =
   "h-11 w-full rounded-md border border-border bg-background px-3 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring";
 
-function NewAddPage({ search }: { search: string }) {
+export function NewAddPage({ search, frame = "page", onClose }: { search: string; frame?: "page" | "overlay"; onClose?: () => void }) {
   useLocale();
   const nav = useNav();
   const at = useMemo(() => readNewAt(search), [search]);
@@ -174,8 +183,13 @@ function NewAddPage({ search }: { search: string }) {
   const backLabel = t("newPage.back");
   const offReason = freeTextOff && writing;
 
+  const toNew = () => nav.up(newPath({ machine: at.machine, pane: at.pane, beside: at.beside, session: at.session }));
   return (
-    <div className="mx-auto flex min-h-0 w-full max-w-screen-sm flex-1 flex-col">
+    <div className={frame === "page" ? "mx-auto flex min-h-0 w-full max-w-screen-sm flex-1 flex-col" : "flex min-h-0 flex-1 flex-col"}>
+      {frame !== "page" ? (
+        // LAB (desktop pass 2): drawn over the screen, the head is the overlay's own.
+        <OverlayHead title={t("newPage.add")} back={{ label: backLabel, onClick: toNew }} onClose={onClose ?? toNew} />
+      ) : (
       <RouteHeader
         width="column"
         override={
@@ -184,7 +198,7 @@ function NewAddPage({ search }: { search: string }) {
               variant="ghost"
               size="icon"
               className="size-11"
-              onClick={() => nav.up(newPath({ machine: at.machine, pane: at.pane, beside: at.beside, session: at.session }))}
+              onClick={toNew}
               aria-label={backLabel}
             >
               <Icon name="back" className="size-5" />
@@ -193,6 +207,7 @@ function NewAddPage({ search }: { search: string }) {
           </>
         }
       />
+      )}
       <BandMain base={16} className="relative flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4">
         <Segmented
           label={t("launcherAdd.what")}

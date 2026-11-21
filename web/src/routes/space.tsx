@@ -16,7 +16,11 @@ import { useNav } from "@/hooks/use-nav";
 import { usePaneOpen } from "@/hooks/use-pane-open";
 import { useScrollMemory } from "@/hooks/use-scroll-memory";
 import { prefetchFolders } from "@/lib/folders";
-import { homePath, newPath, spacePath } from "@/lib/nav";
+import { homePath, newPath, panePath, spacePath } from "@/lib/nav";
+import { labNs, MARK_SPACE_PARAM } from "@/lib/lab-ns";
+import { useWidthClass } from "@/hooks/use-width-class";
+import { pickTabPane } from "@/lib/tab-pane-memory";
+import type { AgentView, WorkspaceView } from "@/lib/types";
 import { ambientHost } from "@/lib/hosts";
 import { scopeKey } from "@/lib/scope";
 import { setStatus } from "@/lib/status";
@@ -101,15 +105,29 @@ export function SpaceRoute() {
     }
   }, [gone, data.bridge, data.error, data.scope, nav, spaceId]);
 
+  // LAB (desktop pass 2, step 1): what the space page is on a large screen, by proposal (lib/lab-ns.ts).
+  //   1  the session view of the Space's open tab, its remembered pane, the sidebar on that Space
+  //   2  the Dashboard, scrolled to the Space and marking it
+  //   3  this page, laid out for the width: the tabs as columns of cards
+  const ns = labNs();
+  const wideLab = useWidthClass() === "expanded" && ns !== 0;
+  const landing = wideLab && ns === 1 && selectedWs !== undefined ? landingPane(selectedWs, [...data.agents, ...data.shellPanes], navHost) : undefined;
+  const redirect = !wideLab || selectedWs === undefined ? null : ns === 1 ? (landing === undefined ? null : panePath(landing.paneId, data.scope)) : ns === 2 ? withMark(homePath(data.scope), spaceId) : null;
+  useEffect(() => {
+    if (redirect !== null) nav.side(redirect);
+  }, [redirect, nav]);
+  if (redirect !== null) return null;
+  const roomy = wideLab && ns === 3;
+
   return (
-    <div className="mx-auto flex min-h-0 w-full max-w-screen-sm flex-1 flex-col">
+    <div className={roomy ? "mx-auto flex min-h-0 w-full max-w-screen-xl flex-1 flex-col" : "mx-auto flex min-h-0 w-full max-w-screen-sm flex-1 flex-col"}>
       {/* The space header: same shell as the dashboard, minus the session switcher (you switch
           sessions from home). Wordmark + shared pill + Settings gear. Launchers live on the
           dashboard's own strip and in the pane switcher sheet, not here. */}
       <RouteHeader
         onHome={toDashboard}
         wordmark
-        width="column"
+        width={roomy ? "wide" : "column"}
         rightTrail={<SettingsGear scope={data.scope} />}
       />
 
@@ -175,6 +193,7 @@ export function SpaceRoute() {
                 glideKeyOf={paneOpen.glideKeyOf}
                 onPress={paneOpen.press}
                 host={navHost}
+                columns={roomy}
               />
             </main>
             {plus.sheet}
@@ -195,4 +214,17 @@ export function SpaceRoute() {
       </ToastViewport>
     </div>
   );
+}
+
+/** LAB: the pane the session view opens for a Space: its open tab's remembered pane, else the Space's first. */
+function landingPane(space: WorkspaceView, panes: readonly AgentView[], host: string | undefined): AgentView | undefined {
+  const here = panes.filter((p) => p.workspaceId === space.workspaceId && (p.host ?? undefined) === host);
+  const tabId = space.activeTabId;
+  const inTab = here.filter((p) => p.tabId === tabId);
+  return pickTabPane(inTab.length > 0 ? inTab : here, { host, tabId });
+}
+
+/** LAB: the Dashboard's address that scrolls to a Space and marks it. */
+function withMark(home: string, spaceId: string): string {
+  return `${home}${home.includes("?") ? "&" : "?"}${MARK_SPACE_PARAM}=${encodeURIComponent(spaceId)}`;
 }

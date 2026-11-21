@@ -51,6 +51,7 @@ import { shownStatus } from "@/lib/triage";
 import { isReadOnly, statusLabel, type AgentView } from "@/lib/types";
 import { shortcutTarget } from "@/lib/shortcuts/target";
 import { cn } from "@/lib/utils";
+import { labNs } from "@/lib/lab-ns";
 import {
   allowedPresets,
   arrive,
@@ -150,6 +151,19 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
   const open = useSidebarOpen();
   const stored = useSpaceStrips();
   const reduced = useMediaQuery("(prefers-reduced-motion: reduce)");
+  // LAB (desktop pass 2, proposal 1): the space page lands here, so the sidebar shows the row it landed on.
+  useEffect(() => {
+    if (labNs() !== 1) return;
+    const frame = requestAnimationFrame(() => {
+      // The landed row near the top of the sidebar's list, with its Space's heading above it.
+      const row = document.querySelector<HTMLElement>('[data-slot="wide-layout"] aside [aria-current="page"]');
+      let scroller = row?.parentElement ?? null;
+      while (scroller !== null && !/(auto|scroll)/u.test(getComputedStyle(scroller).overflowY)) scroller = scroller.parentElement;
+      if (row === null || scroller === null) return;
+      scroller.scrollTop += row.getBoundingClientRect().top - scroller.getBoundingClientRect().top - 48;
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [paneId]);
 
   const places = useMemo<Places>(() => ({ scope, servers: root.servers, sessions: root.sessions }), [scope, root.servers, root.sessions]);
   const herd = useMemo(() => [...root.agents, ...root.shellPanes], [root.agents, root.shellPanes]);
