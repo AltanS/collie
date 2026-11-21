@@ -7,7 +7,11 @@ import { useLocale } from "@/hooks/use-locale";
 import { t } from "@/lib/i18n";
 import { spaceChangesPath } from "@/lib/nav";
 import { cn } from "@/lib/utils";
+import { runsIntoColumns } from "@/lib/wide-dashboard";
 import type { WorkspaceChangeCount } from "@/lib/workspace-changes";
+
+/** LAB (wide-files): how the list stands on a large dashboard. */
+export type WorkspaceChangesLayout = { kind: "columns"; columns: number; width: number; gap: number } | { kind: "line" };
 
 /** One row: the workspace's heading text and where its answer is kept. */
 export interface WorkspaceChangesRow extends WorkspaceChangeTarget {
@@ -30,12 +34,27 @@ export function WorkspaceChangesList({
   rows,
   counts,
   onOpen,
+  layout,
 }: {
   rows: readonly WorkspaceChangesRow[];
   counts: ReadonlyMap<string, WorkspaceChangeCount>;
   onOpen: (row: WorkspaceChangesRow, from: HTMLElement) => void;
+  /** LAB (wide-files): the rows run into the large dashboard's columns, or one line a row. Default: the phone's list. */
+  layout?: WorkspaceChangesLayout;
 }) {
   useLocale();
+  if (layout?.kind === "columns") {
+    return (
+      <div className="flex items-start" style={{ gap: layout.gap }}>
+        {runsIntoColumns(rows, layout.columns).map((run) => (
+          <div key={run[0]?.key ?? "none"} className="shrink-0" style={{ width: layout.width }}>
+            <WorkspaceChangesList rows={run} counts={counts} onOpen={onOpen} />
+          </div>
+        ))}
+      </div>
+    );
+  }
+  const line = layout?.kind === "line";
   return (
     <ListGroup as="ul" aria-label={t("home.changes.listAria")}>
       {rows.map((row) => {
@@ -54,7 +73,7 @@ export function WorkspaceChangesList({
                 quiet && "opacity-60",
               )}
             >
-              <span className="flex min-w-0 flex-1 flex-col gap-1">
+              <span className={cn("flex min-w-0 flex-1 gap-1", line ? "items-baseline justify-between gap-4" : "flex-col")}>
                 {/* `self-start max-w-full`: the label's box is its text, not the row, so its snapshot
                     has the same shape as the header's label it glides into. */}
                 <span data-glide="label" className="max-w-full self-start truncate text-sm font-medium leading-5">

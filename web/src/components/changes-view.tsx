@@ -169,14 +169,22 @@ function RepoSections({
   );
 }
 
+/** Whether `current` names this file of this repo. */
+function isCurrent(current: ChangeRef | null | undefined, repo: string, path: string): boolean {
+  return current !== undefined && current !== null && current.repo === repo && current.path === path;
+}
+
 export function ChangesList({
   repos,
   paneRepo,
   onOpen,
+  current,
 }: {
   repos: readonly ChangedRepo[];
   paneRepo?: string;
   onOpen: (ref: ChangeRef) => void;
+  /** The file open beside the list (the large screen's two columns): drawn chosen. */
+  current?: ChangeRef | null;
 }) {
   return (
     <RepoSections repos={repos} paneRepo={paneRepo}>
@@ -187,7 +195,12 @@ export function ChangesList({
               <button
                 type="button"
                 onClick={() => onOpen({ repo: repo.relPath, path: file.path })}
-                className={cn("flex min-h-11 w-full items-center gap-3 px-3.5 py-2 text-left transition-colors active:bg-muted", LIST_ROW_CORNERS)}
+                aria-current={isCurrent(current, repo.relPath, file.path) ? "page" : undefined}
+                className={cn(
+                  "flex min-h-11 w-full items-center gap-3 px-3.5 py-2 text-left transition-colors active:bg-muted",
+                  LIST_ROW_CORNERS,
+                  current !== undefined && (isCurrent(current, repo.relPath, file.path) ? "bg-accent text-accent-foreground" : HOVER_FILL),
+                )}
               >
                 <StatusLetter status={file.status} />
                 <ChangePath path={file.path} className="flex-1" />
@@ -303,12 +316,14 @@ function TreeRows({
   collapsed,
   onToggle,
   onOpen,
+  current,
 }: {
   repo: ChangedRepo;
   nodes: TreeNode[];
   collapsed: ReadonlySet<string>;
   onToggle: (key: string) => void;
   onOpen: (ref: ChangeRef) => void;
+  current?: ChangeRef | null;
 }) {
   // The tree's own keys are bare folder paths; the shared set keys them by repo too.
   const closed = useMemo(() => {
@@ -356,8 +371,14 @@ function TreeRows({
             <button
               type="button"
               onClick={() => onOpen({ repo: repo.relPath, path: node.file.path })}
+              aria-current={isCurrent(current, repo.relPath, node.file.path) ? "page" : undefined}
               style={indent(node.depth)}
-              className={cn("flex min-h-11 w-full items-center gap-3 py-2 pr-3.5 text-left transition-colors active:bg-muted", FOCUS_RING_INSET, HOVER_FILL, LIST_ROW_CORNERS)}
+              className={cn(
+                "flex min-h-11 w-full items-center gap-3 py-2 pr-3.5 text-left transition-colors active:bg-muted",
+                FOCUS_RING_INSET,
+                LIST_ROW_CORNERS,
+                isCurrent(current, repo.relPath, node.file.path) ? "bg-accent text-accent-foreground" : HOVER_FILL,
+              )}
             >
               <StatusLetter status={node.file.status} />
               <MiddleTruncate text={node.name} className="flex-1 font-mono text-[13px] font-medium text-foreground" />
@@ -380,12 +401,14 @@ export function ChangesTree({
   collapsed,
   onToggle,
   onOpen,
+  current,
 }: {
   repos: readonly ChangedRepo[];
   paneRepo?: string;
   collapsed: ReadonlySet<string>;
   onToggle: (key: string) => void;
   onOpen: (ref: ChangeRef) => void;
+  current?: ChangeRef | null;
 }) {
   const trees = useMemo(() => new Map(repos.map((r) => [r.relPath, buildChangeTree(r.files)])), [repos]);
   return (
@@ -397,6 +420,7 @@ export function ChangesTree({
           collapsed={collapsed}
           onToggle={onToggle}
           onOpen={onOpen}
+          current={current}
         />
       )}
     </RepoSections>
@@ -843,10 +867,13 @@ export function DiffView({
   diff,
   path,
   commenting,
+  split = false,
 }: {
   diff: string;
   path?: string;
   commenting?: DiffViewCommentProps;
+  /** LAB (wide-files, proposal 3): the old lines at the left and the new at the right, on a large screen. */
+  split?: boolean;
 }) {
   const parsed = useMemo(() => parseUnifiedDiff(diff), [diff]);
   const keys = useMemo(() => diffRowKeys(parsed.rows), [parsed]);
@@ -875,6 +902,21 @@ export function DiffView({
   const syntax = useSyntaxTokens(parsed.rows, path);
   // Both gutters sized once, by the widest number, so no row's text starts at a different x.
   const gutter = { width: `calc(${Math.max(String(parsed.maxLineNo).length, 2)}ch + 0.5rem)` };
+  // A new or a deleted file has one side only: it stays unified, so half the column is not empty.
+  const twoSided = parsed.rows.some((r) => r.kind === "del" || r.kind === "context") && parsed.rows.some((r) => r.kind === "add" || r.kind === "context");
+  if (split && twoSided) {
+    return (
+      <SplitDiffRows
+        rows={parsed.rows}
+        keys={keys}
+        commentKeys={commentKeys}
+        activeCommentKeySet={activeCommentKeySet}
+        syntax={syntax}
+        gutter={gutter}
+        commenting={commenting}
+      />
+    );
+  }
   return (
     // Ligatures off: a diff is read character by character, and `=>` drawn as one arrow hides what
     // the file holds.
@@ -1005,6 +1047,141 @@ export function DiffView({
           <Icon name="disclosure" aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
         </button>
       ))}
+    </div>
+  );
+}
+
+/** One line of the side-by-side diff: a hunk or note across both halves, or a pair of row indexes (null: nothing that side). */
+export type SplitLine = { kind: "full"; i: number } | { kind: "pair"; left: number | null; right: number | null };
+
+/**
+ * The rows of a unified diff as side-by-side lines: a context row on both sides, a run of removed rows beside the run of
+ * added rows that follows it, row by row, and a hunk or a note across both. Indexes into `rows`, so the syntax tokens and
+ * the comment keys of the unified view serve this one too.
+ */
+export function splitLines(rows: readonly DiffRow[]): SplitLine[] {
+  const out: SplitLine[] = [];
+  let i = 0;
+  while (i < rows.length) {
+    const row = rows[i]!;
+    if (row.kind === "hunk" || row.kind === "note") {
+      out.push({ kind: "full", i });
+      i += 1;
+      continue;
+    }
+    if (row.kind === "context") {
+      out.push({ kind: "pair", left: i, right: i });
+      i += 1;
+      continue;
+    }
+    const dels: number[] = [];
+    while (i < rows.length && rows[i]!.kind === "del") dels.push(i++);
+    const adds: number[] = [];
+    while (i < rows.length && rows[i]!.kind === "add") adds.push(i++);
+    for (let k = 0; k < Math.max(dels.length, adds.length); k += 1) out.push({ kind: "pair", left: dels[k] ?? null, right: adds[k] ?? null });
+  }
+  return out;
+}
+
+/** LAB (wide-files, proposal 3): the side-by-side body of {@link DiffView}, from the same parsed rows, tokens and comment keys. */
+function SplitDiffRows({
+  rows,
+  keys,
+  commentKeys,
+  activeCommentKeySet,
+  syntax,
+  gutter,
+  commenting,
+}: {
+  rows: readonly DiffRow[];
+  keys: readonly string[];
+  commentKeys: readonly (string | null)[];
+  activeCommentKeySet: ReadonlySet<string>;
+  syntax: ReturnType<typeof useSyntaxTokens>;
+  gutter: { width: string };
+  commenting?: DiffViewCommentProps;
+}) {
+  const lines = useMemo(() => splitLines(rows), [rows]);
+  const half = (i: number | null, side: "old" | "new") => {
+    if (i === null) return <div aria-hidden className="min-w-0 flex-1 bg-muted/30" />;
+    const row = rows[i]!;
+    if (row.kind === "hunk" || row.kind === "note") return null;
+    const no = side === "old" ? row.oldNo : row.newNo;
+    const commentKey = commentKeys[i] ?? null;
+    const selected = commenting !== undefined && commentKey !== null && commenting.selectedKeys.has(commentKey);
+    const cells = (
+      <>
+        <span aria-hidden className="shrink-0 select-none pr-2 text-right text-muted-foreground tabular-nums" style={gutter}>
+          {no ?? ""}
+        </span>
+        <span aria-hidden className={cn("w-[2ch] shrink-0 select-none text-center", SIGN_TONE[row.kind])}>
+          {SIGN[row.kind]}
+        </span>
+        <span className="min-w-0 flex-1 pr-3 wrap-anywhere whitespace-pre-wrap">
+          {row.kind === "add" && <span className="sr-only">+ </span>}
+          {row.kind === "del" && <span className="sr-only">− </span>}
+          {syntax?.[i] ? <TokenLine tokens={syntax[i]} /> : row.text}
+        </span>
+      </>
+    );
+    const tone = cn("flex min-w-0 flex-1 pl-1", ROW_TONE[row.kind], selected && "bg-primary/15");
+    if (commenting === undefined || commentKey === null) return <div className={tone}>{cells}</div>;
+    return (
+      <button
+        type="button"
+        aria-pressed={selected}
+        onClick={() => commenting.onToggleRow(commentKey)}
+        className={cn(tone, "min-h-7 cursor-pointer items-baseline py-0.5 text-left font-mono text-xs leading-5")}
+      >
+        {cells}
+      </button>
+    );
+  };
+  return (
+    <div className="font-mono text-xs leading-5 [font-variant-ligatures:none]" data-slot="diff" data-split="" data-highlighted={syntax ? "" : undefined}>
+      {lines.map((line) => {
+        if (line.kind === "full") {
+          const row = rows[line.i]!;
+          return (
+            <div key={keys[line.i]} className={cn(row.kind === "hunk" ? "border-y border-border py-1 first:border-t-0" : "italic", "px-3 text-muted-foreground wrap-anywhere whitespace-pre-wrap")}>
+              {row.kind === "hunk" ? row.header : row.kind === "note" ? row.text : ""}
+            </div>
+          );
+        }
+        const key = `${line.left === null ? "-" : keys[line.left]}|${line.right === null ? "-" : keys[line.right]}`;
+        const ends = [line.left, line.right].flatMap((i) => (i === null ? [] : [commentKeys[i] ?? null])).filter((k): k is string => k !== null);
+        const endSet = new Set(ends);
+        const pinned =
+          commenting === undefined
+            ? []
+            : commenting.comments.filter((c) => endSet.has(c.rowKeys.at(-1) ?? "") && c.rowKeys.every((k) => activeCommentKeySet.has(k)));
+        return (
+          <Fragment key={key}>
+            <div className="flex">
+              {half(line.left, "old")}
+              <div aria-hidden className="w-px shrink-0 bg-border" />
+              {half(line.right, "new")}
+            </div>
+            {pinned.map((c) => (
+              <button
+                key={`comment-${c.id}`}
+                type="button"
+                onClick={() => commenting?.onEditComment(c)}
+                className="my-1 mr-3 ml-12 flex max-w-[calc(100%-3.75rem)] items-center justify-between gap-2 rounded-md border border-primary/40 bg-primary/10 px-2.5 py-1.5 font-sans text-xs text-foreground transition-colors hover:border-primary"
+              >
+                <span className="min-w-0 flex-1 truncate text-left">
+                  <span className="font-mono font-semibold text-primary">
+                    <Icon name="comment" aria-hidden className="mr-1 inline size-3 align-[-1px]" />
+                    {c.lineLabel}:{" "}
+                  </span>
+                  {c.note}
+                </span>
+                <Icon name="disclosure" aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
+              </button>
+            ))}
+          </Fragment>
+        );
+      })}
     </div>
   );
 }
