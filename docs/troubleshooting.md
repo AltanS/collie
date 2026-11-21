@@ -235,7 +235,9 @@ the screen problems, the same `sends-`, `holds-` and `screen-` rows `collie doct
 no text you typed and no screen unless you turn on **Include what I typed** or
 **Include the screen**. The screen is the pane's last 40 rows with known secret shapes masked; read
 it anyway, because the issue is public. **Open on GitHub** opens the filled-in form in your browser,
-under your own GitHub account, and **Copy report** copies the same text. Tap **Already reported?**
+under your own GitHub account, and puts the whole report on your clipboard too: the GitHub app
+opens the form with every field empty, and then you paste it there. **Copy report** copies the same
+text. Tap **Already reported?**
 first to find an issue with the same signature line. The pane menu and **Settings → System** open
 the same sheet at any time. The cross closes the card on that pane until a send works again. A
 crew member's pane does not offer a report yet; use the steps above.
