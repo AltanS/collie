@@ -15,6 +15,8 @@ import { initTheme } from "./lib/theme/store";
 import { resumeTrial } from "./lib/theme/trial";
 import { initOperatorFonts } from "./lib/operator-config";
 import "./index.css";
+import "./surfaces-lab.css";
+import { installSurfacesLab } from "./lib/surfaces-lab";
 // Registers the service worker (precaches the app shell, enables install) and wires auto/manual
 // updates. Guards on `serviceWorker in navigator`, so over plain HTTP (insecure context) it no-ops.
 import "./lib/pwa";
@@ -30,6 +32,8 @@ import { loadPageZoomPref } from "./hooks/use-dash-prefs";
 // A hidden page runs no animation (issue 748): the root carries an attribute while it is hidden, and
 // index.css pauses every animation under it. First, so a page opened in the background never starts.
 installHiddenPause();
+// LAB: the desktop-surfaces proposals (experiments/desktop-surfaces).
+installSurfacesLab();
 // A pinch zooms the page unless this device turned Pinch to zoom off (lib/page-zoom.ts). The setting is
 // read once here and kept in that module, so a pinch reads no storage and a change in Settings needs no reload.
 installPageZoom(loadPageZoomPref);
