@@ -1,5 +1,6 @@
 import { useEffect, useId, useState, type FormEvent } from "react";
 
+import { ListGroup } from "@/components/ui/list-group";
 import { SectionLabel } from "@/components/ui/section-label";
 import { Select } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
@@ -67,11 +68,14 @@ export function TrickSettingsGroup({ trick, canWrite, onLead = false, onValue }:
           {t("settings.tricks.fields.needsSetup")}
         </p>
       )}
-      <div className="flex flex-col">
+      {/* One bordered group, one row per field, a rule between rows: the look of the page's other sections (2026-11-21). */}
+      <ListGroup as="ul" aria-label={t("settings.tricks.about.settings")} className="mt-1">
         {fields.map((field) => (
-          <FieldRow key={field.key} field={field} stored={values[field.key]} disabled={!writable} onValue={onValue} />
+          <li key={field.key} className="px-3.5 py-1">
+            <FieldRow field={field} stored={values[field.key]} disabled={!writable} onValue={onValue} />
+          </li>
         ))}
-      </div>
+      </ListGroup>
     </section>
   );
 }
