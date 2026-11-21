@@ -50,7 +50,7 @@ import {
   rememberPending,
   type RowReducer,
 } from "./reduce.ts";
-import { containedRealpath, exists, loadTail, readSinceFile, rootReader, statFile, type RootSource } from "./files.ts";
+import { containedRealpath, existingUnder, firstContained, loadTail, readSinceFile, rootReader, statFile, type RootSource } from "./files.ts";
 import { MAX_OPEN_FILES_PIDS, openFiles as defaultOpenFiles, type OpenFiles } from "./open-files.ts";
 import { clamp, MAX_RESULT_CHARS, MAX_TEXT_CHARS, stripAnsi, summarizeToolInput } from "./text.ts";
 import { classifyToolCall } from "./tool-call.ts";
@@ -532,6 +532,11 @@ export class GrokTranscriptSource implements TranscriptSource {
     return null;
   }
 
+  /**
+   * The session's `chat_history.jsonl` in a folder of `root` that `root` contains. The folders are
+   * tried in name order, and a refused log is skipped for the next folder that holds the id (#839,
+   * see {@link firstContained}).
+   */
   private async findUnder(root: string, sessionId: string): Promise<string | null> {
     let dirs: string[];
     try {
@@ -539,12 +544,7 @@ export class GrokTranscriptSource implements TranscriptSource {
     } catch {
       return null;
     }
-    for (const dir of dirs) {
-      const candidate = join(root, dir, sessionId, "chat_history.jsonl");
-      if (!(await exists(candidate))) continue;
-      return containedRealpath(candidate, root);
-    }
-    return null;
+    return firstContained(existingUnder(root, dirs.toSorted(), sessionId, "chat_history.jsonl"), root);
   }
 
   stat = statFile;

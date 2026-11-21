@@ -47,7 +47,7 @@ import {
   rememberPending,
   type RowReducer,
 } from "./reduce.ts";
-import { containedRealpath, loadTail, readSinceFile, rootList, statFile } from "./files.ts";
+import { containedRealpath, firstContained, loadTail, readSinceFile, rootList, statFile } from "./files.ts";
 import { MAX_OPEN_FILES_PIDS, openFiles as defaultOpenFiles, type OpenFiles } from "./open-files.ts";
 import { readSqlite } from "./sqlite-read.ts";
 import { clamp, MAX_RESULT_CHARS, MAX_TEXT_CHARS, stripAnsi, summarizeToolInput } from "./text.ts";
@@ -369,25 +369,13 @@ export class McodeTranscriptSource implements TranscriptSource {
     return null;
   }
 
-  private async findUnder(root: string, sessionId: string): Promise<string | null> {
-    const suffix = sessionDirSuffix(sessionId);
-    for (const year of await descending(root)) {
-      for (const month of await descending(join(root, year))) {
-        for (const day of await descending(join(root, year, month))) {
-          const dir = join(root, year, month, day);
-          let names: string[];
-          try {
-            names = await readdir(dir);
-          } catch {
-            continue;
-          }
-          const hit = names.find((n) => n.endsWith(suffix));
-          if (hit === undefined) continue;
-          return containedRealpath(join(dir, hit, "messages.jsonl"), root);
-        }
-      }
-    }
-    return null;
+  /**
+   * The session's `messages.jsonl` under `root` that `root` contains: newest date folder first, and
+   * inside a day the largest folder name first (`HH-mm-ss-SSS-session_…`, so the latest start). A
+   * refused log is skipped for the next one, also into older days (#839, see {@link firstContained}).
+   */
+  private findUnder(root: string, sessionId: string): Promise<string | null> {
+    return firstContained(sessionLogsUnder(root, sessionDirSuffix(sessionId)), root);
   }
 
   /**
@@ -515,6 +503,24 @@ export class McodeTranscriptSource implements TranscriptSource {
 /** The root a cached path was resolved through — the one that may still contain it. */
 function rootOf(cached: string, roots: readonly string[]): string {
   return roots.find((root) => cached.startsWith(root)) ?? cached;
+}
+
+/**
+ * The `messages.jsonl` of every session folder under `root` whose name ends in `suffix`, in the order
+ * {@link McodeTranscriptSource} tries them: newest day first, largest name first inside a day. Lazy,
+ * so the walk stops at the first one served. An unreadable folder is passed over.
+ */
+async function* sessionLogsUnder(root: string, suffix: string): AsyncGenerator<string> {
+  for (const year of await descending(root)) {
+    for (const month of await descending(join(root, year))) {
+      for (const day of await descending(join(root, year, month))) {
+        const dir = join(root, year, month, day);
+        for (const hit of (await descending(dir)).filter((n) => n.endsWith(suffix))) {
+          yield join(dir, hit, "messages.jsonl");
+        }
+      }
+    }
+  }
 }
 
 /** Directory entries, newest-name first. Empty when the directory doesn't exist. */

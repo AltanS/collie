@@ -62,7 +62,7 @@ import {
   type RowReducer,
 } from "./reduce.ts";
 import { RENAME_TITLE_MAX, shortLine } from "../mux/durable/clean.ts";
-import { containedRealpath, head, loadTail, readSinceFile, rootList, statFile } from "./files.ts";
+import { containedRealpath, firstContained, head, loadTail, readSinceFile, rootList, statFile } from "./files.ts";
 import { isBlobHash, resolveImage, type InlineImage } from "./pi.ts";
 import { clamp, MAX_RESULT_CHARS, MAX_TEXT_CHARS, oneLine, stripAnsi, summarizeToolInput } from "./text.ts";
 import { parseUnifiedDiff } from "./diff.ts";
@@ -874,25 +874,13 @@ export class MuseTranscriptSource implements TranscriptSource {
     return null;
   }
 
-  /** Newest first at every level: a session being read is almost always today's. */
-  private async findUnder(root: string, sessionId: string): Promise<string | null> {
-    for (const year of await descending(root)) {
-      for (const month of await descending(join(root, year))) {
-        for (const day of await descending(join(root, year, month))) {
-          const dir = join(root, year, month, day);
-          let names: string[];
-          try {
-            names = await readdir(dir);
-          } catch {
-            continue;
-          }
-          const hit = names.find((n) => n.toLowerCase() === sessionId);
-          if (hit === undefined) continue;
-          return containedRealpath(join(dir, hit, "session.jsonl"), root);
-        }
-      }
-    }
-    return null;
+  /**
+   * Newest first at every level: a session being read is almost always today's. A refused log is
+   * skipped for the next folder of the same id, also into older days (#839, see {@link
+   * firstContained}).
+   */
+  private findUnder(root: string, sessionId: string): Promise<string | null> {
+    return firstContained(sessionLogsUnder(root, sessionId), root);
   }
 
   /**
@@ -987,6 +975,24 @@ const MAX_DISCOVER_CANDIDATES = 2000;
 /** Most candidates a discovery walk head-reads. The walk is newest-first, so a live session is
  *  almost always within the first few; past this the answer is "no session", not a slow one. */
 const MAX_DISCOVER_READS = 200;
+
+/**
+ * The `session.jsonl` of every folder named `sessionId` (any case) under `root`, in the order {@link
+ * MuseTranscriptSource} tries them: newest day first, and inside a day the larger name first (two
+ * spellings of one id on a case-sensitive disk). Lazy; an unreadable folder is passed over.
+ */
+async function* sessionLogsUnder(root: string, sessionId: string): AsyncGenerator<string> {
+  for (const year of await descending(root)) {
+    for (const month of await descending(join(root, year))) {
+      for (const day of await descending(join(root, year, month))) {
+        const dir = join(root, year, month, day);
+        for (const hit of (await descending(dir)).filter((n) => n.toLowerCase() === sessionId)) {
+          yield join(dir, hit, "session.jsonl");
+        }
+      }
+    }
+  }
+}
 
 /** Directory entries, newest-name first. Empty when the directory doesn't exist. */
 async function descending(dir: string): Promise<string[]> {

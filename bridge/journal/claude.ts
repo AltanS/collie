@@ -58,6 +58,8 @@ import { liftedSpelling } from "../../web/src/lib/harness/claude/paste.ts";
 import {
   containedRealpath,
   exists,
+  existingUnder,
+  firstContained,
   head,
   loadTail,
   readSinceFile,
@@ -1367,7 +1369,11 @@ export class ClaudeTranscriptSource implements TranscriptSource {
    * One root's projects directories, searched for `<sessionId>.jsonl`. The contained real path, or null.
    *
    * Null covers both "not here" and "here, but pointing out of this root": the caller moves on to the
-   * next root either way.
+   * next root either way. A log by this name that points out of this root is not this root's to serve,
+   * and it is never accepted under a sibling root either (files.ts header); the next project folder
+   * of the SAME root that holds the name is asked instead (#839, see {@link firstContained}), so a
+   * planted or dangling symlink in one project folder cannot blank the log that sits in another.
+   * The folders are tried in name order, so two readable logs give the same answer on every disk.
    */
   private async scanRoot(sessionId: string, root: string): Promise<string | null> {
     const file = `${sessionId}.jsonl`;
@@ -1377,16 +1383,7 @@ export class ClaudeTranscriptSource implements TranscriptSource {
     } catch {
       return null; // this projects dir doesn't exist — a profile that isn't on this machine
     }
-    for (const dir of dirs) {
-      const candidate = join(root, dir, file);
-      if (!(await exists(candidate))) continue;
-      // A log by this name exists here but points out of this root, so it is not this root's to serve —
-      // and we do not go on to accept it under a sibling root either (files.ts header). Abandoning the
-      // root rather than the whole search is the only multi-root difference: a planted symlink in one
-      // profile can't blank the history of the others.
-      return containedRealpath(candidate, root);
-    }
-    return null;
+    return firstContained(existingUnder(root, dirs.toSorted(), file), root);
   }
 
   /**

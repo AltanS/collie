@@ -67,6 +67,7 @@
 
 import { realpath as realpathNativeCb } from "node:fs";
 import { realpath, stat } from "node:fs/promises";
+import { join } from "node:path";
 
 import { HOST, type Host, isInside } from "../host.ts";
 
@@ -127,6 +128,58 @@ export async function containedRealpath(
   const realRoot = await realpathOf(root).catch(() => null);
   if (real === null || realRoot === null) return null;
   return isInside(host, real, realRoot) ? real : null;
+}
+
+/**
+ * How many candidates {@link firstContained} may refuse in one lookup before it answers null.
+ *
+ * A lookup matches by session id, so in practice it meets one candidate, rarely two. But a name match
+ * can be looser than the id (a suffix), and anything that writes into a sessions root can plant names;
+ * without a cap one lookup could turn into thousands of `realpath` calls. Past the cap the answer is
+ * "nothing this root may serve", the same fail-closed null as a refusal.
+ */
+export const MAX_REFUSED_CANDIDATES = 32;
+
+/**
+ * The first of `candidates` that `root` really contains, in the order given, or null (#839, #840).
+ *
+ * A refused candidate is skipped; null means no candidate under this root is served. A lookup by
+ * session id can meet more than one file for the id under one root (an older date folder, another
+ * project folder, a second matching name), and the first in order may be a symlink out of the root or
+ * a dangling one. Returning that refusal as the answer read as "this root has no log for the id" while
+ * a readable one sat beside it. Each candidate goes through the same {@link containedRealpath} with
+ * the same root, so nothing a refusal kept out is ever served; only the next candidate is asked.
+ *
+ * The caller owns the order (newest first, where the names carry a time) and passes a lazy sequence
+ * where building every candidate up front would cost a directory walk the first hit makes needless.
+ * At most `limit` refusals are tried ({@link MAX_REFUSED_CANDIDATES}).
+ */
+export async function firstContained(
+  candidates: Iterable<string> | AsyncIterable<string>,
+  root: string,
+  limit: number = MAX_REFUSED_CANDIDATES,
+): Promise<string | null> {
+  let refused = 0;
+  for await (const candidate of candidates) {
+    const real = await containedRealpath(candidate, root);
+    if (real !== null) return real;
+    refused += 1;
+    if (refused >= limit) return null;
+  }
+  return null;
+}
+
+/**
+ * `join(root, dir, ...rest)` for each of `dirs`, in the order given, where something exists at it
+ * (a symlink counts by its target, so a dangling one is passed over). Lazy, for {@link
+ * firstContained}: the walk stops at the first path served, and a folder with no such file costs one
+ * `stat` and no refusal.
+ */
+export async function* existingUnder(root: string, dirs: Iterable<string>, ...rest: string[]): AsyncGenerator<string> {
+  for (const dir of dirs) {
+    const candidate = join(root, dir, ...rest);
+    if (await exists(candidate)) yield candidate;
+  }
 }
 
 /**
