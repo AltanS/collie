@@ -204,8 +204,8 @@ export function transformIndexIcons(html: string, channel: Channel): string {
  * already their own lazy chunks. The chunk has grown about 100 to 150 kB a minor release.
  *
  * 3 MiB leaves room for roughly seven minor releases at that rate. Before it is raised again, run
- * `bunx vite build --sourcemap --outDir /tmp/x` and look at what grew; the English catalog
- * (`en.ts`, ~150 kB) and `react-router`'s `development` build (~94 kB) are the two large
- * candidates for a split.
+ * `bunx vite build --sourcemap --outDir /tmp/x` and look at what grew. `react-router` is no longer in
+ * the main chunk: it has its own `router` chunk (vite.config.ts `codeSplitting`), and the build takes
+ * its production files (`reactRouterProductionPlugin`).
  */
 export const PRECACHE_MAX_FILE_BYTES = 3 * 1024 * 1024;
