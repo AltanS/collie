@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { AgentViewStore, trickViewsDir, viewEntry } from "../agent-view/store.ts";
+import { AuditLog } from "../audit.ts";
 import { HOST as THIS_HOST } from "../host.ts";
 import type { JsonValue } from "../json.ts";
 import { asJsonObject, parseJsonObject } from "../../web/src/lib/json.ts";
@@ -176,7 +177,7 @@ describe.if(posix)("POST /api/tricks/<host>/<id>/remove", () => {
     const list = Array.isArray(file?.receipts) ? file.receipts : [];
     expect(list).toHaveLength(1);
     const stored = asJsonObject(list[0]) ?? {};
-    expect(Object.keys(stored).toSorted()).toEqual(["at", "device", "outcome", "payloadDigest", "pending", "requestId", "trick"]);
+    expect(Object.keys(stored).toSorted()).toEqual(["at", "device", "outcome", "payloadDigest", "pending", "requestId", "trick", "v"]);
     expect({ trick: stored.trick, device: stored.device, outcome: stored.outcome, pending: stored.pending }).toEqual({ trick: "legs", device: "pixel-8", outcome: "removed", pending: false });
   });
 
@@ -269,6 +270,63 @@ describe.if(posix)("POST /api/tricks/<host>/<id>/remove", () => {
     await again.service.refresh(true);
     expect(await post(again, `/api/tricks/${HOST}/legs/remove`, { rid: RID })).toEqual({ status: 409, body: { error: "unknown", message: REMOVE_UNKNOWN_LINE, rid: RID } });
     await kept(r, dir);
+  });
+
+  test("a record of a later version or with an outcome this build does not know is kept and never acts", async () => {
+    const r = await rig([exited(belt("1"))]);
+    const dir = await ranAndOff(r);
+    const digest = payloadDigest(["remove", "legs"]);
+    const later = { v: 2, requestId: RID, payloadDigest: digest, at: T0, trick: "legs", device: "pixel-8", pending: false, outcome: "removed" };
+    const strange = { v: 1, requestId: RID2, payloadDigest: digest, at: T0, trick: "legs", device: "pixel-8", pending: false, outcome: "archived" };
+    const file = join(tricksStateDir(r.stateDir), REMOVE_RECEIPTS_FILE);
+    await writeFile(file, JSON.stringify({ receipts: [later, strange] }));
+    const again = await rig([exited(belt("1"))], {}, { configDir: r.configDir, stateDir: r.stateDir });
+    await again.service.refresh(true);
+    for (const rid of [RID, RID2]) expect(await post(again, `/api/tricks/${HOST}/legs/remove`, { rid })).toEqual({ status: 409, body: { error: "unknown", message: REMOVE_UNKNOWN_LINE, rid } });
+    await kept(r, dir);
+    // A new remove writes the file again: both records are still there, whole.
+    expect((await post(again, `/api/tricks/${HOST}/legs/remove`, { rid: RID3 })).status).toBe(200);
+    const held = parseJsonObject(await readFile(file, "utf8"))?.receipts;
+    const rows = Array.isArray(held) ? held : [];
+    expect(rows.map((row) => asJsonObject(row)?.outcome)).toEqual(expect.arrayContaining(["removed", "archived"]));
+    expect(rows.find((row) => asJsonObject(row)?.requestId === RID3) !== undefined).toBe(true);
+    expect(asJsonObject(rows.find((row) => asJsonObject(row)?.requestId === RID) ?? null)?.v).toBe(2);
+  });
+
+  test("the audit line of a remove stays one line whatever the device label holds", async () => {
+    const lines: string[] = [];
+    const log = new AuditLog((line) => void lines.push(line), { now: () => T0 });
+    const r = await rig([exited(belt("1"))], { audit: (entry) => log.record({ action: entry.action, device: entry.device ?? null, detail: entry.detail }) });
+    await ranAndOff(r);
+    const label = "pixel\n{\"action\":\"trick.remove\"}\r\u0007\u001b[31m\u2028x";
+    expect((await post(r, `/api/tricks/${HOST}/legs/remove`, { rid: RID }, label)).status).toBe(200);
+    await Bun.sleep(10);
+    const removes = lines.filter((line) => line.includes("trick.remove"));
+    expect(removes).toHaveLength(1);
+    const one = removes[0] ?? "";
+    // One line, ended once, with no raw control character in it; the label reads back as it was sent.
+    expect(one.endsWith("\n")).toBe(true);
+    expect(Array.from(one.slice(0, -1)).filter((ch) => ch.charCodeAt(0) < 32 || ch.charCodeAt(0) === 127)).toEqual([]);
+    expect(one.slice(0, -1).split("\n")).toHaveLength(1);
+    expect(parseJsonObject(one.slice(0, -1))?.device).toBe(label);
+  });
+
+  test("a scan drops the views of a trick id with no folder, and writes nothing when there is none", async () => {
+    let pruned = 0;
+    const r = await rig([exited(belt("1"))], {
+      pruneTrickStores: (present) => {
+        for (const view of r.views.all()) if (!present.has(view.trick)) pruned += r.views.dropTrick(view.trick);
+      },
+    });
+    await makeTrick(r);
+    // A view of `ghost`, whose folder is gone (a remove that crashed after its commit), and one of `legs`.
+    r.views.put(viewEntry({ trick: "ghost", session: `${HOST}/w6X:3`, on: true, shows: 0, changedAt: 1 }));
+    r.views.put(viewEntry({ trick: "legs", session: `${HOST}/w6X:3`, on: true, shows: 0, changedAt: 1 }));
+    await r.service.refresh(true);
+    expect(r.views.all().map((v) => v.trick)).toEqual(["legs"]);
+    expect(pruned).toBe(1);
+    await r.service.refresh(true);
+    expect(pruned).toBe(1);
   });
 
   test("a broken trick is on the list and is removed: a bad trick.toml, a refused right, a missing file", async () => {

@@ -4231,6 +4231,12 @@ const forgetTrick = (id: string): void => {
   views?.forgetTrick(id);
   trickHill?.forget({ id, name: id, memberId: bridgeId.id });
 };
+// At each good scan: the views and Hill keys of a trick id with no folder go (ADR 0168), so a remove that crashed
+// after its commit, or a folder deleted by hand, leaves nothing a later trick of that id would inherit.
+const pruneTrickStores = (present: ReadonlySet<string>): void => {
+  views?.forgetAbsentTricks(present);
+  trickHill?.forgetAbsent(present, bridgeId.id);
+};
 const tricks =
   cfg.tricksDir === undefined
     ? undefined
@@ -4243,6 +4249,7 @@ const tricks =
         // A trick's decisions go into the hill (M94, M96); `<stateDir>/hill/tricks.json` keeps the map.
         decisions: trickHill,
         forgetTrick,
+        pruneTrickStores,
         inputs: tricksInputs,
         crewWide: () => crewLead !== undefined,
         world: (memberId, opts) => {

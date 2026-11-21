@@ -6,6 +6,7 @@ import { Modal } from "@/components/ui/modal";
 import { SectionLabel } from "@/components/ui/section-label";
 import { useLocale } from "@/hooks/use-locale";
 import { t } from "@/lib/i18n";
+import { mintRequestId } from "@/lib/worktree-name";
 
 // THE "REMOVE" SECTION of a trick's details page (ADR 0168), its last, after "Read the code": one row with a short
 // line and a destructive button, in the page's box look. The one place in the app that removes a trick: not the
@@ -19,13 +20,24 @@ import { t } from "@/lib/i18n";
 //     is on anyway; this only says so before the tap.
 //   * A refusal or an error stays on the page and says the reason in the row. Success is the route's: it leaves for
 //     the list and says "Removed <name>." there.
+//   * ONE REQUEST ID PER ASK (ADR 0168). The id is minted when the confirm opens and sent with its Remove trick. A
+//     definite answer (a refusal) ends it: the bridge keeps that answer under the id for good, so the next opening
+//     mints a new one. A lost answer (no answer, or the bridge's own failure) keeps it, so the next confirm sends the
+//     same id and the bridge answers what it did, never "there is no such trick" after a remove that went through.
+
+/** A remove that did not go through: the words for the row, and whether its answer was lost. */
+export interface RemoveProblem {
+  line: string;
+  /** No answer came (or the bridge failed): the same request id goes with the next confirm. */
+  lost: boolean;
+}
 
 export interface TrickRemoveSectionProps {
   name: string;
   on: boolean;
   canWrite: boolean;
-  /** The write: null when the trick was removed, else the words of the refusal or the error to show in the row. */
-  onRemove: () => Promise<string | null>;
+  /** The write, with the ask's request id: null when the trick was removed, else what to show in the row. */
+  onRemove: (rid: string) => Promise<RemoveProblem | null>;
 }
 
 export function TrickRemoveSection({ name, on, canWrite, onRemove }: TrickRemoveSectionProps) {
@@ -37,15 +49,19 @@ export function TrickRemoveSection({ name, on, canWrite, onRemove }: TrickRemove
   const titleId = useId();
   // One write per confirm, also when a second tap lands before the first answer.
   const flying = useRef(false);
+  // The request id of this ask: kept across a lost answer, dropped after a definite one.
+  const rid = useRef<string | null>(null);
 
   async function confirm(): Promise<void> {
     if (flying.current) return;
     flying.current = true;
     setBusy(true);
     try {
-      const why = await onRemove();
+      rid.current ??= mintRequestId();
+      const why = await onRemove(rid.current);
+      if (why === null || !why.lost) rid.current = null;
       setAsking(false);
-      setProblem(why);
+      setProblem(why?.line ?? null);
     } finally {
       flying.current = false;
       setBusy(false);
@@ -69,6 +85,7 @@ export function TrickRemoveSection({ name, on, canWrite, onRemove }: TrickRemove
             disabled={on || !canWrite || busy}
             onClick={() => {
               setProblem(null);
+              rid.current ??= mintRequestId();
               setAsking(true);
             }}
           >

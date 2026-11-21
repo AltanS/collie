@@ -821,6 +821,12 @@ export class AgentViewService {
     this.deps.media?.prune(heldSets(this.deps.store.all()));
   }
 
+  /** Forget every trick whose views are held and that `present` does not hold ({@link forgetTrick}); nothing when none (ADR 0168). */
+  forgetAbsentTricks(present: ReadonlySet<string>): void {
+    const gone = new Set(this.deps.store.all().map((entry) => entry.trick).filter((trick) => !present.has(trick)));
+    for (const trick of gone) this.forgetTrick(trick);
+  }
+
   /** Remove every picture set no held screen names: at boot, as the hill prunes its media. */
   pruneMedia(): void {
     this.deps.media?.prune(heldSets(this.deps.store.all()));

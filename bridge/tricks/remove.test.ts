@@ -4,11 +4,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { HOST } from "../host.ts";
-import { forgetLeftovers, GONE_PREFIX, moveAside, sweepGone } from "./approved.ts";
+import { approveFolder, FOLDER_GONE_LINE, forgetLeftovers } from "./approved.ts";
+import { diskTrickFs, type TrickFs } from "./code-hash.ts";
+import { makeFoldersUnder } from "./proposal-install.ts";
+import { ASIDE_COMMITS_DIR, asideCommitPath, commitAside, GONE_PREFIX, moveAside, newAsideToken, sweepGone } from "./aside.ts";
 import { createTrickScanner } from "./discover.ts";
 import { APPROVED_DIR, PENDING_DIR, switchesPath, TRICKS_DIR, tricksStateDir, trickStateDir } from "./paths.ts";
-import { clearRunMarks, markRun, REMOVE_LINK_LINE, REMOVE_ON_LINE, REMOVE_RUNNING_LINE, removeTrick, RUN_MARK_MAX_MS, runMarked, runMarkPath, unmarkRun } from "./remove.ts";
-import { parseSwitches, withSwitch, writeSwitches } from "./switches.ts";
+import { clearRunMarks, markRun, REMOVE_LINK_LINE, REMOVE_ON_LINE, REMOVE_RUNNING_LINE, removeTrick, RemoveUnreadable, RUN_MARK_MAX_MS, runMarked, runMarkPath, unmarkRun } from "./remove.ts";
+import { parseSwitches, updateSwitchesFor, withSwitch, writeSwitches } from "./switches.ts";
 
 // ADR 0168: the one function `collie trick remove` and the bridge's remove route call. Every refusal is proven to
 // delete nothing: each test asserts the folders it made are still there. Every trick is made in a temp folder.
@@ -71,13 +74,23 @@ async function untouched(s: Setup): Promise<void> {
 
 const idle = (): boolean => false;
 
+/** Every `.gone-*` name in the four parents, and every commit file. */
+async function asides(s: Setup): Promise<string[]> {
+  const out: string[] = [];
+  for (const parent of [join(s.configDir, TRICKS_DIR), tricksStateDir(s.stateDir), join(s.configDir, TRICKS_DIR, APPROVED_DIR), join(s.configDir, TRICKS_DIR, PENDING_DIR), join(tricksStateDir(s.stateDir), ASIDE_COMMITS_DIR)]) {
+    for (const name of await readdir(parent).catch(() => [])) if (name.startsWith(GONE_PREFIX) || parent.endsWith(ASIDE_COMMITS_DIR)) out.push(join(parent, name));
+  }
+  return out;
+}
+
 describe.if(posix)("removeTrick: what goes", () => {
   test("a trick that is off: its folder, its state folder and its copies go; forget runs once; nothing else moves", async () => {
     const s = await setup();
     const forgot: string[] = [];
     const out = await removeTrick({ configDir: s.configDir, stateDir: s.stateDir, id: "legs", busy: idle, forget: (id) => void forgot.push(id) });
-    expect(out).toEqual({ ok: true, folder: s.folder, state: s.state });
+    expect(out).toEqual({ ok: true, folder: s.folder, state: s.state, leftovers: [], forgot: true });
     for (const path of [s.folder, s.state, s.approved, s.pending]) expect(await exists(path)).toBe(false);
+    expect(await asides(s)).toEqual([]);
     expect(forgot).toEqual(["legs"]);
     // The other trick, its state, its copy and its switch entry stay; no `.gone-*` is left behind.
     expect(await exists(join(s.other, "x.txt"))).toBe(true);
@@ -97,12 +110,40 @@ describe.if(posix)("removeTrick: what goes", () => {
     expect(await exists(s.folder)).toBe(false);
   });
 
-  test("a forget that throws still leaves nothing set aside", async () => {
+  test("after the commit a forget that throws is logged: the answer is removed and the deletes still run", async () => {
     const s = await setup();
-    const out = removeTrick({ configDir: s.configDir, stateDir: s.stateDir, id: "legs", busy: idle, forget: () => { throw new Error("views"); } });
-    await expect(out).rejects.toThrow("views");
-    expect(await exists(s.folder)).toBe(false);
-    expect((await readdir(join(s.configDir, TRICKS_DIR))).filter((n) => n.startsWith(GONE_PREFIX))).toEqual([]);
+    const warned: string[] = [];
+    const out = await removeTrick({ configDir: s.configDir, stateDir: s.stateDir, id: "legs", busy: idle, warn: (l) => void warned.push(l), forget: () => { throw new Error("views"); } });
+    expect(out).toEqual({ ok: true, folder: s.folder, state: s.state, leftovers: [], forgot: false });
+    expect(warned.join("\n")).toContain("views");
+    for (const path of [s.folder, s.state, s.approved, s.pending]) expect(await exists(path)).toBe(false);
+    expect(await asides(s)).toEqual([]);
+  });
+
+  test("after the commit a delete that fails is a leftover: removed, logged, and the next start deletes it", async () => {
+    const s = await setup();
+    const warned: string[] = [];
+    // The forget runs after the commit and before the deletes: it locks the state folder's parent, so that delete fails.
+    const out = await removeTrick({ configDir: s.configDir, stateDir: s.stateDir, id: "legs", busy: idle, warn: (l) => void warned.push(l), forget: async () => await chmod(tricksStateDir(s.stateDir), 0o500) });
+    await chmod(tricksStateDir(s.stateDir), 0o700);
+    if (!out.ok) throw new Error("refused");
+    expect(out.leftovers).toHaveLength(1);
+    expect(out.leftovers[0]?.startsWith(join(tricksStateDir(s.stateDir), `${GONE_PREFIX}legs-`))).toBe(true);
+    for (const path of [s.folder, s.approved, s.pending]) expect(await exists(path)).toBe(false);
+    expect(warned.join("\n")).toContain("the next start deletes it");
+    // The batch stays committed while an aside is left; the sweep deletes it and its commit file.
+    expect(await sweepGone({ stateDir: s.stateDir, configDir: s.configDir })).toEqual({ removed: 1, restored: 0, kept: 0 });
+    expect(await asides(s)).toEqual([]);
+    expect(await exists(s.state)).toBe(false);
+  });
+
+  test("a trick whose folder is gone but whose other places are there is removed: the leftovers go", async () => {
+    const s = await setup();
+    await rm(s.folder, { recursive: true });
+    const out = await removeTrick({ configDir: s.configDir, stateDir: s.stateDir, id: "legs", busy: idle });
+    expect(out.ok).toBe(true);
+    for (const path of [s.state, s.approved, s.pending]) expect(await exists(path)).toBe(false);
+    expect(await exists(s.other)).toBe(true);
   });
 });
 
@@ -255,21 +296,188 @@ describe.if(posix)("removeTrick: only while it is off and no run goes", () => {
   });
 });
 
-describe.if(posix)("a crash between the rename and the delete", () => {
-  test("leaves dotted names only: no scan reads one, a new add of the id is not refused or wiped by it, and the start sweeps it", async () => {
+describe.if(posix)("a failure before the commit puts everything back", () => {
+  test("a commit that cannot be written puts all four places back and nothing is removed", async () => {
     const s = await setup();
-    // What a crash right after the renames leaves: the four places under `.gone-legs-*`.
-    for (const path of [s.folder, s.state, s.approved, s.pending]) expect(await moveAside(path, "legs")).not.toBeNull();
+    // A file where the commit folder must be: the commit's mkdir fails after all four renames.
+    await mkdir(tricksStateDir(s.stateDir), { recursive: true });
+    await writeFile(join(tricksStateDir(s.stateDir), ASIDE_COMMITS_DIR), "in the way\n");
+    await expect(removeTrick({ configDir: s.configDir, stateDir: s.stateDir, id: "legs", busy: idle })).rejects.toThrow();
+    await untouched(s);
+    expect((await asides(s)).filter((p) => !p.endsWith(ASIDE_COMMITS_DIR))).toEqual([]);
+  });
+
+  test("the trick's own folder is renamed last: a failure of its rename puts the three others back", async () => {
+    const s = await setup();
+    await chmod(join(s.configDir, TRICKS_DIR), 0o500);
+    try {
+      await expect(removeTrick({ configDir: s.configDir, stateDir: s.stateDir, id: "legs", busy: idle })).rejects.toThrow();
+    } finally {
+      await chmod(join(s.configDir, TRICKS_DIR), 0o700);
+    }
+    await untouched(s);
+    expect(await asides(s)).toEqual([]);
+  });
+
+  test("a put-back that fails is named with both paths in the error and in the log, never swallowed", async () => {
+    const s = await setup();
+    const warned: string[] = [];
+    const commit = async (): Promise<void> => {
+      // Something takes the state folder's name while it is aside, then the commit fails.
+      await mkdir(join(s.state, "squatter"), { recursive: true });
+      throw new Error("commit failed");
+    };
+    const out = removeTrick({ configDir: s.configDir, stateDir: s.stateDir, id: "legs", busy: idle, commit, warn: (l) => void warned.push(l) });
+    await expect(out).rejects.toThrow(/commit failed; .*\.gone-legs-[0-9a-f]{12} could not be put back at .*legs/u);
+    expect(warned.some((l) => l.includes("could not be put back at") && l.includes(s.state))).toBe(true);
+    // The others went back; the state aside stays uncommitted, and the sweep leaves it alone: its name is taken.
+    for (const path of [s.folder, s.approved, s.pending]) expect(await exists(path)).toBe(true);
+    const left = (await asides(s)).filter((p) => p.includes(`${GONE_PREFIX}legs-`));
+    expect(left).toHaveLength(1);
+    const swept: string[] = [];
+    expect(await sweepGone({ stateDir: s.stateDir, configDir: s.configDir, warn: (l) => void swept.push(l) })).toEqual({ removed: 0, restored: 0, kept: 1 });
+    expect(await exists(left[0]!)).toBe(true);
+    expect(swept.join("\n")).toContain("is there again, so it is left as it is");
+  });
+});
+
+describe.if(posix)("the switch file must read as switches", () => {
+  for (const [label, write] of [
+    ["empty", async (path: string) => await writeFile(path, "")],
+    ["not JSON", async (path: string) => await writeFile(path, "{ not json")],
+    ["a folder in its place", async (path: string) => await mkdir(path, { recursive: true })],
+  ] as const) {
+    test(`a switch file that is ${label} refuses the remove, moves nothing and is not rewritten`, async () => {
+      const s = await setup();
+      const path = switchesPath(s.stateDir);
+      await rm(path, { force: true });
+      await write(path);
+      const before = (await lstat(path)).isDirectory() ? null : await readFile(path, "utf8");
+      await expect(removeTrick({ configDir: s.configDir, stateDir: s.stateDir, id: "legs", busy: idle })).rejects.toBeInstanceOf(RemoveUnreadable);
+      await untouched(s);
+      if (before !== null) expect(await readFile(path, "utf8")).toBe(before);
+      expect(await asides(s)).toEqual([]);
+    });
+  }
+
+  test("a missing switch file is no trick on: the remove goes", async () => {
+    const s = await setup();
+    await rm(switchesPath(s.stateDir));
+    expect((await removeTrick({ configDir: s.configDir, stateDir: s.stateDir, id: "legs", busy: idle })).ok).toBe(true);
+    expect(await exists(switchesPath(s.stateDir))).toBe(false);
+  });
+});
+
+describe.if(posix)("a crash, and the sweep at the next start", () => {
+  test("after the commit: only dotted names; no scan reads one, a new add of the id keeps its folder, and the sweep deletes them", async () => {
+    const s = await setup();
+    // What a crash right after the commit leaves: the four places under `.gone-legs-<token>`, and the commit file.
+    const token = newAsideToken();
+    for (const path of [s.state, s.approved, s.pending, s.folder]) expect(await moveAside(path, "legs", token)).not.toBeNull();
+    await commitAside(s.stateDir, "legs", token);
     const scan = await createTrickScanner(join(s.configDir, TRICKS_DIR)).scan();
     expect(scan.tricks.map((t) => t.id)).toEqual(["other"]);
-    // A new trick of the same id: the leftovers are not its folder, so the add's own check sees no trick there.
     await mkdir(s.folder, { recursive: true });
     await writeFile(join(s.folder, "new.txt"), "new\n");
     await forgetLeftovers({ stateDir: s.stateDir, configDir: s.configDir, id: "legs", at: "2026-11-21T09:00:00Z" });
     expect(await readFile(join(s.folder, "new.txt"), "utf8")).toBe("new\n");
-    expect(await sweepGone({ stateDir: s.stateDir, configDir: s.configDir })).toBe(4);
+    expect(await sweepGone({ stateDir: s.stateDir, configDir: s.configDir })).toEqual({ removed: 4, restored: 0, kept: 0 });
     expect(await readFile(join(s.folder, "new.txt"), "utf8")).toBe("new\n");
+    expect(await asides(s)).toEqual([]);
     expect(await exists(s.other)).toBe(true);
+  });
+
+  test("between the renames (no commit): the sweep puts each place back, and the trick is as it was", async () => {
+    const s = await setup();
+    // The folder goes last, so a crash before the commit left it in place with the other three aside.
+    const token = newAsideToken();
+    for (const path of [s.state, s.approved, s.pending]) expect(await moveAside(path, "legs", token)).not.toBeNull();
+    expect(await sweepGone({ stateDir: s.stateDir, configDir: s.configDir })).toEqual({ removed: 0, restored: 3, kept: 0 });
+    await untouched(s);
+    expect(await asides(s)).toEqual([]);
+  });
+});
+
+describe.if(posix)("B4: the other writers and a remove", () => {
+  for (const when of ["during the copy", "after the copy, before the switch write"] as const) {
+    test(`a switch on with a remove ${when} writes no entry for the gone folder`, async () => {
+      const s = await setup();
+      await writeFile(join(s.folder, "trick.toml"), 'id = "legs"\nname = "Legs"\nplaces = ["belt"]\n');
+      const removed: Awaited<ReturnType<typeof removeTrick>>[] = [];
+      // The remove runs in the middle of the switch on, as a phone and a terminal could.
+      const at = (path: string): boolean => (when === "during the copy" ? path.startsWith(`${s.folder}/`) : path.startsWith(`${s.approved}/`) && !path.includes(".stage-"));
+      const fs: TrickFs = {
+        ...diskTrickFs,
+        read: async (path, max) => {
+          const bytes = await diskTrickFs.read(path, max);
+          if (removed.length === 0 && at(path)) removed.push(await removeTrick({ configDir: s.configDir, stateDir: s.stateDir, id: "legs", busy: idle }));
+          return bytes;
+        },
+      };
+      const out = await approveFolder({ stateDir: s.stateDir, configDir: s.configDir, id: "legs", by: "phone", at: "2026-11-21T09:00:00Z", fs });
+      expect(removed.map((one) => one.ok)).toEqual([true]);
+      expect(out.ok).toBe(false);
+      if (when !== "during the copy") expect(out).toEqual({ ok: false, reason: FOLDER_GONE_LINE });
+      expect(parseSwitches(await readFile(switchesPath(s.stateDir), "utf8")).switches.on.has("legs")).toBe(false);
+      expect(await exists(s.folder)).toBe(false);
+    });
+  }
+
+  test("updateSwitchesFor writes nothing for a folder that is not there", async () => {
+    const s = await setup();
+    const before = await readFile(switchesPath(s.stateDir), "utf8");
+    expect(await updateSwitchesFor(s.stateDir, join(s.configDir, TRICKS_DIR, "gone"), (now) => withSwitch(now, "gone", true, "2026-11-21T09:00:00Z"))).toBeNull();
+    expect(await readFile(switchesPath(s.stateDir), "utf8")).toBe(before);
+    expect(await updateSwitchesFor(s.stateDir, s.folder, (now) => withSwitch(now, "legs", true, "2026-11-21T09:00:00Z"))).not.toBeNull();
+  });
+
+  test("a new version's write never makes the trick folder again after a remove renamed it", async () => {
+    const s = await setup();
+    expect((await removeTrick({ configDir: s.configDir, stateDir: s.stateDir, id: "legs", busy: idle })).ok).toBe(true);
+    // replaceCode makes the folders of a file one level at a time under the trick folder, never the folder itself.
+    await expect(makeFoldersUnder(s.folder, "src/deep")).rejects.toThrow();
+    expect(await exists(s.folder)).toBe(false);
+    await makeFoldersUnder(s.other, "src/deep");
+    expect(await exists(join(s.other, "src", "deep"))).toBe(true);
+  });
+
+  test("a batch committed after the sweep's first listing keeps its commit file and its asides", async () => {
+    const s = await setup();
+    const token = newAsideToken();
+    let path = "";
+    const out = await sweepGone({
+      stateDir: s.stateDir,
+      configDir: s.configDir,
+      // Another process (a terminal remove) renames and commits its batch right after the listing.
+      listed: async () => {
+        path = (await moveAside(s.state, "legs", token)) ?? "";
+        await commitAside(s.stateDir, "legs", token);
+      },
+    });
+    expect(out).toEqual({ removed: 0, restored: 0, kept: 0 });
+    expect(await exists(path)).toBe(true);
+    expect(await exists(asideCommitPath(s.stateDir, "legs", token))).toBe(true);
+    // The next sweep finishes that batch: the aside and its commit file go.
+    expect(await sweepGone({ stateDir: s.stateDir, configDir: s.configDir })).toEqual({ removed: 1, restored: 0, kept: 0 });
+    expect(await exists(path)).toBe(false);
+    expect(await exists(asideCommitPath(s.stateDir, "legs", token))).toBe(false);
+  });
+
+  test("the sweep's put-back waits for the switch file's lock, as an add and a remove do", async () => {
+    const s = await setup();
+    const token = newAsideToken();
+    expect(await moveAside(s.state, "legs", token)).not.toBeNull();
+    let swept = false;
+    const { withSwitchLock } = await import("./switches.ts");
+    let sweep: Promise<unknown> = Promise.resolve();
+    await withSwitchLock(s.stateDir, async () => {
+      sweep = sweepGone({ stateDir: s.stateDir, configDir: s.configDir }).then(() => (swept = true));
+      await Bun.sleep(150);
+      expect(swept).toBe(false);
+      expect(await exists(s.state)).toBe(false);
+    });
+    await sweep;
+    expect(await exists(s.state)).toBe(true);
   });
 });
 

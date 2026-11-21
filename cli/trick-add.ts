@@ -27,7 +27,8 @@ import { AgentViewStore, trickViewsDir } from "../bridge/agent-view/store.ts";
 import { forgetLeftovers } from "../bridge/tricks/approved.ts";
 import { forgetMapRecord } from "../bridge/tricks/hill.ts";
 import { MANIFEST_FILE, switchesPath, tricksConfigDir, tricksStateDir } from "../bridge/tricks/paths.ts";
-import { removeTrick, runMarked } from "../bridge/tricks/remove.ts";
+import { removeTrick, RemoveUnreadable, runMarked } from "../bridge/tricks/remove.ts";
+import { identityHeader, readOwnSnapshot } from "./snapshot-read.ts";
 import { trickWarnings, warningLines, WARNINGS_HONESTY, type CheckWarning } from "../bridge/tricks/scan.ts";
 import { parseSwitches, withSwitchLock } from "../bridge/tricks/switches.ts";
 import { isTrickId } from "../web/src/lib/tricks/schema.ts";
@@ -546,6 +547,9 @@ async function swapFolder(stateDir: string, root: string, id: string, dir: strin
 
 // ── remove ───────────────────────────────────────────────────────────────────
 
+/** What `collie trick remove` says while a bridge answers for this machine's state folder. */
+export const REMOVE_BRIDGE_RUNS_LINE = "Collie is running on this machine. Remove the trick in the app (Settings, Tricks, the trick's page), or stop Collie first: collie stop";
+
 /**
  * `collie trick remove <id>`: only while it is off and no run of it is going. The folder, its state folder and its
  * approved and pending copies go, and its agent views and Hill keys off the disk (a running bridge drops its own at
@@ -560,13 +564,25 @@ export async function cmdTrickRemove(deps: TrickDeps, args: readonly string[]): 
   }
   const { configDir, stateDir } = deps.ctx;
   const dir = join(tricksConfigDir(configDir), id);
+  // A bridge that answers for this state folder holds the trick's views and Hill keys in memory and knows its runs;
+  // the command does not act on the files under it (ADR 0168). It has no write credential to ask the bridge to, so
+  // it refuses. "Answers": any HTTP answer at the address it bound, with this state folder's local read key.
+  const asked = await readOwnSnapshot(deps, { path: "/api/tricks", extraHeaders: identityHeader(deps) });
+  if (asked.kind !== "silent") return refuse(deps, REMOVE_BRIDGE_RUNS_LINE);
   const forget = (gone: string): void => {
     new AgentViewStore(trickViewsDir(stateDir), deps.now, () => {}).dropTrick(gone);
     forgetMapRecord(stateDir, gone);
   };
-  const out = await removeTrick({ configDir, stateDir, id, busy: (one) => runMarked(stateDir, one, deps.now()), forget });
+  let out: Awaited<ReturnType<typeof removeTrick>>;
+  try {
+    out = await removeTrick({ configDir, stateDir, id, busy: (one) => runMarked(stateDir, one, deps.now()), forget, warn: (line) => deps.io.err(`warning: ${line}`) });
+  } catch (err) {
+    if (err instanceof RemoveUnreadable) return refuse(deps, err.message);
+    return refuse(deps, `${id} could not be removed: ${err instanceof Error ? err.message : String(err)}`);
+  }
   if (out.ok) {
     deps.io.out(`Removed ${id}: ${out.folder}, its state folder ${out.state} and its approved copies.`);
+    for (const left of out.leftovers) deps.io.out(`${left} is still there; the bridge deletes it when it starts.`);
     return EXIT.OK;
   }
   switch (out.code) {
