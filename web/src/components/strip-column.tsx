@@ -81,14 +81,19 @@ export function ColumnControls({
 }) {
   useLocale();
   return (
-    <>
+    // ONE GROUP BEHIND A HAIRLINE (strip-head round, 2026-11-21): the width and Remove from view, and in the focused
+    // column the pane menu before them, read as the column's controls, apart from its name; the bar's own
+    // controls carry the same hairline (wide-layout.tsx).
+    <div data-slot="column-controls" className="flex shrink-0 items-center self-center border-l border-border pl-1">
       {preset !== null && (
         <Button
-          variant="outline"
+          variant="ghost"
           size="lg"
           data-slot="column-width"
-          // A stated width, so 1/2, 4/5 and Full are one box and a cycle moves nothing (DESIGN.md §2).
-          className="w-14 shrink-0 px-0 text-xs tabular-nums"
+          // A stated width, so 1/2, 4/5 and Full are one box and a cycle moves nothing (DESIGN.md §2). A WORD, not
+          // a box: the bordered box was the heaviest thing in the header (2026-11-21), so it takes the icons'
+          // muted ink and one weight, and the ghost button's hover.
+          className="w-14 shrink-0 px-0 text-xs font-semibold tabular-nums text-muted-foreground"
           aria-label={t("wide.width.aria", { width: presetWord(preset) })}
           onClick={own(onCycle)}
         >
@@ -109,7 +114,7 @@ export function ColumnControls({
       >
         <Icon name="remove-from-view" className="size-5" />
       </Button>
-    </>
+    </div>
   );
 }
 
@@ -122,7 +127,9 @@ export function ColumnHeader({ pane, controls, onFocus }: { pane: AgentView; con
   useLocale();
   const head = paneGitHead(pane);
   return (
-    <div data-slot="column-header" className="flex min-h-15 shrink-0 items-center gap-1 border-b border-band-rule bg-band-ground py-1 pl-4 pr-2">
+    // 54px and the firm edge, like the focused column's docked header (app-header.tsx): the space bar's page band
+    // takes the other 6px, so every column's body starts where it did.
+    <div data-slot="column-header" className="flex min-h-13.5 shrink-0 items-center gap-1 border-b border-edge-firm bg-band-ground py-1 pl-4 pr-2">
       <PaneGlyph pane={pane} className="size-8" markOn="bg-band-ground" named />
       {/* The name is the column's way in for a keyboard: Enter on it gives the column the focus. */}
       <button type="button" onClick={own(onFocus)} className="min-h-11 min-w-0 flex-1 pl-2 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
@@ -133,7 +140,7 @@ export function ColumnHeader({ pane, controls, onFocus }: { pane: AgentView; con
         </div>
         {/* No space name: the space header above the strip is the one bar that names it. What is the
             column's own stays: its branch, its machine, its state. */}
-        <div data-slot="column-header-line" className="flex min-w-0 items-baseline gap-2 text-[11px] leading-4 text-muted-foreground">
+        <div data-slot="column-header-line" className="flex min-w-0 items-baseline gap-2 text-xs leading-4 text-muted-foreground">
           {head !== null && <BranchLabel head={head} className="min-w-0 shrink truncate" />}
           <span className="shrink-0">{statusLabel(shownStatus(pane))}</span>
           <HostChip host={pane.host} variant="glyph" className="ml-auto self-center" />

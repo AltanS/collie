@@ -422,6 +422,15 @@
      rgb(214) on rgb(245) light; white 24% over rgb(10) = rgb(69) dark. At 3x DPR on a phone that
      is a crisp 1px cut, which is the mark's own vocabulary — a cut, not a wash. */
   --rule: light-dark(oklch(0.72 0.004 80), oklch(0.52 0.003 80));
+  /* THE FIRM EDGE (DESIGN.md §4, "Three line tokens"): the cut a person must SEE between the large screen's
+     tab bar and the work, and under a pane's header. --rule is a region's cut at 1.3:1 to 2:1, which is right
+     for a list and too faint for the line the selected tab stands on: on a theme whose page is black or
+     near-white the recess clamps to the page and --rule was the only thing left, at 1.0 to 1.3:1. This one is
+     the theme's own ink mixed into its own page, so it holds 3:1 or more against the recess, the page and the
+     paper in both halves of every bundled theme (e2e/strip-head.spec.ts measures the painted pixels).
+     DERIVED ONLY, never a theme token: a theme reaches it through `foreground` and `background`. The share
+     lives here and nowhere else; nothing may restate the mix. */
+  --edge-firm: color-mix(in oklch, var(--foreground) 58%, var(--background));
   /* THE WIDE LAYOUT'S THREE PLANES (DESIGN.md §4, "The large screen's three planes"). On a large screen
      the navigation (the sidebar, the tab strip of the space, the strip's own ground) stands on the RECESS,
      a column without focus on the page (--background), and the focused column, whole, on the PAPER: the
@@ -723,6 +732,7 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-rule: var(--rule);
+  --color-edge-firm: var(--edge-firm);
   --color-surface-recess: var(--surface-recess);
   --color-surface-paper: var(--surface-paper);
   --color-ring: var(--ring);

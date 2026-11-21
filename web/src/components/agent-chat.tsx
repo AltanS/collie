@@ -2688,7 +2688,9 @@ export function AgentChat({
                   bookkeeping, which the conversation list behind the back arrow already lays out. The lines
                   stay; the state is still named by the dot's own label. */}
               {!gridless && (
-              <div data-slot="pane-identity-taps" className="absolute inset-x-0 -inset-y-2 flex flex-col rounded-lg">
+              // In a large screen's column the docked row is 54px (app-header.tsx), so the layer reaches 4px past the
+              // block, not 8, and stays inside the header.
+              <div data-slot="pane-identity-taps" className={cn("absolute inset-x-0 flex flex-col rounded-lg", inStrip ? "-inset-y-1" : "-inset-y-2")}>
                 <button
                   type="button"
                   onClick={() => setDrawer("paneSettings")}
@@ -2856,7 +2858,10 @@ export function AgentChat({
                 <div className="flex h-3 min-w-0 items-baseline gap-2">
                   <span
                     data-slot="pane-place"
-                    className="min-w-0 shrink-[3] truncate text-[11px] leading-3 text-muted-foreground"
+                    // ONE SIZE FOR THE LINE (2026-11-21): in a large screen's column the place, the branch, the account,
+                    // the machine and the time are all 12px, and their glyphs are drawn at full strength (pane-meta.tsx).
+                    // The size goes first: tailwind-merge drops a line height that comes before a font size.
+                    className={cn(inStrip ? "text-xs" : "text-[11px]", "min-w-0 shrink-[3] truncate leading-3 text-muted-foreground")}
                   >
                     {/* In a strip the space header names the space, so the line keeps only the pane's own. */}
                     {headerLine ?? (inStrip ? null : <CrossfadeText text={workspace} identity={paneSpaceKey(agent)} />)}
@@ -2864,11 +2869,11 @@ export function AgentChat({
                   {/* The branch the pane's folder is on, after the workspace and in the same 12px
                       line box, so the 36px block above holds with or without it. The workspace gives
                       way first, then the branch, keeping its tail; the meta never does. */}
-                  {gitHead !== null && <BranchLabel head={gitHead} className="shrink leading-3 text-muted-foreground" />}
+                  {gitHead !== null && <BranchLabel head={gitHead} className={cn(inStrip && "text-xs", "shrink leading-3 text-muted-foreground")} />}
                   {/* The added account the session runs under (M101), a word after the branch. It stays whole
                       before the place and the branch give way. Nothing for a pane with none. */}
                   {agent.account !== undefined && (
-                    <span data-slot="pane-account" className="max-w-[35%] shrink-0 truncate text-[11px] leading-3 text-muted-foreground">
+                    <span data-slot="pane-account" className={cn(inStrip ? "text-xs" : "text-[11px]", "max-w-[35%] shrink-0 truncate leading-3 text-muted-foreground")}>
                       {agent.account.label}
                     </span>
                   )}
@@ -2876,6 +2881,7 @@ export function AgentChat({
                     host={agent.host}
                     cache={agent.cache}
                     onOpenCache={() => setCacheSheetOpen(true)}
+                    full={inStrip}
                     // The one descendant that takes its taps back from the surface under these lines.
                     className="pointer-events-auto ml-auto"
                   />

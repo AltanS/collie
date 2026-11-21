@@ -957,6 +957,72 @@ describe("TabStrip under the folder look", () => {
   });
 });
 
+// THE LARGE SCREEN'S BAR (ADR 0171): both theme looks seated on the bar's firm edge (`--edge-firm`). The theme's
+// word still picks the look; `bar` only seats it. Pixels and contrast: e2e/strip-head.spec.ts.
+describe("TabStrip in the large screen's bar", () => {
+  function renderBar() {
+    return render(
+      <TabStrip
+        workspaceId="w1"
+        tabs={[
+          { ...tabs[0]!, label: "Alpha" },
+          { ...tabs[1]!, label: "Beta" },
+        ]}
+        agents={[]}
+        selected="w1:t1"
+        onSelect={vi.fn()}
+        onNewTab={vi.fn()}
+        allowAll={false}
+        bar
+      />,
+    );
+  }
+  const open = () => screen.getByRole("button", { name: "Alpha" });
+  const other = () => screen.getByRole("button", { name: "Beta" });
+
+  it("folder: the open tab is the page colour inside the firm edge, top and sides, and the row stands on it", () => {
+    themeTabs.word = "folder";
+    renderBar();
+    const cls = open().className;
+    expect(cls).toMatch(/(?:^|\s)bg-background(?=\s|$)/);
+    expect(cls).toMatch(/(?:^|\s)border-x-edge-firm(?=\s|$)/);
+    expect(cls).toMatch(/shadow-\[inset_0_2px_0_0_var\(--edge-firm\)\]/);
+    expect(cls).not.toMatch(/border-x-rule|--tab-active/);
+    expect(screen.getByRole("navigation", { name: "Tabs" }).className).toMatch(/shadow-\[inset_0_calc\(var\(--surface-border-width\)\*-1\)_0_0_var\(--edge-firm\)\]/);
+  });
+
+  it("plain: no card, a 2px bar of the theme's ink under the open tab, square ends", () => {
+    themeTabs.word = "plain";
+    renderBar();
+    const cls = open().className;
+    expect(cls).toMatch(/shadow-\[inset_0_-2px_0_0_var\(--foreground\)\]/);
+    expect(cls).not.toMatch(/bg-background|border-x-edge-firm|rounded-md|rounded-t/);
+    expect(other().className).not.toMatch(/shadow-\[inset/);
+    expect(screen.getByRole("navigation", { name: "Tabs" }).className).not.toMatch(/shadow-/);
+  });
+
+  for (const word of ["folder", "plain"] as const) {
+    it(`${word}: the open tab is full ink and semibold, every other tab regular in the muted ink with a hover layer`, () => {
+      themeTabs.word = word;
+      renderBar();
+      expect(open().className).toMatch(/(?:^|\s)font-semibold(?=\s|$)/);
+      expect(open().className).toMatch(/(?:^|\s)text-foreground(?=\s|$)/);
+      const cls = other().className;
+      expect(cls).toMatch(/(?:^|\s)font-normal(?=\s|$)/);
+      expect(cls).toMatch(/(?:^|\s)text-muted-foreground(?=\s|$)/);
+      expect(cls).toMatch(/(?:^|\s)hover:bg-foreground\/10(?=\s|$)/);
+      expect(cls).not.toMatch(/font-medium/);
+    });
+  }
+
+  it("leaves the row outside the bar as it was: medium weight, no firm edge", () => {
+    themeTabs.word = "folder";
+    render(<TabStrip workspaceId="w1" tabs={[{ ...tabs[0]!, label: "Alpha" }, { ...tabs[1]!, label: "Beta" }]} agents={[]} selected="w1:t1" onSelect={vi.fn()} onNewTab={vi.fn()} allowAll={false} />);
+    expect(other().className).toMatch(/(?:^|\s)font-medium(?=\s|$)/);
+    expect(open().className).not.toMatch(/edge-firm/);
+  });
+});
+
 // THE ROW STEPS UP BY WIDTH CLASS (tab-strip.tsx § STEP). jsdom has no layout, so these pin the classes
 // that draw each step; `e2e/wide-layout.spec.ts` measures the drawn heights.
 describe("TabStrip at each width class", () => {

@@ -83,6 +83,13 @@ interface TabStripProps {
   trailing?: ReactNode;
   /** The row's own box, merged last: a large screen's space header seats the row inside its bar. */
   className?: string;
+  /**
+   * The row is seated in the large screen's space bar (wide-layout.tsx), on the bar's firm lower edge
+   * (`--edge-firm`). Both looks stand on that edge: `folder` draws the open tab as a folder of the page
+   * colour whose top and sides are the same edge, opening into the page band under the bar; `plain` marks
+   * the open tab with a 2px bar of ink on the edge. Every tab but the open one is regular weight.
+   */
+  bar?: boolean;
 }
 
 /** One step of the tab row's size, read off the window's width class. */
@@ -219,6 +226,7 @@ export function TabStrip({
   onClosed,
   trailing,
   className,
+  bar = false,
 }: TabStripProps) {
   useLocale();
   const look = useTabLook();
@@ -301,7 +309,7 @@ export function TabStrip({
           trailing ? "flex items-stretch" : "flow-root",
           // Under `folder` the row keeps 6px of its own ground above the tabs, so the open tab rises out of
           // the row instead of touching the header's bottom line.
-          look === "folder" && "pt-1.5 shadow-[inset_0_-1px_0_0_var(--rule)]",
+          look === "folder" && cn("pt-1.5", bar ? "shadow-[inset_0_calc(var(--surface-border-width)*-1)_0_0_var(--edge-firm)]" : "shadow-[inset_0_-1px_0_0_var(--rule)]"),
           className,
         )}
       >
@@ -345,6 +353,7 @@ export function TabStrip({
             {allowAll && (
               <Tab
                 look={look}
+                bar={bar}
                 step={step}
                 label={translate("space.tabStrip.all")}
                 active={selected === null}
@@ -357,6 +366,7 @@ export function TabStrip({
               <Tab
                 key={t.tabId}
                 look={look}
+                bar={bar}
                 step={step}
                 label={t.label}
                 // The tab's number is its key (`prefix+1..9`): the tabs past the ninth have none.
@@ -440,6 +450,8 @@ export function TabStrip({
 interface TabProps {
   /** The theme's tab look (lib/tab-look.ts): `plain` is today's row, `folder` draws the open tab as a folder tab. */
   look: TabLook;
+  /** Seated in the large screen's space bar ({@link TabStripProps.bar}). */
+  bar: boolean;
   /** The row's size at this width class (STEP above). */
   step: Step;
   /** The tab's raw label — the spoken fallback when the cell has no title to draw. */
@@ -470,6 +482,7 @@ interface TabProps {
 // One plain tab cell.
 function Tab({
   look,
+  bar,
   step,
   label,
   title: titleProp,
@@ -542,7 +555,8 @@ function Tab({
         "relative flex shrink-0 select-none items-center justify-center gap-1.5 [-webkit-touch-callout:none] whitespace-nowrap transition-colors before:inset-y-0",
         FOCUS_RING_INSET,
         // The open look and the hover are fills: the plain cell has no corner of its own, so the one that opens a menu takes the house one (the folder tab keeps its own).
-        opensMenu && look === "plain" && "rounded-md",
+        // In the bar the plain open tab keeps square ends, so its mark of ink is a straight bar on the edge.
+        opensMenu && look === "plain" && !bar && "rounded-md",
         // INK AND WEIGHT ARE THE ONLY MARK. Full ink and semibold for the open tab; the muted ink
         // and medium weight for every other, with the full ink as the hover answer on a device that
         // has one. Two exceptions paint a fill, and only while they last: the open tab answers a pointer
@@ -550,7 +564,15 @@ function Tab({
         // menu stands (TRIGGER_OPEN below). Neither changes the box.
         active
           ? cn("font-semibold text-foreground", opensMenu && HOVER_FILL)
-          : "font-medium text-muted-foreground hover:text-foreground",
+          : bar
+            ? // THE BAR (strip-head round, 2026-11-21): every other tab is regular weight in the muted ink, which holds
+              // 4.5:1 on the recess of every bundled theme, and a pointer lays a state layer of ink over it (10% of
+              // the theme's own foreground, so it reads on a light recess and a dark one alike).
+              "font-normal text-muted-foreground hover:bg-foreground/10 hover:text-foreground"
+            : "font-medium text-muted-foreground hover:text-foreground",
+        // THE PLAIN LOOK IN THE BAR: the open tab stands on the bar's firm edge with a 2px bar of the theme's ink,
+        // as wide as the tab, square ends. An inset shadow, so the box and the label do not move.
+        bar && look === "plain" && active && "shadow-[inset_0_-2px_0_0_var(--foreground)]",
         // THE FOLDER LOOK (`tabs: folder`). Both states carry the same 1px side borders, so the
         // box is one size and only the paint changes; the open tab paints them in `rule`, fills with
         // the page colour and wears the 2px `tab-active` edge as an inset shadow (no top border, so
@@ -559,7 +581,11 @@ function Tab({
         // the nav's rule there.
         look === "folder" &&
           (active
-            ? cn("rounded-t-sm border-x-[1px] border-x-rule bg-background shadow-[inset_0_2px_0_0_var(--tab-active)]", step.folderPx)
+            ? bar
+              ? // THE FOLDER IN THE BAR: the page colour, and the bar's firm edge on its top and its sides, so the
+                // tab and the page band under the bar are one surface inside one line in every theme.
+                cn("rounded-t-sm border-x-[1px] border-x-edge-firm bg-background shadow-[inset_0_2px_0_0_var(--edge-firm)]", step.folderPx)
+              : cn("rounded-t-sm border-x-[1px] border-x-rule bg-background shadow-[inset_0_2px_0_0_var(--tab-active)]", step.folderPx)
             : cn("border-x-[1px] border-x-transparent", step.folderPx)),
         // Last, so the open look wins over the folder tab's page fill and over hover.
         opensMenu && TRIGGER_OPEN,
@@ -577,7 +603,9 @@ function Tab({
           <StatusDot
             status={TRIAGE_STATUS[status]}
             surface={look === "folder" && active ? "bg-background" : "bg-chrome"}
-            className="size-2.5"
+            // In the bar: the 12px box a shape needs, and a resting ring at full strength (one mark per tab).
+            full={bar}
+            className={bar ? "size-3" : "size-2.5"}
           />
           {/* The mark is a shape and a colour; say it in words for screen readers. */}
           <span className="sr-only">{statusLabel(TRIAGE_STATUS[status])}</span>
@@ -595,7 +623,9 @@ function Tab({
         // The tab's position, a step lighter than a name someone chose so it never reads as one:
         // an inactive position is a step lighter than an inactive name. The
         // open one takes the full ink like any open tab, because ink is half of the only mark.
-        <StableLabel className={active ? undefined : "text-muted-foreground/70"}>{title.text}</StableLabel>
+        // In the bar the muted ink itself, the lightest ink that holds 4.5:1 there; the regular weight already
+        // sets a position apart from the open tab.
+        <StableLabel className={active || bar ? undefined : "text-muted-foreground/70"}>{title.text}</StableLabel>
       ) : (
         <StableLabel fade={fade}>{title.text}</StableLabel>
       )}

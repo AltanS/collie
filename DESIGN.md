@@ -384,12 +384,19 @@ was not really a line: `border-border/60` measures **1.09:1** against the page i
 dropping it also closes a seam on the pane screen and removes the worst ground a status chip
 ever landed on. **Do not put `--muted` back behind chrome.**
 
-### Two line tokens, and which is which
+### Three line tokens, and which is which
 
 | token | light | dark | job |
 | --- | --- | --- | --- |
 | `--border` | 1.16:1 | 1.26:1 | one component's own edge — a card, a control, a hairline inside a region |
 | `--rule` | **1.34:1** | **2.06:1** | the cut between two REGIONS — the header's bottom edge, a strip separator, a group frame |
+| `--edge-firm` | **4.86:1** | **6.12:1** | the edge something STANDS ON — the large screen's tab bar (the open tab sits on it in both tab looks) and a column's pane header, against the recess and the page |
+
+`--edge-firm` is **derived, never a theme token**: `color-mix(in oklch, var(--foreground) 58%,
+var(--background))` in `index.css`, so every theme, imported ones too, gets it from its own ink and
+page. Nothing else may write that mix; tune it there. Measured from the painted pixels (Collie
+light and dark above; ADR 0171): Harbour light 3.59:1 against its recess, the lowest, Nightwatch dark
+3.73. Use it only where a region ends on a line a person reads as a floor; a region cut stays `--rule`.
 
 `--rule` is deliberately the stronger of the two, which decides the split inside
 `ui/list-group.tsx` — and it is not the obvious one: the **frame** takes `border-rule`, the
@@ -1096,7 +1103,7 @@ come from `light-dark()`.
 
 `pane-active` (1.24.0) is the frame of the pane you are working in on a large screen, and nothing else. It is outside the 43 but a theme can set it: from schema version 3 it is an optional token in either half. A theme that leaves it out keeps the `:root` pair in index.css, so every file written before version 3 reads and exports unchanged; a file that sets it must say version 3. The contrast report holds it to 3:1 on `background` in a half that sets it. Nightwatch sets its own, a warm sky for its amber palette.
 
-`tab-active` is the second optional token, and it marks the open tab and the open pane for a theme whose surface word `tabs` is `folder` (`lib/tab-look.ts`): the 2px top edge of the open folder tab and the 1px ring of the open pane. It has the same rules as `pane-active` (version 3, a `:root` pair that is the foreground ink of each half, 3:1 on `background` in a half that sets it). Under the word `plain` (the word a theme gets when it names none; the Collie theme names `folder`) the tab row and the pane row are drawn exactly as they were, and `tab-active` is read by nothing. `composer` is the third word that sets no CSS (`field` or `box`); `lib/composer-layout.ts` reads it.
+`tab-active` is the second optional token, and it marks the open tab and the open pane for a theme whose surface word `tabs` is `folder` (`lib/tab-look.ts`): the 2px top edge of the open folder tab and the 1px ring of the open pane. It has the same rules as `pane-active` (version 3, a `:root` pair that is the foreground ink of each half, 3:1 on `background` in a half that sets it). Under the word `plain` (the word a theme gets when it names none; the Collie theme names `folder`) the tab row and the pane row are drawn exactly as they were, and `tab-active` is read by nothing. On the large screen both words are drawn in the space bar on the same parts (ADR 0171): the bar ends on `--edge-firm` with a 6px page band under it. `folder` cuts the open tab from that band, the page colour with the firm edge on its top and sides (`tab-active` is not read there); `plain` draws no card and puts a 2px bar of the theme's ink (`--foreground`) under the open tab, as wide as the tab, square ends. In both the open tab is full ink and semibold and every other tab regular weight in `muted-foreground`, and the resting status rings are drawn at full stroke. The column frame's colour is never used in the bar or a header. `composer` is the third word that sets no CSS (`field` or `box`); `lib/composer-layout.ts` reads it.
 
 `find` is the third optional token (1.29.0), the ground of a found or matched piece of text: `ui/match-text.tsx`'s `<mark>`, Find in Chat's hit in the transcript and in the Markdown reader. Its value carries alpha, because it is laid over whatever the text sits on and the ink stays the caller's own. Its `:root` pair is the amber the app drew as a literal before the token existed, Tailwind 4.3.1's `amber-300` at 70% in the light half and `amber-500` at 40% in the dark half, so the default themes look as they did. It follows the rules of `tab-active` (version 3, a `:root` pair, filled from `collie` when a theme sets one half); the contrast report measures `foreground` on the token laid over `background` at 4.5:1, in a half that sets it. The three shipped themes other than `collie` leave it out and inherit the amber.
 
