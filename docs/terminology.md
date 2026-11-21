@@ -45,6 +45,13 @@ agent, the pane shows that agent's [session](#session).
 On a large screen several panes show side by side, in a [row of panes](#row-of-panes)
 ([Large screens](configure.md#large-screens)).
 
+## Pane menu
+
+The menu under the three dots, the ⋮, in a pane's header. It holds the pane's own actions: Find, History,
+Copy output, Pane settings, Zen mode, Rename, Close and more. On a large screen it opens beside the dots.
+Open it with the [prefix key](#prefix-key) and then `m`
+([Keyboard shortcuts](keyboard-shortcuts.md#the-actions)).
+
 ## Row of panes
 
 The panes of one space, side by side, on a large screen. Each space keeps its own row, and the row

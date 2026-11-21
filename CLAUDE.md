@@ -704,6 +704,10 @@ lint guard, the crew-wire guard or the `flake.lock` guard.
   every stack; JavaScript only swaps a class name. What survives the reversal is the other half of
   the rule: **the chosen face never dresses agent-authored text** — `font-mono` and `font-content`
   are untouched by it ([ADR 0148](./.adr/0148-a-theme-names-words-never-drawings-and-the-device-choice-wins.md)).
+- **An action with a default `prefix+` key needs its control to wear the key hint.** A control names its action
+  with `{...shortcutTarget("<id>")}` (`lib/shortcuts/target.ts`), and the layer draws the key on it while the
+  prefix waits. An action with no control goes in `NO_CONTROL_ACTIONS` (`lib/shortcuts/actions.ts`) with a reason;
+  `hint-coverage.test.ts` fails with the action's name when it is in neither.
 - **The bundled Nerd Font subsets stay lazy and out of the precache** — `unicode-range` per face,
   version in the filename, cached first-use by `sw.ts`. Don't add them to `globPatterns`, don't
   widen a range, don't move subsetting into the build; the reasoning for each sits at the line that

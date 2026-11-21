@@ -47,6 +47,15 @@ export interface SidebarFocus {
 
 let sidebarFocus: SidebarFocus | null = null;
 
+/**
+ * Whether the mode bar is up: a keymap is in force and a mode other than `normal` is active. THE ONE SOURCE
+ * of that condition: the bar host (components/shortcut-bar-host.tsx) and the key hint layer
+ * (components/shortcut-hint-layer.tsx) both read it, so the hints never show where the bar would not.
+ */
+export function isShortcutBarUp(current: Mode, built: Keymap | null): boolean {
+  return built !== null && current !== "normal";
+}
+
 /** `normal`, `prefix` (one shot, waiting for the action key) or the id of a sticky mode. */
 export function getShortcutMode(): Mode {
   return mode;

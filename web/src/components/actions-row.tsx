@@ -20,6 +20,7 @@ import { useLocale } from "@/hooks/use-locale";
 import { hasResizeObserver } from "@/lib/env";
 import { t as translate } from "@/lib/i18n";
 import type { OperatorCommand } from "@/lib/types";
+import { shortcutTarget } from "@/lib/shortcuts/target";
 import { cn } from "@/lib/utils";
 import { Icon } from "@/components/icons/icon";
 import type { IconKey } from "@/components/icons/keys";
@@ -1167,6 +1168,8 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, durable, sto
                 aria-haspopup="dialog"
                 aria-expanded={handle.open === true}
                 onClick={handle.onClick}
+                // The pinned button is the Actions key's control; with the palette off it opens the pane list, and the layer shows the key of that stand-in.
+                {...shortcutTarget("open_actions")}
                 // No padding and no border: what is left of the pill is `STRIP_ROW_PILL`'s own box,
                 // narrowed on this one pill alone. `w-8 min-w-8` drops `min-w-11`'s 44px floor — the
                 // floor every OTHER pill on this belt still stands on — down to 32px, the operator's

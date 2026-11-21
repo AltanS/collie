@@ -16,6 +16,7 @@ import { useLocation } from "react-router";
 import { isConnecting } from "@/lib/connection";
 import { useNav } from "@/hooks/use-nav";
 import { t } from "@/lib/i18n";
+import { shortcutTarget } from "@/lib/shortcuts/target";
 import { cn } from "@/lib/utils";
 import { useLocale } from "@/hooks/use-locale";
 import { useMuxLogo, useMuxName } from "@/lib/mux-capability";
@@ -756,6 +757,7 @@ export function SettingsGear({ scope }: { scope?: Scope }) {
       type="button"
       onClick={() => nav.down(settingsPath(scope))}
       aria-label={t(offered ? "nav.settings.updateAvailable.aria" : "nav.settings.aria")}
+      {...shortcutTarget("settings")}
       // A real 44px box, NOT padding pulled back by a negative margin. The negative-margin trick
       // keeps icons visually tight but lets adjacent boxes overlap (two -m-3 buttons pull 24px
       // against a 12px gap, so a neighbour steals 12px of this one's hit area) and drags the last

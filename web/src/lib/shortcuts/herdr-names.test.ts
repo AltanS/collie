@@ -40,15 +40,15 @@ describe("the Herdr names table", () => {
 
 describe("a Herdr name in shortcuts.toml", () => {
   it("is dropped, with the Collie id to write", () => {
-    const keymap = build({ new_workspace: ["prefix+m"] });
+    const keymap = build({ new_workspace: ["prefix+y"] });
     expect(keymap.diagnostics).toEqual([
-      { action: "new_workspace", binding: "prefix+m", code: "herdr-name", message: "`new_workspace` is Herdr's name; write `new_space`" },
+      { action: "new_workspace", binding: "prefix+y", code: "herdr-name", message: "`new_workspace` is Herdr's name; write `new_space`" },
     ]);
-    expect(keymap.prefixed.has("m")).toBe(false);
+    expect(keymap.prefixed.has("y")).toBe(false);
   });
 
   it("says Collie has no such action when the name has no equal", () => {
-    const keymap = build({ close_workspace: ["prefix+m"], detach: ["ctrl+q"] });
+    const keymap = build({ close_workspace: ["prefix+y"], detach: ["ctrl+q"] });
     expect(keymap.diagnostics.map((diagnostic) => diagnostic.message)).toEqual([
       "`close_workspace` is Herdr's name; Collie has no such action",
       "`detach` is Herdr's name; Collie has no such action",
@@ -57,36 +57,36 @@ describe("a Herdr name in shortcuts.toml", () => {
   });
 
   it("leaves the shipped keys of the renamed action as they are", () => {
-    const keymap = build({ zoom: ["prefix+m"] });
+    const keymap = build({ zoom: ["prefix+y"] });
     expect(keymap.prefixed.get("z")).toEqual({ action: "zen_mode" });
-    expect(keymap.prefixed.has("m")).toBe(false);
+    expect(keymap.prefixed.has("y")).toBe(false);
   });
 
   it("maps Herdr's goto to the Actions palette, and its rename_workspace to rename_space", () => {
-    expect(build({ goto: ["prefix+m"] }).diagnostics.map((diagnostic) => diagnostic.message)).toEqual(["`goto` is Herdr's name; write `open_actions`"]);
+    expect(build({ goto: ["prefix+y"] }).diagnostics.map((diagnostic) => diagnostic.message)).toEqual(["`goto` is Herdr's name; write `open_actions`"]);
     expect(HERDR_NAMES.get("rename_workspace")).toBe("rename_space");
   });
 
   it("takes the names both programs now share as Collie actions", () => {
-    const keymap = build({ close_pane: ["prefix+m"], rename_tab: ["prefix+e"] });
+    const keymap = build({ close_pane: ["prefix+y"], rename_tab: ["prefix+e"] });
     expect(keymap.diagnostics).toEqual([]);
-    expect(keymap.prefixed.get("m")).toEqual({ action: "close_pane" });
+    expect(keymap.prefixed.get("y")).toEqual({ action: "close_pane" });
     expect(keymap.prefixed.get("e")).toEqual({ action: "rename_tab" });
   });
 
   it("does not stop the rest of the block from loading", () => {
-    const keymap = build({ goto: ["prefix+m"], find: ["prefix+m"] });
+    const keymap = build({ goto: ["prefix+y"], find: ["prefix+y"] });
     expect(keymap.diagnostics.map((diagnostic) => diagnostic.action)).toEqual(["goto"]);
-    expect(keymap.prefixed.get("m")).toEqual({ action: "find" });
+    expect(keymap.prefixed.get("y")).toEqual({ action: "find" });
   });
 
   it("still calls a name that neither program has an unknown action", () => {
-    const keymap = build({ make_coffee: ["prefix+m"] });
+    const keymap = build({ make_coffee: ["prefix+y"] });
     expect(keymap.diagnostics.map((diagnostic) => diagnostic.code)).toEqual(["unknown-action"]);
   });
 
   it("does not read a name that looks like an object method as a Herdr name", () => {
-    const user: UserShortcuts = JSON.parse('{"constructor":["prefix+m"],"toString":["prefix+n"]}');
+    const user: UserShortcuts = JSON.parse('{"constructor":["prefix+y"],"toString":["prefix+n"]}');
     expect(build(user).diagnostics.map((diagnostic) => diagnostic.code)).toEqual(["unknown-action", "unknown-action"]);
   });
 

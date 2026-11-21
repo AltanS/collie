@@ -1,6 +1,7 @@
 import { Fragment, useState, type ReactNode } from "react";
 import { Icon } from "@/components/icons/icon";
 
+import { shortcutTarget } from "@/lib/shortcuts/target";
 import { cn } from "@/lib/utils";
 import { SQUARE_36_TAP_TARGET } from "@/components/ui/tap-target";
 import { useMuxCapability } from "@/lib/mux-capability";
@@ -133,6 +134,7 @@ export function SpaceOverview({
                 onClick={onNewSpace}
                 disabled={creatingSpace}
                 aria-label={t("space.overview.new.aria")}
+                {...shortcutTarget("new_space")}
                 aria-busy={creatingSpace}
                 className={cn(
                   "flex size-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:scale-95 disabled:opacity-100",

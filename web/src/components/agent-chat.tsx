@@ -63,6 +63,7 @@ import { SessionTrickCards, useSessionProposalWaiting } from "@/components/sessi
 import { HookHoldCard } from "@/components/hook-hold-card";
 import { MIRROR_SPACE, MIRROR_INVERT, MUSE_MIRROR, segmentStyle } from "@/components/mirror-space";
 import { AgentsFooter } from "@/components/agents-footer";
+import { shortcutTarget } from "@/lib/shortcuts/target";
 import { cn } from "@/lib/utils";
 import { parseAnsi } from "@/lib/ansi";
 import { splitLines } from "@/lib/blocks";
@@ -526,8 +527,14 @@ export function AgentChat({
   // The ⋮ button, when a tap on it opened the pane menu: on a wide window the menu then stands beside it
   // (ui/sheet.tsx `anchor`). Null for every other door (the name tap, a shortcut), which keeps the dialog.
   const paneMenuFrom = useRef<HTMLElement | null>(null);
+  // The ⋮ button itself, for the Pane menu action (`prefix+m`): it opens the menu beside this button, as a tap does.
+  const paneMenuButton = useRef<HTMLButtonElement | null>(null);
+  // The menu was opened by the key: its first row takes the focus, so Up, Down and Enter work at once.
+  const [paneMenuByKey, setPaneMenuByKey] = useState(false);
   useEffect(() => {
-    if (drawer !== "paneMenu") paneMenuFrom.current = null;
+    if (drawer === "paneMenu") return;
+    paneMenuFrom.current = null;
+    setPaneMenuByKey(false);
   }, [drawer]);
   // The walky talky message the Messages sheet opens on: a tapped Chat card, or an id chip. The pane menu's
   // own row clears it, so that way in shows the list from the top.
@@ -2432,6 +2439,17 @@ export function AgentChat({
       : undefined,
   );
   useShortcutHandler("pane_settings", gridless && !programReceipts ? undefined : () => setDrawer("paneSettings"));
+  // The Pane menu is the ⋮ button's menu, so it is offered where that button is drawn (a pane that is there, and not in zen, which takes the header off).
+  useShortcutHandler(
+    "pane_menu",
+    agent !== undefined && !zen
+      ? () => {
+          paneMenuFrom.current = paneMenuButton.current;
+          setPaneMenuByKey(true);
+          setDrawer("paneMenu");
+        }
+      : undefined,
+  );
   useShortcutHandler("pin_pane", agent !== undefined && !gridless ? () => togglePanePin({ pane: agent, pinned: pinMatcher(pins)(agent), herd }) : undefined);
   useShortcutHandler(
     "rename_pane",
@@ -2606,11 +2624,13 @@ export function AgentChat({
             <div className="flex items-stretch gap-2 pr-3">
               {agent ? (
                 <button
+                  ref={paneMenuButton}
                   type="button"
                   onClick={(e) => {
                     paneMenuFrom.current = e.currentTarget;
                     setDrawer("paneMenu");
                   }}
+                  {...shortcutTarget("pane_menu")}
                   aria-label={t("chat.paneMenu.aria")}
                   aria-haspopup="dialog"
                   // The menu opens beside this button on a wide window and over the page on a phone; the
@@ -2942,6 +2962,7 @@ export function AgentChat({
               type="button"
               onClick={() => setZen(false)}
               aria-label={t("chat.zen.exitAria")}
+              {...shortcutTarget("zen_mode")}
               className="absolute right-3 top-3 z-20 grid size-11 place-items-center rounded-full border border-rule bg-chrome text-muted-foreground transition-colors active:bg-muted/60"
             >
               <Icon name="zen-exit" className="size-5" />
@@ -4095,6 +4116,7 @@ export function AgentChat({
         />
         <PaneActionsSheet
           open={drawer === "paneMenu"}
+          focusFirstRow={paneMenuByKey}
           onClose={closeDrawer}
           anchor={paneMenuFrom}
           pane={agent ?? null}
