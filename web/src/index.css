@@ -428,8 +428,9 @@
      near-white the recess clamps to the page and --rule was the only thing left, at 1.0 to 1.3:1. This one is
      the theme's own ink mixed into its own page, so it holds 3:1 or more against the recess, the page and the
      paper in both halves of every bundled theme (e2e/strip-head.spec.ts measures the painted pixels).
-     DERIVED ONLY, never a theme token: a theme reaches it through `foreground` and `background`. The share
-     lives here and nowhere else; nothing may restate the mix. */
+     DERIVED ONLY, never a theme token: a theme reaches it through `foreground` and `background`. For a theme
+     that is applied, lib/theme/derive.ts makes it from the same mix with a 3:1 floor (EDGE_SHARE there is this
+     58%); derive.test.ts holds this line and that share together. No component may restate the mix. */
   --edge-firm: color-mix(in oklch, var(--foreground) 58%, var(--background));
   /* THE WIDE LAYOUT'S THREE PLANES (DESIGN.md §4, "The large screen's three planes"). On a large screen
      the navigation (the sidebar, the tab strip of the space, the strip's own ground) stands on the RECESS,
