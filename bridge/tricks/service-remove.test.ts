@@ -292,8 +292,12 @@ describe.if(posix)("POST /api/tricks/<host>/<id>/remove", () => {
       // A folder the scan refuses is listed as skipped; a missing run file is found only at a run.
       expect(row?.state).toBe(id === "no-file" ? "off" : "skipped");
     }
-    const rids = [RID, RID2, RID3];
-    for (const [n, [id]] of broken.entries()) expect(await post(r, `/api/tricks/${HOST}/${id}/remove`, { rid: rids[n] })).toEqual({ status: 200, body: { rid: rids[n], code: "removed", id } });
+    const asks: [string, string][] = [
+      ["bad-toml", RID],
+      ["bad-right", RID2],
+      ["no-file", RID3],
+    ];
+    for (const [id, rid] of asks) expect(await post(r, `/api/tricks/${HOST}/${id}/remove`, { rid })).toEqual({ status: 200, body: { rid, code: "removed", id } });
     for (const dir of folders) expect(await exists(dir)).toBe(false);
     expect((await r.service.reply(undefined)).tricks).toEqual([]);
   });
