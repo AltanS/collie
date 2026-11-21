@@ -11,6 +11,7 @@ import {
   deriveReport,
   deriveTokens,
   EDGE_FLOOR,
+  FRAME_FLOOR,
   distance,
   HOVER_FLOOR,
   parseColour,
@@ -60,6 +61,11 @@ function cssMixOklch(x: Lab, y: Lab, share: number): Lab {
   return [x[0] * share + y[0] * (1 - share), c * Math.cos(h), c * Math.sin(h)];
 }
 
+/** CSS `color-mix(in oklab, x <share>, y)`, written out here on its own, for the pane frame's expected value. */
+function cssMixOklab(x: Lab, y: Lab, share: number): Lab {
+  return [x[0] * share + y[0] * (1 - share), x[1] * share + y[1] * (1 - share), x[2] * share + y[2] * (1 - share)];
+}
+
 describe("Collie is the reference", () => {
   for (const half of ["light", "dark"] as const) {
     it(`${half}: every derived token is Collie's own value, within 0.02`, () => {
@@ -83,6 +89,7 @@ describe("Collie is the reference", () => {
         "state-open-paper": token("control-on"),
         ring: token("ring"),
         "edge-firm": cssMixOklch(token("foreground"), page, 0.58),
+        "pane-active": cssMixOklab(token("control-on-foreground"), page, half === "light" ? 0.7 : 0.6),
       } satisfies Record<keyof DerivedHalf, Lab>;
       for (const name of DERIVED_TOKENS) expect(distance(at(name), expected[name]), `${half} ${name}`).toBeLessThanOrEqual(REFERENCE_TOLERANCE);
     });
@@ -105,6 +112,7 @@ describe("index.css holds the relations derive.ts mirrors", () => {
     "--state-open-recess: var(--control-on);",
     "--state-open-paper: var(--control-on);",
     "--edge-firm: color-mix(in oklch, var(--foreground) 58%, var(--background));",
+    "--pane-active: light-dark(color-mix(in oklab, var(--control-on-foreground) 70%, var(--background)), color-mix(in oklab, var(--control-on-foreground) 60%, var(--background)));",
   ]) {
     it(line.slice(0, line.indexOf(":")), () => {
       expect(css).toContain(`  ${line}\n`);
@@ -152,8 +160,10 @@ function brokenFloors(tokens: Half, d: DerivedHalf): string[] {
     if (open < STATE_FLOOR - 1e-3) out.push(`open on the ${plane} ${open.toFixed(3)}`);
   }
   const edge = at("edge-firm");
+  const frame = at("pane-active");
   for (const [name, g] of [["page", page], ["recess", ground.recess], ["paper", ground.paper]] as const) {
     if (contrast(edge, g) < EDGE_FLOOR - 0.01) out.push(`firm edge on the ${name} ${contrast(edge, g).toFixed(2)}`);
+    if (contrast(frame, g) < FRAME_FLOOR - 0.01) out.push(`pane frame on the ${name} ${contrast(frame, g).toFixed(2)}`);
   }
   const ring = at("ring");
   for (const [name, g] of [

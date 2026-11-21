@@ -6,9 +6,7 @@ import type { PickRoundDef } from "./types";
 
 export type PickRoundLoader = () => Promise<{ default: PickRoundDef }>;
 
-const REGISTRY = {
-  "pane-frame": () => import("./rounds/pane-frame"),
-} satisfies Record<string, PickRoundLoader>;
+const REGISTRY = {} satisfies Record<string, PickRoundLoader>;
 
 /** Every round, by id. */
 export const ROUNDS: ReadonlyMap<string, PickRoundLoader> = new Map(Object.entries(REGISTRY));

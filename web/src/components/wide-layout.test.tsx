@@ -435,16 +435,16 @@ describe("the strip", () => {
     const { container } = await mount("w1:p1", 1200);
     const lone = q(columns(container)[0]!, '[data-slot="column-frame"]')!;
     // One column: it has the focus, so it is the paper inside the frame (Altan's screenshot was this state).
-    expect(lone.className).toContain("border-2");
+    expect(lone.className.split(" ")).toContain("border-[1px]");
     expect(lone.className).toContain(FOCUS_FRAME);
     expect(lone.className).toContain("bg-surface-paper");
 
     await openBesideFromSidebar(container, A2);
     const [other, focused] = columns(container).map((c) => q(c, '[data-slot="column-frame"]')!);
-    expect(focused!.className).toContain("border-2");
+    expect(focused!.className.split(" ")).toContain("border-[1px]");
     expect(focused!.className).toContain(FOCUS_FRAME);
     expect(focused!.className).toContain(PAPER_PLANE);
-    expect(other!.className).toContain("border-2");
+    expect(other!.className.split(" ")).toContain("border-[1px]");
     expect(other!.className).toContain("border-transparent");
     expect(other!.className).toContain(PAGE_PLANE);
     expect(other!.className).not.toContain("bg-surface-paper");
@@ -538,6 +538,28 @@ describe("the strip", () => {
     fireEvent.pointerDown(body, { clientX: 10, clientY: 10 });
     fireEvent.pointerUp(body, { clientX: 12, clientY: 11 });
     await waitFor(() => expect(router.state.location.pathname).toBe(panePath("w1:p1")));
+  });
+
+  it("the 1px frame follows the focus, the other column keeps a transparent 1px border, and no border width changes", async () => {
+    const { container } = await mount("w1:p1", 1200);
+    await openBesideFromSidebar(container, A2);
+    const frames = () => columns(container).map((c) => q(c, '[data-slot="column-frame"]')!);
+    // The border widths a class string sets: a focus change may recolour them and never change them (DESIGN.md §2).
+    const widths = (el: HTMLElement) => el.className.split(/\s+/u).filter((c) => /^border(-[xytrbl])?(-([0-9]+|\[1px\]))?$/u.test(c));
+    const [a, b] = frames();
+    expect(b!.className).toContain(FOCUS_FRAME);
+    expect(a!.className).toContain("border-transparent");
+    expect(widths(a!)).toEqual(["border-[1px]"]);
+    expect(widths(b!)).toEqual(["border-[1px]"]);
+    const body = q(columns(container)[0]!, '[data-slot="column-body"]')!;
+    fireEvent.pointerDown(body, { clientX: 10, clientY: 10 });
+    fireEvent.pointerUp(body, { clientX: 12, clientY: 11 });
+    await waitFor(() => expect(frames()[0]!.className).toContain(FOCUS_FRAME));
+    const [a2, b2] = frames();
+    expect(b2!.className).toContain("border-transparent");
+    expect(b2!.className).not.toContain(FOCUS_FRAME);
+    expect(widths(a2!)).toEqual(widths(a!));
+    expect(widths(b2!)).toEqual(widths(b!));
   });
 
   it("Remove from view drops a column, and the last column cannot leave", async () => {

@@ -149,9 +149,14 @@ export type OptionalThemeToken = (typeof OPTIONAL_THEME_TOKENS)[number];
  * half (one `light-dark()` in index.css, or the bare expression when both halves share it), so the theme
  * file for `collie` holds no value for them, and a theme that sets one half only gets the expression in
  * the other (`lightDark`). The paper in dark sits halfway between the page and the card 0.05 lighter:
- * the full step read as too bright a sheet on a desktop (2026-11-21); light keeps the full step.
+ * the full step read as too bright a sheet on a desktop (2026-11-21); light keeps the full step. The frame of the
+ * active pane, `pane-active`, joined them on 2026-11-21 (ADR 0174): the "on" ink mixed into the page.
  */
 export const DERIVED_THEME_TOKENS = {
+  "pane-active": {
+    light: "color-mix(in oklab, var(--control-on-foreground) 70%, var(--background))",
+    dark: "color-mix(in oklab, var(--control-on-foreground) 60%, var(--background))",
+  },
   "surface-recess": { light: "oklch(from var(--background) calc(l - 0.05) c h)", dark: "oklch(from var(--background) calc(l - 0.05) c h)" },
   "surface-paper": {
     light: "oklch(from var(--card) min(1, calc(l + 0.05)) c h)",

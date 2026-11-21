@@ -125,11 +125,6 @@ export const WAIVERS: readonly Waiver[] = [
     rule: "open",
     reason: "FINDING: an open trigger's `--control-on` fill is under 0.06 in OKLab from the header or the Belt around it, read through the open dialog's scrim (Nightwatch light 0.021, Collie light 0.038): TRIGGER_OPEN's fill is a fixed token, not a step off the ground",
   },
-  {
-    id: "frame-on-mid-ground",
-    rule: "focused-pane",
-    reason: "FINDING: the focus frame (pane-active mixed 65% into the page, clamped at L 0.55 in the light half) falls under 3:1 on a mid-grey page (2.1 to 2.66), and vanishes (1.04) on a theme whose light half is dark: the clamp assumes which way the half goes",
-  },
 ];
 
 export type Ceilings = Record<string, Record<string, number>>;

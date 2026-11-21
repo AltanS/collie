@@ -34,7 +34,8 @@ cannot hold one token against another: relative colour reads one colour at a tim
    - the foreground and the muted ink keep 4.5:1 on a plane and on a fill, or what they have on the page when the
      theme gives less, and a plane stays on the page's side of the ink;
    - a plane 0.025 off its neighbour. Collie's own steps are 0.045 to 0.06;
-   - the firm edge (`--edge-firm`, ADR 0171) 3:1 on the recess, the page and the paper.
+   - the firm edge (`--edge-firm`, ADR 0171) 3:1 on the recess, the page and the paper;
+   - the frame of the pane you are in (`--pane-active`, ADR 0174) 3:1 on the recess, the page and the paper.
 2. **Collie is the reference.** `derive.test.ts` puts Collie's base tokens through the function. They are read
    from `src/themes/collie.json`, which `src/themes/themes.test.ts` holds equal to `index.css`'s `:root`, token by
    token; the relations `derive.ts` mirrors are held to `index.css`'s own lines in `derive.test.ts`, so the
@@ -54,12 +55,15 @@ cannot hold one token against another: relative colour reads one colour at a tim
    its `--state-on` too. `HOVER_FILL`, `TRIGGER_OPEN`, the ghost and outline buttons and the pane row read them.
 5. **A re-pointed accent takes its ink** (`--accent-foreground` to `--foreground` on the recess), and **every
    focusable row wears the house ring** (`FOCUS_RING`).
+6. **A theme whose own text is under 4.5:1 is warned about and applied as it is** (Altan, 2026-11-21: "we warn,
+   that's it"). No adjustment at load, no refusal: the contrast report warns, and the theme's own inks stay. The
+   derived state colours work from those inks, so `deriveReport` can name floors that cannot be met, and that is
+   accepted.
 
 ## Not decided here
 
-- A floor on a theme's own text (the schema question). It would be one more step before the planes.
-- The field edge and the focus frame.
-- An ink clamp, a per-theme "use my colours exactly" switch, and an app note when a floor moved a colour.
+- The field edge. The frame of the pane you are in is ADR 0174.
+- A per-theme "use my colours exactly" switch, and an app note when a floor moved a colour.
 - The sites that still draw a state with their own class (`hover:bg-muted/60`, `bg-accent`, `bg-control-on`):
   DESIGN.md §14 says to read the variables; the sweep is the next part.
 

@@ -85,10 +85,10 @@ describe("the theme collie equals index.css", () => {
   });
 
   it("declares each derived token once in index.css, as the expression the schema writes for a missing half", () => {
-    for (const token of ["surface-recess", "surface-paper"] as const) {
+    for (const token of ["pane-active", "surface-recess", "surface-paper"] as const) {
       expect(css).toContain(`  --${token}: ${derivedRootValue(token)};`);
     }
-    expect(Object.keys(DERIVED_THEME_TOKENS).toSorted()).toEqual(["surface-paper", "surface-recess"]);
+    expect(Object.keys(DERIVED_THEME_TOKENS).toSorted()).toEqual(["pane-active", "surface-paper", "surface-recess"]);
   });
 
   it("carries Atkinson for the text, Aldrich for the titles and the shipped author", () => {

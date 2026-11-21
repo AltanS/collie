@@ -1,6 +1,6 @@
 // THE COLOURS THE APP DERIVES FROM A THEME (DESIGN.md §14, ADR 0172). A theme names its base tokens; the large
 // screen's planes, the hover and the selected fill of each plane, the open trigger's fill and the focus ring are
-// made here, from those tokens, for one half at a time.
+// made here, from those tokens, for one half at a time, and so is the frame of the pane you are in (ADR 0174).
 //
 // Each derived value is made in two steps. First COLLIE'S RELATION: the same expression Collie's stylesheet uses
 // (index.css), so that Collie, passed through this function, comes out as it is painted today; the reference test
@@ -11,7 +11,8 @@
 // colour, the one a screen paints.
 //
 // The steps run in order, and each step reads what the earlier ones made: planes, then the state fills, then the
-// ring. A later floor (a field's edge, a firm edge, a floor on a theme's own ink) is one more step in `STEPS`.
+// ring, the firm edge and the pane frame. A theme's own ink is never moved: a theme whose text is under 4.5:1 is
+// warned about and applied as it is (ADR 0172, decision 6), so a floor here may stay unmet.
 //
 // Pure: no DOM, no package. `applyTheme` (store.ts) calls it for every theme it applies; Collie applies no theme and
 // keeps its stylesheet.
@@ -30,6 +31,10 @@ export const RING_FLOOR = 3;
 export const EDGE_FLOOR = 3;
 /** The ink's share in the firm edge, index.css's `--edge-firm` (58%). */
 const EDGE_SHARE = 0.58;
+/** The frame of the pane you are in against the recess, the page and the paper (WCAG 1.4.11, ADR 0174). */
+export const FRAME_FLOOR = 3;
+/** The "on" ink's share in the pane frame, index.css's `--pane-active` (70% in light, 60% in dark, in OKLab). */
+const FRAME_SHARE = { light: 0.7, dark: 0.6 } as const;
 /** Text on a plane (WCAG 1.4.3). */
 export const TEXT_FLOOR = 4.5;
 /**
@@ -43,7 +48,7 @@ export const PLANE_GAP = 0.025;
  * a relation): the first frame (`public/theme-init.js`) then ignores the values an older version stored. The golden
  * values in `derive.golden.test.ts` show such a change as a diff.
  */
-export const DERIVE_VERSION = 3;
+export const DERIVE_VERSION = 4;
 
 /** The planes a state fill is made for. */
 export const PLANES = ["page", "recess", "paper"] as const;
@@ -64,6 +69,7 @@ export const DERIVED_TOKENS = [
   "state-open-paper",
   "ring",
   "edge-firm",
+  "pane-active",
 ] as const;
 export type DerivedToken = (typeof DERIVED_TOKENS)[number];
 
@@ -184,6 +190,12 @@ function mixOklch(x: Lab, y: Lab, share: number): Lab {
   const h = hx + d * t;
   const c = cx * share + cy * t;
   return [x[0] * share + y[0] * t, c * Math.cos(h), c * Math.sin(h)];
+}
+
+/** `color-mix(in oklab, x <share>, y)`: each OKLab coordinate `share` of the way from y to x. */
+function mixOklab(x: Lab, y: Lab, share: number): Lab {
+  const t = 1 - share;
+  return [x[0] * share + y[0] * t, x[1] * share + y[1] * t, x[2] * share + y[2] * t];
 }
 
 // ── The floor ─────────────────────────────────────────────────────────────────────────────────
@@ -406,7 +418,22 @@ function edgeFirm(w: Work): void {
   w.out["edge-firm"] = pushLightness(start, awayFrom(start, page), (c, m) => worst(c) >= EDGE_FLOOR + (m ? MARGIN.ratio : 0), worst);
 }
 
-const STEPS: readonly ((w: Work) => void)[] = [planes, states, ring, edgeFirm];
+/**
+ * THE PANE FRAME (ADR 0174): the 1px hairline around the pane you are in on a large screen. Collie's relation is
+ * index.css's own `--pane-active`, the "on" ink mixed into the page in OKLab, 70% in light and 60% in dark; a theme
+ * that sets its own `pane-active` starts from that colour. Floor: 3:1 against the three grounds it touches, the
+ * recess (the rail at its left), the page (a column without focus at its right) and the paper inside it, pushed
+ * away from the page.
+ */
+function paneFrame(w: Work): void {
+  const page = w.colour("background");
+  const start = w.tokens["pane-active"] === undefined ? mixOklab(w.colour("control-on-foreground"), page, FRAME_SHARE[w.half]) : w.colour("pane-active");
+  const grounds = [page, made(w, "surface-recess"), made(w, "surface-paper")];
+  const worst = (c: Lab) => Math.min(...grounds.map((g) => contrast(c, g)));
+  w.out["pane-active"] = pushLightness(start, awayFrom(start, page), (c, m) => worst(c) >= FRAME_FLOOR + (m ? MARGIN.ratio : 0), worst);
+}
+
+const STEPS: readonly ((w: Work) => void)[] = [planes, states, ring, edgeFirm, paneFrame];
 
 /** A floor the derivation could not meet: the token, the floor in words, and the value it reached. */
 export interface UnmetFloor {
@@ -473,6 +500,8 @@ export function deriveReport(tokens: Half, half: Half2): DeriveReport {
   need(ringWorst >= RING_FLOOR, "ring", `${String(RING_FLOOR)}:1 on every ground`, ringWorst);
   const edgeWorst = Math.min(...[page, recess, paper].map((g) => contrast(at("edge-firm"), g)));
   need(edgeWorst >= EDGE_FLOOR, "edge-firm", `${String(EDGE_FLOOR)}:1 on the recess, the page and the paper`, edgeWorst);
+  const frameWorst = Math.min(...[page, recess, paper].map((g) => contrast(at("pane-active"), g)));
+  need(frameWorst >= FRAME_FLOOR, "pane-active", `${String(FRAME_FLOOR)}:1 on the recess, the page and the paper`, frameWorst);
   const recessLighterInLight = half === "light" && recess[0] > page[0] + 1e-3;
   const collapsed = distance(recess, page) < 0.005 || distance(paper, page) < 0.005 || distance(paper, recess) < 0.005;
   return { tokens: out, unmet, planes: { recessLighterInLight, collapsed } };
