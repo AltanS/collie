@@ -55,6 +55,34 @@
   --sf-code-edge: transparent;
 }
 
+/* 2 PAPER ON A DESK. Three planes. The desk (sidebar, tab strip, the strip's ground) is one step below
+   the page; a pane without focus is the page; the focused pane, whole, is the paper (`--sf-paper`), the
+   lightest plane in both halves. Boxes inside the paper are inset in the page's tone. */
+:root[data-surfaces="2"] {
+  --sf-side: var(--sf-recess);
+  --sf-edge-side: var(--sf-recess);
+  --sf-row-on: var(--sf-paper);
+  --sf-tabs: var(--sf-recess);
+  --sf-edge-tabs: var(--sf-recess);
+  --sf-tab-on: var(--background);
+  --sf-strip: var(--sf-recess);
+  --sf-edge-col: var(--border);
+  --sf-head-on: var(--sf-paper);
+  --sf-edge-head-on: var(--border);
+  --sf-pane-on: var(--sf-paper);
+  --sf-chrome-on: var(--sf-paper);
+  --sf-head-off: var(--background);
+  --sf-edge-head-off: var(--border);
+  --sf-pane-off: var(--background);
+  --sf-chrome-off: var(--background);
+  /* No frame line: the paper is the focus mark, so the frame takes the paper tone. */
+  --sf-frame: var(--sf-paper);
+  --sf-run: color-mix(in oklch, var(--sf-paper) 50%, var(--background));
+  --sf-run-edge: transparent;
+  --sf-code: var(--background);
+  --sf-code-edge: transparent;
+}
+
 /* ── The rules that paint the roles ─────────────────────────────────────────────────────────────── */
 
 /* The sidebar and the rail. Re-pointing `--card` and `--accent` here also repaints the status marks'
