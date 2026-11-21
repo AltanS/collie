@@ -156,6 +156,12 @@ join line, because a `join` would be refused while the lead is down. Check `coll
 script can read the token from the first line. A `join` that is refused with "the lead refused the
 token" shortly after an `invite` can also mean the lead is still restarting.
 
+`join` sends the token to the address you typed and nowhere else. If that address answers with a
+redirect, `join` stops and prints the address the redirect pointed to. It does not follow it. If a
+proxy in front of your lead redirects, for example from `http://` to `https://`, join again with the
+address it redirects to. A crew link never follows a redirect either: the lead treats such a member
+as out of reach, and `collie crew status` names the address the redirect pointed to.
+
 Step 3 is a second restart, and `join` says so on the way out. `invite` restarted the lead so it
 could accept the enrollment. `join` then wrote the new member to disk, and the running process does
 not proxy traffic to that member until it is restarted again.
@@ -355,6 +361,19 @@ so the phone can reach the deputy while the lead is gone.
 
 The deputy keeps the crew's rows too: a read-only copy of the lead's launcher rows, which the New
 screen offers once the deputy takes over.
+
+A slow or broken member does not hold the lead. The lead stops reading a member's answer at a size
+limit, counted after unpacking: 2 MB for its own regular check of each machine, and 32 MB for
+everything else. Past the limit it treats that member as out of reach. A screen, a History or Chat
+page, a changes list or a file view from a member must end within 8 seconds, because the phone waits
+no longer, and then the phone says that the member does not answer. The regular check of each machine
+ends within three times its usual wait, so one silent member does not freeze the view of the others.
+A file or a picture that you download breaks off when no new byte came for 10 seconds, or after 10
+minutes, and the phone shows an error, never a file that is cut short.
+
+The lead reads and cleans only one answer larger than 4 MB at a time, so several phones that ask for
+a long History together cannot fill its memory. The others wait their turn. When you leave a screen,
+the lead stops reading the member's answer at once. The data between your machines stays compressed.
 
 ## Durable agents in a crew
 
