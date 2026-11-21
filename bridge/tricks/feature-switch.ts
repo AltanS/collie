@@ -3,7 +3,7 @@ import { join } from "node:path";
 
 import { asJsonBoolean, asJsonObject, parseJson } from "../../web/src/lib/json.ts";
 import { tricksStateDir } from "./paths.ts";
-import { holdStat, sameStat, statFactsOf, stillHolds, type StatFacts, type StatHeld } from "./stat-held.ts";
+import { holdStat, sameStat, statFactsOf, stillHolds, type StatFacts, type StatHeld } from "../stat-held.ts";
 
 // THE SWITCH FOR TRICKS AS A WHOLE (package H, 2026-11-17). Tricks are an experiment and OFF by default:
 // this one setting turns them on for this machine, on every phone at once. It is the Hill's switch

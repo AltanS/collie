@@ -6,7 +6,7 @@ import { MANIFEST_TRIGGERS, parseManifest, RULES_MAX_BYTES, rulesTextProblems, t
 import { CONFIG_FILE, diskTrickFs, hashCodeEntries, walkFingerprint, walkTrickCode, type FsStat, type TrickFs } from "./code-hash.ts";
 import { ORIGIN_FILE, readOrigin, readProposalOrigin, type ProposalOrigin, type TrickOrigin } from "./origin.ts";
 import { MANIFEST_FILE } from "./paths.ts";
-import { settledWalk } from "./stat-held.ts";
+import { settledWalk } from "../stat-held.ts";
 
 // FINDING TRICKS (M94 slice 01): every folder under `<configDir>/tricks/` is a trick, named by the folder.
 // A folder whose `trick.toml` is missing or refused is still listed, with its refusals, and never run.

@@ -10,7 +10,7 @@ import { CODE_BYTES_MAX, CONFIG_FILE, diskTrickFs, hashCodeEntries, isPictureNam
 import { readManifestFile, readSmallFile } from "./discover.ts";
 import { ORIGIN_FILE } from "./origin.ts";
 import { APPROVED_DIR, approvedCopyDir, approvedTrickDir, hash16, PENDING_DIR, pendingTrickDir, switchesPath, tricksConfigDir, trickStateDir } from "./paths.ts";
-import { settledWalk } from "./stat-held.ts";
+import { settledWalk } from "../stat-held.ts";
 import { MIGRATED, parseSwitches, readSwitchesNow, SWITCHES_VERSION, updateSwitches, updateSwitchesFor, withApproval, withSwitch, withSwitchLock, writeSwitches, type SwitchEntry, type Switches } from "./switches.ts";
 import { commitAside, finishAside, moveAside, newAsideToken, putBack, type Moved } from "./aside.ts";
 

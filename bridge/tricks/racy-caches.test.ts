@@ -8,11 +8,11 @@ import { diskTrickFs, type TrickFs } from "./code-hash.ts";
 import { createTrickScanner } from "./discover.ts";
 import { TricksFeatureSwitch, tricksFeaturePath } from "./feature-switch.ts";
 import { approvedTrickDir, switchesPath, TRICKS_DIR, tricksStateDir } from "./paths.ts";
-import { holdStat, RACY_WINDOW_MS, sameStat, settledAt, stillHolds } from "./stat-held.ts";
+import { RACY_WINDOW_MS } from "../stat-held.ts";
 import { createSwitchReader } from "./switches.ts";
 import { TrickValues, valuesPath } from "./values.ts";
 
-// The racy-timestamp rule (stat-held.ts) for every stat-keyed cache in the tricks code. Each case holds the stat
+// The racy-timestamp rule (bridge/stat-held.ts) for every stat-keyed cache in the tricks code. Each case holds the stat
 // still with a fake `stat` (the same size, modified time, inode and change time), rewrites the file with other
 // bytes of the same size, and lets only the clock of the read decide: inside the window the new content is read,
 // after it the cache answers and the file is not read. No sleep, no reliance on a file system's time resolution.
@@ -33,23 +33,6 @@ const AT = 1_800_000_000_000;
 const INSIDE = AT + RACY_WINDOW_MS / 4;
 const AFTER = AT + RACY_WINDOW_MS * 5;
 const still = (path: string) => ({ size: statSync(path).size, mtimeMs: AT, ino: 7, ctimeMs: AT });
-
-describe("the rule", () => {
-  test("a read is kept only when the file was quiet for the window before it, and its stat holds", () => {
-    expect(settledAt(AT, AT + RACY_WINDOW_MS)).toBe(true);
-    expect(settledAt(AT, AT + RACY_WINDOW_MS - 1)).toBe(false);
-    // A file time ahead of the clock (a skew) is never settled.
-    expect(settledAt(AT, AT - 10)).toBe(false);
-    const facts = { size: 10, mtimeMs: AT, ino: 7, ctimeMs: AT };
-    expect(stillHolds(holdStat(facts, AFTER), facts)).toBe(true);
-    expect(stillHolds(holdStat(facts, INSIDE), facts)).toBe(false);
-    expect(stillHolds(undefined, facts)).toBe(false);
-    for (const moved of [{ size: 11 }, { mtimeMs: AT + 1 }, { ino: 8 }, { ctimeMs: AT + 1 }]) expect(stillHolds(holdStat(facts, AFTER), { ...facts, ...moved })).toBe(false);
-    // A side with no inode or change time (a test's fake, a platform without one) compares the rest.
-    expect(stillHolds(holdStat({ size: 10, mtimeMs: AT }, AFTER), facts)).toBe(true);
-    expect(sameStat(holdStat(facts, INSIDE), facts)).toBe(true);
-  });
-});
 
 describe("the switch reader", () => {
   const setup = () => {

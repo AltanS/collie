@@ -12,7 +12,7 @@ import { DEFAULT_DECISION_PRIORITY, DEFAULT_DECISION_TEXT, pointer, type Refusal
 import { BY_THE_TRICK, TRICK_OFF, type HillOneAnswer, type HillPostAnswer, type HillPostOptions, type HillTrickSender } from "../hill/service.ts";
 import { hillDir } from "../hill/store.ts";
 import type { JsonObject } from "../json.ts";
-import { holdStat, statFactsOf, stillHolds, type StatHeld } from "./stat-held.ts";
+import { holdStat, statFactsOf, stillHolds, type StatHeld } from "../stat-held.ts";
 
 // A TRICK POSTS INTO THE HILL (M94, M96): after a run that succeeded, the runner hands the document's
 // decisions here, and this module makes the hill agree with them.

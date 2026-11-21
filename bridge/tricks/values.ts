@@ -17,7 +17,7 @@ import {
   type WireTrickInfo,
 } from "../../web/src/lib/tricks/schema.ts";
 import { trickStateDir } from "./paths.ts";
-import { holdStat, statFactsOf, stillHolds, type StatFacts, type StatHeld } from "./stat-held.ts";
+import { holdStat, statFactsOf, stillHolds, type StatFacts, type StatHeld } from "../stat-held.ts";
 
 // THE VALUES A PERSON KEEPS FOR A TRICK (contract 3, `[[field]]`, decided 2026-11-17).
 //

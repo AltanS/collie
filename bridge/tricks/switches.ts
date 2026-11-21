@@ -5,7 +5,7 @@ import { dirname } from "node:path";
 import type { JsonObject, JsonValue } from "../json.ts";
 import { asJsonBoolean, asJsonNumber, asJsonObject, asJsonString, parseJson } from "../../web/src/lib/json.ts";
 import { tricksStateDir, switchesPath } from "./paths.ts";
-import { holdStat, sameStat, statFactsOf, stillHolds, type StatFacts, type StatHeld } from "./stat-held.ts";
+import { holdStat, sameStat, statFactsOf, stillHolds, type StatFacts, type StatHeld } from "../stat-held.ts";
 
 // THE ON AND OFF SWITCH (M94 slice 01, version 3 since the approved copy). Bridge state, not a phone
 // preference, so two phones agree and an "off" trick does not run. One file,

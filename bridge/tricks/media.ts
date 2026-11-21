@@ -34,7 +34,7 @@ import { dirname, join, sep } from "node:path";
 import { isImageSrc, TRICK_MEDIA_DIR, TRICK_MEDIA_VERSIONS_MAX, type WireTrickInfo } from "../../web/src/lib/tricks/schema.ts";
 import { HILL_MEDIA_BYTES_MAX, type HillMediaMime } from "../../web/src/lib/hill/wire.ts";
 import { readPostedImage } from "../hill/media.ts";
-import { holdStat, statFactsOf, stillHolds, type StatFacts, type StatHeld } from "./stat-held.ts";
+import { holdStat, statFactsOf, stillHolds, type StatFacts, type StatHeld } from "../stat-held.ts";
 
 /** One picture of a trick, read and checked. */
 export interface TrickMediaFile {
