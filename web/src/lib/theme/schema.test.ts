@@ -7,6 +7,7 @@ import type { JsonObject, JsonValue } from "@/lib/json";
 
 import {
   ALL_THEME_TOKENS,
+  DERIVED_THEME_TOKENS,
   OPTIONAL_THEME_TOKENS,
   setsOptionalToken,
   SHIPPED_THEME_IDS,
@@ -902,9 +903,9 @@ describe("the optional tokens", () => {
   const base = collie.theme;
 
   it("are appended after the 43, so the order of every earlier file holds", () => {
-    expect(OPTIONAL_THEME_TOKENS).toEqual(["pane-active", "tab-active", "find"]);
+    expect(OPTIONAL_THEME_TOKENS).toEqual(["pane-active", "tab-active", "find", "surface-recess", "surface-paper"]);
     expect(ALL_THEME_TOKENS.slice(0, 43)).toEqual([...THEME_TOKENS]);
-    expect(ALL_THEME_TOKENS).toHaveLength(46);
+    expect(ALL_THEME_TOKENS).toHaveLength(48);
   });
 
   it("are read from a version 3 file, and the theme is handed back as version 3", () => {
@@ -952,6 +953,18 @@ describe("the optional tokens", () => {
     expect(second.ok && second.theme).toEqual(first.theme);
     if (!second.ok) return;
     expect(JSON.stringify({ ...second.theme, version: versionOf(second.theme) }, null, 2)).toBe(exported);
+  });
+
+  it("writes a derived token a theme sets in one half with the derived expression in the other", () => {
+    const parsed = parseTheme(file({ version: 3, dark: { "surface-paper": "oklch(0.3 0 0)" } }), CAP);
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    const filled = fillHalves(parsed.theme, base);
+    expect(lightDark(filled, "surface-paper")).toBe(`light-dark(${DERIVED_THEME_TOKENS["surface-paper"]}, oklch(0.3 0 0))`);
+    const checks = contrastReport(parsed.theme, base).map((f) => `${f.half} ${f.check}`);
+    expect(checks).toContain("dark foreground on surface-paper");
+    expect(checks).toContain("dark muted-foreground on surface-paper");
+    expect(checks.some((c) => c.startsWith("light") && c.includes("surface-paper"))).toBe(false);
   });
 
   it("leaves an old theme's filled halves and contrast report as they were", () => {

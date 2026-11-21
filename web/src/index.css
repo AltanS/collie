@@ -422,6 +422,20 @@
      rgb(214) on rgb(245) light; white 24% over rgb(10) = rgb(69) dark. At 3x DPR on a phone that
      is a crisp 1px cut, which is the mark's own vocabulary — a cut, not a wash. */
   --rule: light-dark(oklch(0.72 0.004 80), oklch(0.52 0.003 80));
+  /* THE WIDE LAYOUT'S THREE PLANES (DESIGN.md §4, "The large screen's three planes"). On a large screen
+     the navigation (the sidebar, the tab strip of the space, the strip's own ground) stands on the RECESS,
+     a column without focus on the page (--background), and the focused column, whole, on the PAPER: the
+     lightest surface on the screen in both halves, so the eye lands on the work. Both are DERIVED from the
+     theme's own tokens, so every theme gets the three planes without naming them; a theme may set either
+     one (optional, schema version 3) and need not.
+       recess: the page's own lightness minus 0.05. A page that is already black clamps at the page; then
+               the paper and the focus frame carry the order alone.
+       paper:  the card, 0.05 lighter, at most white. The card alone (L 0.235 on a 0.17 page in dark) was
+               too faint a lift to read as a different surface; in light the card is white already.
+     Relative colour, not color-mix: no token is darker than the page in dark, so no mix can reach the
+     recess. */
+  --surface-recess: oklch(from var(--background) calc(l - 0.05) c h);
+  --surface-paper: oklch(from var(--card) min(1, calc(l + 0.05)) c h);
   /* Light is darkened off stock shadcn (0.708 → 0.62): at 0.708 the focus ring measures 2.58:1 on
      white, under the 3:1 WCAG 1.4.11 floor for a non-text indicator — and components draw it at
      `ring-ring/50`, which halves that again. On an app whose buttons type into a live shell, a focus
@@ -707,6 +721,8 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-rule: var(--rule);
+  --color-surface-recess: var(--surface-recess);
+  --color-surface-paper: var(--surface-paper);
   --color-ring: var(--ring);
   --color-band-ground: var(--band-ground);
   --color-band-rule: var(--band-rule);

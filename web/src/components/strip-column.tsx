@@ -210,7 +210,9 @@ export function PaneColumnBody({
 
   return (
     <>
-      <div data-slot="column-body" className="relative min-h-0 min-w-0 flex-1 border-t border-rule">
+      {/* `border-transparent`: the header above closes this seam with its own rule (DESIGN.md §4, "A boundary
+          is drawn once"); the 1px stays so the body starts where it did. */}
+      <div data-slot="column-body" className="relative min-h-0 min-w-0 flex-1 border-t border-transparent">
         <TailRoomContext.Provider value={modelTagShows({ model: pane.model, usage: pane.usage }) ? MODEL_TAG_ROOM : 0}>
         {chat ? (
           <SessionStream
@@ -298,7 +300,45 @@ export function PaneColumnBody({
   );
 }
 
-/** The class a column's frame takes: reserved on every column, drawn on the focused one (§2). */
-export function columnFrame(focused: boolean, framed: boolean): string {
-  return cn("border-2", focused && framed ? "border-pane-active" : "border-transparent");
+/**
+ * THE FOCUSED COLUMN IS THE PAPER (DESIGN.md §4, "The large screen's three planes"). The whole column
+ * stands on `--surface-paper`, the lightest surface on the screen, and a column without focus on the page.
+ * Each plane re-points the grounds its children already read, so the pane's own header (`bg-band-ground`),
+ * its bottom block (`bg-chrome`) and the status marks backed with those grounds follow the plane, and the
+ * phone, which never draws a column frame, keeps its own. On the paper the inert fill (`--muted`) is the
+ * page: a run of tool steps, a code block and the reply box are set into the paper in the page's tone.
+ *
+ * Inside both planes: the Belt takes ONE tint, `--muted` at 20% over its ground, which sits between the
+ * ground and the reply box (`--muted` at 40%) and so is never lighter than the paper; its brand wash is a
+ * phone look and is dropped here. The reading area's top rule is not drawn: the header above already
+ * closes that seam (§4, "A boundary is drawn once"), 4px higher.
+ */
+export const PAPER_PLANE =
+  "bg-surface-paper [--band-ground:var(--surface-paper)] [--chrome:var(--surface-paper)] [--muted:var(--background)]";
+export const PAGE_PLANE = "bg-background [--band-ground:var(--background)] [--chrome:var(--background)]";
+const IN_EITHER_PLANE =
+  "[&_[data-slot=composer-actions]]:bg-muted/20 [&_[data-slot=belt-track]]:bg-transparent [&_[data-slot=pane-reading]]:border-t-transparent";
+
+/**
+ * THE NAVIGATION'S EDGE: the sidebar's right edge and the tab strip's bottom edge. The step from the recess
+ * to the page is the cut, so the edge is only the recess drawn 30% toward `--border`: quieter than that
+ * step, and still a faint line where the step is nil (a black page, which clamps the recess to it).
+ */
+export const NAV_EDGE = "border-[color-mix(in_oklch,var(--surface-recess)_70%,var(--border))]";
+
+/**
+ * THE FOCUS FRAME: the theme's `--pane-active` mixed 65% into the page. At full strength it was the
+ * brightest mark on the screen (18:1); mixed, it holds 3:1 or more against the paper inside it and the page
+ * or the recess beside it in every shipped theme (`e2e/wide-planes.spec.ts` measures it), so the focus
+ * still reads where the paper cannot show it: the Terminal view, whose mirror stays dark, and a theme whose
+ * page is black.
+ */
+export const FOCUS_FRAME = "border-[color-mix(in_oklch,var(--pane-active)_65%,var(--background))]";
+
+/**
+ * The class a column's frame takes: the plane, and the 2px frame, reserved on every column and drawn on the
+ * focused one, with one column in the strip too, so a focus change recolours and moves nothing (§2).
+ */
+export function columnFrame(focused: boolean): string {
+  return cn("border-2", IN_EITHER_PLANE, focused ? cn(PAPER_PLANE, FOCUS_FRAME) : cn(PAGE_PLANE, "border-transparent"));
 }

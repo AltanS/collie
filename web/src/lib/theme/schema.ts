@@ -22,7 +22,7 @@
 // wrong shape.
 //
 // VERSIONS. The parser reads 1, 2, 3, 4 and 5 and hands back the LOWEST version that holds the content: 5
-// when the theme sets a `characterMotion`, else 4 when it sets a `character` or `glyphs`, else 3 when it sets an optional token (`pane-active`, `tab-active`, `find`), else 2 when it carries
+// when the theme sets a `characterMotion`, else 4 when it sets a `character` or `glyphs`, else 3 when it sets an optional token (`pane-active`, `tab-active`, `find`, `surface-recess`, `surface-paper`), else 2 when it carries
 // a surface block, a display face or a palette, else 1. So a colour-only theme is stored and
 // exported as version 1, and a Collie from before version 2 (1.21.x after a rollback) still reads it.
 // A version 1 file has no surface block, which means the default word for every shape token. A
@@ -135,12 +135,30 @@ export type ThemeToken = (typeof THEME_TOKENS)[number];
  * open pane, drawn only under the surface word `tabs: folder` (lib/tab-look.ts); its `:root` pair is
  * the foreground ink of each half. `find` is the ground of a found or matched piece of text (Find in
  * Chat, the session filter's matched letters); it may carry alpha, and its `:root` pair is the amber
- * the app drew before the token existed. All three are appended after the list above, so no earlier
- * file or order moves.
+ * the app drew before the token existed. `surface-recess` and `surface-paper` are the large screen's
+ * recess and paper; their default is derived (see {@link DERIVED_THEME_TOKENS}). All are appended after
+ * the list above, so no earlier file or order moves.
  */
-export const OPTIONAL_THEME_TOKENS = ["pane-active", "tab-active", "find"] as const;
+export const OPTIONAL_THEME_TOKENS = ["pane-active", "tab-active", "find", "surface-recess", "surface-paper"] as const;
 
 export type OptionalThemeToken = (typeof OPTIONAL_THEME_TOKENS)[number];
+
+/**
+ * The optional tokens whose default is DERIVED from the theme's own tokens rather than a fixed pair: the
+ * large screen's recess and paper (DESIGN.md §4, index.css). Their `:root` value is one expression for
+ * both halves, so the theme file for `collie` holds no value for them, and a theme that sets one half
+ * only gets the expression in the other (`lightDark`).
+ */
+export const DERIVED_THEME_TOKENS = {
+  "surface-recess": "oklch(from var(--background) calc(l - 0.05) c h)",
+  "surface-paper": "oklch(from var(--card) min(1, calc(l + 0.05)) c h)",
+} as const satisfies Partial<Record<OptionalThemeToken, string>>;
+
+export type DerivedThemeToken = keyof typeof DERIVED_THEME_TOKENS;
+
+export function isDerivedThemeToken(token: string): token is DerivedThemeToken {
+  return Object.hasOwn(DERIVED_THEME_TOKENS, token);
+}
 
 /** Every token a half may name: the 43, then the optional ones. */
 export const ALL_THEME_TOKENS = [...THEME_TOKENS, ...OPTIONAL_THEME_TOKENS] as const;
@@ -1282,8 +1300,9 @@ export function fillHalves(theme: Theme, base: Theme): FilledHalves {
  * happen when the base theme itself is incomplete: a build error, not a user's.
  */
 export function lightDark(filled: FilledHalves, token: AnyThemeToken): string {
-  const l = filled.light[token];
-  const d = filled.dark[token];
+  const derived = isDerivedThemeToken(token) ? DERIVED_THEME_TOKENS[token] : undefined;
+  const l = filled.light[token] ?? derived;
+  const d = filled.dark[token] ?? derived;
   if (l === undefined || d === undefined) throw new Error(`theme token "${token}" has no value in both halves`);
   return `light-dark(${l}, ${d})`;
 }
@@ -1408,6 +1427,13 @@ export function contrastReport(theme: Theme, base: Theme): Finding[] {
       const value =
         mark === undefined || page === undefined || ink === undefined ? 1 : ratio(ink, over(mark, page, mark.alpha));
       push("foreground on find", value, TEXT_FLOOR);
+    }
+    // The large screen's recess and paper carry the sidebar's and the focused pane's text: the ink and
+    // the muted ink are held to the text floor on each, only in a half that sets it.
+    for (const plane of ["surface-recess", "surface-paper"] as const) {
+      if (theme[half]?.[plane] === undefined) continue;
+      push(`foreground on ${plane}`, contrast(values.foreground ?? "", values[plane] ?? ""), TEXT_FLOOR);
+      push(`muted-foreground on ${plane}`, contrast(values["muted-foreground"] ?? "", values[plane] ?? ""), TEXT_FLOOR);
     }
 
     // THE GROUND AND THE BAND (M57 spec 17). A gradient or a grain changes the page colour under the

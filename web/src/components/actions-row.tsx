@@ -779,6 +779,8 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, durable, sto
         {(scrollerRef) => (
           <div
             ref={scrollerRef}
+            // The large screen's columns drop the brand wash by this name (strip-column.tsx, `columnFrame`).
+            data-slot="belt-track"
             className={cn(
               STRIP_SCROLLER,
               "bg-primary/10 py-(--belt-pad) overflow-y-hidden",
