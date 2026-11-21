@@ -103,10 +103,12 @@ describe("StreamBlock at rest", () => {
   it("draws the ⋯ as a 20px chip with a hairline on the chrome ground, inside the padding, with a 44px reach", () => {
     block({ onActions: vi.fn() });
     const chip = more();
-    for (const cls of ["absolute", "size-5", "top-3", "right-0.5", "rounded-sm", "border", "border-border", "bg-chrome", "before:-inset-3", "focus-visible:outline-offset-0"]) {
+    for (const cls of ["absolute", "size-5", "top-3", "right-0.5", "rounded-sm", "border", "border-border", "bg-chrome", "before:-inset-3", "focus-visible:-outline-offset-2"]) {
       expect(chip.className).toContain(cls);
     }
     expect(chip.className).not.toMatch(/(^|\s)right-0(\s|$)/);
+    // The ring sits inside the box (FOCUS_RING_INSET): the stream clips its overflow 2px to the right.
+    expect(chip.className).not.toContain("focus-visible:outline-offset-0");
     expect(chip).toHaveAttribute("type", "button");
   });
 
