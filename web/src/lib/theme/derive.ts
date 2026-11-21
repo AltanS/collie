@@ -43,7 +43,7 @@ export const PLANE_GAP = 0.025;
  * a relation): the first frame (`public/theme-init.js`) then ignores the values an older version stored. The golden
  * values in `derive.golden.test.ts` show such a change as a diff.
  */
-export const DERIVE_VERSION = 2;
+export const DERIVE_VERSION = 3;
 
 /** The planes a state fill is made for. */
 export const PLANES = ["page", "recess", "paper"] as const;
@@ -205,11 +205,13 @@ export type Floor = (c: Lab, margin: boolean) => boolean;
  * and chroma stay. When no lightness meets it, the one with the best `score` (how close it came).
  */
 export function pushLightness(start: Lab, direction: 1 | -1, floor: Floor, score: (c: Lab) => number, bothWays = true): Lab {
-  if (floor(start, false)) return start;
+  // A start that is not moved is still returned as painted: the colour checked is the colour on the screen.
+  if (floor(start, false)) return painted(start);
   for (const dir of bothWays ? [direction, -direction] : [direction]) {
     for (let L = start[0] + dir * STEP; L >= 0 && L <= 1; L += dir * STEP) {
-      const c = withLightness(start, L);
-      if (floor(c, true)) return painted(c);
+      // The floor is checked on the painted value, the one returned, so a value on a floor's edge cannot pass and then fail.
+      const c = painted(withLightness(start, L));
+      if (floor(c, true)) return c;
     }
   }
   let best = start;
@@ -366,8 +368,10 @@ function states(w: Work): void {
 function pushTiers(start: Lab, direction: 1 | -1, tiers: readonly Floor[], score: (c: Lab) => number): Lab {
   for (const bothWays of [false, true]) {
     for (const tier of tiers) {
+      // The relation's own value is checked as it is, with no margin; a pushed one with it.
+      if (tier(start, false)) return painted(start);
       const found = pushLightness(start, direction, tier, () => Number.NEGATIVE_INFINITY, bothWays);
-      if (tier(found, found !== start)) return found;
+      if (tier(found, true)) return found;
     }
   }
   return pushLightness(start, direction, () => false, score);
@@ -404,6 +408,76 @@ function edgeFirm(w: Work): void {
 
 const STEPS: readonly ((w: Work) => void)[] = [planes, states, ring, edgeFirm];
 
+/** A floor the derivation could not meet: the token, the floor in words, and the value it reached. */
+export interface UnmetFloor {
+  token: DerivedToken;
+  floor: string;
+  reached: number;
+}
+
+/**
+ * How the planes ended: in the light half a recess lighter than the page (the order turned over, as `placePlane` may do
+ * when the muted ink leaves no darker step), and planes that sit on each other (within 0.005).
+ */
+export interface PlaneOrder {
+  recessLighterInLight: boolean;
+  collapsed: boolean;
+}
+
+/** What `deriveReport` returns: the tokens, the floors not met, and how the planes ended. */
+export interface DeriveReport {
+  tokens: DerivedHalf;
+  unmet: UnmetFloor[];
+  planes: PlaneOrder;
+}
+
+/**
+ * The derived tokens and an honest account: which floors were not met (where floors fight, the code takes the best it
+ * can reach), and how the planes ended. Unused by the app for now; derive.test.ts reads it. Each floor is checked on
+ * the finished values with the definitions the steps use, without the margin a pushed value is given.
+ */
+export function deriveReport(tokens: Half, half: Half2): DeriveReport {
+  const out = deriveTokens(tokens, half);
+  const page = parseColour(tokens.background ?? "");
+  const token = (name: AnyThemeToken): Lab => parseColour(tokens[name] ?? "", page);
+  const at = (name: DerivedToken): Lab => parseColour(out[name]);
+  const fg = token("foreground");
+  const muted = token("muted-foreground");
+  const recess = at("surface-recess");
+  const paper = at("surface-paper");
+  const unmet: UnmetFloor[] = [];
+  const need = (ok: boolean, name: DerivedToken, floor: string, reached: number) => {
+    if (!ok) unmet.push({ token: name, floor, reached: Math.round(reached * 1000) / 1000 });
+  };
+  for (const [name, plane] of [["surface-recess", recess], ["surface-paper", paper]] as const) {
+    need(inkHolds(muted, plane, page), name, "muted ink 4.5:1 (or the page's)", contrast(muted, plane));
+    need(inkHolds(fg, plane, page), name, "ink 4.5:1 (or the page's)", contrast(fg, plane));
+    need(distance(plane, page) >= PLANE_GAP, name, `${String(PLANE_GAP)} off the page`, distance(plane, page));
+  }
+  need(distance(paper, recess) >= PLANE_GAP, "surface-paper", `${String(PLANE_GAP)} off the recess`, distance(paper, recess));
+  const grounds = { page, recess, paper };
+  for (const plane of PLANES) {
+    const g = grounds[plane];
+    for (const [kind, floor] of [["hover", HOVER_FLOOR], ["on", STATE_FLOOR], ["open", STATE_FLOOR]] as const) {
+      const name: DerivedToken = `state-${kind}-${plane}`;
+      need(distance(at(name), g) >= floor, name, `${String(floor)} off its ground`, distance(at(name), g));
+    }
+    for (const kind of ["hover", "on"] as const) {
+      const name: DerivedToken = `state-${kind}-${plane}`;
+      need(inkHolds(fg, at(name), page), name, "ink 4.5:1 (or the page's)", contrast(fg, at(name)));
+    }
+  }
+  const fills = PLANES.flatMap((plane) => [at(`state-hover-${plane}`), at(`state-on-${plane}`)]);
+  const ringGrounds = [page, token("card"), recess, paper, token("secondary"), token("muted"), ...fills];
+  const ringWorst = Math.min(...ringGrounds.map((g) => contrast(at("ring"), g)));
+  need(ringWorst >= RING_FLOOR, "ring", `${String(RING_FLOOR)}:1 on every ground`, ringWorst);
+  const edgeWorst = Math.min(...[page, recess, paper].map((g) => contrast(at("edge-firm"), g)));
+  need(edgeWorst >= EDGE_FLOOR, "edge-firm", `${String(EDGE_FLOOR)}:1 on the recess, the page and the paper`, edgeWorst);
+  const recessLighterInLight = half === "light" && recess[0] > page[0] + 1e-3;
+  const collapsed = distance(recess, page) < 0.005 || distance(paper, page) < 0.005 || distance(paper, recess) < 0.005;
+  return { tokens: out, unmet, planes: { recessLighterInLight, collapsed } };
+}
+
 /**
  * The derived tokens of one half of a theme, each an `oklch()` value. `tokens` is the half filled from Collie
  * (`fillHalves`), so every base token is there.
@@ -412,6 +486,8 @@ export function deriveTokens(tokens: Half, half: Half2): DerivedHalf {
   const pageValue = tokens.background;
   if (pageValue === undefined) throw new Error("derive: the half has no background");
   const page = parseColour(pageValue);
+  // A token with alpha (a `ring` or a `muted-foreground` with `/ A`) is measured as laid over the page; over the recess,
+  // the paper or a fill it paints a little differently, and that difference is not measured.
   const colour = (token: AnyThemeToken): Lab => {
     const v = tokens[token];
     if (v === undefined) throw new Error(`derive: the half has no "${token}"`);

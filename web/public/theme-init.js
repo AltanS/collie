@@ -67,7 +67,7 @@
     "surface-recess", "surface-paper"
   ];
   var COLOUR = /^(?:#(?:[0-9a-f]{6}|[0-9a-f]{8})|oklch\( ?(?:\d+(?:\.\d+)?|\.\d+) (?:\d+(?:\.\d+)?|\.\d+) (?:\d+(?:\.\d+)?|\.\d+)(?: \/ (?:\d+(?:\.\d+)?|\.\d+)%?)? ?\))$/;
-  var DERIVE_VERSION = 2, SHIPPED_HASH = { nightwatch: "80c6aa12", daylight: "892cb701", harbour: "291dc749" };
+  var DERIVE_VERSION = 3, SHIPPED_HASH = { nightwatch: "80c6aa12", daylight: "892cb701", harbour: "291dc749" };
   var DERIVED = ["surface-recess", "surface-paper", "state-hover-page", "state-hover-recess", "state-hover-paper", "state-on-page",
     "state-on-recess", "state-on-paper", "state-open-page", "state-open-recess", "state-open-paper", "ring", "edge-firm"];
   var ok = function (v) { return typeof v === "string" && v.length <= 64 && COLOUR.test(v); };

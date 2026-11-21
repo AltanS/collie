@@ -8,6 +8,7 @@ import {
   formatColour,
   rgbToLab,
   DERIVED_TOKENS,
+  deriveReport,
   deriveTokens,
   EDGE_FLOOR,
   distance,
@@ -269,4 +270,41 @@ describe("a few thousand random halves", () => {
     }
     expect(halves).toBe(3000);
   }, 120_000);
+});
+
+// THE HONEST ACCOUNT (deriveReport): where floors fight, the derivation takes the best it can reach and says so. Over
+// the three bundled looks and the 24 generated themes, the counts are pinned, so a change shows here as a number.
+describe("the floors the derivation could not meet, over the 27 looks", () => {
+  it("are counted, and the counts hold", () => {
+    const looks: [string, Theme][] = [
+      ["nightwatch", read("nightwatch")],
+      ["daylight", read("daylight")],
+      ["harbour", read("harbour")],
+      ...generateThemes().themes.map((g, i): [string, Theme] => [`gen-${String(i + 1)}-${g.profile}`, g.theme]),
+    ];
+    const themesWith = { ringUnmet: new Set<string>(), recessLighterInLight: new Set<string>(), collapsed: new Set<string>(), anyUnmet: new Set<string>() };
+    for (const [id, theme] of looks) {
+      for (const half of ["light", "dark"] as const) {
+        const r = deriveReport(filled(theme)[half], half);
+        if (r.unmet.some((u) => u.token === "ring")) themesWith.ringUnmet.add(id);
+        if (r.planes.recessLighterInLight) themesWith.recessLighterInLight.add(id);
+        if (r.planes.collapsed) themesWith.collapsed.add(id);
+        if (r.unmet.length > 0) themesWith.anyUnmet.add(id);
+        for (const u of r.unmet) expect(Number.isFinite(u.reached), `${id} ${half} ${u.token}`).toBe(true);
+      }
+    }
+    expect({
+      ringUnmet: themesWith.ringUnmet.size,
+      recessLighterInLight: themesWith.recessLighterInLight.size,
+      collapsed: themesWith.collapsed.size,
+      anyUnmet: themesWith.anyUnmet.size,
+    }).toMatchInlineSnapshot(`
+      {
+        "anyUnmet": 10,
+        "collapsed": 5,
+        "recessLighterInLight": 2,
+        "ringUnmet": 0,
+      }
+    `);
+  });
 });
