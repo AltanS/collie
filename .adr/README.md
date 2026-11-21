@@ -142,7 +142,7 @@ The rule today: [0144](./0144-one-lead-one-door-and-the-operator-moves-the-crown
 
 ### Update, release and packaging
 
-The rule today: 0143 is the live record, and it names the code that holds each rule. The install kind picks the path once; a Herdr-managed checkout advances in place and is never re-linked, and every other install stages a new version beside the live one and flips `current`, with one rollback at most. A routine update stays inside the installed major, and `--major` is the consent to cross one. Each machine is on one release line, Stable or Edge; switching installs nothing, and a machine goes down a version only by a rollback or a switch back to Stable. State files only grow. A crew member takes its lead's release from GitHub by its own decision, and a crew fault blocks the lead only when the update makes it worse. The phone shows a run in one update mode, decided by one reducer. Separate records stay live for the roads they close: a packaged install is not ours to update (0035), urgency rides one changelog line (0046), Windows is a supported host (0075), the math engines are a release asset fetched on a tap (0132).
+The rule today: 0143 is the live record, and it names the code that holds each rule. The install kind picks the path once; a Herdr-managed checkout advances in place and is never re-linked, and every other install stages a new version beside the live one and flips `current`, with one rollback at most. A routine update stays inside the installed major, and `--major` is the consent to cross one. Each machine is on one release line, Stable or Edge; switching installs nothing, and a machine goes down a version only by a rollback or a switch back to Stable. State files only grow. A crew member takes its lead's release from GitHub by its own decision, and a crew fault blocks the lead only when the update makes it worse. The phone shows a run in one update mode, decided by one reducer. Separate records stay live for the roads they close: a packaged install is not ours to update (0035), urgency rides one changelog line (0046), Windows is a supported host (0075), the math engines are a release asset fetched on a tap (0132). Inside the web app, the screens a first paint does not need are lazy routes that the app preloads once it is idle, so a tab open through an update still opens them; the precache cap stays at 3 MiB and its history is in 0169.
 
 | # | Decision | Status |
 | --- | --- | --- |
@@ -161,6 +161,7 @@ The rule today: 0143 is the live record, and it names the code that holds each r
 | [0075](./0075-windows-is-a-supported-host.md) | Windows 11 x64 with Herdr is a supported host, held by CI and a VM rehearsal. | Accepted |
 | [0110](./0110-two-release-lines.md) | Two release lines, Stable and Edge; the switch installs nothing; state files only grow. | Superseded by 0143 |
 | [0132](./0132-the-math-engines-are-a-pack-the-host-downloads.md) | The math engines are one release asset that the host downloads only on a tap. | Accepted |
+| [0169](./0169-screens-load-on-demand-and-are-preloaded-when-idle.md) | Screens a first paint does not need are lazy routes (`lazyScreen`, `lazyChunk` for other doors), preloaded once the app is idle; the precache cap and its history. | Accepted |
 
 ### Sends and the input box
 
