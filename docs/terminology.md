@@ -77,6 +77,12 @@ The list of every keyboard action with its keys, opened with the [prefix key](#p
 `?`. It also names each line of `shortcuts.toml` that Collie dropped, and why
 ([Keyboard shortcuts](keyboard-shortcuts.md#the-actions)).
 
+## Key cap
+
+The small label that shows a key on a control while the [prefix key](#prefix-key) waits, for example
+`g` on the Actions button. It shows the key you set in `shortcuts.toml`, and only on a control you
+can see ([Keyboard shortcuts](keyboard-shortcuts.md#the-prefix)).
+
 ## Actions
 
 The searchable list of everything Collie can do on this screen, and of the panes to go to. An action

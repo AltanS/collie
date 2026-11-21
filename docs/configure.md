@@ -1560,7 +1560,8 @@ beside that button and does not darken the page. A phone, a small tablet, a fold
 **Settings.** From 900 pixels wide the sections of Settings stand in a list at the left edge of the
 window, like the sidebar beside your panes, and the section you chose opens beside it. The list stays
 in view while you change a setting, and the arrow keys walk it. One header spans the window: Back
-leaves Settings, and on a page one level down or more it names the path, such as Tricks / CI. Every
+leaves Settings for the page you opened it from, and on a page one level down or more the header
+names the path, such as Tricks / CI. Every
 address keeps working, and the browser's Back returns to the section before. Settings itself opens
 Updates while a release waits, and Appearance otherwise. Machines is a row of the list that opens
 its own page. A phone, a tablet and **Off** keep Settings as one page.
