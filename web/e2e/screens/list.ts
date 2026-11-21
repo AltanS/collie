@@ -65,7 +65,7 @@ export const SCREENS: readonly Screen[] = [
   { id: "dashboard-crew", route: "/", path: "/", title: "Dashboard, a crew of machines", wide: "designed", state: "three machines", setup: "crew" , waive: { "targets@390": PHONE_TARGETS } },
   { id: "dashboard-new-tab", route: "/", path: "/", title: "New tab dialog over the Dashboard", wide: "designed", state: "New tab dialog open", setup: "newTab" , waive: { "targets@390": PHONE_TARGETS } },
   { id: "dashboard-row-menu", route: "/", path: "/", title: "A row's menu over the Dashboard", wide: "designed", state: "row menu open", setup: "rowMenu" , waive: { "targets@390": PHONE_TARGETS } },
-  { id: "space", route: "space/:spaceId", path: "/space/w2", title: "The space address", wide: "designed", setup: "herd12", note: "on a large screen the address opens the pane view of the Space's open tab, a Space with no pane the Dashboard (ADR 0158, addendum 2026-11-21); the phone keeps the space page" },
+  { id: "space", route: "space/:spaceId", path: "/space/w2", title: "The space address", wide: "designed", setup: "herd12", note: "on a large screen the address opens the pane view of the Space's open tab, a Space with no pane the Dashboard (ADR 0173); the phone keeps the space page" },
   { id: "space-changes", route: "space/:spaceId/changes/*", path: "/space/w1/changes", title: "Changes of a Space", wide: "designed", state: "the folder tree" },
 
   // ── A session ────────────────────────────────────────────────────────────
@@ -92,7 +92,7 @@ export const SCREENS: readonly Screen[] = [
   { id: "trick-card", route: "trick-card/:decisionId", path: "/trick-card/dc_screens0001", title: "A card of Collie's own", wide: "column", setup: "hillCard" },
 
   // ── New ──────────────────────────────────────────────────────────────────
-  { id: "new", route: "new", path: "/new", title: "New over the Dashboard", wide: "designed", setup: "newOver", note: "on a large screen `/new` is the Dashboard with New as a dialog over it (ADR 0158, addendum 2026-11-21); the phone keeps the page", waive: { "targets@390": PHONE_TARGETS } },
+  { id: "new", route: "new", path: "/new", title: "New over the Dashboard", wide: "designed", setup: "newOver", note: "on a large screen `/new` is the Dashboard with New as a dialog over it (ADR 0173); the phone keeps the page", waive: { "targets@390": PHONE_TARGETS } },
   { id: "new-over-pane", route: "new", path: "/pane/w1%3Ap1?over=%2Fnew%3Fpane%3Dw1%253Ap1", title: "New over a session", wide: "designed", state: "New over the pane view", setup: "newOverPane", widths: [1440], note: "New over a screen exists only in the large-screen layout" },
   { id: "new-browse", route: "new", path: "/new", title: "New with Browse open", wide: "designed", state: "Browse open", setup: "newBrowse", widths: [1440], note: "the phone's page is the entry `new`" },
   { id: "new-worktree", route: "new", path: "/new", title: "New with New worktree on", wide: "designed", state: "New worktree on", setup: "newWorktree", widths: [1440], note: "the phone's page is the entry `new`" },

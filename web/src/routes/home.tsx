@@ -380,7 +380,7 @@ export function HomeRoute() {
   // Tricks Space) stand in one Space's width after the last Space.
   const gridList = wide && view === "dashboard" && !screenless;
   const inColumn = (node: ReactNode) => (wide ? <WideColumn width={columnWidth}>{node}</WideColumn> : node);
-  // The Files view on a large screen (ADR 0158, addendum 2026-11-21): one line a space, in a column of at most
+  // The Files view on a large screen (ADR 0173): one line a space, in a column of at most
   // FILES_VIEW_MAX px that starts at the grid's left edge, under the mark, and scrolls with the page.
   const filesWide = wide && view === "changes";
   const filesWidth = Math.min(gridWidth(columns), FILES_VIEW_MAX);

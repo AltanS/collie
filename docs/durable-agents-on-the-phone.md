@@ -122,10 +122,10 @@ Collie tells you how a question ended when you did not answer it, and why a dura
 A question you answered from the phone, or one that ended because you stopped the turn, leaves no
 such line. Your tap already had its card.
 
-![A refused durable agent's home: Program speaks wire v2, this Collie speaks v1.](images/programs/program-refused-version.png)
+![A refused durable agent's home: The durable agent speaks wire v2, this Collie speaks v1.](images/programs/program-refused-version.png)
 
-The caution box says which wire version each side speaks, for example "Program speaks wire v2, this
-Collie speaks v1. Update Collie, or the durable agent's SDK." Update the older side. [Versions](durable-agents.md#versions)
+The caution box says which wire version each side speaks, for example "The durable agent speaks wire
+v2, this Collie speaks v1. Update Collie, or the agent's SDK." Update the older side. [Versions](durable-agents.md#versions)
 has the rule.
 
 ## The chat

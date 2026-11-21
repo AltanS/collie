@@ -105,7 +105,7 @@ export function SpaceRoute() {
     }
   }, [gone, data.bridge, data.error, data.scope, nav, spaceId]);
 
-  // ON A LARGE SCREEN THE SPACE HAS NO PAGE OF ITS OWN (ADR 0158, addendum 2026-11-21): the Dashboard shows every
+  // ON A LARGE SCREEN THE SPACE HAS NO PAGE OF ITS OWN (ADR 0173): the Dashboard shows every
   // Space as a column and the pane view shows a Space's tabs and panes. So `/space/:id` opens the pane view of the
   // Space's open tab, at the pane that tab last showed, with the sidebar on that row (lib/new-over.ts); a Space
   // with no pane has no column there either, and opens the Dashboard at its top. The phone, the tablet and Large-screen layout Off keep this page. The move

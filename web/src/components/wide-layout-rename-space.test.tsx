@@ -22,7 +22,7 @@ import { server } from "@/test/setup";
 
 import { ShortcutBarHost } from "./shortcut-bar-host";
 
-// RENAME SPACE IN THE PANE VIEW (ADR 0165, ADR 0158 addendum 2026-11-21). On a large screen `/space/:id` opens the
+// RENAME SPACE IN THE PANE VIEW (ADR 0165, ADR 0173). On a large screen `/space/:id` opens the
 // pane view, so the Actions palette's "Rename space" answers there, for the space in view, where the multiplexer
 // declares `renameSpace`; it opens the phone space strip's own sheet on its rename view and posts the same rename.
 vi.mock("@/components/agent-chat", () => ({

@@ -20,7 +20,7 @@ import type { WorkspaceChangeCount } from "@/lib/workspace-changes";
 import type { FilesReadState, TreeRead } from "@/routes/changes-files";
 import { cn } from "@/lib/utils";
 
-// FILES AND CHANGES ON A LARGE SCREEN (ADR 0158, addendum 2026-11-21). The parts the Changes screen
+// FILES AND CHANGES ON A LARGE SCREEN (ADR 0173). The parts the Changes screen
 // draws only in the `expanded` width class: the two columns (the tree or the list of changes at the left on the
 // navigation's recess, the chosen file at the right on the page), the folder reads the left column needs, the tree that
 // opens folders in place, and the calm right column while nothing is chosen. The screen's state stays in `ChangesScreen`:

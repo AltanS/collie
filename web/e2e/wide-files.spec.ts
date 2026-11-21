@@ -7,7 +7,7 @@ import { en } from "@/lib/i18n/messages/en";
 import { installApiStub } from "./fixtures/api";
 import { wideSnapshot } from "./fixtures/wide-herd";
 
-// FILES AND CHANGES ON A LARGE SCREEN (ADR 0158, addendum 2026-11-21). From 900px Files and Changes are two columns
+// FILES AND CHANGES ON A LARGE SCREEN (ADR 0173). From 900px Files and Changes are two columns
 // under one header: the tree or the list of changes on the navigation's recess at the left, the open file at the right.
 // jsdom lays nothing out, so a real engine checks that both columns stand inside the window, that a click on a file
 // changes the right column and the address and leaves the tree where it was, that Back returns, that the arrows walk the

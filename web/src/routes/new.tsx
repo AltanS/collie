@@ -126,8 +126,8 @@ export function NewRoute() {
 
 /**
  * How the form is framed: `page`, the screen at `/new` (the phone, the tablet, Large-screen layout Off), or
- * `dialog`, drawn over the screen it was called from on a large screen (components/new-over.tsx, ADR 0158
- * addendum 2026-11-21). The fields, their words, order and behaviour are the same in both.
+ * `dialog`, drawn over the screen it was called from on a large screen (components/new-over.tsx, ADR 0173).
+ * The fields, their words, order and behaviour are the same in both.
  */
 export type NewFrame = "page" | "dialog";
 

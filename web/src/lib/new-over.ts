@@ -1,4 +1,4 @@
-// NEW OVER THE SCREEN IT WAS CALLED FROM (ADR 0158, addendum 2026-11-21). On a large screen (`expanded`, with
+// NEW OVER THE SCREEN IT WAS CALLED FROM (ADR 0173). On a large screen (`expanded`, with
 // Large-screen layout not Off) the New page and "Add your own" are not pages that replace the screen: the
 // screen keeps its own address and gains `over=<the New address>`, and the root draws New as a dialog over it
 // (components/new-over.tsx). Back pops that entry, so New is gone and the screen is exactly where it was. A

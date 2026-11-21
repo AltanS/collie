@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 
-// How a diff stands on a large screen (ADR 0158, addendum 2026-11-21): one column (`unified`, the phone's) or the old
+// How a diff stands on a large screen (ADR 0173): one column (`unified`, the phone's) or the old
 // lines beside the new (`split`). Until a person chooses, the width decides: side by side once the file's column is
 // {@link SPLIT_MIN_COLUMN_PX} wide or wider, one column below it. A choice is this DEVICE's, like the large-screen
 // layout's own (lib/wide-layout-store.ts): never written to a bridge, kept until the person chooses again. The phone and
