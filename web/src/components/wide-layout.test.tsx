@@ -256,7 +256,7 @@ describe("the sidebar", () => {
     // The phone's switcher list inside it stands on a card and marks its row with the accent: here both
     // are re-pointed, so the list takes the recess and the selected row the paper.
     expect(aside.className).toContain("[--card:var(--surface-recess)]");
-    expect(aside.className).toContain("[--accent:var(--surface-paper)]");
+    expect(aside.className).toContain("[--accent:var(--state-on-recess)]");
     expect(aside.className).toContain(NAV_EDGE);
     expect(aside.className).not.toContain("border-rule");
     expect(aside.style.width).toBe("320px");
@@ -350,12 +350,12 @@ describe("the sidebar", () => {
     const { container } = await mount("w1:p1", 1200);
     const toggle = q(container, '[data-slot="sidebar-toggle"]')!;
     expect(toggle.getAttribute("aria-expanded")).toBe("true");
-    expect(toggle.className).not.toContain("aria-expanded:bg-control-on");
+    expect(toggle.className).not.toContain("aria-expanded:bg-(--state-open)");
     expect(toggle.className).toContain("focus-visible:outline-2");
-    expect(toggle.className).toContain("hover:bg-accent");
+    expect(toggle.className).toContain("hover:bg-(--state-hover)");
     fireEvent.click(toggle);
     await waitFor(() => expect(q(container, '[data-slot="sidebar-toggle"]')?.getAttribute("aria-expanded")).toBe("false"));
-    expect(q(container, '[data-slot="sidebar-toggle"]')?.className).not.toContain("aria-expanded:bg-control-on");
+    expect(q(container, '[data-slot="sidebar-toggle"]')?.className).not.toContain("aria-expanded:bg-(--state-open)");
   });
 
   it("closes to a rail of icons with status marks, remembered on this device", async () => {
