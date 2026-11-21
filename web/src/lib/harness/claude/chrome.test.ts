@@ -101,7 +101,7 @@ describe("stripChrome — trims the input box off the tail", () => {
     const lines = fixtureLines("claude--fresh-idle.txt");
     const kept = joined(stripChrome(lines));
     expect(stripChrome(lines).length).toBeLessThan(lines.length);
-    expect(kept).toContain("Welcome back Altan!"); // real content above survives
+    expect(kept).toContain("Welcome back Robin!"); // real content above survives
     expect(kept).not.toContain("← for agents"); // hint line gone
     expect(kept).not.toMatch(/\/fixture-sandbox\s*$/); // statusline gone
   });
@@ -180,7 +180,7 @@ describe("stripChrome — conservative: leaves non-chrome untouched", () => {
     const lines = fixtureLines("claude--draft-wrapped.txt");
     const kept = joined(stripChrome(lines));
     expect(stripChrome(lines).length).toBeLessThan(lines.length);
-    expect(kept).toContain("Welcome back altan!"); // real content above survives
+    expect(kept).toContain("Welcome back robin!"); // real content above survives
     expect(kept).not.toContain("soft-wraps"); // the wrapped-draft continuation is gone
     expect(kept).not.toContain("used to stay"); // ...and its last line too
     expect(kept).not.toContain("manual mode on"); // statusline/hint gone with the box

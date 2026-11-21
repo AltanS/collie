@@ -47,7 +47,7 @@ import { isolateSpaces } from "@/lib/spaces";
 import { ambientHost, ambientPanes, isMultiHost, paneRowKey, paneScope, sessionsOnHost } from "@/lib/hosts";
 import { setMachineHidden, useHiddenMachines } from "@/lib/hidden-machines";
 import type { ChangesLookup } from "@/lib/api";
-import { t } from "@/lib/i18n";
+import { t, tn } from "@/lib/i18n";
 import { prefetchFolders } from "@/lib/folders";
 import { glideForward } from "@/lib/glide";
 import { hillPath, homePath, newPath, trickSessionPath, spaceChangesPath, spacePath } from "@/lib/nav";
@@ -64,6 +64,10 @@ import { cn } from "@/lib/utils";
 import { contentWidth, SPACE_WIDTH, spaceColumns, WIDE_GUTTER } from "@/lib/wide-dashboard";
 import { isReadOnly, type AgentView, type ServerSummary, type SessionSummary } from "@/lib/types";
 import { useRootData } from "@/lib/route-data";
+import { Button } from "@/components/ui/button";
+import { FabButton } from "@/components/ui/fab";
+import { Icon } from "@/components/icons/icon";
+import { DashboardViews } from "@/components/dashboard-views";
 
 const NO_TRICK_SESSIONS: readonly AgentView[] = [];
 
@@ -338,6 +342,15 @@ export function HomeRoute() {
   );
   const columns = spaceColumns(scrollerWidth);
   const columnWidth = contentWidth(columns);
+  // ON A LARGE SCREEN THERE IS NO TAB BAR AT THE FOOT (ADR 0158, addendum 2026-11-21). The views, and the tricks'
+  // items after them, are the views control in the header, and the New button is the last control of the
+  // command row over the grid, so nothing floats. The phone, the tablet and Off keep the bar and the button.
+  const footBar = tabsShown && !wide;
+  const herdEmpty = data.agents.length === 0 && data.shellPanes.length === 0;
+  // An empty dashboard on a large screen is one column, centred both ways: the pairing words, the outage, or the
+  // first-start card, which is then the one way to the New page.
+  const emptyHome = wide && herdEmpty && view === "dashboard" && !screenless;
+  const fabFloat = fabOffered && !wide;
   // The install-count notice's one read: a device that has not spent the notice keeps the list unseen for
   // at most 400 ms while it answers, so the notice never opens above a list that has painted (calm load).
   const telemetry = useTelemetryNoticeRead();
@@ -363,7 +376,7 @@ export function HomeRoute() {
   const narrowed = (node: ReactNode) => (wide && !gridList ? <div className="mx-auto max-w-screen-sm">{node}</div> : node);
   const underGrid = (node: ReactNode) =>
     gridList ? (
-      <div style={{ width: SPACE_WIDTH }}>
+      <div className={cn(emptyHome && "mx-auto")} style={{ width: SPACE_WIDTH }}>
         <PhoneParts on>{node}</PhoneParts>
       </div>
     ) : (
@@ -388,12 +401,12 @@ export function HomeRoute() {
       <BuildStamp
         className={cn(
           "px-4 pt-3",
-          fabOffered ? (tabsShown ? "pb-20" : "pb-[calc(5rem_+_env(safe-area-inset-bottom))]") : tabsShown ? "pb-2" : "pb-[calc(0.5rem_+_env(safe-area-inset-bottom))]",
+          fabFloat ? (footBar ? "pb-20" : "pb-[calc(5rem_+_env(safe-area-inset-bottom))]") : footBar ? "pb-2" : "pb-[calc(0.5rem_+_env(safe-area-inset-bottom))]",
         )}
       />
     </>
   );
-  const tabBar = tabsShown && (
+  const tabBar = footBar && (
     <DashboardTabBar
       view={view}
       onSelect={setDashView}
@@ -409,6 +422,24 @@ export function HomeRoute() {
       onOpenSession={openTrickSession}
     />
   );
+  // The Hill's way in on a large screen: an icon button in the header's right cluster, with the bar's red count.
+  const hillButton = wide && bar.hill !== null && (
+    <Button
+      variant="ghost"
+      size="lg"
+      data-slot="header-hill"
+      className="relative size-11 px-0"
+      aria-label={bar.hill > 0 ? `${t("hill.title")}, ${tn("home.tabs.hill", bar.hill)}` : t("hill.title")}
+      onClick={() => nav.down(hillPath(data.scope))}
+    >
+      <Icon name={bar.hillNow ? "hill-now" : "hill"} className={cn("size-5", bar.hillNow && "text-status-working")} />
+      {bar.hill > 0 && (
+        <span aria-hidden className="absolute right-0.5 top-0.5 flex h-4 min-w-4 items-center justify-center rounded-sm bg-status-blocked px-1 text-[10px] leading-none font-semibold tabular-nums text-white">
+          {bar.hill}
+        </span>
+      )}
+    </Button>
+  );
   return (
     <div className={wide ? "mx-auto flex min-h-0 w-full flex-1 flex-col" : "mx-auto flex min-h-0 w-full max-w-screen-sm flex-1 flex-col"}>
       {/* The dashboard header: wordmark + the session switcher (dashboard-only), then the shared pill
@@ -416,8 +447,10 @@ export function HomeRoute() {
       <RouteHeader
         wordmark
         width={wide ? columnWidth : "column"}
+        span={wide}
         rightLead={
           <>
+            {hillButton}
             {/* Host first, then session — outer dimension first, and the two are deliberately
                 different shapes (bordered server pill vs filled layers capsule) so a glance can tell
                 "change machine" from "change session on this machine". Both self-hide. */}
@@ -428,25 +461,40 @@ export function HomeRoute() {
           </>
         }
         rightTrail={<SettingsGear scope={data.scope} />}
-      />
+      >
+        {wide && tabsShown && (
+          <DashboardViews
+            view={view}
+            onSelect={setDashView}
+            crew={multi}
+            files={!screenless}
+            blockedCount={blockedCount}
+            tabbarParts={bar.tabbarParts}
+            sessions={bar.sessions}
+            onOpenSession={openTrickSession}
+          />
+        )}
+      </RouteHeader>
 
       {/* Content region below the header: a viewport-clipped internal scroller. `relative` is
           load-bearing: it makes this scroller the containing block for its absolutely-positioned
           descendants. Tailwind's `sr-only` is `position: absolute`, so every status label in the
           list would otherwise escape this scroller's clip and grow the document's own scrollbar. */}
-      <div ref={setScroller} className={cn("relative flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto", telemetry.held && "invisible")}>
+      <div ref={setScroller} data-slot="home-scroller" className={cn("relative flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto", telemetry.held && "invisible")}>
         {/* A notice BELOW the header is content, not viewport chrome: it is an inset box on the
             page gutter, not a full-bleed strip. Full-bleed it ran its left edge 16px outside the
             list it sat on top of — two left edges stacked, the loudest misalignment on the page. */}
         {inColumn(
           <PhoneParts on={wide}>
-            <ReadOnlyBanner device={data.device} />
+            {/* Not paired on a large screen: the centred block below says it, with the command and the phone card,
+                so the strip would say it twice. The pane and Space screens keep the strip. */}
+            {!(wide && notPaired && data.error) && <ReadOnlyBanner device={data.device} />}
             {/* Once per device: the install count is on by default (M86 spec 02). Self-hides. */}
             <TelemetryNotice read={telemetry} />
           </PhoneParts>,
         )}
 
-        <main className="flex-1">
+        <main className={cn("flex-1", emptyHome && "flex flex-col justify-center")}>
           {inColumn(
             <>
           {/* THE TRICKS' TILES (the `dashboard` place, 2026-11-10): one per trick, in a strip at the top
@@ -534,7 +582,17 @@ export function HomeRoute() {
                     )
                   : undefined
               }
-              wide={gridList ? { columns } : undefined}
+              wide={
+                gridList
+                  ? {
+                      columns,
+                      tail:
+                        fabOffered ? (
+                          <FabButton size="compact" label={t("home.new.label")} busy={creatingSpace || launching.size > 0} onClick={openNew} />
+                        ) : undefined,
+                    }
+                  : undefined
+              }
             />,
             )
           )}
@@ -549,6 +607,8 @@ export function HomeRoute() {
               {/* Above Launch, so Launch keeps its place directly over the Spaces it creates into. */}
               {programsFirst && <ProgramSection programs={programs} servers={data.servers} onOpen={openProgram} />}
               <LaunchStrip open={launchOpen} onOpenChange={setLaunchOpen} scope={data.scope} />
+              {/* With no Space and no session the centred empty state is the whole page: no "Spaces (0)" beside it. */}
+              {!(wide && herdEmpty && data.workspaces.length === 0) && (
               <SpaceOverview
                 workspaces={isolateSpaces(data.workspaces, isolatedSpaces)}
                 agents={navPanes.agents}
@@ -561,6 +621,7 @@ export function HomeRoute() {
                 onOpenChange={setSpacesOpen}
                 scope={data.scope}
               />
+              )}
               {!programsFirst && <ProgramSection programs={programs} servers={data.servers} onOpen={openProgram} />}
               {/* The Tricks Space (M94 slice 03): a trick's own sessions, after the Programs, outside the
                   herd's groups and counts. Nothing when no trick has a session part. */}
@@ -573,7 +634,9 @@ export function HomeRoute() {
 
         {wide ? (
           <WideColumn width={columnWidth}>
-            <div style={{ width: SPACE_WIDTH }}>
+            {/* Under the grid the foot lines stand in the first Space's column; under a centred column (Files, Crew,
+                the durable home, an empty dashboard) they centre with it. */}
+            <div className={cn((emptyHome || !gridList) && "mx-auto")} style={{ width: SPACE_WIDTH }}>
               <PhoneParts on>{footer}</PhoneParts>
             </div>
           </WideColumn>
@@ -586,16 +649,10 @@ export function HomeRoute() {
           it holds. Crew first while a crew is configured, then Dashboard, the default, then Files, then
           the Hill, a fixed item that opens its own route, and the tricks' items after it. It sits OUTSIDE
           the scroller, so the content scrolls above it and a switch moves neither it nor the strip and
-          summary line at the top of the list. At every width: the dashboard has no sidebar on a wide
-          screen (the grid of Spaces and this bar are as wide as each other, ADR 0158), so nothing else offers these views. Its height is the same
-          56px row in both of its modes, so the sums below hold. */}
-      {wide && tabBar !== false ? (
-        <div className="mx-auto w-full" style={{ maxWidth: columnWidth }}>
-          {tabBar}
-        </div>
-      ) : (
-        tabBar
-      )}
+          summary line at the top of the list. Not on a large screen, where the views control in the header
+          offers the same views and items (ADR 0158, addendum 2026-11-21). Its height is the same 56px row in both of its
+          modes, so the sums below hold. */}
+      {tabBar}
 
       {/* Status overlay, anchored to the bottom of the viewport (no input here) — same slim line,
           floating so it never shifts the list. Stays outside the scroller so it never scrolls away.
@@ -610,11 +667,11 @@ export function HomeRoute() {
           the button's top edge, never over it. Capability, not the button's transient hides. */}
       <ToastViewport
         className={
-          tabsShown
-            ? fabOffered
+          footBar
+            ? fabFloat
               ? "bottom-[calc(3.5rem+1px+1rem+3rem)]"
               : "bottom-[calc(3.5rem+1px)]"
-            : fabOffered
+            : fabFloat
               ? "bottom-[calc(env(safe-area-inset-bottom)_+_1rem_+_3rem)]"
               : "bottom-[env(safe-area-inset-bottom)]"
         }
@@ -642,12 +699,12 @@ export function HomeRoute() {
         onPinChange={(pane) => setReveal({ rowKey: paneRowKey(pane) })}
       />
 
-      {fabOffered && !sheetOpen && !keyboardOpen && (
+      {fabFloat && !sheetOpen && !keyboardOpen && (
         <Fab
           label={t("home.new.label")}
           // The footer's 56px row and 1px rule and the safe area under it, then 16px of air.
           bottom={
-            tabsShown
+            footBar
               ? "bottom-[calc(3.5rem_+_1px_+_env(safe-area-inset-bottom)_+_1rem)]"
               : "bottom-[calc(env(safe-area-inset-bottom)_+_1rem)]"
           }

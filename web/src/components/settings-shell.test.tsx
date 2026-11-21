@@ -205,7 +205,7 @@ describe("Settings below the large screen", () => {
     await waitFor(() => expect(container.ownerDocument.querySelector("main [data-slot=list-group] button")).not.toBeNull());
     const doc = container.ownerDocument;
     expect(list(container)).toBeNull();
-    expect(doc.querySelector('[data-slot="header-row"]')?.className).toMatchInlineSnapshot(`"flex min-h-15 items-center gap-2 pl-4 pr-2 py-1"`);
+    expect(doc.querySelector('[data-slot="header-row"]')?.className).toMatchInlineSnapshot(`"flex items-center gap-2 pr-2 min-h-15 py-1 pl-4"`);
     expect(doc.querySelector("header")?.className).toMatchInlineSnapshot(`"sticky top-0 z-20 flex flex-col border-b bg-band-ground [padding-top:env(safe-area-inset-top)] border-band-rule mx-auto w-full max-w-screen-sm"`);
     const main = doc.querySelector("main")!;
     expect(main.parentElement?.className).toMatchInlineSnapshot(`"mx-auto flex min-h-0 w-full max-w-screen-sm flex-1 flex-col"`);

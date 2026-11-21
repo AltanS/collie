@@ -6,7 +6,7 @@ import { BuildStamp } from "@/components/build-stamp";
 import { Icon } from "@/components/icons/icon";
 import type { IconKey } from "@/components/icons/keys";
 import { InstallRow } from "@/components/install-control";
-import { NAV_EDGE } from "@/components/strip-column";
+import { NAV_EDGE } from "@/components/ui/nav-edge";
 import { Button, FOCUS_RING, HOVER_FILL } from "@/components/ui/button";
 import { useUpdatesStatus } from "@/components/updates-settings-card";
 import { useLocale } from "@/hooks/use-locale";

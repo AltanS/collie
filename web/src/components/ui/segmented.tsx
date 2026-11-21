@@ -70,6 +70,21 @@ export interface SegmentedProps<V extends string | number> {
 }
 
 /**
+ * ONE SEGMENT'S LOOK, without its width or its air: the border, the overlap with its neighbour, the corners at
+ * the row's two ends, the selected ink and the focus ring. Exported for a row that continues a segmented control
+ * with items that are not choices of it (the large-screen dashboard's views control, where the tricks' items open
+ * a page of their own after the views, `components/dashboard-views.tsx`), so the two read as one control.
+ */
+export function segmentLook({ on, compact }: { on: boolean; compact: boolean }): string {
+  return cn(
+    "relative -ml-px min-h-11 truncate border text-sm font-medium first:ml-0 first:rounded-l-sm last:rounded-r-sm focus-visible:z-20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50",
+    on ? "z-10 border-foreground text-foreground" : "border-border text-muted-foreground active:text-foreground",
+    compact && "h-9 min-h-9 px-0 before:absolute before:inset-x-0 before:-inset-y-1 before:content-['']",
+    compact && on && "border-border bg-accent text-accent-foreground",
+  );
+}
+
+/**
  * Two to four labelled segments in one row, exactly one selected: a tap picks one. Equal widths, a
  * 44px floor (DESIGN.md §6), 2px corners (§3).
  *
@@ -127,13 +142,7 @@ export function Segmented<V extends string | number>({
               // twice for a tap on the segment that is already on.
               if (!on) onChange(option.value);
             }}
-            className={cn(
-              pad,
-              "relative -ml-px min-h-11 min-w-0 flex-1 truncate border text-sm font-medium first:ml-0 first:rounded-l-sm last:rounded-r-sm focus-visible:z-20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50",
-              on ? "z-10 border-foreground text-foreground" : "border-border text-muted-foreground active:text-foreground",
-              compact && "h-9 min-h-9 px-0 before:absolute before:inset-x-0 before:-inset-y-1 before:content-['']",
-              compact && on && "border-border bg-accent text-accent-foreground",
-            )}
+            className={cn(pad, "min-w-0 flex-1", segmentLook({ on, compact }))}
           >
             {iconic ? <span aria-hidden className="inline-flex items-center justify-center [&>svg]:size-4">{option.icon}</span> : option.label}
             {option.mark !== undefined && (

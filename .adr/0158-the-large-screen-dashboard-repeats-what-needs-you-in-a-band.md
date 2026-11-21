@@ -72,3 +72,7 @@ position. This record states the exception exactly, so it does not grow into a s
   by the pick. The strip hid every Space past the right edge until a swipe.
 - Option 4 as drawn put the New button over the last row. The route gives the scroll area the room the
   phone's list already gives it, so the last row scrolls clear.
+
+## Addendum — 2026-11-21: no tab bar at the foot, and one command row
+
+The operator's pick in the `wide-home` round amends rule 2. On a large screen the dashboard has no tab bar and no floating New button. The views (Crew, Dashboard, Files) are the compact segmented control in a header that spans the window on the recess at the pane view's 48px. The tricks' items go last in that control, and the Hill is an icon button beside Actions. The command row (the summary, the filter, the order, the switch, the magnifier and New) is sticky under the header. Every empty state (not paired, no Space, no answer, waiting) is one column centred both ways, with no Spaces section beside it. Files and Crew stay the phone's centred column. Files: `web/src/components/dashboard-views.tsx`, `web/src/components/ui/nav-edge.ts`, `web/e2e/dashboard-wide-head.spec.ts`.
