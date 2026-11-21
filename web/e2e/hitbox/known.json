@@ -301,6 +301,12 @@
   },
   {
     "screen": "composer-keys",
+    "selector": "div:nth-of-type(2) > div > div:nth-of-type(2) > button[data-slot=\"keys-clear\"]",
+    "name": "Clear the input box",
+    "why": "Taken as found on 2026-11-21, after Settings became eleven pages (ADR 0170). A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "composer-keys",
     "selector": "div[data-slot=\"composer-box\"] > button[data-slot=\"button\"]",
     "name": "Attach file",
     "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
@@ -385,7 +391,7 @@
   },
   {
     "screen": "dashboard-crew",
-    "selector": "div[data-slot=\"screen-transition\"] > div > div > button[aria-label=\"Open the crew overview\"]",
+    "selector": "div[data-slot=\"home-scroller\"] > button[aria-label=\"Open the crew overview\"]",
     "name": "Open the crew overview",
     "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
   },
@@ -415,7 +421,7 @@
   },
   {
     "screen": "new",
-    "selector": "#_r_8_",
+    "selector": "#_r_7_",
     "name": "[switch]",
     "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
   },
@@ -835,7 +841,7 @@
   },
   {
     "screen": "session-pane-settings",
-    "selector": "div:nth-of-type(2) > div > div:nth-of-type(2) > button[data-slot=\"switch\"]",
+    "selector": "div[data-slot=\"sheet-body\"] > div > div:nth-of-type(2) > button[data-slot=\"switch\"]",
     "name": "Warn me before this pane's cache goes cold",
     "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
   },
@@ -960,199 +966,271 @@
     "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
   },
   {
-    "screen": "settings-alerts",
-    "selector": "div[data-slot=\"card\"] > div > div:nth-of-type(2) > button[data-slot=\"switch\"]",
-    "name": "Push notifications",
-    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
-  },
-  {
-    "screen": "settings-alerts",
-    "selector": "div[data-slot=\"card\"] > div:nth-of-type(2) > button[data-slot=\"button\"]",
-    "name": "1h",
-    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
-  },
-  {
-    "screen": "settings-alerts",
-    "selector": "div[data-slot=\"card\"] > div:nth-of-type(2) > button[data-slot=\"button\"]",
-    "name": "30m",
-    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
-  },
-  {
-    "screen": "settings-alerts",
-    "selector": "div[data-slot=\"card\"] > div:nth-of-type(2) > button[data-slot=\"button\"]",
-    "name": "4h",
-    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
-  },
-  {
-    "screen": "settings-alerts",
-    "selector": "div[data-slot=\"card\"] > div:nth-of-type(2) > button[data-slot=\"switch\"]",
-    "name": "Needs you",
-    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
-  },
-  {
-    "screen": "settings-alerts",
-    "selector": "div[data-slot=\"card\"] > div:nth-of-type(3) > button[data-slot=\"switch\"]",
-    "name": "Finished",
-    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
-  },
-  {
-    "screen": "settings-alerts",
-    "selector": "div[data-slot=\"card\"] > div:nth-of-type(4) > button[data-slot=\"switch\"]",
-    "name": "One notification per agent",
-    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
-  },
-  {
-    "screen": "settings-alerts",
-    "selector": "div[data-slot=\"card\"] > div:nth-of-type(5) > button[data-slot=\"switch\"]",
-    "name": "App updates",
-    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
-  },
-  {
-    "screen": "settings-alerts",
-    "selector": "div[data-slot=\"card\"] > div:nth-of-type(6) > button[data-slot=\"switch\"]",
-    "name": "Machine load stays high",
-    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
-  },
-  {
-    "screen": "settings-alerts",
-    "selector": "div[data-slot=\"card\"] > div:nth-of-type(7) > button[data-slot=\"switch\"]",
-    "name": "Decisions that need you now",
-    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
-  },
-  {
-    "screen": "settings-alerts",
-    "selector": "div[data-slot=\"card\"] > div:nth-of-type(8) > button[data-slot=\"switch\"]",
-    "name": "Cache about to go cold",
-    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
-  },
-  {
-    "screen": "settings-appearance",
+    "screen": "settings-chat",
     "selector": "div[data-slot=\"card\"] > div > button[data-slot=\"switch\"]",
     "name": "Compaction summaries",
     "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
   },
   {
-    "screen": "settings-appearance",
+    "screen": "settings-chat",
+    "selector": "div[data-slot=\"card\"] > div > button[data-slot=\"switch\"]",
+    "name": "Raw terminal",
+    "why": "Taken as found on 2026-11-21, after Settings became eleven pages (ADR 0170). A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "settings-chat",
+    "selector": "div[data-slot=\"card\"] > div > button[data-slot=\"switch\"]",
+    "name": "Short form of long replies",
+    "why": "Taken as found on 2026-11-21, after Settings became eleven pages (ADR 0170). A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "settings-chat",
+    "selector": "div[data-slot=\"card\"] > div > button[data-slot=\"switch\"]",
+    "name": "Show the whole last reply",
+    "why": "Taken as found on 2026-11-21, after Settings became eleven pages (ADR 0170). A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "settings-chat",
     "selector": "div[data-slot=\"card\"] > div > button[data-slot=\"switch\"]",
     "name": "Tool calls",
     "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
   },
   {
-    "screen": "settings-appearance",
-    "selector": "div[data-slot=\"card\"] > div > div:nth-of-type(2) > button[data-slot=\"switch\"]",
-    "name": "Harness shortcuts",
-    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+    "screen": "settings-chat",
+    "selector": "div[data-slot=\"card\"] > div > button[data-slot=\"switch\"]",
+    "name": "Wrap lines",
+    "why": "Taken as found on 2026-11-21, after Settings became eleven pages (ADR 0170). A design decision or an open item; write the reason here when you know it."
   },
   {
-    "screen": "settings-appearance",
-    "selector": "main > section > p > a",
-    "name": "How themes work",
-    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
-  },
-  {
-    "screen": "settings-device",
-    "selector": "#changes > div:nth-of-type(2) > button[data-slot=\"switch\"]",
-    "name": "Look for repos inside this folder",
-    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
-  },
-  {
-    "screen": "settings-device",
-    "selector": "div[data-slot=\"card\"] > div > div:nth-of-type(2) > button[data-slot=\"switch\"]",
-    "name": "Haptics",
-    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
-  },
-  {
-    "screen": "settings-device",
-    "selector": "div[data-slot=\"card\"] > div > div:nth-of-type(2) > button[data-slot=\"switch\"]",
-    "name": "Suggestions from Sent",
-    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
-  },
-  {
-    "screen": "settings-device",
-    "selector": "div[data-slot=\"card\"] > div:nth-of-type(1) > div:nth-of-type(2) > button[data-slot=\"switch\"]",
-    "name": "Zen mode",
-    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
-  },
-  {
-    "screen": "settings-device",
-    "selector": "div[data-slot=\"card\"] > div:nth-of-type(2) > button[data-slot=\"switch\"]",
-    "name": "Enter on landscape",
-    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
-  },
-  {
-    "screen": "settings-device",
-    "selector": "div[data-slot=\"card\"] > div:nth-of-type(3) > button[data-slot=\"button\"]",
-    "name": "Clear saved copies now",
-    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
-  },
-  {
-    "screen": "settings-experiments",
-    "selector": "div[data-slot=\"hill-switch\"] > div > button[data-slot=\"switch\"]",
-    "name": "The Hill",
-    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
-  },
-  {
-    "screen": "settings-harnesses",
+    "screen": "settings-chat",
     "selector": "div[data-slot=\"card\"] > div:nth-of-type(1) > button[data-slot=\"switch\"]",
     "name": "Claude Code: Show the status line",
     "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
   },
   {
-    "screen": "settings-harnesses",
+    "screen": "settings-chat",
     "selector": "div[data-slot=\"card\"] > div:nth-of-type(10) > button[data-slot=\"switch\"]",
     "name": "Kiro: Show the status line",
     "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
   },
   {
-    "screen": "settings-harnesses",
+    "screen": "settings-chat",
     "selector": "div[data-slot=\"card\"] > div:nth-of-type(2) > button[data-slot=\"switch\"]",
     "name": "Codex: Show the status line",
     "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
   },
   {
-    "screen": "settings-harnesses",
+    "screen": "settings-chat",
     "selector": "div[data-slot=\"card\"] > div:nth-of-type(3) > button[data-slot=\"switch\"]",
     "name": "Grok: Show the status line",
     "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
   },
   {
-    "screen": "settings-harnesses",
+    "screen": "settings-chat",
     "selector": "div[data-slot=\"card\"] > div:nth-of-type(4) > button[data-slot=\"switch\"]",
     "name": "Hermes Agent: Show the status line",
     "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
   },
   {
-    "screen": "settings-harnesses",
+    "screen": "settings-chat",
     "selector": "div[data-slot=\"card\"] > div:nth-of-type(5) > button[data-slot=\"switch\"]",
     "name": "omp: Show the status line",
     "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
   },
   {
-    "screen": "settings-harnesses",
+    "screen": "settings-chat",
     "selector": "div[data-slot=\"card\"] > div:nth-of-type(6) > button[data-slot=\"switch\"]",
     "name": "opencode: Show the status line",
     "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
   },
   {
-    "screen": "settings-harnesses",
+    "screen": "settings-chat",
     "selector": "div[data-slot=\"card\"] > div:nth-of-type(7) > button[data-slot=\"switch\"]",
     "name": "Antigravity: Show the status line",
     "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
   },
   {
-    "screen": "settings-harnesses",
+    "screen": "settings-chat",
     "selector": "div[data-slot=\"card\"] > div:nth-of-type(8) > button[data-slot=\"switch\"]",
     "name": "Muse: Show the status line",
     "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
   },
   {
-    "screen": "settings-harnesses",
+    "screen": "settings-chat",
     "selector": "div[data-slot=\"card\"] > div:nth-of-type(9) > button[data-slot=\"switch\"]",
     "name": "pi: Show the status line",
     "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
   },
   {
-    "screen": "settings-system",
+    "screen": "settings-dashboard",
+    "selector": "#changes > div:nth-of-type(2) > button[data-slot=\"switch\"]",
+    "name": "Look for repos inside this folder",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "settings-keys",
+    "selector": "div[data-slot=\"card\"] > div > button[data-slot=\"switch\"]",
+    "name": "Enter sends",
+    "why": "Taken as found on 2026-11-21, after Settings became eleven pages (ADR 0170). A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "settings-keys",
+    "selector": "div[data-slot=\"card\"] > div > button[data-slot=\"switch\"]",
+    "name": "Pinch to zoom",
+    "why": "Taken as found on 2026-11-21, after Settings became eleven pages (ADR 0170). A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "settings-keys",
+    "selector": "div[data-slot=\"card\"] > div > button[data-slot=\"switch\"]",
+    "name": "Tap to type",
+    "why": "Taken as found on 2026-11-21, after Settings became eleven pages (ADR 0170). A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "settings-keys",
+    "selector": "div[data-slot=\"card\"] > div > div:nth-of-type(2) > button[data-slot=\"switch\"]",
+    "name": "Haptics",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "settings-keys",
+    "selector": "div[data-slot=\"card\"] > div > div:nth-of-type(2) > button[data-slot=\"switch\"]",
+    "name": "Harness shortcuts",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "settings-keys",
+    "selector": "div[data-slot=\"card\"] > div > div:nth-of-type(2) > button[data-slot=\"switch\"]",
+    "name": "Suggestions from Sent",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "settings-keys",
+    "selector": "div[data-slot=\"card\"] > div:nth-of-type(1) > div:nth-of-type(2) > button[data-slot=\"switch\"]",
+    "name": "Zen mode",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "settings-keys",
+    "selector": "div[data-slot=\"card\"] > div:nth-of-type(2) > button[data-slot=\"switch\"]",
+    "name": "Zen when you turn the phone",
+    "why": "Taken as found on 2026-11-21, after Settings became eleven pages (ADR 0170). A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "settings-look",
+    "selector": "div:nth-of-type(2) > section > p > a",
+    "name": "How themes work",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "settings-look",
+    "selector": "div[data-slot=\"card\"] > div > button[data-slot=\"switch\"]",
+    "name": "Moving pictures from tricks",
+    "why": "Taken as found on 2026-11-21, after Settings became eleven pages (ADR 0170). A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "settings-look",
+    "selector": "div[data-slot=\"card\"] > div > button[data-slot=\"switch\"]",
+    "name": "Project pictures",
+    "why": "Taken as found on 2026-11-21, after Settings became eleven pages (ADR 0170). A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "settings-notifications",
+    "selector": "div[data-slot=\"card\"] > div > button[data-slot=\"switch\"]",
+    "name": "Machine load stays high",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "settings-notifications",
+    "selector": "div[data-slot=\"card\"] > div > div:nth-of-type(2) > button[data-slot=\"switch\"]",
+    "name": "Push notifications",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "settings-notifications",
+    "selector": "div[data-slot=\"card\"] > div:nth-of-type(1) > button[data-slot=\"switch\"]",
+    "name": "Cache about to go cold",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "settings-notifications",
+    "selector": "div[data-slot=\"card\"] > div:nth-of-type(1) > button[data-slot=\"switch\"]",
+    "name": "Needs you",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "settings-notifications",
+    "selector": "div[data-slot=\"card\"] > div:nth-of-type(2) > button[data-slot=\"button\"]",
+    "name": "1h",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "settings-notifications",
+    "selector": "div[data-slot=\"card\"] > div:nth-of-type(2) > button[data-slot=\"button\"]",
+    "name": "30m",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "settings-notifications",
+    "selector": "div[data-slot=\"card\"] > div:nth-of-type(2) > button[data-slot=\"button\"]",
+    "name": "4h",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "settings-notifications",
+    "selector": "div[data-slot=\"card\"] > div:nth-of-type(2) > button[data-slot=\"switch\"]",
+    "name": "Finished",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "settings-notifications",
+    "selector": "div[data-slot=\"card\"] > div:nth-of-type(2) > div:nth-of-type(1) > button[data-slot=\"switch\"]",
+    "name": "CPU alert",
+    "why": "Taken as found on 2026-11-21, after Settings became eleven pages (ADR 0170). A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "settings-notifications",
+    "selector": "div[data-slot=\"card\"] > div:nth-of-type(3) > button[data-slot=\"switch\"]",
+    "name": "One notification per agent",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "settings-notifications",
+    "selector": "div[data-slot=\"card\"] > div:nth-of-type(3) > div > button[data-slot=\"switch\"]",
+    "name": "Memory alert",
+    "why": "Taken as found on 2026-11-21, after Settings became eleven pages (ADR 0170). A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "settings-notifications",
+    "selector": "div[data-slot=\"card\"] > div:nth-of-type(4) > button[data-slot=\"switch\"]",
+    "name": "A new Collie version",
+    "why": "Taken as found on 2026-11-21, after Settings became eleven pages (ADR 0170). A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "settings-notifications",
+    "selector": "div[data-slot=\"card\"] > div:nth-of-type(4) > div > button[data-slot=\"switch\"]",
+    "name": "Disk alert",
+    "why": "Taken as found on 2026-11-21, after Settings became eleven pages (ADR 0170). A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "settings-notifications",
+    "selector": "div[data-slot=\"card\"] > div:nth-of-type(5) > button[data-slot=\"switch\"]",
+    "name": "A Decision marked Now on the Hill",
+    "why": "Taken as found on 2026-11-21, after Settings became eleven pages (ADR 0170). A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "settings-tricks",
+    "selector": "div[data-slot=\"hill-switch\"] > div:nth-of-type(1) > button[data-slot=\"switch\"]",
+    "name": "The Hill",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "settings-tricks",
+    "selector": "div[data-slot=\"tricks-switch\"] > div > button[data-slot=\"switch\"]",
+    "name": "Tricks",
+    "why": "Taken as found on 2026-11-21, after Settings became eleven pages (ADR 0170). A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "settings-updates",
     "selector": "div[data-slot=\"card\"] > div:nth-of-type(1) > div:nth-of-type(2) > button[data-slot=\"switch\"]",
     "name": "Offer a report when sending fails",
     "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
@@ -1170,6 +1248,18 @@
     "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
   },
   {
+    "screen": "sheet-pane-switcher",
+    "selector": "div[data-slot=\"sheet-body\"] > div > div > button",
+    "name": "1 needs you",
+    "why": "The switcher list's summary line, 194x32, the same control the Dashboard's summary line is; unchanged by the New button. Added 2026-11-14 with the Switch pane sheet's census screen."
+  },
+  {
+    "screen": "sheet-pane-switcher",
+    "selector": "div[data-slot=\"sheet-title-row\"] > button[data-slot=\"button\"]",
+    "name": "Close",
+    "why": "The sheet's own close button, 32x32 like every other sheet's (see session-actions-sheet). The New button before it keeps 12px clear of it on purpose: a mis-tap on New leaves the pane, a mis-tap on Close only closes the sheet. Added 2026-11-14 with the Switch pane sheet's census screen."
+  },
+  {
     "screen": "sheet-row-actions",
     "selector": "div[data-slot=\"sheet-title-row\"] > button[data-slot=\"button\"]",
     "name": "Close",
@@ -1183,7 +1273,7 @@
   },
   {
     "screen": "sheet-workspace-filter",
-    "selector": "div > div:nth-of-type(2) > div > button:nth-of-type(5)",
+    "selector": "div[data-slot=\"sheet-body\"] > div > button:nth-of-type(5)",
     "name": "infra \u00b7 working",
     "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
   },
@@ -1222,17 +1312,5 @@
     "selector": "nav:nth-of-type(2) > div > div > button:nth-of-type(4)",
     "name": "idle tab 3",
     "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
-  },
-  {
-    "screen": "sheet-pane-switcher",
-    "selector": "div[data-slot=\"sheet-title-row\"] > button[data-slot=\"button\"]",
-    "name": "Close",
-    "why": "The sheet's own close button, 32x32 like every other sheet's (see session-actions-sheet). The New button before it keeps 12px clear of it on purpose: a mis-tap on New leaves the pane, a mis-tap on Close only closes the sheet. Added 2026-11-14 with the Switch pane sheet's census screen."
-  },
-  {
-    "screen": "sheet-pane-switcher",
-    "selector": "div:nth-of-type(2) > div > div > button",
-    "name": "1 needs you",
-    "why": "The switcher list's summary line, 194x32, the same control the Dashboard's summary line is; unchanged by the New button. Added 2026-11-14 with the Switch pane sheet's census screen."
   }
 ]
