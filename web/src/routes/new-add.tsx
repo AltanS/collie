@@ -4,13 +4,13 @@ import { Navigate, useLocation } from "react-router";
 
 import { AgentIcon } from "@/components/agent-icon";
 import { RouteHeader } from "@/components/app-header";
-import { OverlayHead } from "@/components/new-overlay-body";
 import { useCrew } from "@/components/crew-provider";
 import { LauncherAddedList } from "@/components/launcher-added-list";
 import { LauncherHowSheet } from "@/components/launcher-how-sheet";
 import { NoPromptsBadge } from "@/components/no-prompts-badge";
 import { StatusArea } from "@/components/status-area";
 import { BottomBar } from "@/components/ui/bottom-bar";
+import { BottomSheet } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Notice } from "@/components/ui/notice";
 import { OneOf } from "@/components/ui/one-of";
@@ -22,7 +22,7 @@ import { ToastViewport } from "@/components/ui/toast-viewport";
 import { useLocale } from "@/hooks/use-locale";
 import { useNav } from "@/hooks/use-nav";
 import { useWidthClass } from "@/hooks/use-width-class";
-import { labNs, withOver } from "@/lib/lab-ns";
+import { withOver } from "@/lib/new-over";
 import { addLauncher, type AddLauncherAsk } from "@/lib/api";
 import { describeApiError, describeThrownError } from "@/lib/api-error-message";
 import { leadHost } from "@/lib/hosts";
@@ -56,8 +56,8 @@ export function NewAddRoute() {
   const { search } = useLocation();
   useLocale();
   useHoldReload("new-add-page", true);
-  // LAB (desktop pass 2): on a large screen with a proposal on, `/new/add` is Add over the dashboard.
-  const overDashboard = useWidthClass() === "expanded" && labNs() !== 0;
+  // On a large screen `/new/add` is Add over the Dashboard (lib/new-over.ts): the address is kept, the page is not drawn.
+  const overDashboard = useWidthClass() === "expanded";
   if (overDashboard) {
     const at = readNewAt(search);
     return <Navigate replace to={withOver(homePath({ host: at.machine, session: at.session }), `/new/add${search}`)} />;
@@ -71,7 +71,7 @@ type Kind = "agent" | "command";
 const FIELD =
   "h-11 w-full rounded-md border border-border bg-background px-3 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring";
 
-export function NewAddPage({ search, frame = "page", onClose }: { search: string; frame?: "page" | "overlay"; onClose?: () => void }) {
+export function NewAddPage({ search, frame = "page", onClose }: { search: string; frame?: "page" | "dialog"; onClose?: () => void }) {
   useLocale();
   const nav = useNav();
   const at = useMemo(() => readNewAt(search), [search]);
@@ -184,31 +184,11 @@ export function NewAddPage({ search, frame = "page", onClose }: { search: string
   const offReason = freeTextOff && writing;
 
   const toNew = () => nav.up(newPath({ machine: at.machine, pane: at.pane, beside: at.beside, session: at.session }));
-  return (
-    <div className={frame === "page" ? "mx-auto flex min-h-0 w-full max-w-screen-sm flex-1 flex-col" : "flex min-h-0 flex-1 flex-col"}>
-      {frame !== "page" ? (
-        // LAB (desktop pass 2): drawn over the screen, the head is the overlay's own.
-        <OverlayHead title={t("newPage.add")} back={{ label: backLabel, onClick: toNew }} onClose={onClose ?? toNew} />
-      ) : (
-      <RouteHeader
-        width="column"
-        override={
-          <>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-11"
-              onClick={toNew}
-              aria-label={backLabel}
-            >
-              <Icon name="back" className="size-5" />
-            </Button>
-            <h1 className="min-w-0 truncate text-lg font-semibold tracking-tight">{t("newPage.add")}</h1>
-          </>
-        }
-      />
-      )}
-      <BandMain base={16} className="relative flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4">
+
+  // THE FORM'S PARTS, laid out by either frame: the page (one column, the foot pinned) or the large screen's
+  // dialog over the screen New was called from (components/new-over.tsx), one column with the foot under it.
+  const bodyPart = (
+    <>
         <Segmented
           label={t("launcherAdd.what")}
           value={kind}
@@ -329,9 +309,10 @@ export function NewAddPage({ search, frame = "page", onClose }: { search: string
         </button>
 
         <LauncherAddedList items={loaded ? launchers.items : null} memberView={memberView} onChanged={launchers.reload} />
-      </BandMain>
-
-      <BottomBar className="flex flex-col gap-2 px-4">
+    </>
+  );
+  const summaryPart = (
+    <>
         {/* The summary, and a refusal in its place in the same box, so neither moves anything. */}
         <OneOf
           active={errorText === null ? "summary" : "error"}
@@ -356,6 +337,10 @@ export function NewAddPage({ search, frame = "page", onClose }: { search: string
             },
           ]}
         />
+    </>
+  );
+  const addPart = (
+    <>
         <Button onClick={() => void add()} disabled={ask === null || busy} aria-busy={busy || undefined} className="h-11">
           <OneOf
             active={busy ? "adding" : "add"}
@@ -366,13 +351,77 @@ export function NewAddPage({ search, frame = "page", onClose }: { search: string
             ]}
           />
         </Button>
-      </BottomBar>
-
+    </>
+  );
+  const tailPart = (
+    <>
       <ToastViewport className="bottom-40">
         <StatusArea />
       </ToastViewport>
 
       <LauncherHowSheet open={howOpen} onClose={() => setHowOpen(false)} file={adding?.file} />
+    </>
+  );
+
+  if (frame === "dialog") {
+    return (
+      <>
+        <BottomSheet
+          open
+          onClose={onClose ?? toNew}
+          size="form"
+          className="max-w-[560px]"
+          title={
+            <>
+              <Button variant="ghost" size="icon" className="-my-1 -ml-2 size-8 shrink-0" onClick={toNew} aria-label={backLabel}>
+                <Icon name="back" className="size-4" />
+              </Button>
+              <span className="min-w-0 truncate">{t("newPage.add")}</span>
+            </>
+          }
+        >
+          <div data-slot="new-add-dialog" className="flex min-h-0 flex-1 flex-col">
+            <div data-slot="new-add-dialog-body" className="relative flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto overscroll-contain p-4">{bodyPart}</div>
+            <div data-slot="new-add-dialog-foot" className="flex shrink-0 items-center gap-4 border-t border-band-rule bg-band-ground px-4 py-3">
+              <div className="flex min-w-0 flex-1 flex-col gap-1">{summaryPart}</div>
+              <div className="flex w-[200px] shrink-0 flex-col [&>button]:w-full">{addPart}</div>
+            </div>
+          </div>
+        </BottomSheet>
+        {tailPart}
+      </>
+    );
+  }
+
+  return (
+    <div className="mx-auto flex min-h-0 w-full max-w-screen-sm flex-1 flex-col">
+      <RouteHeader
+        width="column"
+        override={
+          <>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-11"
+              onClick={toNew}
+              aria-label={backLabel}
+            >
+              <Icon name="back" className="size-5" />
+            </Button>
+            <h1 className="min-w-0 truncate text-lg font-semibold tracking-tight">{t("newPage.add")}</h1>
+          </>
+        }
+      />
+      <BandMain base={16} className="relative flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4">
+        {bodyPart}
+      </BandMain>
+
+      <BottomBar className="flex flex-col gap-2 px-4">
+        {summaryPart}
+        {addPart}
+      </BottomBar>
+
+      {tailPart}
     </div>
   );
 }

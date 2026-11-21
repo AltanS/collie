@@ -9,7 +9,7 @@ import { NOT_A_SCREEN, SCREENS } from "../e2e/screens/list";
 // numbers that may only go down, the way `scripts/test-file-size.test.ts` holds the size of a test file.
 
 /** Entries that are still the phone's column on a large screen (`wide: "column"`). Lower it when a screen gets its large-screen layout. */
-const COLUMN_CEILING = 17;
+const COLUMN_CEILING = 14;
 /** Waivers of a layout rule on an entry. Lower it when a defect is fixed and its waiver goes. */
 const WAIVER_CEILING = 26;
 

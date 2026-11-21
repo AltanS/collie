@@ -17,7 +17,7 @@ import { usePaneOpen } from "@/hooks/use-pane-open";
 import { useScrollMemory } from "@/hooks/use-scroll-memory";
 import { prefetchFolders } from "@/lib/folders";
 import { homePath, newPath, panePath, spacePath } from "@/lib/nav";
-import { labNs, MARK_SPACE_PARAM } from "@/lib/lab-ns";
+import { queueSidebarReveal } from "@/lib/new-over";
 import { useWidthClass } from "@/hooks/use-width-class";
 import { pickTabPane } from "@/lib/tab-pane-memory";
 import type { AgentView, WorkspaceView } from "@/lib/types";
@@ -105,29 +105,32 @@ export function SpaceRoute() {
     }
   }, [gone, data.bridge, data.error, data.scope, nav, spaceId]);
 
-  // LAB (desktop pass 2, step 1): what the space page is on a large screen, by proposal (lib/lab-ns.ts).
-  //   1  the session view of the Space's open tab, its remembered pane, the sidebar on that Space
-  //   2  the Dashboard, scrolled to the Space and marking it
-  //   3  this page, laid out for the width: the tabs as columns of cards
-  const ns = labNs();
-  const wideLab = useWidthClass() === "expanded" && ns !== 0;
-  const landing = wideLab && ns === 1 && selectedWs !== undefined ? landingPane(selectedWs, [...data.agents, ...data.shellPanes], navHost) : undefined;
-  const redirect = !wideLab || selectedWs === undefined ? null : ns === 1 ? (landing === undefined ? null : panePath(landing.paneId, data.scope)) : ns === 2 ? withMark(homePath(data.scope), spaceId) : null;
+  // ON A LARGE SCREEN THE SPACE HAS NO PAGE OF ITS OWN (ADR 0158, addendum 2026-11-21): the Dashboard shows every
+  // Space as a column and the pane view shows a Space's tabs and panes. So `/space/:id` opens the pane view of the
+  // Space's open tab, at the pane that tab last showed, with the sidebar on that row (lib/new-over.ts); a Space
+  // with no pane has no column there either, and opens the Dashboard at its top. The phone, the tablet and Large-screen layout Off keep this page. The move
+  // is sideways (`side`), so Back goes where the space address would have gone back to.
+  const wide = useWidthClass() === "expanded";
+  const landing = wide && selectedWs !== undefined ? landingPane(selectedWs, [...data.agents, ...data.shellPanes], navHost) : undefined;
+  const redirect = !wide || selectedWs === undefined ? null : landing === undefined ? homePath(data.scope) : panePath(landing.paneId, data.scope);
+  const landingId = landing?.paneId;
   useEffect(() => {
-    if (redirect !== null) nav.side(redirect);
-  }, [redirect, nav]);
-  if (redirect !== null) return null;
-  const roomy = wideLab && ns === 3;
+    if (redirect === null) return;
+    if (landingId !== undefined) queueSidebarReveal(landingId);
+    nav.side(redirect);
+  }, [redirect, landingId, nav]);
+  // A Space that is not (or no longer) in the snapshot draws nothing either: the effect above takes it to the Dashboard.
+  if (wide) return null;
 
   return (
-    <div className={roomy ? "mx-auto flex min-h-0 w-full max-w-screen-xl flex-1 flex-col" : "mx-auto flex min-h-0 w-full max-w-screen-sm flex-1 flex-col"}>
+    <div className="mx-auto flex min-h-0 w-full max-w-screen-sm flex-1 flex-col">
       {/* The space header: same shell as the dashboard, minus the session switcher (you switch
           sessions from home). Wordmark + shared pill + Settings gear. Launchers live on the
           dashboard's own strip and in the pane switcher sheet, not here. */}
       <RouteHeader
         onHome={toDashboard}
         wordmark
-        width={roomy ? "wide" : "column"}
+        width="column"
         rightTrail={<SettingsGear scope={data.scope} />}
       />
 
@@ -193,7 +196,6 @@ export function SpaceRoute() {
                 glideKeyOf={paneOpen.glideKeyOf}
                 onPress={paneOpen.press}
                 host={navHost}
-                columns={roomy}
               />
             </main>
             {plus.sheet}
@@ -216,15 +218,10 @@ export function SpaceRoute() {
   );
 }
 
-/** LAB: the pane the session view opens for a Space: its open tab's remembered pane, else the Space's first. */
-function landingPane(space: WorkspaceView, panes: readonly AgentView[], host: string | undefined): AgentView | undefined {
+/** The pane `/space/:id` opens on a large screen: the open tab's last pane (lib/tab-pane-memory.ts), else the Space's first. */
+export function landingPane(space: WorkspaceView, panes: readonly AgentView[], host: string | undefined): AgentView | undefined {
   const here = panes.filter((p) => p.workspaceId === space.workspaceId && (p.host ?? undefined) === host);
   const tabId = space.activeTabId;
   const inTab = here.filter((p) => p.tabId === tabId);
   return pickTabPane(inTab.length > 0 ? inTab : here, { host, tabId });
-}
-
-/** LAB: the Dashboard's address that scrolls to a Space and marks it. */
-function withMark(home: string, spaceId: string): string {
-  return `${home}${home.includes("?") ? "&" : "?"}${MARK_SPACE_PARAM}=${encodeURIComponent(spaceId)}`;
 }

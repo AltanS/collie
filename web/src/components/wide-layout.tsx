@@ -51,7 +51,7 @@ import { shownStatus } from "@/lib/triage";
 import { isReadOnly, statusLabel, type AgentView } from "@/lib/types";
 import { shortcutTarget } from "@/lib/shortcuts/target";
 import { cn } from "@/lib/utils";
-import { labNs } from "@/lib/lab-ns";
+import { takeSidebarReveal } from "@/lib/new-over";
 import {
   allowedPresets,
   arrive,
@@ -151,11 +151,11 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
   const open = useSidebarOpen();
   const stored = useSpaceStrips();
   const reduced = useMediaQuery("(prefers-reduced-motion: reduce)");
-  // LAB (desktop pass 2, proposal 1): the space page lands here, so the sidebar shows the row it landed on.
+  // ARRIVED FROM THE SPACE ADDRESS (routes/space.tsx): the sidebar brings the landed row near its top once, with
+  // its Space's heading above it. Any other arrival moves nothing in the sidebar.
   useEffect(() => {
-    if (labNs() !== 1) return;
+    if (!takeSidebarReveal(paneId)) return;
     const frame = requestAnimationFrame(() => {
-      // The landed row near the top of the sidebar's list, with its Space's heading above it.
       const row = document.querySelector<HTMLElement>('[data-slot="wide-layout"] aside [aria-current="page"]');
       let scroller = row?.parentElement ?? null;
       while (scroller !== null && !/(auto|scroll)/u.test(getComputedStyle(scroller).overflowY)) scroller = scroller.parentElement;

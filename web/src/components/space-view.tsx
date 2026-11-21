@@ -22,8 +22,6 @@ interface SpaceViewProps {
   onPress?: (pane: AgentView) => void;
   /** The machine this space is on — the WORKSPACE's host, not the crew's lead. Undefined when solo. */
   host?: string;
-  /** LAB (desktop pass 2): the tabs side by side as columns of cards, for a large screen. */
-  columns?: boolean;
 }
 
 // One space's panes, grouped by tab (agents AND bare shells). Tab selection + creation live in the
@@ -40,7 +38,6 @@ export function SpaceView({
   glideKeyOf,
   onPress,
   host,
-  columns = false,
 }: SpaceViewProps) {
   useLocale();
   // Host-qualified: another machine's `w1` is not this space, however identically it is numbered.
@@ -59,7 +56,6 @@ export function SpaceView({
         </p>
       </div>
 
-      <div className={columns ? "grid grid-cols-[repeat(auto-fill,minmax(22rem,1fr))] items-start gap-x-6 gap-y-5" : "contents"}>
       {groups.map((g) => (
         <section key={g.tabId} className="flex flex-col gap-2">
           {selectedTab === null && (
@@ -108,7 +104,6 @@ export function SpaceView({
           )}
         </section>
       ))}
-      </div>
 
       {groups.length === 0 && (
         <p className="py-8 text-center text-sm text-muted-foreground">

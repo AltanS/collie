@@ -37,7 +37,7 @@ function columnTemplate(columns: number): string {
 /** One Space: its heading and its sessions in one bordered group, the phone's section at a fixed width. */
 export function WideSpace({ group, id, trailing, children }: { group: WorkspaceGroup; id: string; trailing?: ReactNode; children: ReactNode }) {
   return (
-    <section data-space={group.key} id={id} className="flex min-w-0 scroll-mt-4 flex-col gap-2 data-[marked=true]:outline-2 data-[marked=true]:outline-offset-8 data-[marked=true]:outline-ring" style={{ width: SPACE_WIDTH }}>
+    <section data-space={group.key} id={id} className="flex min-w-0 scroll-mt-4 flex-col gap-2" style={{ width: SPACE_WIDTH }}>
       <SectionHeader
         label={group.heading ?? group.label}
         fade={group.key}

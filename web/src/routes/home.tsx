@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
-import { useLocation, useRevalidator } from "react-router";
+import { useRevalidator } from "react-router";
 
 import { RouteHeader, SettingsGear } from "@/components/app-header";
 import { SessionSwitcher } from "@/components/session-switcher";
@@ -61,7 +61,6 @@ import { usePairing } from "@/lib/pairing";
 import { usePins } from "@/lib/pins";
 import { programScope, programSessions, programsAbove, waitingPrograms } from "@/lib/session-cards";
 import { cn } from "@/lib/utils";
-import { labNs, MARK_SPACE_PARAM } from "@/lib/lab-ns";
 import { contentWidth, SPACE_WIDTH, spaceColumns, WIDE_GUTTER } from "@/lib/wide-dashboard";
 import { isReadOnly, type AgentView, type ServerSummary, type SessionSummary } from "@/lib/types";
 import { useRootData } from "@/lib/route-data";
@@ -333,23 +332,6 @@ export function HomeRoute() {
   // columns is read from the width of the scroller itself, the room inside it without its scrollbar, and never
   // from the window. Compact and medium, and Off at any width, draw the phone's column exactly as before.
   const wide = useWidthClass() === "expanded";
-  // LAB (desktop pass 2, proposal 2): the space page is this Dashboard, scrolled to the Space and marking it.
-  const { search: homeSearch } = useLocation();
-  const markedSpace = wide && labNs() === 2 ? new URLSearchParams(homeSearch).get(MARK_SPACE_PARAM) : null;
-  const markedFound = useRef<string | null>(null);
-  useEffect(() => {
-    const scroller = scrollRef.current;
-    if (scroller === null) return;
-    for (const el of scroller.querySelectorAll<HTMLElement>("[data-space]")) {
-      const on = markedSpace !== null && (el.getAttribute("data-space") ?? "").endsWith(`\u0000${markedSpace}`);
-      if (on) el.setAttribute("data-marked", "true");
-      else el.removeAttribute("data-marked");
-      if (on && markedFound.current !== markedSpace) {
-        markedFound.current = markedSpace;
-        el.scrollIntoView({ block: "center" });
-      }
-    }
-  });
   const [measureScroller, scrollerWidth] = useElementWidth<HTMLDivElement>(window.innerWidth, "client");
   const setScroller = useCallback(
     (el: HTMLDivElement | null) => {

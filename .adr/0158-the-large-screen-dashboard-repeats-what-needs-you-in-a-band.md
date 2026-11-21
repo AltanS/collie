@@ -94,3 +94,24 @@ was opened from (the nav trail), else up to the Dashboard. `/settings` replaces 
 waits, else Appearance. Machines stays a page of its own, and its row leaves Settings. Files:
 `web/src/components/settings-shell.tsx`, `web/src/components/settings-page.tsx`, `web/src/hooks/use-settings-rows.ts`,
 `web/e2e/settings-wide.spec.ts`.
+
+## Addendum — 2026-11-21: New is a dialog over the screen, and the space address opens the pane view
+
+On a large screen (`expanded`, Large-screen layout not Off) New and "Add your own" no longer replace the screen. The
+screen keeps its own address and gains `over=<the New address>` (`web/src/lib/new-over.ts`); the root layout draws New
+over it as a centred dialog (`web/src/components/new-over.tsx`), in the shell every sheet has as a dialog
+(`BottomSheet`, new `size="form"`: height by content up to 720px, the Tab key kept inside, the body and foot laid out by
+the caller). New is about 880px wide in two columns: what to start and New worktree at the left (340px), the folder at
+the right, the summary and a 200px Start in a foot across both; the right column scrolls, the foot stays. "Add your
+own" is the same dialog in one column, about 560px, its back returning to New. `hooks/use-nav.ts` rewrites a move to a
+New address into that shape, so every New button works unchanged. Back, Escape and the close button step off the
+entry, and the focus returns to the control that opened New; a start replaces the entry with the new pane, so Back
+from the pane returns to the screen without New. `/new` and `/new/add` opened directly redirect to the Dashboard with
+New over it. Stacked sheets now close one at a time on Escape, the top one first.
+
+`/space/:id` has no page of its own on a large screen: it opens the pane view of the Space's open tab, at the pane that
+tab last showed, and the sidebar brings that row near its top once. A Space with no pane has no column on the
+Dashboard either, so the address opens the Dashboard at its top. The move is sideways. A phone, a tablet and
+Large-screen layout Off keep the New page, the Add page and the space page, box for box. Files:
+`web/src/lib/new-over.ts`, `web/src/components/new-over.tsx`, `web/src/components/ui/sheet.tsx`,
+`web/src/routes/new.tsx`, `web/src/routes/new-add.tsx`, `web/src/routes/space.tsx`, `web/e2e/wide-new.spec.ts`.

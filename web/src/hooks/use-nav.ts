@@ -16,7 +16,7 @@ import {
   type UpMove,
 } from "@/lib/nav";
 import { fromOutsideTree, navTrail, resolveCrumb } from "@/lib/nav-trail";
-import { isNewAddress, overlayLive, overOf, withOver, withoutOver } from "@/lib/lab-ns";
+import { isNewAddress, newOverScreen, overOf, withOver, withoutOver } from "@/lib/new-over";
 
 /**
  * The three moves of ADR 0067, for components. Every navigation in the app goes through one of
@@ -100,10 +100,10 @@ export function useNav(): Nav {
       const keep = from !== undefined && isAncestor(from, pathOnly(move.to));
       void navigate(move.to, { replace: true, state: keep ? { from } : undefined });
     };
-    // LAB (desktop pass 2): New drawn over the screen it was called from. Its address rides in `over=`
-    // on the screen's own address (lib/lab-ns.ts); every move below keeps that one rule.
-    const over = () => overlayLive() && overOf(href()) !== undefined;
-    const overTo = (to: string) => (overlayLive() && isNewAddress(to) ? withOver(href(), to) : to);
+    // NEW OVER THE SCREEN (lib/new-over.ts): on a large screen a move to `/new` or `/new/add` stays on this
+    // screen's address and adds `over=`; closing New steps back off it, and a start replaces it.
+    const over = () => newOverScreen() && overOf(href()) !== undefined;
+    const overTo = (to: string) => (newOverScreen() && isNewAddress(to) ? withOver(href(), to) : to);
     const down = (to: string, state?: NavExtras) =>
       void navigate(overTo(to), { state: { ...state, from: href() } });
     const side = (to: string, state?: NavExtras) => {
