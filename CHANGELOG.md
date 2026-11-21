@@ -46,6 +46,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Changed
 
+- **Settings has eleven pages, and a search.** Look and feel, Chat and terminal, Keys and touch, Notifications, Voice, Dashboard and projects, Profiles, Tricks and the Hill, Devices and machines, Privacy and data, and Updates and about replace Appearance, Harness configurations, Device, Alerts, Experiments and System. The search at the top finds a setting by its name and opens it on its page; a setting that lives in a pane's own sheet says where it is. An old link to a Settings page opens the page that holds its settings now. Some rows have clearer names, for example "Context and limits" for the usage row.
 - **A trick's update switch says what it does.** On a trick's details page the switch "Take changes without asking" is now "Update this trick without asking". Its hint is unchanged.
 - **A trick's details open on a page of their own.** A tap on a trick's name in Settings, Tricks now opens its details page instead of a sheet. The page shows everything the sheet showed, in the same order: the trick's icon, name, labels and switch on top, then its own words with "Written by the trick's author. Collie did not check it." right under them, what it does, its settings, where it comes from and its code. Back returns to the list where you left it.
 - **A trick's own page opens its details from the header.** The info button at the end of its header opens the trick's details page, and Back returns to the trick's page.

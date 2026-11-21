@@ -4,6 +4,7 @@ import { Navigate, useLoaderData } from "react-router";
 import { AppearanceIntro } from "@/components/appearance-intro";
 import { CharacterPicker } from "@/components/character-picker";
 import { CharacterSettingsRow } from "@/components/character-settings-row";
+import { SettingSlot } from "@/components/setting-slot";
 import { SettingsPage } from "@/components/settings-page";
 import { Notice } from "@/components/ui/notice";
 import { useLocale } from "@/hooks/use-locale";
@@ -102,71 +103,115 @@ export function SettingsAppearanceRoute() {
           yours, in the order a person decides them: the theme (Paste, Browse and Try live in its
           card), then which half of the theme you see. The header's character comes with the theme
           unless this device picks one: that is the Character row below them. */}
-      <AppearanceIntro />
+      <SettingSlot ids={["look.intro", "look.themesDocs"]}>
+        <AppearanceIntro />
+      </SettingSlot>
       {/* Which theme, then which half of it: the picker sits directly above the three-way (System,
           Light, Dark) because the two are one question asked twice, and a person who finds one
           should find the other. First on the page, because it is the one people come here for. */}
-      <ThemePickerControl />
-      <ThemeControl />
+      <SettingSlot ids={["look.theme", "look.theme.about", "look.theme.browse", "look.theme.import", "look.theme.paste", "look.theme.export", "look.theme.remove", "look.theme.trial"]}>
+        <ThemePickerControl />
+      </SettingSlot>
+      <SettingSlot ids={["look.lightDark"]}>
+        <ThemeControl />
+      </SettingSlot>
       {/* Which character the header draws on this device: one row with its value, and the page it
           opens lists them (ADR 0136, amended 2026-11-12). Under the theme because its default is
           "From the theme". */}
-      <CharacterSettingsRow />
+      <SettingSlot ids={["look.character"]}>
+        <CharacterSettingsRow />
+      </SettingSlot>
       {/* Beside appearance because both are "how this phone presents itself". */}
-      <LanguageControl />
+      <SettingSlot ids={["look.language"]}>
+        <LanguageControl />
+      </SettingSlot>
       {/* TWO FONT CARDS, ADJACENT, IN THIS ORDER. Adjacency answers the only question either one
           raises: "Typeface" is the APP's own face (ADR 0033), "Terminal font" is the mirror's.
           Reading them one after the other is what makes the split obvious. */}
-      <TypefaceControl />
-      <FontSettingsControl />
+      <SettingSlot ids={["look.typeface"]}>
+        <TypefaceControl />
+      </SettingSlot>
+      <SettingSlot ids={["look.terminalFont", "look.textSize.terminal", "look.textSize.draft"]}>
+        <FontSettingsControl />
+      </SettingSlot>
       {/* How agent prose draws LaTeX. Under the two font cards, because it is the same question —
           what text looks like — asked of a formula, and above the cards that arrange surfaces. */}
-      <MathControl />
+      <SettingSlot ids={["look.math", "look.math.download", "look.math.remove"]}>
+        <MathControl />
+      </SettingSlot>
       {/* The harness bar, then the belt's size directly under what it carries: one factor for
           band, pills, icons and words (components/actions-row.tsx, `--belt-scale`). */}
-      <HarnessBarControl />
-      <BeltSizeControl />
+      <SettingSlot ids={["keys.harnessShortcuts"]}>
+        <HarnessBarControl />
+      </SettingSlot>
+      <SettingSlot ids={["look.beltSize"]}>
+        <BeltSizeControl />
+      </SettingSlot>
       {/* The belt's Zoom pill: in the Screen view or never (lib/zoom-pill.ts). Under the belt's size
           because both decide what that one belt carries. */}
-      <ZoomPillControl />
+      <SettingSlot ids={["chat.zoomButton"]}>
+        <ZoomPillControl />
+      </SettingSlot>
       {/* Whether a pinch zooms the whole page (lib/page-zoom.ts). Under the Zoom pill because both
           decide what a zoom does on this phone. On by default, for anyone who needs bigger text. */}
-      <PageZoomControl />
+      <SettingSlot ids={["keys.pinchZoom"]}>
+        <PageZoomControl />
+      </SettingSlot>
       {/* How the usage row (the model, context and limits) draws its gauges: a percentage or dots
           (lib/usage-row.ts). Under the zoom cards because it too decides how the belt's surroundings read. */}
-      <UsageRowControl />
+      <SettingSlot ids={["chat.contextLimits"]}>
+        <UsageRowControl />
+      </SettingSlot>
       {/* Which thumb the belt and the reply box are laid out for. Under the belt's size because both
           decide how that one belt is drawn. */}
-      <HandControl />
+      <SettingSlot ids={["keys.hand"]}>
+        <HandControl />
+      </SettingSlot>
       {/* Which way a pane list runs (ADR 0071). Here rather than in Device because it decides how a
           surface is ARRANGED, which is the same question every card above answers. The pane
           switcher's own toggle writes the same value; this is where you go to find it. */}
-      <PaneOrderControl />
+      <SettingSlot ids={["dashboard.paneOrder"]}>
+        <PaneOrderControl />
+      </SettingSlot>
       {/* Whether a tablet or an open Fold may show the sidebar and the strip of panes (ADR 0120). The
           way out for a screen where the layout misbehaves, so it sits with the other arrangement
           choices. Stored per device. */}
-      <WideLayoutControl />
+      <SettingSlot ids={["look.largeScreen"]}>
+        <WideLayoutControl />
+      </SettingSlot>
       {/* Whether Enter from a physical keyboard sends the reply (ADR 0157). Beside Large-screen layout, because
           both are about a keyboard and a screen big enough to have one. Off until the person turns it on;
           stored per device. */}
-      <EnterSendsControl />
+      <SettingSlot ids={["keys.enterSends"]}>
+        <EnterSendsControl />
+      </SettingSlot>
       {/* Whether a repository's own picture stands in for the agent logo (ADR 0160).
           On until the person turns it off; stored per device. */}
-      <ProjectPicturesControl />
+      <SettingSlot ids={["look.projectPictures"]}>
+        <ProjectPicturesControl />
+      </SettingSlot>
       {/* How the pane screen moves between panes and spaces by gesture (ADR 0121): Two fingers,
           Joystick or Off. Beside Large-screen layout, because both decide how the pane screen is
           arranged and moved through. Stored per device with the hand. */}
-      <PaneNavControl />
+      <SettingSlot ids={["keys.paneNav"]}>
+        <PaneNavControl />
+      </SettingSlot>
       {/* Last, and it is the odd one here: every card above changes how a surface LOOKS, and this
           one changes what a surface CONTAINS. It earns the place anyway, because the question it
           answers is the same question — what do I want on screen — and filing it under Device would
           put a rendering choice beside haptics. */}
-      <ToolCallsControl />
-      <CompactionsControl />
+      <SettingSlot ids={["chat.toolCalls"]}>
+        <ToolCallsControl />
+      </SettingSlot>
+      <SettingSlot ids={["chat.compactions"]}>
+        <CompactionsControl />
+      </SettingSlot>
       {/* Whether tricks may draw small moving pictures over the app (the `float` place). One switch for all of
           them, on by default; each trick keeps its own switch in Settings → Tricks. It decides what the app
           shows over a page, so it sits here with the other choices about what is on screen. */}
-      <FloatingThingsControl />
+      <SettingSlot ids={["look.floatingThings"]}>
+        <FloatingThingsControl />
+      </SettingSlot>
     </SettingsPage>
   );
 }
@@ -178,7 +223,9 @@ export function SettingsHarnessesRoute() {
           rather than a card on Appearance: the rows are per HARNESS, a list that grows with every
           adapter, and Appearance is a handful of cards about the phone. Each switch is a standing
           per-device choice about what Chat lifts out of that harness's screen. */}
-      <HarnessPrefsControl />
+      <SettingSlot ids={["chat.statusLine"]}>
+        <HarnessPrefsControl />
+      </SettingSlot>
     </SettingsPage>
   );
 }
@@ -187,26 +234,40 @@ export function SettingsDeviceRoute() {
   return (
     <SettingsPage title="settings.section.device.title">
       {/* Renders nothing where vibrate is unsupported. */}
-      <HapticsControl />
+      <SettingSlot ids={["keys.haptics"]}>
+        <HapticsControl />
+      </SettingSlot>
       {/* AVAILABILITY ONLY. This row does not turn zen on — it decides whether the pane's actions
           sheet offers the "Zen mode" row at all. Off by default, because zen takes away every way
           back except one floating button. */}
-      <ZenControl />
+      <SettingSlot ids={["keys.zen", "keys.zenTurn"]}>
+        <ZenControl />
+      </SettingSlot>
       {/* Whether a shell pane offers lines from Sent above its box as you type (M61). A standing choice
           about this phone's composer, stored with the display prefs. */}
-      <SentSuggestionsControl />
+      <SettingSlot ids={["keys.sentSuggestions"]}>
+        <SentSuggestionsControl />
+      </SettingSlot>
       {/* How a pane's Changes view finds repos (ADR 0065). Read by the pane menu, not by here. */}
-      <ChangesControl />
+      <SettingSlot ids={["dashboard.changes.nested", "dashboard.changes.depth"]}>
+        <ChangesControl />
+      </SettingSlot>
       {/* The list of desktop shortcuts (M108), the visible control of the `help` action. A button that opens
           the same sheet `prefix+?` does, and only on a device that has shown a hardware key press. Renders
           nothing before that. */}
-      <ShortcutSettingsRow />
+      <SettingSlot ids={["keys.shortcuts"]}>
+        <ShortcutSettingsRow />
+      </SettingSlot>
       {/* What this phone keeps of each pane's Chat, and for how long (M46 spec 09). Here, beside the
           Changes search, because it is a standing decision about the device, not about a look. */}
-      <KeepChatControl />
+      <SettingSlot ids={["privacy.keepChat", "privacy.keepChat.clear"]}>
+        <KeepChatControl />
+      </SettingSlot>
       {/* The ONLY way back to a tour that was interrupted — the tour is marked seen the moment it
           opens. An action, so the row ends in a button rather than a Switch. */}
-      <TourControl />
+      <SettingSlot ids={["updates.firstScreen"]}>
+        <TourControl />
+      </SettingSlot>
     </SettingsPage>
   );
 }
@@ -217,7 +278,9 @@ export function SettingsVoiceRoute() {
       {/* The hub (ADR 0096, ADR 0097): what happens when the mic is pressed, this phone's own choice,
           one row for the host's option with a way in, hands-free, and one row for the model. Says why
           it is empty on a host that offers nothing, since the index row is never hidden. */}
-      <SpeechControl page="hub" />
+      <SettingSlot ids={["voice.status", "voice.audio", "voice.change", "voice.fix", "voice.phone", "voice.handsFree", "voice.host", "voice.model"]}>
+        <SpeechControl page="hub" />
+      </SettingSlot>
     </SettingsPage>
   );
 }
@@ -227,7 +290,9 @@ export function SettingsVoiceHostRoute() {
   const scope = useScope();
   return (
     <SettingsPage title="settings.voice.hostPage.title" parent={settingsSectionPath("voice", scope)}>
-      <SpeechControl page="host" />
+      <SettingSlot ids={["voice.host.uses", "voice.host.useOnHost", "voice.host.useChatgpt", "voice.host.useWhistle", "voice.host.changeForAll"]}>
+        <SpeechControl page="host" />
+      </SettingSlot>
     </SettingsPage>
   );
 }
@@ -237,7 +302,9 @@ export function SettingsVoiceModelRoute() {
   const scope = useScope();
   return (
     <SettingsPage title="settings.voice.model.title" parent={settingsSectionPath("voice", scope)}>
-      <SpeechControl page="model" />
+      <SettingSlot ids={["voice.model.setUp", "voice.model.removeHost", "voice.model.copyToPhone", "voice.model.removePhone", "voice.model.restore", "voice.model.details"]}>
+        <SpeechControl page="model" />
+      </SettingSlot>
     </SettingsPage>
   );
 }
@@ -247,7 +314,9 @@ export function SettingsAlertsRoute() {
   const availability = usePushAvailability();
   return (
     <SettingsPage title="settings.section.alerts.title">
-      <PushControl />
+      <SettingSlot ids={["notifications.push"]}>
+        <PushControl />
+      </SettingSlot>
       {/* Mounted while push state is still UNKNOWN, and only removed once we positively learn the
           bridge has no VAPID keys. Gating on truthiness instead inserted ~400px into the middle of
           the page one frame late, shoving everything below it down. These three are bridge-wide —
@@ -255,9 +324,15 @@ export function SettingsAlertsRoute() {
           whatever this particular device's push status turns out to be. */}
       {availability !== "server-off" && (
         <>
-          <NotifyPrefsControl />
-          <SnoozeControl snoozedUntil={root?.snoozedUntil ?? null} />
-          <ClearNotificationsControl />
+          <SettingSlot ids={["notifications.needsYou", "notifications.finished", "notifications.perAgent", "notifications.newVersion", "notifications.machineLoad", "notifications.decisions", "notifications.cacheCold", "notifications.cacheWatch"]}>
+            <NotifyPrefsControl />
+          </SettingSlot>
+          <SettingSlot ids={["notifications.doNotDisturb"]}>
+            <SnoozeControl snoozedUntil={root?.snoozedUntil ?? null} />
+          </SettingSlot>
+          <SettingSlot ids={["notifications.clear"]}>
+            <ClearNotificationsControl />
+          </SettingSlot>
         </>
       )}
     </SettingsPage>
@@ -303,10 +378,14 @@ export function SettingsExperimentsRoute() {
       <ExperimentsContract />
       {/* The Hill (bridge/hill/switch.ts): an experiment, off by default, and this is its one switch. Drawn from
           the snapshot, so it never waits on a reading of its own. Bridge-wide, like the notification switches. */}
-      <HillSwitchControl />
+      <SettingSlot ids={["tricks.hill"]}>
+        <HillSwitchControl />
+      </SettingSlot>
       {/* Tricks as a whole are an experiment too (bridge/tricks/feature-switch.ts), and this is their one switch,
           like the Hill's. While it is on, Settings shows a Tricks row for the list; off, the row is gone. */}
-      <TricksSwitchControl />
+      <SettingSlot ids={["tricks.enabled"]}>
+        <TricksSwitchControl />
+      </SettingSlot>
     </SettingsPage>
   );
 }
@@ -329,8 +408,12 @@ export function SettingsTricksRoute() {
   return (
     <SettingsPage title="settings.section.tricks.title" keepScroll>
       {/* The cards of Collie's own that wait for a yes (M96 spec 14): with the Hill off, the one list of them. */}
-      <TrickCardsWaiting />
-      <TricksSettingsCard />
+      <SettingSlot ids={["tricks.waiting"]}>
+        <TrickCardsWaiting />
+      </SettingSlot>
+      <SettingSlot ids={["tricks.list", "tricks.addRepo", "tricks.addRepo.link", "tricks.official.add", "tricks.official.update"]}>
+        <TricksSettingsCard />
+      </SettingSlot>
     </SettingsPage>
   );
 }
@@ -349,25 +432,37 @@ export function SettingsSystemRoute() {
       {/* Access sits with the connection diagnostics — both answer "what is this device allowed to
           do, and why". Pairing is the gate you can change from here; ConnectionInfo below only
           reports the header-based one. */}
-      <PairedDevices data={devices} />
+      <SettingSlot ids={["devices.pair", "devices.pair.code", "devices.pair.name", "devices.unpair", "devices.paired", "devices.revoke"]}>
+        <PairedDevices data={devices} />
+      </SettingSlot>
       {/* Renders NOTHING on a solo install — the card owns that gate itself (useCrew().multi). */}
-      <CrewSettingsCard />
+      <SettingSlot ids={["devices.crew", "devices.machines"]}>
+        <CrewSettingsCard />
+      </SettingSlot>
       {/* Where this machine's new worktrees go by default (ADR 0093 note): one row per machine. */}
-      <WorktreeFolderControl />
-      <ConnectionInfo
-        bridge={root?.bridge}
-        device={root?.device}
-        build={diagnostics.build}
-        redact={diagnostics.redact}
-        denied={root?.authError === true}
-      />
+      <SettingSlot ids={["dashboard.worktreeFolder"]}>
+        <WorktreeFolderControl />
+      </SettingSlot>
+      <SettingSlot ids={["devices.connection", "devices.connection.endpoint", "devices.connection.secure", "devices.connection.bridge", "devices.connection.access", "devices.connection.masking", "devices.connection.serverBuild"]}>
+        <ConnectionInfo
+          bridge={root?.bridge}
+          device={root?.device}
+          build={diagnostics.build}
+          redact={diagnostics.redact}
+          denied={root?.authError === true}
+        />
+      </SettingSlot>
       {/* The anonymous install count (M86 spec 02, ADR 0129): one row with its state, above the report
           card because both are about what this machine says to Collie's host. The switch, the cause
           and the next message are the page the row opens. */}
-      <TelemetrySettingsRow />
+      <SettingSlot ids={["privacy.telemetry"]}>
+        <TelemetrySettingsRow />
+      </SettingSlot>
       {/* Report a problem (ADR 0123): the offer's switch and the sheet's third door, with the diagnostics
           because a report is the one way those leave this phone, and only by the person's taps. */}
-      <ReportControl />
+      <SettingSlot ids={["updates.reportOffer", "updates.report"]}>
+        <ReportControl />
+      </SettingSlot>
     </SettingsPage>
   );
 }
@@ -377,7 +472,9 @@ export function SettingsCharacterRoute() {
   const scope = useScope();
   return (
     <SettingsPage title="settings.character.title" parent={settingsSectionPath("appearance", scope)}>
-      <CharacterPicker />
+      <SettingSlot ids={["look.character", "look.characterMoves"]}>
+        <CharacterPicker />
+      </SettingSlot>
     </SettingsPage>
   );
 }
@@ -387,7 +484,9 @@ export function SettingsInstallCountRoute() {
   const scope = useScope();
   return (
     <SettingsPage title="telemetry.card.title" parent={settingsSectionPath("system", scope)}>
-      <TelemetrySettingsCard />
+      <SettingSlot ids={["privacy.telemetry", "privacy.telemetry.next", "privacy.telemetry.docs"]}>
+        <TelemetrySettingsCard />
+      </SettingSlot>
     </SettingsPage>
   );
 }
