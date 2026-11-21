@@ -572,11 +572,13 @@ describe("TrickDetail values on chips", () => {
   };
   const chips = (row: Element | null) => [...(row?.querySelectorAll('[data-slot="trick-value"]') ?? [])].map((el) => el.textContent);
 
-  it("draws the places, the file paths, the names, the globs, the version and the timer's spans each on a chip, and the sentence stays plain", () => {
+  it("draws the file paths, the names, the globs, the version and the timer's spans each on a chip, the places as emphasised text, and the sentence stays plain", () => {
     open(WITH_FACTS);
     const dialog = detail();
     const rowOf = (text: string) => within(dialog).getByText((_, el) => el?.tagName === "LI" && (el.textContent ?? "").includes(text));
-    expect(chips(rowOf("It shows in:"))).toEqual(["the end of the Belt in each session, the left end of the usage row of each session"]);
+    // The places are a phrase, not a short literal (2026-11-21): no chip, the same words at the emphasised weight.
+    expect(chips(rowOf("It shows in:"))).toEqual([]);
+    expect(rowOf("It shows in:").querySelector('[data-slot="trick-value-text"]')?.textContent).toBe("the end of the Belt in each session, the left end of the usage row of each session");
     expect(rowOf("It shows in:")).toHaveTextContent("It shows in: the end of the Belt in each session, the left end of the usage row of each session.");
     expect(chips(rowOf("Asks for the environment names"))).toEqual(["GH_TOKEN"]);
     expect(chips(rowOf("Runs when these files change"))).toEqual(["~/notes/todo.md"]);
@@ -598,7 +600,7 @@ describe("TrickDetail values on chips", () => {
 
   it("a chip is the foreground at medium weight on a muted ground with one border on all four sides, and wraps instead of scrolling", () => {
     open(WITH_FACTS);
-    const chip = detail().querySelector('[data-slot="trick-value"]');
+    const chip = detail().querySelector('[data-line="timer"] [data-slot="trick-value"]');
     const classes = (chip?.className ?? "").split(/\s+/);
     expect(classes).toEqual(expect.arrayContaining(["bg-muted", "text-foreground", "border", "border-border", "font-medium", "whitespace-normal", "break-words"]));
     expect(classes.some((c) => /^border-(l|r|t|b|x|y)(-|$)/.test(c))).toBe(false);
