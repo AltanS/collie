@@ -1,4 +1,4 @@
-import { useCallback, useRef, type FormEvent, type KeyboardEvent, type RefCallback } from "react";
+import { useCallback, useId, useRef, type FormEvent, type KeyboardEvent, type RefCallback } from "react";
 
 import { Icon } from "@/components/icons/icon";
 import { Button } from "@/components/ui/button";
@@ -24,6 +24,13 @@ export interface SessionFilterFieldProps {
    * the Dashboard's opened field closes itself here.
    */
   onEscapeEmpty?: () => void;
+  /**
+   * `sidebar`: the large screen's sidebar head (ADR 0120). The field is drawn 36px with a 44px reach, its
+   * magnifier on the axis of the rows' icons and its text on the rows' names, and the count stands inside
+   * the field beside the clear button instead of on a reserved line under it. The sheet and the
+   * Dashboard pass nothing and keep the 44px field over its count line.
+   */
+  variant?: "sheet" | "sidebar";
 }
 
 /**
@@ -44,7 +51,7 @@ export interface SessionFilterFieldProps {
  * - No autofocus: on a phone the keyboard would cover the list the person just opened. No shortcut is
  *   the way in (mobile first).
  */
-export function SessionFilterField({ query, onQuery, shown, total, onGo, className, inputRef, onEscapeEmpty }: SessionFilterFieldProps) {
+export function SessionFilterField({ query, onQuery, shown, total, onGo, className, inputRef, onEscapeEmpty, variant = "sheet" }: SessionFilterFieldProps) {
   useLocale();
   const input = useRef<HTMLInputElement | null>(null);
   const setInput = useCallback(
@@ -56,6 +63,8 @@ export function SessionFilterField({ query, onQuery, shown, total, onGo, classNa
   );
   const active = query !== "";
   const name = t("sessionFilter.placeholder");
+  const fieldId = useId();
+  const sidebar = variant === "sidebar";
 
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.nativeEvent.isComposing) return;
@@ -82,6 +91,71 @@ export function SessionFilterField({ query, onQuery, shown, total, onGo, classNa
     onGo();
   };
 
+  const clear = (
+    <button
+      type="button"
+      aria-label={t("sessionFilter.clear")}
+      onClick={() => {
+        onQuery("");
+        input.current?.focus();
+      }}
+      className={cn(
+        "absolute right-0 top-0 flex size-11 items-center justify-center rounded-md text-muted-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+        // In the sidebar's 36px field: a 36px square reaching 4px out on every side, 44 by 44, as
+        // SQUARE_36_TAP_TARGET does (without its `relative`, which would undo this `absolute`).
+        sidebar && "size-9 before:absolute before:-inset-1 before:content-['']",
+        !active && "invisible",
+      )}
+    >
+      <Icon name="clear" className="size-4" aria-hidden />
+    </button>
+  );
+  const count = (
+    <p
+      aria-live="polite"
+      data-slot="session-filter-count"
+      className={cn(
+        "truncate text-[11px]/4 tabular-nums text-muted-foreground",
+        sidebar ? "pointer-events-none absolute inset-y-0 right-9 flex items-center" : "h-4 px-1",
+        !active && "invisible",
+      )}
+    >
+      {active ? t("sessionFilter.count", { shown, total }) : ""}
+    </p>
+  );
+
+  if (sidebar) {
+    return (
+      <form role="search" aria-label={name} data-slot="session-filter" onSubmit={onSubmit} className={className}>
+        {/* A label, so the reach around a field drawn 36px tall (4px above and below, 44 in all) still
+            puts the caret in it. The block around it keeps that 4px free of any other control. */}
+        <label htmlFor={fieldId} className="relative block w-full before:absolute before:inset-x-0 before:-inset-y-1 before:content-['']">
+          <SearchField
+            id={fieldId}
+            ref={setInput}
+            value={query}
+            onChange={onQuery}
+            placeholder={name}
+            label={name}
+            enterKeyHint="go"
+            onKeyDown={onKeyDown}
+            // The row's icon column is 17 to 37px in (the list's 8, the row's 1px edge and 8px pad), so a
+            // 16px magnifier 11px into the 8px-inset field sits on its axis, and 38px of left pad starts
+            // the text at 47, on the rows' names. 80px on the right hold the count and the clear button.
+            inputClassName="h-9 border-border pl-[38px] pr-20"
+            iconClassName="left-[11px]"
+            trailing={
+              <>
+                {count}
+                {clear}
+              </>
+            }
+          />
+        </label>
+      </form>
+    );
+  }
+
   return (
     <form role="search" aria-label={name} data-slot="session-filter" onSubmit={onSubmit} className={cn("flex flex-col gap-1", className)}>
       <SearchField
@@ -92,30 +166,9 @@ export function SessionFilterField({ query, onQuery, shown, total, onGo, classNa
         label={name}
         enterKeyHint="go"
         onKeyDown={onKeyDown}
-        trailing={
-          <button
-            type="button"
-            aria-label={t("sessionFilter.clear")}
-            onClick={() => {
-              onQuery("");
-              input.current?.focus();
-            }}
-            className={cn(
-              "absolute right-0 top-0 flex size-11 items-center justify-center rounded-md text-muted-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
-              !active && "invisible",
-            )}
-          >
-            <Icon name="clear" className="size-4" aria-hidden />
-          </button>
-        }
+        trailing={clear}
       />
-      <p
-        aria-live="polite"
-        data-slot="session-filter-count"
-        className={cn("h-4 truncate px-1 text-[11px]/4 tabular-nums text-muted-foreground", !active && "invisible")}
-      >
-        {active ? t("sessionFilter.count", { shown, total }) : ""}
-      </p>
+      {count}
     </form>
   );
 }

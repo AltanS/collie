@@ -21,6 +21,12 @@ export interface SearchFieldProps {
   /** The label of the keyboard's action key (`go`, `search`). */
   enterKeyHint?: "go" | "search" | "done";
   className?: string;
+  /** The input's id, for a label drawn around the field. */
+  id?: string;
+  /** The input's box, merged over the 44px default: the session filter's sidebar field. */
+  inputClassName?: string;
+  /** The magnifier's place, merged over the default. */
+  iconClassName?: string;
 }
 
 /**
@@ -35,14 +41,15 @@ export interface SearchFieldProps {
  * edge (`trailing`) and reads Enter and Escape (`onKeyDown`).
  */
 export const SearchField = forwardRef<HTMLInputElement, SearchFieldProps>(function SearchField(
-  { value, onChange, placeholder, label, trailing, onKeyDown, enterKeyHint, className },
+  { id, value, onChange, placeholder, label, trailing, onKeyDown, enterKeyHint, className, inputClassName, iconClassName },
   ref,
 ) {
   return (
     <div className={cn("relative", className)}>
-      <Icon name="search" className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+      <Icon name="search" className={cn("pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground", iconClassName)} />
       <input
         ref={ref}
+        id={id}
         type="text"
         inputMode="search"
         autoComplete="off"
@@ -58,6 +65,7 @@ export const SearchField = forwardRef<HTMLInputElement, SearchFieldProps>(functi
         className={cn(
           "h-11 w-full rounded-md border border-input bg-transparent pl-9 text-base placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
           trailing === undefined ? "pr-3" : "pr-11",
+          inputClassName,
         )}
       />
       {trailing}

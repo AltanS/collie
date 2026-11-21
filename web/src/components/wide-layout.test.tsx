@@ -303,8 +303,10 @@ describe("the sidebar", () => {
     const block = q(container, 'aside[data-slot="wide-sidebar"] [data-slot="session-filter"]')!;
     expect(block).not.toBeNull();
     expect(block.getAttribute("role")).toBe("search");
-    expect(block.className).toEqual(expect.stringContaining("sticky"));
-    expect(block.className).toEqual(expect.stringContaining("top-0 -mx-2 px-2"));
+    // The head block around it sticks, across the sidebar.
+    const head = block.closest('[data-slot="sidebar-head-block"]')!;
+    expect(head.className).toEqual(expect.stringContaining("sticky"));
+    expect(head.className).toMatch(/\btop-0\b.*\s-mx-2\b/);
     expect(within(block).getByRole("textbox", { name: "Filter sessions" })).not.toHaveFocus();
 
     // Typed into, it narrows the list; closed to the rail, the field and its query are gone.
@@ -550,7 +552,7 @@ describe("width", () => {
 });
 
 describe("the sidebar's structure", () => {
-  it("one 16px inset, 44px icon buttons with 20px glyphs, a hairline between rows, more air above a heading", async () => {
+  it("one 16px inset, a hairline between rows, more air above a heading", async () => {
     const { container } = await mount("w1:p1", 1200);
     const aside = q(container, "aside")!;
     const list = q(aside, "[data-pane-key]")!.closest("section")!.parentElement!;
@@ -559,11 +561,7 @@ describe("the sidebar's structure", () => {
     expect(list.className).toContain("gap-6");
     const heading = within(aside).getByRole("heading", { name: "alpha" }).parentElement!;
     expect(heading.className).toContain("px-2");
-    // The summary row: a 44px row, its order glyphs 20px like every icon button around them.
-    const radios = within(aside).getAllByRole("radio");
-    expect(radios[0]?.closest("div.min-h-11")).not.toBeNull();
-    for (const r of radios) expect(r.querySelector("svg")?.getAttribute("class")).toContain("size-5");
-    // The toggle is the same glyph size, so it reads as the same icon set.
+    // The toggle keeps the 20px glyph of the icon buttons around it.
     expect(q(container, '[data-slot="sidebar-toggle"] svg')?.getAttribute("class")).toContain("size-5");
     // Rows: a hairline drawn once, between rows; a floor, never a fixed height; stated line boxes.
     const row = sidebarRow(container, A2)!;
@@ -571,6 +569,53 @@ describe("the sidebar's structure", () => {
     expect(row.className).toContain("min-h-11");
     expect(row.className).not.toMatch(/(?:^|\s)h-\d/);
     expect(q(row, ".leading-4")?.textContent).toContain("alpha");
+  });
+
+  it("the head is one sticky block: the field, then the summary line and the three views, one of them selected", async () => {
+    // A sixth row: the filter is offered from FILTER_MIN_ROWS on.
+    extraAgents = [pane("w2:p2", "w2", "beta")];
+    const { container } = await mount("w1:p1", 1200);
+    const aside = q(container, "aside")!;
+    const block = q(aside, '[data-slot="sidebar-head-block"]')!;
+    expect(block).not.toBeNull();
+    // One block sticks and draws the one rule; the field inside it draws none of its own.
+    expect(block.className).toMatch(/\bsticky\b/);
+    expect(block.className).toContain("border-b");
+    const field = q(block, '[data-slot="session-filter"]')!;
+    expect(field.className).not.toContain("sticky");
+    expect(field.className).not.toContain("border-b");
+    const summary = q(block, '[data-slot="sidebar-summary-row"]')!;
+    // In that order: the field, then the summary row.
+    expect([...block.children]).toEqual([field, summary]);
+    const views = within(summary).getByRole("radiogroup");
+    const radios = within(views).getAllByRole("radio");
+    expect(radios).toHaveLength(3);
+    expect(radios.filter((r) => r.getAttribute("aria-checked") === "true")).toHaveLength(1);
+    // The summary line comes first in the row, the views last.
+    expect(summary.lastElementChild).toBe(views);
+    // The selected view is filled in full ink, never outlined.
+    const on = radios.find((r) => r.getAttribute("aria-checked") === "true")!;
+    expect(on.className).toContain("bg-accent");
+    expect(on.className).not.toContain("border-foreground");
+  });
+
+  it("while filtering, the count stands inside the field, and no line is reserved under it", async () => {
+    // A sixth row: the filter is offered from FILTER_MIN_ROWS on.
+    extraAgents = [pane("w2:p2", "w2", "beta")];
+    const { container } = await mount("w1:p1", 1200);
+    const aside = q(container, "aside")!;
+    const field = q(aside, '[data-slot="session-filter"]')!;
+    const input = within(field).getByRole("textbox");
+    const count = q(field, '[data-slot="session-filter-count"]')!;
+    // At rest the count is drawn invisible inside the field's box, beside the clear button.
+    expect(count.closest("label")).toBe(input.closest("label"));
+    expect(count.className).toContain("absolute");
+    expect(count.className).toContain("invisible");
+    expect(count.className).not.toContain("h-4");
+    fireEvent.change(input, { target: { value: "alpha" } });
+    await waitFor(() => expect(count.className).not.toContain("invisible"));
+    expect(count.textContent).toMatch(/\d+ of \d+/);
+    expect(count.closest("label")).toBe(input.closest("label"));
   });
 });
 
