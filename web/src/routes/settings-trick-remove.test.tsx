@@ -115,7 +115,8 @@ describe("the Remove section", () => {
       const bodies: JsonValue[] = [];
       server.use(
         http.post("/api/tricks/lodge/legs/remove", async ({ request }) => {
-          bodies.push(asJsonObject(await request.json()) ?? null);
+          // SAFETY: the body the app posts is JSON by construction (lib/api.ts `removeTrick` sends `JSON.stringify`).
+          bodies.push(asJsonObject((await request.json()) as JsonValue) ?? null);
           return body === null ? new HttpResponse("boom", { status }) : HttpResponse.json(body, { status });
         }),
       );
