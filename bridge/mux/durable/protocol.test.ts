@@ -61,7 +61,7 @@ describe("hello", () => {
       ok: true,
       value: {
         protocol: { min: 1, max: 1 },
-        hostName: "denis-laptop",
+        hostName: "casey-laptop",
         epoch: EPOCH,
         ready: true,
         caps: { asks: true, starters: true, send: true, steer: true, abort: true, rename: false, close: false, actions: false, history: false, reopen: false },
@@ -165,8 +165,8 @@ describe("snapshot fixture", () => {
     const mux = toMuxSnapshot(read());
 
     expect(mux.spaces.map((space) => [space.spaceId, space.number, space.label, space.tabCount, space.paneCount, space.folder])).toEqual([
-      ["ws-notes", 1, "notes", 2, 3, "/home/denis/notes"],
-      ["ws-site", 2, "site", 1, 2, "/home/denis/site"],
+      ["ws-notes", 1, "notes", 2, 3, "/home/casey/notes"],
+      ["ws-site", 2, "site", 1, 2, "/home/casey/site"],
     ]);
     expect(mux.tabs.map((tab) => [tab.tabId, tab.spaceId, tab.number, tab.label, tab.paneCount])).toEqual([
       ["ws-notes:main", "ws-notes", 1, "main", 2],
@@ -192,7 +192,7 @@ describe("snapshot fixture", () => {
       spaceNumber: 1,
       tabId: "ws-notes:main",
       tabLabel: "main",
-      cwd: "/home/denis/notes",
+      cwd: "/home/casey/notes",
       focused: false,
       alive: true,
       agent: "durable",
@@ -214,8 +214,8 @@ describe("snapshot fixture", () => {
       }),
     );
     const cwd = (id: string) => mux.panes.find((pane) => pane.paneId === id)?.cwd;
-    expect(cwd("conv-02")).toBe("/home/denis/notes/papers");
-    expect(cwd("conv-01")).toBe("/home/denis/notes");
+    expect(cwd("conv-02")).toBe("/home/casey/notes/papers");
+    expect(cwd("conv-01")).toBe("/home/casey/notes");
     expect(cwd("conv-03")).toBe("");
   });
 

@@ -477,7 +477,13 @@ code first. The search reads every file the `run` line names, whatever its name,
 the `run` line hands over that it could not read.
 
 Switching off stops the runs and removes the trick's parts from the phone. It withdraws the trick's
-open Decisions too. `remove` works only on a trick that is off.
+open Decisions too.
+
+To remove a trick, switch it off, open its details page from Settings → Tricks, and tap **Remove
+trick** in the Remove section at the end of the page, or run `collie trick remove` in a shell. Both
+delete the trick's folder, its saved settings and its approved code from that machine, and you cannot
+undo it. Both work only on a trick that is off, and wait while a run of it is still going. A trick of
+a crew member is removed on that member.
 
 A trick with a timer runs only while a paired phone is looking. Collie counts a phone as looking for
 five minutes after its last request. A trick that calls a paid service every 30 seconds makes no call

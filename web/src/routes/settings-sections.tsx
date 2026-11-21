@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Navigate, useLoaderData, useLocation, useParams } from "react-router";
+import { useLoaderData, useParams } from "react-router";
 
 import { AppearanceIntro } from "@/components/appearance-intro";
 import { BeltSizeControl } from "@/components/belt-size-control";
@@ -66,7 +66,7 @@ import { EMPTY_DEVICES, type DevicesData, type MachinesData } from "@/lib/loader
 import { settingsSectionPath } from "@/lib/nav";
 import { useOptionalRootData } from "@/lib/route-data";
 import { useScope } from "@/lib/session";
-import { OLD_BELOW, OLD_FRAGMENTS, OLD_PAGES, pageDef } from "@/lib/settings/pages";
+import { pageDef } from "@/lib/settings/pages";
 import type { PageId } from "@/lib/settings/types";
 
 // ── THE ELEVEN SETTINGS PAGES (ADR 0170) ────────────────────────────────────────────────────────────────────────
@@ -513,25 +513,4 @@ export function SettingsInstallCountRoute() {
       </SettingSlot>
     </SettingsPage>
   );
-}
-
-// ── THE OLD ADDRESSES ────────────────────────────────────────────────────────────────────────────────────────────
-// Appearance, Harness configurations, Device, Alerts, Experiments and System are redirects now: each opens the page
-// that holds most of what it held, with the query string (the scope, a pairing code) and the fragment. An old
-// fragment names its row's page, which may be another one: `/settings/device#changes` opens Dashboard and projects.
-// The redirect is an element and not a loader because a loader's request has no fragment. `replace`, so Back does
-// not land on an address that only forwards.
-
-/** Where an old address goes: the page and the part below it, with the fragment's page winning. */
-export function oldSettingsTarget(old: keyof typeof OLD_PAGES, below: string | undefined, search: string, hash: string): string {
-  const fragment = hash.startsWith("#") ? hash.slice(1) : hash;
-  const byFragment = new Map<string, PageId>(Object.entries(OLD_FRAGMENTS)).get(fragment);
-  const moved = below === undefined ? undefined : new Map<string, string>(Object.entries(OLD_BELOW)).get(`${old}/${below}`);
-  const path = moved ?? byFragment ?? OLD_PAGES[old];
-  return `/settings/${path}${search}${hash}`;
-}
-
-export function OldSettingsRedirect({ from, below }: { from: keyof typeof OLD_PAGES; below?: string }) {
-  const { search, hash, state } = useLocation();
-  return <Navigate to={oldSettingsTarget(from, below, search, hash)} replace state={state} />;
 }

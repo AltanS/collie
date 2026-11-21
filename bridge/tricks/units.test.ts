@@ -919,7 +919,7 @@ describe("the routes", () => {
     const src = readFileSync(join(import.meta.dir, "..", "server.ts"), "utf8");
     const list = src.slice(src.indexOf('if (pathname === "/api/tricks" && req.method === "GET")'));
     // The rights live in one table in routes.ts; server.ts reads each route's level from it.
-    expect(TRICKS_ROUTE_RIGHTS).toEqual({ reply: "read", tap: "write", switch: "write", media: "read", code: "read", auto: "write", undo: "write", official: "read", officialAdd: "write", repoList: "write", repoAdd: "write", feature: "write", value: "write" });
+    expect(TRICKS_ROUTE_RIGHTS).toEqual({ reply: "read", tap: "write", switch: "write", media: "read", code: "read", auto: "write", undo: "write", official: "read", officialAdd: "write", repoList: "write", repoAdd: "write", feature: "write", value: "write", remove: "write" });
     expect(list.slice(0, 400)).toContain("guard(req, cfg, TRICKS_ROUTE_RIGHTS.reply, pairingGate)");
     expect(list.slice(0, 600)).toContain("if (pairedLabel(req, pairingGate) !== null) tricks.noteWatched();");
     // The runner's PATH for the host's own CLI only is held by a real request in the crew harness

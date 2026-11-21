@@ -256,7 +256,7 @@ import { modeForWire } from "./crew/mode.ts";
 import type { CrewRuntime } from "./crew/config.ts";
 import type { CrewLead } from "./crew/lead.ts";
 import { crewDeviceOf, crewGate, type GateLevel } from "./crew/peer-gate.ts";
-import { asksBound, TRICKS_ROUTE_RIGHTS, tricksAutoRoute, tricksCodeRoute, tricksMediaRoute, tricksOfficialRoute, tricksSwitchRoute, tricksTapRoute, tricksUndoRoute, tricksValueRoute, parseSince } from "./tricks/routes.ts";
+import { asksBound, TRICKS_ROUTE_RIGHTS, tricksAutoRoute, tricksCodeRoute, tricksMediaRoute, tricksOfficialRoute, tricksRemoveRoute, tricksSwitchRoute, tricksTapRoute, tricksUndoRoute, tricksValueRoute, parseSince } from "./tricks/routes.ts";
 import type { OfficialTricksSurface } from "./tricks/official-install.ts";
 import type { RepoIndexSurface } from "./tricks/repo-index.ts";
 import { placeTrickSessions } from "./tricks/panes.ts";
@@ -677,6 +677,8 @@ const TRICKS_AUTO_ROUTE = /^\/api\/tricks\/([^/]+)\/([^/]+)\/auto$/;
 const TRICKS_UNDO_ROUTE = /^\/api\/tricks\/([^/]+)\/([^/]+)\/undo$/;
 // A trick's settings (contract 3): one field's value, write-gated like the switch.
 const TRICKS_VALUE_ROUTE = /^\/api\/tricks\/([^/]+)\/([^/]+)\/value$/;
+/** `POST /api/tricks/<host>/<id>/remove` (ADR 0168): remove a trick of this machine that is off. */
+const TRICKS_REMOVE_ROUTE = /^\/api\/tricks\/([^/]+)\/([^/]+)\/remove$/;
 // And a picture of the trick's own `media/` folder (M94 review 11), read-gated like the list. Group 3 is
 // `media/` and the file; bridge/tricks/media.ts checks it before any path is built.
 export const TRICKS_MEDIA_ROUTE = /^\/api\/tricks\/([^/]+)\/([^/]+)\/(media\/.+)$/;
@@ -3549,6 +3551,25 @@ export function startServer(opts: {
           body = undefined;
         }
         const answer = await tricksValueRoute(tricks, tricksValue, body);
+        return json(answer.body, req.headers.get("accept-encoding"), answer.status);
+      }
+      // Removing a trick (ADR 0168): the write right, a request id, a receipt on disk, POST only. This machine's own,
+      // as the other trick writes: a `?h=<member>` would read as if it removed the member's trick.
+      const tricksRemove = TRICKS_REMOVE_ROUTE.exec(pathname);
+      if (tricksRemove !== null && req.method === "POST") {
+        const denied = guard(req, cfg, TRICKS_ROUTE_RIGHTS.remove, pairingGate);
+        if (denied) return denied;
+        if (host.kind === "member") return text(TRICKS_REMOVE_LOCAL_TEXT, 400);
+        const tricks = opts.tricks;
+        if (tricks === undefined) return jsonError({ error: "not found" }, 404, null);
+        let body: JsonValue | undefined;
+        try {
+          // SAFETY: `Request.json()` output IS a JsonValue by construction; `tricksRemoveRoute` checks the shape.
+          body = (await req.json()) as JsonValue;
+        } catch {
+          body = undefined;
+        }
+        const answer = await tricksRemoveRoute(tricks, tricksRemove, body, whois(req).device);
         return json(answer.body, req.headers.get("accept-encoding"), answer.status);
       }
       const tricksMedia = TRICKS_MEDIA_ROUTE.exec(pathname);
@@ -10501,6 +10522,8 @@ export const HILL_OFF_TEXT = "the hill is not running on this bridge";
 /** What a hill route answers with `?host=`: the hill is not merged across the crew yet. */
 /** `?h=<member>` on the tricks switch route: the switch is this machine's, set on the member itself. */
 export const TRICKS_SWITCH_LOCAL_TEXT = "the tricks switch is this machine's only; set it on the machine itself";
+/** What the remove route says for a `?h=<member>`: a trick is removed on the machine that holds it. */
+export const TRICKS_REMOVE_LOCAL_TEXT = "a trick is removed on the machine that holds it; open that machine's Collie";
 export const HILL_LOCAL_TEXT = "the hill reads this machine only for now; ask the machine itself";
 /** What the answer route says of a `rid` already used for another answer. */
 export const HILL_RID_REUSED = "request-id-reused: this rid already answered with another choice";

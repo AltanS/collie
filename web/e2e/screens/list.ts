@@ -111,6 +111,8 @@ export const SCREENS: readonly Screen[] = [
   { id: "settings-account-login", route: "settings/accounts/:id/login", path: "/settings/accounts/acct-work/login", title: "Settings, change a profile's login", wide: "designed", setup: "accounts" },
   { id: "settings-tricks", route: "settings/tricks", path: "/settings/tricks", title: "Settings, Tricks and the Hill", wide: "designed", setup: "tricks", waive: { "targets@390": PHONE_TARGETS } },
   { id: "settings-trick", route: "settings/tricks/:key", path: "/settings/tricks/lodge%3Akettle", title: "Settings, one trick's details", wide: "designed", setup: "tricks", waive: { "targets@390": PHONE_TARGETS } },
+  { id: "settings-trick-remove", route: "settings/tricks/:key", path: "/settings/tricks/lodge%3Akettle", title: "A trick that is off, Remove", wide: "designed", state: "trick off, Remove section in view", setup: "trickRemove", waive: { "targets@390": PHONE_TARGETS } },
+  { id: "settings-trick-remove-confirm", route: "settings/tricks/:key", path: "/settings/tricks/lodge%3Akettle", title: "The Remove confirm open", wide: "designed", state: "Remove confirm open", setup: "trickRemoveConfirm" },
   { id: "settings-devices", route: "settings/devices", path: "/settings/devices", title: "Settings, Devices and machines", wide: "designed" },
   { id: "settings-privacy", route: "settings/privacy", path: "/settings/privacy", title: "Settings, Privacy and data", wide: "designed" },
   { id: "settings-install-count", route: "settings/privacy/install-count", path: "/settings/privacy/install-count", title: "Settings, the install count", wide: "designed" },
@@ -135,7 +137,7 @@ export const NOT_A_SCREEN = {
   "slot/:slot": "a permanent address that replaces itself with that browser tab's last pane (lib/slots.ts); it draws nothing of its own",
   pack: "a redirect to crew (the path was renamed in 1.7.0)",
   // The Settings pages before ADR 0170 (2026-11-21): each opens the page that holds most of what it held, with the query
-  // and the fragment (routes/settings-sections.tsx `OldSettingsRedirect`); `e2e/settings-redirects.spec.ts` opens each.
+  // and the fragment (routes/settings-redirect.tsx `OldSettingsRedirect`); `e2e/settings-redirects.spec.ts` opens each.
   "settings/appearance": "a redirect to settings/look (Settings became eleven pages, ADR 0170)",
   "settings/appearance/character": "a redirect to settings/look/character (ADR 0170)",
   "settings/harnesses": "a redirect to settings/chat, where the status line per agent is now (ADR 0170)",

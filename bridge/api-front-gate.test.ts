@@ -601,6 +601,21 @@ describe("the local credential: reads only, from this host through nothing", () 
     }
   });
 
+  // ADR 0168: removing a trick deletes its folder, so the write right; the host's local credential, which an agent or
+  // a trick's program beside the bridge can read as the user, is refused, as for the official add.
+  test("a trick remove with the local credential is 403", async () => {
+    expect(TRICKS_ROUTE_RIGHTS.remove).toBe("write");
+    for (const [bind, peer] of [
+      [LOOPBACK_BIND, "127.0.0.1"],
+      [CONCRETE_BIND, "100.64.10.2"],
+    ] as const) {
+      const { gate } = await gateFrom(() => peer, bind);
+      const headers = { ...bearer, origin: "http://127.0.0.1:8787", "content-type": "application/json" };
+      const denied = guard(request("POST", "/api/tricks/lodge/legs/remove", headers), config(), TRICKS_ROUTE_RIGHTS.remove, gate);
+      expect({ bind, status: denied?.status }).toEqual({ bind, status: 403 });
+    }
+  });
+
   test("the Files read, files/image, files/exist and Claude commands routes ask device-read, never read (by source)", () => {
     for (const route of ["WORKSPACE_FILES_ROUTE", "PANE_FILES_EXIST_ROUTE", "PANE_FILES_IMAGE_ROUTE", "PANE_CLAUDE_COMMANDS_ROUTE"]) {
       const at = SERVER_CODE.indexOf(`pathname.match(${route})`);

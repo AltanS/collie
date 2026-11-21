@@ -68,6 +68,8 @@ import { TricksStore, problemLine, type CliTricksExtra } from "./store.ts";
 import { TricksFeatureSwitch, type TricksFeaturePort } from "./feature-switch.ts";
 import { createSwitchReader, MIGRATED, updateSwitches, withApproval, withEntry, withFreshApproval, withSwitch, type SwitchEntry, type Switches } from "./switches.ts";
 import { fieldsWire, SeenWrites, TrickValues, withValues } from "./values.ts";
+import { clearRunMarks, markRun, removeTrick, unmarkRun } from "./remove.ts";
+import { REMOVE_UNKNOWN_LINE, REMOVE_WRITE_FAILED_LINE, removeAnswerOf, RemoveReceiptStore, type RemoveAnswer, type RemoveReceiptSurface } from "./remove-receipts.ts";
 import { fieldValueProblem, isRequestId, isTrickId, type FieldRefusal, type FieldValue } from "../../web/src/lib/tricks/schema.ts";
 import { BACKOFF_MS, HILL_QUEUE_MAX, RUNS_MAX, WATCH_WINDOW_MS } from "../../web/src/lib/tricks/limits.ts";
 import { menuMessageLine } from "../../web/src/lib/tricks/menu-message.ts";
@@ -275,6 +277,12 @@ export interface TricksSurface {
    * minted; null clears it back to the default. See {@link TricksService.setValue}.
    */
   setValue?(host: string, id: string, request: ValueRequest): Promise<ValueAnswer>;
+  /**
+   * `POST /api/tricks/<host>/<id>/remove` (ADR 0168): remove a trick of this machine that is off, with the request
+   * id the phone minted; `device` the paired device's label for the receipt and the audit line. See
+   * {@link TricksService.remove}.
+   */
+  remove?(host: string, id: string, rid: string, device: string | null): Promise<RemoveAnswer>;
 }
 
 /** The answer of the code route. */
@@ -475,6 +483,8 @@ export interface TricksServiceDeps {
   forgetTrick?: (id: string) => void | Promise<void>;
   /** The tap receipt file. Default `<stateDir>/tricks/receipts.json`. */
   receipts?: TrickReceiptSurface;
+  /** The remove receipt file (remove-receipts.ts). Default `<stateDir>/tricks/remove-receipts.json`. */
+  removeReceipts?: RemoveReceiptSurface;
   /**
    * Whether this bridge may schedule tricks now: a lead or a solo bridge that is not deposed. A peer, a
    * deputy and a deposed lead run no timer (bridge/index.ts wires the crew mode and the deposed state).
@@ -487,8 +497,8 @@ export interface TricksServiceDeps {
    * carries it, so Settings and `collie trick list` say that this machine runs none. Absent: never set.
    */
   runsOn?: () => TricksRunsOn | null;
-  /** One audit line per version the bridge approves, declines or undoes (bridge/audit.ts). Absent in a test. */
-  audit?: (entry: { action: string; detail: Record<string, string> }) => void;
+  /** One audit line per version the bridge approves, declines or undoes, and per remove (bridge/audit.ts). Absent in a test. */
+  audit?: (entry: { action: string; detail: Record<string, string>; device?: string | null }) => void;
   /** The "new version" card on the Hill (version-card.ts). Absent: no card, Settings alone says it. */
   versions?: TrickVersionsPort;
   /** Fault B: the card that says a trick stopped for its rights (rights-card.ts). Absent: the row alone says it. */
@@ -816,6 +826,9 @@ export class TricksService implements TricksSurface {
   private readonly mediaSync = new TrickMediaSync();
   /** The request ids of value writes already taken, with their receipts: the same id twice writes once. */
   private readonly valueWrites = new SeenWrites<ValueAnswer>();
+  /** The remove receipts (remove-receipts.ts), and their one read of the file. */
+  private readonly removeReceipts: RemoveReceiptSurface;
+  private removeReceiptsLoaded: Promise<void> | null = null;
 
   constructor(deps: TricksServiceDeps) {
     this.deps = deps;
@@ -825,6 +838,7 @@ export class TricksService implements TricksSurface {
     this.scanner = createTrickScanner(tricksConfigDir(deps.configDir), { warn: this.warn });
     this.readSwitches = createSwitchReader(deps.stateDir, this.warn);
     this.receiptFile = deps.receipts ?? new TrickReceiptStore(deps.stateDir, this.warn);
+    this.removeReceipts = deps.removeReceipts ?? new RemoveReceiptStore(deps.stateDir, this.warn);
     this.values = new TrickValues(deps.stateDir);
     this.reactions = new TrickReactions(
       { admit: (id) => this.reactAdmit(id), start: (id, trigger) => this.reactStart(id, trigger), due: (id) => this.reactDue(id), note: (id, note) => this.reactNote(id, note), warn: this.warn },
@@ -962,6 +976,8 @@ export class TricksService implements TricksSurface {
     // What a crashed add left set aside (approved.ts `forgetLeftovers`), whatever is switched on. Not awaited:
     // the removal of a large state folder never holds the start.
     this.swept = (async () => {
+      // No run of this bridge goes yet: a run mark (remove.ts) a crash left would only hold up a terminal remove.
+      clearRunMarks(this.deps.stateDir);
       await sweepGone({ stateDir: this.deps.stateDir, configDir: this.deps.configDir });
     })();
     try {
@@ -2046,6 +2062,9 @@ export class TricksService implements TricksSurface {
     const rid = trigger.kind === "tap" ? trigger.rid : "";
     const run = (async () => {
       const release = await this.slots.acquire(tap !== null);
+      // The run mark (remove.ts) goes down BEFORE `recheck` reads the switch file, synchronously: a terminal remove
+      // that reads no mark under the switch file's lock finds the switch off for any run that begins after it.
+      markRun(this.deps.stateDir, rt.found.id, this.now());
       try {
         const why = await this.recheck(rt);
         if (why !== null) {
@@ -2077,6 +2096,7 @@ export class TricksService implements TricksSurface {
         this.warn(`${rt.found.id}: ${line}`);
         tap?.resolve({ rid, code: "rejected", message: line });
       } finally {
+        unmarkRun(this.deps.stateDir, rt.found.id);
         release();
       }
     })();
@@ -2839,5 +2859,79 @@ export class TricksService implements TricksSurface {
       return answer;
     });
     return await turn;
+  }
+
+  // ── Removing a trick (ADR 0168, remove.ts) ─────────────────────────────────────────────────────────
+  // One write route (`POST /api/tricks/<host>/<id>/remove`, write right), the phone's half of `collie trick remove`:
+  // the same function, the same rules. The id must name a trick this service holds (a scan runs first); the trick
+  // must be off and no run of it going, queued or waiting on a Hill answer (asked from memory, inside the switch
+  // file's lock). A request id keys one receipt on disk (remove-receipts.ts): the same id answers the first answer
+  // again and removes nothing twice, also after a restart. One `trick.remove` audit line per remove that took: the
+  // device's label and the trick id, nothing of the trick. After the remove a scan drops the runtime, its parts
+  // (views, Belt marks, settings rows), its open Decisions and its run tokens (`apply`), and the bridge's
+  // `forgetTrick` drops its agent views and Hill keys. A crew member's tricks are removed on the member: the route
+  // is this bridge's own, as every trick write is.
+
+  /** Whether a run of `id` is going, queued, or waiting on a Hill answer. Synchronous: asked inside the lock. */
+  private busy(id: string): boolean {
+    const rt = this.runtimes.get(id);
+    return rt !== undefined && (rt.running !== null || rt.queued !== null || rt.hillQueue.length > 0);
+  }
+
+  private loadRemoveReceipts(): Promise<void> {
+    this.removeReceiptsLoaded ??= this.removeReceipts.load().catch(() => {});
+    return this.removeReceiptsLoaded;
+  }
+
+  async remove(host: string, id: string, rid: string, device: string | null): Promise<RemoveAnswer> {
+    if (!this.isOwn(host)) return { status: 404, body: { error: "unknown-host" } };
+    if (this.gated()) return { status: 409, body: { error: "windows", message: TRICKS_WINDOWS_LINE } };
+    if (this.switchedOff()) return { status: 409, body: { error: "tricks-off", message: TRICKS_OFF_LINE } };
+    if (!isRequestId(rid)) return { status: 400, body: { error: "remove-invalid" } };
+    // The id is a name, never a path: a dot, a slash or an encoded slash is no trick id, and nothing is built from it.
+    if (!isTrickId(id)) return { status: 404, body: { error: "unknown-trick" } };
+    await this.loadRemoveReceipts();
+    const digest = payloadDigest(["remove", id]);
+    const stored = this.removeReceipts.get(rid);
+    if (stored !== undefined) {
+      if (stored.payloadDigest !== digest) return { status: 409, body: { error: "request-id-reused", rid } };
+      if (stored.pending || stored.outcome === null) return { status: 409, body: { error: "unknown", message: REMOVE_UNKNOWN_LINE, rid } };
+      return removeAnswerOf(rid, id, stored.outcome);
+    }
+    const flying = this.removeReceipts.inflight(rid);
+    if (flying !== undefined) return await flying;
+    const answer = this.lane(async (): Promise<RemoveAnswer> => {
+      // Looked up again in the lane: a request with this id may have ended while this one waited.
+      const again = this.removeReceipts.get(rid);
+      if (again !== undefined) return again.payloadDigest !== digest ? { status: 409, body: { error: "request-id-reused", rid } } : again.outcome === null ? { status: 409, body: { error: "unknown", message: REMOVE_UNKNOWN_LINE, rid } } : removeAnswerOf(rid, id, again.outcome);
+      await this.refresh(true);
+      const base = { requestId: rid, payloadDigest: digest, at: this.now(), trick: id, device };
+      // Resolved against the tricks this service holds: an id it does not know touches nothing.
+      if (!this.runtimes.has(id)) {
+        await this.removeReceipts.record({ ...base, pending: false, outcome: "unknown-trick" });
+        return removeAnswerOf(rid, id, "unknown-trick");
+      }
+      if (!(await this.removeReceipts.recordFirst({ ...base, pending: true, outcome: null }))) return { status: 503, body: { error: "write-failed", message: REMOVE_WRITE_FAILED_LINE } };
+      let out: Awaited<ReturnType<typeof removeTrick>>;
+      try {
+        const opts: Parameters<typeof removeTrick>[0] = { configDir: this.deps.configDir, stateDir: this.deps.stateDir, id, busy: (one) => this.busy(one) };
+        if (this.deps.forgetTrick !== undefined) opts.forget = this.deps.forgetTrick;
+        out = await removeTrick(opts);
+      } catch (err) {
+        // Nothing was removed (remove.ts puts back what it moved): the marker goes, so the same id may try again.
+        this.warn(`${id}: the trick could not be removed: ${err instanceof Error ? err.message : String(err)}`);
+        await this.removeReceipts.forget(rid);
+        return { status: 503, body: { error: "write-failed", message: REMOVE_WRITE_FAILED_LINE } };
+      }
+      const outcome = out.ok ? "removed" : out.code;
+      await this.removeReceipts.record({ ...base, pending: false, outcome });
+      if (out.ok) {
+        this.deps.audit?.({ action: "trick.remove", device, detail: { trick: id } });
+        await this.freshScan();
+      }
+      return removeAnswerOf(rid, id, outcome);
+    });
+    this.removeReceipts.track(rid, answer);
+    return await answer;
   }
 }
