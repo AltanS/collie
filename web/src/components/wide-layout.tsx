@@ -12,7 +12,7 @@ import { StatusDot } from "@/components/status-badge";
 import { TabStrip } from "@/components/tab-strip";
 import { ColumnControls, ColumnHeader, PaneColumnBody, columnFrame } from "@/components/strip-column";
 import { NAV_EDGE, RECESS_ACCENT } from "@/components/ui/nav-edge";
-import { Button } from "@/components/ui/button";
+import { Button, FOCUS_RING } from "@/components/ui/button";
 import { PaneGlyph } from "@/components/ui/pane-glyph";
 import { BottomSheet } from "@/components/ui/sheet";
 import { CollieWordmark } from "@/components/collie-wordmark";
@@ -104,6 +104,11 @@ import { setSidebarOpen, setSpaceStrip, spaceStrip, useSidebarOpen, useSpaceStri
 const TAP_SLOP_PX = 10;
 
 /** The sidebar and the rail stand on the recess; see the aside below. */
+/**
+ * The house focus ring (FOCUS_RING) on the mark's button, which `CollieHome` portals into the sidebar's mark slot: the
+ * slot puts it on the button inside, so the header's own copy of the button keeps the browser's ring (DESIGN.md §14).
+ */
+const MARK_RING = "[&_button]:focus-visible:outline-2 [&_button]:focus-visible:outline-offset-2 [&_button]:focus-visible:outline-ring";
 const SIDEBAR_PLANE = cn(NAV_EDGE, RECESS_ACCENT, "bg-surface-recess [--card:var(--surface-recess)]");
 
 /** On a column: its scrollers pass a sideways overscroll up to the strip (important, to win over the
@@ -862,7 +867,7 @@ function SidebarTop({ open, setMark, toggle: hasToggle }: { open: boolean; setMa
   if (!open) {
     return (
       <div className="flex shrink-0 flex-col items-center">
-        <div ref={setMark} data-slot="sidebar-mark" className="flex h-12 items-center justify-center" />
+        <div ref={setMark} data-slot="sidebar-mark" className={cn("flex h-12 items-center justify-center", MARK_RING)} />
         <div className="flex h-12 items-center justify-center border-b border-rule">{toggle}</div>
       </div>
     );
@@ -873,7 +878,7 @@ function SidebarTop({ open, setMark, toggle: hasToggle }: { open: boolean; setMa
     // box and the gap: 6px of air + 4px gap = 10px from the drawing.
     // `wordmark-lockup`: the row is the pointer target that lights the name's suffix (index.css).
     <div data-slot="sidebar-top" className="wordmark-lockup flex h-12 shrink-0 items-center gap-1 border-b border-rule pl-2.5 pr-1">
-      <div ref={setMark} data-slot="sidebar-mark" className="flex size-11 shrink-0 items-center justify-center" />
+      <div ref={setMark} data-slot="sidebar-mark" className={cn("flex size-11 shrink-0 items-center justify-center", MARK_RING)} />
       {/* The product's name outside (components/collie-wordmark.tsx, the brand's outlines): Collie in the text colour, PWA in the
           herd's three colours under a pointer. Not translated. */}
       {/* The word is part of the mark's button: a tap on it is the mark's tap (home, up a level,
@@ -884,7 +889,7 @@ function SidebarTop({ open, setMark, toggle: hasToggle }: { open: boolean; setMa
         aria-hidden
         data-slot="sidebar-word"
         onClick={(e) => e.currentTarget.parentElement?.querySelector<HTMLButtonElement>('[data-slot="sidebar-mark"] button')?.click()}
-        className="flex h-11 min-w-0 flex-1 items-center truncate text-left text-lg text-foreground"
+        className={cn("flex h-11 min-w-0 flex-1 items-center truncate text-left text-lg text-foreground", FOCUS_RING)}
       >
         <CollieWordmark />
       </button>
