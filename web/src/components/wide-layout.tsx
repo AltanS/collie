@@ -5,12 +5,13 @@ import { Icon } from "@/components/icons/icon";
 
 import { ActionRow } from "@/components/action-sheet-rows";
 import { ThreadSidebar } from "@/components/agent-sidebar";
-import { SettingsGear, useHeaderDock } from "@/components/app-header";
+import { NAV_MARK_PX, SettingsGear, useHeaderDock } from "@/components/app-header";
 import { ActionsButton } from "@/components/actions-palette";
 import { useHostHealth } from "@/components/crew-provider";
 import { StatusDot } from "@/components/status-badge";
 import { TabStrip } from "@/components/tab-strip";
-import { ColumnControls, ColumnHeader, NAV_EDGE, PaneColumnBody, columnFrame } from "@/components/strip-column";
+import { ColumnControls, ColumnHeader, PaneColumnBody, columnFrame } from "@/components/strip-column";
+import { NAV_EDGE } from "@/components/ui/nav-edge";
 import { Button } from "@/components/ui/button";
 import { PaneGlyph } from "@/components/ui/pane-glyph";
 import { BottomSheet } from "@/components/ui/sheet";
@@ -116,7 +117,7 @@ const RAIL_MARK_PX = 26;
  *  and the mark's tap box 44px (size-11). 32 leaves 8px above and below it in the row, the head's step
  *  (2026-11-21; it was 40, then 36). To change it, change this line and the row's left padding in
  *  `SidebarTop` with it, so the drawing still starts 16px in: (44 - size) / 2 + padding = 16. */
-const SIDEBAR_MARK_PX = 32;
+const SIDEBAR_MARK_PX = NAV_MARK_PX;
 
 interface WideLayoutProps {
   widthClass: "medium" | "expanded";

@@ -52,8 +52,34 @@ export async function installScreenStubs(page: Page): Promise<void> {
   await page.route("**/api/report/context", (route) => json(route, { collie: "1.27.0", line: "stable", os: "linux", arch: "x64", mux: "herdr", harness: "claude", screenable: false }));
 }
 
-async function visit(page: Page, screen: Screen): Promise<void> {
+const official = (id: string, name: string, state: "absent" | "added", description: string) => ({
+  id, name, description, repo: `https://github.com/lodge/${id}`, repoName: `lodge/${id}`, commit: "0123456789abcdef0123456789abcdef01234567", state,
+});
+
+/**
+ * The reads that make a page show its filled state, answered once before the entry's setup. A world that serves the same path
+ * registers after this and wins. Not part of `installScreenStubs`, which `visit` runs again after the world.
+ */
+export async function installFilledReads(page: Page): Promise<void> {
+  await page.route("**/api/accounts", (route) =>
+    json(route, {
+      harnesses: [{ id: "claude", label: "Claude Code", select: "CLAUDE_CONFIG_DIR", kinds: ["shared", "own"], newFolder: "~/.claude-{slug}", binary: "claude" }],
+      accounts: [{ harness: "claude", live: false, seenAt: null, windows: [], id: "claude:default", label: "", kind: "default", folder: "~/.claude", startLine: "claude" }],
+      found: [],
+    }),
+  );
+  await page.route("**/api/tricks/official", (route) =>
+    json(route, { tricks: [official("kettle-watch", "Kettle Watch", "absent", "Says when the kettle in the build log is boiling."), official("shelf", "Shelf", "added", "Keeps a list of jars on a shelf.")] }),
+  );
+  await page.route("**/api/tricks/*/*/code", (route) => json(route, { hash: "a".repeat(64), copy: "approved", files: [{ file: "kettle.ts", size: 1840, flagged: 1 }, { file: "README.md", size: 620, flagged: 0 }] }));
+  await page.route("**/api/hill/state", (route) => json(route, { state: "here", at: null, by: null, told: null }));
+  await page.route("**/api/trick-views*", (route) => json(route, { rev: 1, views: [] }));
+}
+
+/** `filled: false` for a world that serves one of the filled reads itself and must not be overwritten. */
+async function visit(page: Page, screen: Screen, filled = true): Promise<void> {
   await installScreenStubs(page);
+  if (filled) await installFilledReads(page);
   await page.goto(screen.path);
 }
 
@@ -78,7 +104,27 @@ function trickInfo(id: string, name: string, icon: WireTrickInfo["icon"], places
 function menuPart(trick: string, rows: MenuRow[]): WireTrickPart {
   return { host: "lodge", trick, part: trick, rev: 1, asOf: AS_OF, fresh: "10m", value: { at: "menu", id: trick, rows } };
 }
-const TRICKS = [trickInfo("ci", "CI", "flask", ["menu", "belt", "session"]), trickInfo("notes", "Notes", "note", ["menu"])];
+/** A third-party trick from a repository, with a program, settings, a warning and a README: the details page has something to show. */
+const KETTLE: WireTrickInfo = {
+  host: "lodge",
+  id: "kettle",
+  name: "Kettle Watch",
+  icon: "flask",
+  on: true,
+  state: "ok",
+  places: ["session", "belt"],
+  description: "Says when the kettle in the build log is boiling.",
+  about: "Kettle Watch reads one line of the build log every minute and draws how hot the kettle is.\n\nIt never writes a file.",
+  run: "bun run kettle.ts",
+  everyMs: 300_000,
+  inputs: { globs: ["kettle.log"], crew: false },
+  env: ["KETTLE_TOKEN"],
+  warnings: [{ kind: "network", text: "This trick reaches the network." }],
+  version: "1.2.0",
+  fields: [{ key: "room", kind: "text", label: "Room", hint: "where the kettle stands" }],
+  provenance: { via: "repo", at: "2026-11-08T09:38:00Z", repo: "lodge/kettle-watch", sha: "3f2a91c0d1e2" },
+};
+const TRICKS = [trickInfo("ci", "CI", "flask", ["menu", "belt", "session"]), trickInfo("notes", "Notes", "note", ["menu"]), KETTLE];
 const TRICK_PARTS: WireTrickPart[] = [
   menuPart("ci", [
     { id: "rerun", kind: "button", label: "Rerun CI", icon: "refresh", intent: "rerun" },
@@ -270,6 +316,7 @@ export const SETUPS = {
   twoColumns: async (page) => {
     await chatWorld(page);
     await installScreenStubs(page);
+    await installFilledReads(page);
     await openColumns(page, ["w1:p1", "w1:p2"], "w1:p1");
   },
   /** A space whose name and host are long, with five tabs with long names. */
@@ -324,7 +371,7 @@ export const SETUPS = {
   accounts: async (page, screen) => {
     await installApiStub(page);
     await accountsWorld(page);
-    await visit(page, screen);
+    await visit(page, screen, false);
   },
   /** The durable programs' conversations. */
   conversations: async (page, screen) => {

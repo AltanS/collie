@@ -147,6 +147,51 @@ function TabbarItem({
   );
 }
 
+/**
+ * A `tabbar` item in the large-screen dashboard's views control (`components/dashboard-views.tsx`): the same
+ * part, read the same way, drawn as one more segment after the views, with its glyph and its label. `iconOnly`
+ * hides the label when the row runs out of room; the label stays as the tooltip and in the accessible name.
+ * A tap opens the trick's Session, as the bar's item does; with no Session it is a segment that does nothing.
+ */
+export function TrickViewItem({
+  part,
+  sessions,
+  onOpenSession,
+  iconOnly,
+  className,
+  store = tricksStore,
+}: {
+  part: WireTrickPart;
+  sessions: readonly AgentView[];
+  onOpenSession: (pane: AgentView) => void;
+  iconOnly: boolean;
+  className: string;
+  store?: TricksStore;
+}) {
+  useLocale();
+  const key = partKey(part);
+  const facts = useItemFacts(key, "tabbar", store, "size-4 shrink-0");
+  if (facts === null) return null;
+  const session = sessionOfMark(part, sessions);
+  const name = session === undefined ? facts.name : `${facts.name}. ${t("tricks.mark.open", { trick: facts.trickName })}`;
+  return (
+    <button
+      type="button"
+      data-slot="views-trick"
+      data-trick={facts.trickId}
+      data-stale={facts.stale ? "true" : undefined}
+      aria-label={name}
+      title={facts.item.label}
+      onClick={session === undefined ? undefined : () => onOpenSession(session)}
+      className={cn(className, "inline-flex items-center justify-center gap-1.5", iconOnly ? "min-w-11 px-2" : "px-3")}
+    >
+      {facts.glyph}
+      {!iconOnly && <span className="truncate">{facts.item.label}</span>}
+      {facts.item.badge !== undefined && facts.item.badge !== 0 && <span className="text-xs tabular-nums text-muted-foreground">{facts.item.badge}</span>}
+    </button>
+  );
+}
+
 /** A trick by its address: the host that runs it and its id. */
 export interface TrickRef {
   host: string;

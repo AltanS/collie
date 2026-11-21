@@ -382,7 +382,7 @@ describe("buildBlocks — Claude grammars (ctx.agent === 'claude')", () => {
     expect(blocks).toHaveLength(1);
     expect(blocks[0]!.kind).toBe("raw");
     const kept = blockText(blocks[0]!.lines);
-    expect(kept).toContain("Welcome back Altan!");
+    expect(kept).toContain("Welcome back Robin!");
     expect(kept).not.toContain("← for agents"); // the input-box statusline/hint is gone
     expect(blocks[0]!.lines.length).toBeLessThan(lines.length);
   });

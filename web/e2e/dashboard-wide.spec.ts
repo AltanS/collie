@@ -188,26 +188,27 @@ test("a cold open draws the band in the first frame, with no entrance", async ({
   expect(Math.round(settled.y)).toBe(Math.round(first.gridTop));
 });
 
-test("the last Space row scrolls clear of the New button and the tab bar", async ({ page }) => {
+test("the last Space row scrolls clear of the window's foot, and New stands at the end of the command row", async ({ page }) => {
+  // Since the addendum of 2026-11-21 nothing floats over the grid: no tab bar at the foot, no floating button.
   await page.setViewportSize({ width: 1280, height: 800 });
   await serve(page, wideSnapshot({ spaces: 12, ...WAITING }));
   await page.goto("/");
   await expect(spaces(page)).toHaveCount(12);
+  await expect(page.locator('[data-slot="fab"]')).toHaveCount(0);
+  await expect(page.getByRole("navigation", { name: en["home.tabs.aria"] })).toHaveCount(0);
   await scroller(page).evaluate((el) => {
     el.scrollTop = el.scrollHeight;
   });
-  const fab = page.locator('[data-slot="fab"]');
-  await expect(fab).toBeVisible();
-  const f = await box(fab);
-  const tabs = await box(page.getByRole("navigation", { name: en["home.tabs.aria"] }));
-  expect(f.y + f.height).toBeLessThanOrEqual(tabs.y);
-  // The foot of the last Space of the grid is above the button and the bar, in the scroller's own view.
+  const view = await box(scroller(page));
   const last = await box(spaces(page).nth(11));
-  expect(last.y + last.height).toBeLessThanOrEqual(f.y);
-  expect(last.y + last.height).toBeLessThanOrEqual(tabs.y);
-  // The button stands on the grid's right edge.
+  expect(last.y + last.height).toBeLessThanOrEqual(view.y + view.height);
+  // New is the command row's last control, and its right edge is the grid's.
+  const row = page.locator('[data-slot="wide-command-row"]');
+  const add = row.getByRole("button", { name: en["home.new.label"] });
+  await expect(add).toBeVisible();
+  const n = await box(add);
   const grid = await box(page.locator('[data-slot="wide-rows"]').first());
-  expect(Math.abs(f.x + f.width - (grid.x + grid.width))).toBeLessThanOrEqual(1);
+  expect(Math.abs(n.x + n.width - (grid.x + grid.width))).toBeLessThanOrEqual(1);
 });
 
 test("a Space keeps its column when a session in another Space changes state", async ({ page }) => {
