@@ -702,9 +702,27 @@ export async function forgetLeftovers(opts: { stateDir: string; configDir: strin
 /** The prefix of a path set aside for removal. Never a trick id: ids hold no dot. */
 export const GONE_PREFIX = ".gone-";
 
+/** How many random bytes a set-aside name carries, written as hex. */
+const GONE_RANDOM_BYTES = 6;
+const GONE_NAME = new RegExp(`^${GONE_PREFIX.replace(".", "\\.")}(.+)-([0-9a-f]{${String(GONE_RANDOM_BYTES * 2)}})$`, "u");
+
+/** The name {@link moveAside} gives the path of trick `id`. */
+function goneName(id: string): string {
+  return `${GONE_PREFIX}${id}-${randomBytes(GONE_RANDOM_BYTES).toString("hex")}`;
+}
+
+/**
+ * Whether `name` is exactly what {@link moveAside} makes: `.gone-<a trick id>-<12 hex>`. The sweep deletes only
+ * such a name, so a person's own folder that merely starts with `.gone-` stays (ADR 0168, the lead's security read).
+ */
+export function isGoneName(name: string): boolean {
+  const m = GONE_NAME.exec(name);
+  return m !== null && isTrickId(m[1] ?? "");
+}
+
 /** Rename `path` to a dotted sibling `.gone-<id>-<random>`. Its new name, or null when nothing was there. */
 export async function moveAside(path: string, id: string): Promise<string | null> {
-  const to = join(dirname(path), `${GONE_PREFIX}${id}-${randomBytes(6).toString("hex")}`);
+  const to = join(dirname(path), goneName(id));
   try {
     await rename(path, to);
     return to;
@@ -715,7 +733,7 @@ export async function moveAside(path: string, id: string): Promise<string | null
 }
 
 /**
- * Remove every `.gone-*` entry that a crash between the rename and the removal of {@link forgetLeftovers} or of a
+ * Remove every set-aside entry ({@link isGoneName}, never a mere `.gone-*` name) that a crash between the rename and the removal of {@link forgetLeftovers} or of a
  * remove (remove.ts `removeTrick`) left, in the four folders they rename inside: the tricks folder itself (a
  * removed trick's own folder), the state folder's `tricks/`, and the approved and pending folders. Run once when
  * the bridge starts. Never throws. A dotted name is never a trick id, so until the sweep no scan, list, add or
@@ -726,7 +744,7 @@ export async function sweepGone(opts: { stateDir: string; configDir: string }): 
   let removed = 0;
   for (const parent of [root, tricksStateDir(opts.stateDir), join(root, APPROVED_DIR), join(root, PENDING_DIR)]) {
     for (const name of await names(parent)) {
-      if (!name.startsWith(GONE_PREFIX)) continue;
+      if (!isGoneName(name)) continue;
       await removeTree(join(parent, name));
       removed += 1;
     }
