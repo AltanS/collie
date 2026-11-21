@@ -485,15 +485,16 @@ unbinds the action. The example file lists every default as a commented line.
 - The prefix is `ctrl+b` by default. Press it twice to send `ctrl+b` to the pane.
 - A binding is `prefix+<key>`, or a direct chord such as `ctrl+alt+c`. A direct chord needs a
   modifier.
-- The browser owns `ctrl+w`, `ctrl+t`, `ctrl+n`, `ctrl+tab`, `ctrl+shift+n` and `ctrl+l`. A direct
-  binding on one of them is refused.
+- The browser owns a few chords, such as `ctrl+w`, `ctrl+t`, `ctrl+n`, `ctrl+tab` and `ctrl+l`. A
+  direct binding on one of them is refused. The full list is in
+  [Keyboard shortcuts](keyboard-shortcuts.md#keys-the-browser-keeps).
 - A bad line is dropped and the rest of the file loads. The shortcut list names each dropped line and
   the reason, in a note at its foot. `collie config check` and `collie doctor` name the dropped lines too.
 - A Herdr name that Collie spells differently, such as `new_workspace`, is dropped too. The list
   says which Collie name to write.
 
 The bridge re-reads the file when it changes. Reload the page to pick it up. Open the
-[shortcut list](terminology.md#shortcut-list) with the prefix, then `?`, or on a wide window from
+[shortcut list](terminology.md#shortcut-list) with the prefix, then `?`, or from
 Settings, Device, Keyboard shortcuts. [Keyboard shortcuts](keyboard-shortcuts.md) has every action
 with its default keys, the key grammar and the Herdr names.
 
