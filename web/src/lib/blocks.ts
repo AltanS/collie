@@ -356,6 +356,24 @@ export function lineText(line: StyledLine): string {
   return line.segments.map((s) => s.text).join("");
 }
 
+/** Slice by UTF-16 offsets in lineText(), retaining the original terminal styles, not the old frame's clipping. */
+export function sliceStyledLine(line: StyledLine, start: number, end: number): StyledLine {
+  const segments: AnsiSegment[] = [];
+  let offset = 0;
+  for (const segment of line.segments) {
+    if (offset >= end) break;
+    const from = Math.max(0, start - offset);
+    const to = Math.min(segment.text.length, end - offset);
+    if (from < to) {
+      segments.push(from === 0 && to === segment.text.length
+        ? segment
+        : { ...segment, text: segment.text.slice(from, to) });
+    }
+    offset += segment.text.length;
+  }
+  return { segments };
+}
+
 /** True when a line is empty or only whitespace. */
 export function isBlank(text: string): boolean {
   return text.trim().length === 0;
