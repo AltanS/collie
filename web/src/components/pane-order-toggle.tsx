@@ -1,4 +1,5 @@
 import { Icon } from "@/components/icons/icon";
+import { Segmented } from "@/components/ui/segmented";
 import type { IconKey } from "@/components/icons/keys";
 
 import { cn } from "@/lib/utils";
@@ -38,6 +39,7 @@ export function PaneOrderToggle({
   compact = false,
   iconClassName = "size-4",
   className,
+  segmented = false,
 }: {
   order: PaneOrder;
   onChange: (order: PaneOrder) => void;
@@ -46,8 +48,29 @@ export function PaneOrderToggle({
   /** The glyph's size; the large screen's sidebar draws its 20px glyphs here too. */
   iconClassName?: string;
   className?: string;
+  /**
+   * The large screen's sidebar head: the three glyphs as one compact `ui/segmented` control, 44px a
+   * segment, beside the summary line. The sheet and Settings pass nothing.
+   */
+  segmented?: boolean;
 }) {
   useLocale();
+  if (segmented) {
+    return (
+      <Segmented
+        options={PANE_ORDERS.map((value) => ({
+          value,
+          label: t(PANE_ORDER_SEGMENTS[value].label),
+          icon: <Icon name={PANE_ORDER_SEGMENTS[value].icon} aria-hidden />,
+        }))}
+        value={order}
+        onChange={onChange}
+        label={t("paneOrder.aria")}
+        compact
+        className={cn("w-[132px] shrink-0", className)}
+      />
+    );
+  }
   return (
     <div
       role="radiogroup"

@@ -59,6 +59,13 @@ export interface SegmentedProps<V extends string | number> {
    * showed "Two fing…". A label that fits sits centred either way, so a row that fits looks the same.
    */
   tight?: boolean;
+  /**
+   * The large screen's sidebar head: each segment is drawn 36px tall and reaches 4px above and below
+   * (44 in all), and the selected one is FILLED with the current-item fill (`bg-accent`, the open row's)
+   * in full ink, every edge the quiet `--border`. The outlined look would be the brightest line in a
+   * head whose loudest thing must be the alarm. A caller gives the row a width of 44px per segment.
+   */
+  compact?: boolean;
   className?: string;
 }
 
@@ -86,6 +93,7 @@ export function Segmented<V extends string | number>({
   disabled = false,
   badgeClassName = "bg-primary text-primary-foreground",
   tight = false,
+  compact = false,
   className,
 }: SegmentedProps<V>) {
   const tabs = semantics === "tabs";
@@ -123,6 +131,8 @@ export function Segmented<V extends string | number>({
               pad,
               "relative -ml-px min-h-11 min-w-0 flex-1 truncate border text-sm font-medium first:ml-0 first:rounded-l-sm last:rounded-r-sm focus-visible:z-20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50",
               on ? "z-10 border-foreground text-foreground" : "border-border text-muted-foreground active:text-foreground",
+              compact && "h-9 min-h-9 px-0 before:absolute before:inset-x-0 before:-inset-y-1 before:content-['']",
+              compact && on && "border-border bg-accent text-accent-foreground",
             )}
           >
             {iconic ? <span aria-hidden className="inline-flex items-center justify-center [&>svg]:size-4">{option.icon}</span> : option.label}
