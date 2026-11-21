@@ -387,8 +387,8 @@ export default defineConfig({
         // every install for glyphs most herds never paint. src/sw.ts caches them on first use.
         globPatterns: ["**/*.{js,css,html,svg,png,ico,webmanifest}"],
         // The main chunk must stay in the precache (M46 offline reading), and Workbox refuses to
-        // build past its 2 MiB default. See PRECACHE_MAX_FILE_BYTES in vite-icons.ts for the size
-        // history and for what to do before raising it again.
+        // build past its 2 MiB default. ADR 0169 holds the size
+        // history and what to do before raising it again.
         maximumFileSizeToCacheInBytes: PRECACHE_MAX_FILE_BYTES,
         // A release build's precache must not carry the dev channel's icons, and neither build
         // may carry the playground's — see vite-icons.ts's precacheIgnoresFor. Without this, a
