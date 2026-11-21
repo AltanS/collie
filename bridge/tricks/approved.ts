@@ -81,7 +81,8 @@ function message<T>(err: T): string {
 }
 
 /** Remove a tree. Never throws. */
-async function removeTree(dir: string): Promise<void> {
+/** Remove a path and all under it; a link is removed and never followed. Never throws. */
+export async function removeTree(dir: string): Promise<void> {
   await rm(dir, { recursive: true, force: true }).catch(() => {});
 }
 
@@ -651,13 +652,6 @@ async function pruneChildren(dir: string, keep: ReadonlySet<string> | null, opts
   if ((await names(dir)).length === 0) await rm(dir, { recursive: true, force: true }).catch(() => {});
 }
 
-/** Remove every approved copy and pending snapshot of one trick (`collie trick remove`). */
-export async function removeTrickCopies(configDir: string, id: string): Promise<void> {
-  if (!isTrickId(id)) return;
-  await removeTree(approvedTrickDir(configDir, id));
-  await removeTree(pendingTrickDir(configDir, id));
-}
-
 /**
  * Before a NEW trick is written under `id` (an add from the official list, from a repository, at the terminal,
  * or an agent's proposal): forget what an earlier trick of that name left. A switch entry a removed folder left
@@ -709,7 +703,7 @@ export async function forgetLeftovers(opts: { stateDir: string; configDir: strin
 export const GONE_PREFIX = ".gone-";
 
 /** Rename `path` to a dotted sibling `.gone-<id>-<random>`. Its new name, or null when nothing was there. */
-async function moveAside(path: string, id: string): Promise<string | null> {
+export async function moveAside(path: string, id: string): Promise<string | null> {
   const to = join(dirname(path), `${GONE_PREFIX}${id}-${randomBytes(6).toString("hex")}`);
   try {
     await rename(path, to);
@@ -721,13 +715,16 @@ async function moveAside(path: string, id: string): Promise<string | null> {
 }
 
 /**
- * Remove every `.gone-*` entry that a crash between the rename and the removal of {@link forgetLeftovers} left,
- * in the three folders it renames inside. Run once when the bridge starts. Never throws.
+ * Remove every `.gone-*` entry that a crash between the rename and the removal of {@link forgetLeftovers} or of a
+ * remove (remove.ts `removeTrick`) left, in the four folders they rename inside: the tricks folder itself (a
+ * removed trick's own folder), the state folder's `tricks/`, and the approved and pending folders. Run once when
+ * the bridge starts. Never throws. A dotted name is never a trick id, so until the sweep no scan, list, add or
+ * prune reads a leftover as a trick.
  */
 export async function sweepGone(opts: { stateDir: string; configDir: string }): Promise<number> {
   const root = tricksConfigDir(opts.configDir);
   let removed = 0;
-  for (const parent of [tricksStateDir(opts.stateDir), join(root, APPROVED_DIR), join(root, PENDING_DIR)]) {
+  for (const parent of [root, tricksStateDir(opts.stateDir), join(root, APPROVED_DIR), join(root, PENDING_DIR)]) {
     for (const name of await names(parent)) {
       if (!name.startsWith(GONE_PREFIX)) continue;
       await removeTree(join(parent, name));
