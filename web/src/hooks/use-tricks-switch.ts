@@ -13,7 +13,7 @@ import { isReadOnly } from "@/lib/types";
 // bridge owns the value and the snapshot carries it (`tricksOff`, root data), so every place that shows it reads the same thing on every phone.
 // A tap writes `POST /api/tricks/switch`, holds the new position until the snapshot agrees, and
 // revalidates so it agrees at once. A refused write puts the switch back and says so on the status line.
-// The card in Settings, Experiments is its one caller.
+// The card in Settings, Tricks and the Hill is its one caller.
 
 export interface TricksSwitchState {
   /** Whether tricks are on, as the bridge says, or as the last tap asked while the snapshot catches up. */

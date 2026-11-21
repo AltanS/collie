@@ -79,15 +79,16 @@ export const SCREENS: ScreenRecipe[] = [
 
   // ── Settings ─────────────────────────────────────────────────────────────
   { id: "settings", group: "Settings", title: "Settings index", world: "rich", path: "/settings" },
-  { id: "settings-appearance", group: "Settings", title: "Settings, Appearance", world: "rich", path: "/settings/appearance" },
-  { id: "settings-harnesses", group: "Settings", title: "Settings, Harnesses", world: "rich", path: "/settings/harnesses" },
-  { id: "settings-device", group: "Settings", title: "Settings, Device", world: "rich", path: "/settings/device" },
+  { id: "settings-look", group: "Settings", title: "Settings, Look and feel", world: "rich", path: "/settings/look" },
+  { id: "settings-chat", group: "Settings", title: "Settings, Chat and terminal", world: "rich", path: "/settings/chat" },
+  { id: "settings-keys", group: "Settings", title: "Settings, Keys and touch", world: "rich", path: "/settings/keys" },
   { id: "settings-voice", group: "Settings", title: "Settings, Voice", world: "rich", path: "/settings/voice" },
-  { id: "settings-alerts", group: "Settings", title: "Settings, Alerts", world: "rich", path: "/settings/alerts" },
-  { id: "settings-experiments", group: "Settings", title: "Settings, Experiments", world: "rich", path: "/settings/experiments" },
-  { id: "settings-tricks", group: "Settings", title: "Settings, Tricks", world: "rich", path: "/settings/tricks" },
-  { id: "settings-system", group: "Settings", title: "Settings, System (pairing)", world: "rich", path: "/settings/system" },
-  { id: "settings-updates", group: "Settings", title: "Updates card", world: "rich", path: "/settings/updates" },
+  { id: "settings-notifications", group: "Settings", title: "Settings, Notifications", world: "rich", path: "/settings/notifications" },
+  { id: "settings-dashboard", group: "Settings", title: "Settings, Dashboard and projects", world: "rich", path: "/settings/dashboard" },
+  { id: "settings-tricks", group: "Settings", title: "Settings, Tricks and the Hill", world: "rich", path: "/settings/tricks" },
+  { id: "settings-devices", group: "Settings", title: "Settings, Devices and machines (pairing)", world: "rich", path: "/settings/devices" },
+  { id: "settings-privacy", group: "Settings", title: "Settings, Privacy and data", world: "rich", path: "/settings/privacy" },
+  { id: "settings-updates", group: "Settings", title: "Settings, Updates and about", world: "rich", path: "/settings/updates" },
 
   // ── Other pages ──────────────────────────────────────────────────────────
   { id: "new", group: "Pages", title: "New page", world: "rich", path: "/new" },

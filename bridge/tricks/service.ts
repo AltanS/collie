@@ -1010,11 +1010,11 @@ export class TricksService implements TricksSurface {
   /**
    * The tricks rev the snapshot carries, or undefined to send nothing: while the tricks folder exists, and,
    * on a bridge that runs tricks (no `runsOn`), also while the official list offers something. So a
-   * fresh install with no tricks folder shows Settings, Tricks with only the list, and the first add makes
+   * fresh install with no tricks folder shows Settings, Tricks and the Hill with only the list, and the first add makes
    * the folder (proposal-install.ts `writeNewTrick`), which the next scan reads with no restart.
    */
   rev(): number | undefined {
-    // A gated bridge always sends a rev, so Settings, Tricks shows the one line.
+    // A gated bridge always sends a rev, so Settings, Tricks and the Hill shows the one line.
     if (this.folderExists || this.gated()) return this.store.rev;
     if ((this.deps.runsOn?.() ?? null) !== null || this.officialEntries().length === 0) return undefined;
     return this.store.rev;
@@ -1692,7 +1692,7 @@ export class TricksService implements TricksSurface {
   }
 
   /**
-   * Take changes without asking, or ask again (crew slice 3; `collie trick auto` writes the same field).
+   * Update this trick without asking, or ask again (crew slice 3; `collie trick auto` writes the same field).
    * Only for a trick that is on. A version already waiting is not taken by this: the next one is.
    */
   async setAuto(id: string, on: boolean): Promise<VersionAnswer> {

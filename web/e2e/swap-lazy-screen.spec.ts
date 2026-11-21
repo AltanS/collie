@@ -25,7 +25,7 @@ import {
 //
 // The case the split could break. A page on build A holds an unsent draft, so the new worker's
 // `controllerchange` cannot reload it (lib/pwa.ts `reloadWhenReleased`). The new worker has dropped build A's
-// chunks from the precache and the server answers them 404. The page then opens Settings → Appearance, a lazy
+// chunks from the precache and the server answers them 404. The page then opens Settings → Look and feel, a lazy
 // screen. The idle preload already holds its chunk, so the screen draws and the error screen never shows;
 // leaving the pane clears the draft's hold, and the deferred reload then lands the page on build B. Without the
 // preload the import would fail while the hold stands: the error screen first, then the same reload.
@@ -34,7 +34,7 @@ import {
 
 const PHONE_PROJECTS = new Set(["app-phone", "phone"]);
 
-/** The Appearance section's chunk of one build, by its hashed name. */
+/** The Look and feel page's chunk of one build, by its hashed name. */
 function settingsChunk(name: "a" | "b"): string {
   const file = readdirSync(join(BUILDS_DIR, name, "assets")).find((f) => /^settings-sections-.*\.js$/.test(f));
   if (file === undefined) throw new Error(`build ${name} has no settings-sections chunk`);
@@ -130,11 +130,11 @@ test("a tab that held its reload through an update still opens a lazy screen", a
   );
   await expect(page.getByRole("textbox", { name: en["composer.placeholder.reply"] })).toHaveValue("a draft the update must not eat");
 
-  // Open Settings → Appearance in the app, as a tap does.
+  // Open Settings → Look and feel in the app, as a tap does.
   await page.evaluate(() => {
-    window.history.pushState(null, "", "/settings/appearance");
+    window.history.pushState(null, "", "/settings/look");
     window.dispatchEvent(new PopStateEvent("popstate"));
   });
-  await expect(page.getByRole("heading", { name: en["settings.section.appearance.title"] }).first()).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole("heading", { name: en["settings.page.look.title"] }).first()).toBeVisible({ timeout: 15_000 });
   expect(await page.evaluate(() => window.sessionStorage.getItem("e2e:saw-error")), "the error screen was drawn").toBeNull();
 });

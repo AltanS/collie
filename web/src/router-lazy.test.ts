@@ -45,8 +45,12 @@ describe("the lazy route table", () => {
     const lazy = (await table()).filter(([, route]) => route.lazy !== undefined).map(([path]) => path);
     for (const path of [
       "/settings",
-      "/settings/appearance",
-      "/settings/system",
+      "/settings/look",
+      "/settings/chat",
+      "/settings/notifications",
+      "/settings/notifications/load/:machine",
+      "/settings/devices",
+      "/settings/privacy",
       "/settings/updates",
       "/settings/tricks/:key",
       "/settings/accounts/:id/login",
@@ -64,6 +68,15 @@ describe("the lazy route table", () => {
       "/trick-card/:decisionId",
     ]) {
       expect(lazy, path).toContain(path);
+    }
+  });
+
+  it("keeps the old Settings addresses as redirects that load no chunk (ADR 0170)", async () => {
+    const rows = await table();
+    for (const path of ["/settings/appearance", "/settings/appearance/character", "/settings/harnesses", "/settings/device", "/settings/alerts", "/settings/experiments", "/settings/system", "/settings/system/install-count"]) {
+      const row = rows.find(([p]) => p === path);
+      expect(row, path).toBeDefined();
+      expect(row?.[1].lazy, path).toBeUndefined();
     }
   });
 

@@ -204,7 +204,7 @@ export function MachinesSection() {
         <Card
           state="machine-detail-alerts"
           label="a machine, Alerts"
-          reach="the Alerts segment of a machine, or the 'Alert firing' line on its card. The rules for CPU, memory and disk, the one that fires marked 'Firing now', the push note and the link to Settings, Alerts. No chart, so no history is read."
+          reach="the Alerts segment of a machine, or the 'Alert firing' line on its card. The rules for CPU, memory and disk, the one that fires marked 'Firing now', the push note and the link to Settings, Notifications. No chart, so no history is read."
           note="The view is ?tab=alerts. A switch replaces the entry, so Back leaves the machine and never lands on the other view."
         >
           <PhoneFrameCard height={900}>

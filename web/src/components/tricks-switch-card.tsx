@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { Icon } from "@/components/icons/icon";
+import { ExperimentalBadge } from "@/components/experimental-badge";
 import { Card } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { useArm, useDisarmOn } from "@/hooks/use-arm";
@@ -11,10 +12,10 @@ import { t, tn } from "@/lib/i18n";
 import { tricksStore, useTricksState, type TricksState } from "@/lib/tricks/store";
 import { cn } from "@/lib/utils";
 
-// Settings → Experiments, under the Hill's card (moved there from the top of Settings, Tricks on 2026-11-18): one card, one
+// Settings → Tricks and the Hill, under the Hill's card (moved there from the top of Settings, Tricks and the Hill on 2026-11-18): one card, one
 // switch for tricks AS A WHOLE (bridge/tricks/feature-switch.ts). While it is on, the Settings index shows a Tricks row for the list.
 // Tricks are an experiment and OFF by default (2026-11-17). Off, no trick runs, none draws a part, and the list
-// of Settings, Tricks is out of reach (a link to it lands here) and cannot be changed. Each trick keeps its own switch as it was; the big switch never
+// of Settings, Tricks and the Hill is out of reach (a link to it lands here) and cannot be changed. Each trick keeps its own switch as it was; the big switch never
 // moves them. The value rides on the snapshot (`tricksOff`), so the card is drawn from the first frame with no
 // reading of its own, and it always renders: it does not wait for the tricks reply.
 //
@@ -114,8 +115,10 @@ export function TricksSwitchCard({ on, disabled, onToggle, waiting = 0, windows 
         <div className="flex min-w-0 items-start gap-3">
           <Icon name="mods" className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
           <div className="min-w-0">
-            <div className="font-medium">
-              <span className="block max-w-full min-w-0 truncate">{t("settings.section.tricks.title")}</span>
+            <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 font-medium">
+              <span className="max-w-full min-w-0 truncate">{t("settings.section.tricks.title")}</span>
+              {/* The contract line below already says the whole of the Experiments notice; the badge marks the row. */}
+              <ExperimentalBadge />
             </div>
             <p data-line="about" className="text-sm text-muted-foreground">
               {t("settings.tricks.switch.about")}

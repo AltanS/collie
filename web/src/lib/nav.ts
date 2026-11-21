@@ -10,6 +10,7 @@ import { asJsonBoolean, asJsonNumber, asJsonObject, asJsonString, type JsonValue
 import { internScope, scopeFromSearchParams, scopeKey, scopeSearch, SESSION_PARAM, type Scope } from "./scope";
 import type { AgentView } from "./types";
 import type { AgentLaunch } from "./agent-startup";
+import type { PageId } from "./settings/types";
 
 // The two Machines paths live in `machine-paths.ts` so the service worker can build them: this file
 // reads `window`, which a worker has no type for. Re-exported, so every caller still asks nav.ts.
@@ -278,18 +279,11 @@ export function readNewAt(search: string): NewAt {
 }
 
 /**
- * The Settings sections. Settings is an index of these, not a column of every card it has
- * (routes/settings-sections.tsx says why, and which card went where).
- *
- * A union rather than a bare string, so a row naming a section nobody built is a compile error
- * instead of a page that renders nothing.
- *
- * The fifth is the only one that can be absent from the index: Experiments renders while
- * `lib/experiments.ts` holds something; Tricks (M94) renders while the phone holds a tricks reply. Their
- * paths need nothing here — the two ladders below already read every `/settings/<x>` as a child of
- * the index.
+ * The Settings pages: the eleven of the registry (lib/settings/pages.ts, ADR 0170). Settings is an index of these,
+ * not a column of every card it has. A union rather than a bare string, so a row naming a page nobody built is a
+ * compile error instead of a page that renders nothing.
  */
-export type SettingsSection = "appearance" | "harnesses" | "accounts" | "device" | "voice" | "alerts" | "system" | "tricks" | "experiments";
+export type SettingsSection = PageId;
 
 /** One Settings section — a CHILD of the index, carrying the scope like every other path helper. */
 export function settingsSectionPath(section: SettingsSection, scope?: Scope): string {
@@ -321,7 +315,7 @@ export function accountPath(id: string, scope?: Scope): string {
 }
 
 /**
- * A trick's details page, below Settings → Tricks: what the trick does, where it comes from, its code and its
+ * A trick's details page, below Settings → Tricks and the Hill: what the trick does, where it comes from, its code and its
  * settings. The key is `<host>:<id>` for a trick on a machine, the same two parts its own page's id names
  * (`trick:<host>:<id>`), and the bare `<id>` for an entry of this machine's official list that is not added
  * yet. Neither a host nor a trick id holds a colon (lib/tricks/schema.ts `HOST`, `TRICK_ID`), so the key splits
@@ -373,7 +367,7 @@ export function hillPath(scope?: Scope): string {
 
 /**
  * One card of Collie's own about a trick (M96 spec 14): a proposal, a new version, a trick's rights. Its own
- * page, with no Hill around it, so it works with the Hill off. Opened from Settings, Tricks and from the
+ * page, with no Hill around it, so it works with the Hill off. Opened from Settings, Tricks and the Hill and from the
  * Dashboard's line; Back steps back to either, else to the Dashboard. Carries the scope like the others.
  */
 export function trickCardPath(decisionId: string, scope?: Scope): string {
@@ -400,19 +394,24 @@ export const PAIRED_DEVICES_HASH = "paired-devices";
 export const TELEMETRY_SETTINGS_HASH = "install-count";
 
 /**
- * Settings → System → Telemetry: the page below System that holds the switch and its
- * explanation (the dashboard notice's button lands here). A CHILD of System, carrying the scope.
+ * Settings → Privacy and data → Telemetry: the page below Privacy and data that holds the switch and its
+ * explanation (the dashboard notice's button lands here). A CHILD of that page, carrying the scope.
  */
 export function installCountPath(scope?: Scope): string {
-  return `/settings/system/install-count${scopeSearch(scope)}`;
+  return `/settings/privacy/install-count${scopeSearch(scope)}`;
 }
 
 /**
- * Settings → Appearance → Character: the page below Appearance that lists the characters the header
- * can draw (ADR 0136, amended 2026-11-12). A CHILD of Appearance, carrying the scope.
+ * Settings → Look and feel → Character: the page below Look and feel that lists the characters the header
+ * can draw (ADR 0136, amended 2026-11-12). A CHILD of that page, carrying the scope.
  */
 export function characterPath(scope?: Scope): string {
-  return `/settings/appearance/character${scopeSearch(scope)}`;
+  return `/settings/look/character${scopeSearch(scope)}`;
+}
+
+/** Settings → Notifications → one machine's load alerts: the machine's own card, one level below Notifications. */
+export function machineLoadPath(id: string, scope?: Scope): string {
+  return `/settings/notifications/load/${encodeURIComponent(id)}${scopeSearch(scope)}`;
 }
 
 /** Where the dashboard notice's button opens the Telemetry card. */
@@ -424,22 +423,22 @@ export function telemetrySettingsPath(scope?: Scope): string {
 export const CHANGES_SETTINGS_HASH = "changes";
 
 /**
- * Settings → Device, scrolled to the Changes card: the Changes list's "look deeper" link (ADR 0065).
+ * Settings → Dashboard and projects, scrolled to the Changes card: the Changes list's "look deeper" link (ADR 0065).
  *
- * The fragment survived the split; the page under it did not. Both deep links name a SECTION now,
- * and they must, because a hash pointing at a card the index no longer mounts scrolls to nothing.
+ * The fragment survived both splits; the page under it did not. A deep link names a PAGE, and it must, because a
+ * hash pointing at a card the page does not mount scrolls to nothing.
  */
 export function changesSettingsPath(scope?: Scope): string {
-  return `${settingsSectionPath("device", scope)}#${CHANGES_SETTINGS_HASH}`;
+  return `${settingsSectionPath("dashboard", scope)}#${CHANGES_SETTINGS_HASH}`;
 }
 
-/** Settings → System, scrolled to the card that pairs this phone — the read-only strip's remedy. */
+/** Settings → Devices and machines, scrolled to the card that pairs this phone — the read-only strip's remedy. */
 export function pairedDevicesPath(scope?: Scope): string {
-  return `${settingsSectionPath("system", scope)}#${PAIRED_DEVICES_HASH}`;
+  return `${settingsSectionPath("devices", scope)}#${PAIRED_DEVICES_HASH}`;
 }
 
 /**
- * Where a `/settings` request with `?pair=` belongs: Settings → System, the query string intact, or
+ * Where a `/settings` request with `?pair=` belongs: Settings → Devices and machines, the query string intact, or
  * `null` when there is no code to carry.
  *
  * `collie pair` prints a QR for `/settings?pair=<code>`, and that URL outlives the page it named.
@@ -450,7 +449,7 @@ export function pairedDevicesPath(scope?: Scope): string {
  */
 export function pairLandingPath(search: string): string | null {
   if (!new URLSearchParams(search).has("pair")) return null;
-  return `/settings/system${search}`;
+  return `/settings/devices${search}`;
 }
 
 // ── Back goes up one level (ADR 0067) ────────────────────────────────────────────────────────────
@@ -589,7 +588,7 @@ export function ancestorsOf(pathname: string): string[] {
   // from a trick's Session, where the bar stays too (amended 2026-11-10). A sideways move carries `from`,
   // so the Dashboard is its only parent either way.
   if (head === "hill" && seg.length === 1) return ["/"];
-  // A trick's card (M96 spec 14) is opened from Settings, Tricks and from the Dashboard's line.
+  // A trick's card (M96 spec 14) is opened from Settings, Tricks and the Hill and from the Dashboard's line.
   if (head === "trick-card" && seg.length === 2) return ["/", "/settings/tricks"];
   // The approver's page (ADR 0139) is opened from a QR, from outside the app: the Dashboard is its parent.
   if (head === "pair" && seg.length === 2 && id === "approve") return ["/"];
@@ -601,24 +600,23 @@ export function ancestorsOf(pathname: string): string[] {
   if (head === "new" && seg.length === 1) return ["/", ANY_SPACE, ANY_PANE];
   // "Add your own" is a level below the New page.
   if (head === "new" && seg.length === 2 && id === "add") return ["/new", "/", ANY_SPACE, ANY_PANE];
-  // Updates is the first row of the Settings index, so the index is its parent. `/settings/system`
-  // stays behind it: Updates sat in that section before, and a stored `from` pointing there is still
-  // a step UP, not a push. The crew census is opened from the System section.
-  if (head === "settings" && seg.length === 2 && id === "updates") {
-    return ["/settings", "/settings/system", "/"];
-  }
+  // Every Settings page, Updates and about included, is a child of the index (ADR 0170).
   if (head === "settings" && seg.length === 2) return ["/settings", "/"];
   // Host speech and the Whistle model sit one level below Voice.
   if (head === "settings" && seg.length === 3 && id === "voice" && (leaf === "host" || leaf === "model")) {
     return ["/settings/voice", "/settings", "/"];
   }
-  // The install count's page sits one level below System.
-  if (head === "settings" && seg.length === 3 && id === "system" && leaf === "install-count") {
-    return ["/settings/system", "/settings", "/"];
+  // The install count's page sits one level below Privacy and data.
+  if (head === "settings" && seg.length === 3 && id === "privacy" && leaf === "install-count") {
+    return ["/settings/privacy", "/settings", "/"];
   }
-  // The Character page sits one level below Appearance.
-  if (head === "settings" && seg.length === 3 && id === "appearance" && leaf === "character") {
-    return ["/settings/appearance", "/settings", "/"];
+  // The Character page sits one level below Look and feel.
+  if (head === "settings" && seg.length === 3 && id === "look" && leaf === "character") {
+    return ["/settings/look", "/settings", "/"];
+  }
+  // One machine's load alerts sit one level below Notifications.
+  if (head === "settings" && seg.length === 4 && id === "notifications" && leaf === "load") {
+    return ["/settings/notifications", "/settings", "/"];
   }
   // A trick's details page sits one level below Tricks. Its own page (`/trick/:id`, the header's details button)
   // opens it too, so a step back onto that page is a step up and not a push.
@@ -634,13 +632,12 @@ export function ancestorsOf(pathname: string): string[] {
   if (head === "settings" && seg.length === 4 && id === "accounts" && seg[3] === "login") {
     return [`/settings/accounts/${leaf}`, ANY_PANE, "/settings/accounts", "/settings", "/"];
   }
-  if (head === "crew" && seg.length === 1) return ["/settings/system", "/settings", "/"];
-  // Machines is opened from the Settings index and from the crew card in System, so both are
-  // legitimate parents; its structural parent is Settings.
-  if (head === "machines" && seg.length === 1) return ["/settings/system", "/settings", "/"];
+  if (head === "crew" && seg.length === 1) return ["/settings/devices", "/settings", "/"];
+  // Machines is opened from Devices and machines, its structural parent.
+  if (head === "machines" && seg.length === 1) return ["/settings/devices", "/settings", "/"];
   // A machine goes up to Machines. The crew census opens one too (the member sheet's "Load and
   // alerts"), so a step back onto /crew is still a step UP and not a push.
-  if (head === "machines" && seg.length === 2) return ["/machines", "/crew", "/settings/system", "/settings", "/"];
+  if (head === "machines" && seg.length === 2) return ["/machines", "/crew", "/settings/devices", "/settings", "/"];
   return [];
 }
 
@@ -912,18 +909,18 @@ export function parentChain(pathname: string, search: string): string[] {
     const chain = behind === undefined ? [homePath(view)] : [homePath(view), panePath(behind, view)];
     return [...chain, newPath({ machine: at.machine, pane: at.pane, beside: at.beside, session: at.session })];
   }
-  if (head === "settings" && seg.length === 2 && id === "updates") {
-    return [home, `/settings${q}`];
-  }
   if (head === "settings" && seg.length === 2) return [home, `/settings${q}`];
   if (head === "settings" && seg.length === 3 && id === "voice" && (leaf === "host" || leaf === "model")) {
     return [home, `/settings${q}`, `/settings/voice${q}`];
   }
-  if (head === "settings" && seg.length === 3 && id === "system" && leaf === "install-count") {
-    return [home, `/settings${q}`, `/settings/system${q}`];
+  if (head === "settings" && seg.length === 3 && id === "privacy" && leaf === "install-count") {
+    return [home, `/settings${q}`, `/settings/privacy${q}`];
   }
-  if (head === "settings" && seg.length === 3 && id === "appearance" && leaf === "character") {
-    return [home, `/settings${q}`, `/settings/appearance${q}`];
+  if (head === "settings" && seg.length === 3 && id === "look" && leaf === "character") {
+    return [home, `/settings${q}`, `/settings/look${q}`];
+  }
+  if (head === "settings" && seg.length === 4 && id === "notifications" && leaf === "load") {
+    return [home, `/settings${q}`, `/settings/notifications${q}`];
   }
   if (head === "settings" && seg.length === 3 && id === "accounts") {
     return [home, `/settings${q}`, `/settings/accounts${q}`];
@@ -931,8 +928,8 @@ export function parentChain(pathname: string, search: string): string[] {
   if (head === "settings" && seg.length === 4 && id === "accounts" && seg[3] === "login") {
     return [home, `/settings${q}`, `/settings/accounts${q}`, `/settings/accounts/${leaf}${q}`];
   }
-  if (head === "crew" && seg.length === 1) return [home, `/settings${q}`, `/settings/system${q}`];
-  if (head === "machines" && seg.length === 1) return [home, `/settings${q}`];
-  if (head === "machines" && seg.length === 2) return [home, `/settings${q}`, `/machines${q}`];
+  if (head === "crew" && seg.length === 1) return [home, `/settings${q}`, `/settings/devices${q}`];
+  if (head === "machines" && seg.length === 1) return [home, `/settings${q}`, `/settings/devices${q}`];
+  if (head === "machines" && seg.length === 2) return [home, `/settings${q}`, `/settings/devices${q}`, `/machines${q}`];
   return [];
 }

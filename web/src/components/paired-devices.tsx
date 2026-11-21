@@ -46,7 +46,7 @@ export function PairedDevices({ data }: { data: DevicesData }) {
   const { token, refused, expired } = usePairing();
 
   // THE CARD ANSWERS TO ITS OWN FRAGMENT. `read-only-banner.tsx` links to
-  // `/settings/system#paired-devices` (lib/nav.ts owns the spelling), and the fragment still earns
+  // `/settings/devices#paired-devices` (lib/nav.ts owns the spelling), and the fragment still earns
   // its keep after the page split: System holds four cards and this is not the first of them. The
   // browser cannot do this itself — React Router navigates without a document load, so no fragment
   // is ever resolved.

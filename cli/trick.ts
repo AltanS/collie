@@ -211,7 +211,7 @@ async function bridgeTricks(deps: Pick<TrickDeps, "ctx" | "files" | "fetch">): P
   return out;
 }
 
-/** The line `trick list` prints on a machine whose crew's lead runs the tricks (Settings → Tricks says the same). */
+/** The line `trick list` prints on a machine whose crew's lead runs the tricks (Settings → Tricks and the Hill says the same). */
 export function runsOnText(runsOn: TricksRunsOn): string {
   const lead = runsOn.lead === undefined ? "" : ` (${runsOn.lead})`;
   return `Tricks run on the lead of this crew${lead}. This machine runs none.`;
@@ -238,7 +238,7 @@ export type TrickListRow = {
   skill: boolean;
   /** Where `collie trick add` took it from, short (`owner/repo/legs@abc1234`), or null for a folder made here. */
   origin: string | null;
-  /** "Take changes without asking" (`collie trick auto`). */
+  /** "Update this trick without asking" (`collie trick auto`). */
   auto: boolean;
   /** On, and the folder no longer hashes to the version approved: a new version waits for a yes. */
   pending: boolean;
@@ -309,7 +309,7 @@ function officialStateText(row: { state: OfficialState; changed?: true; unlisted
  * `collie trick list --official`: the official list this binary carries (bridge/tricks/official.ts), each
  * entry's state on this machine. Read-only: it reads the list from the binary and the tricks folder, and
  * asks the running bridge only whether its crew's lead runs the tricks. It fetches nothing; an add from the
- * list is a tap on the phone (Settings, Tricks, Official tricks), never a verb here.
+ * list is a tap on the phone (Settings, Tricks and the Hill, Official tricks), never a verb here.
  */
 async function cmdTrickListOfficial(deps: TrickDeps, json: boolean): Promise<number> {
   const list = shippedOfficialList();
@@ -339,7 +339,7 @@ async function cmdTrickListOfficial(deps: TrickDeps, json: boolean): Promise<num
   const lines = table([["ID", "NAME", "COMMIT", "STATE", "WHAT IT DOES"], ...rows.map((r) => [r.id, r.name, r.commit.slice(0, 7), officialStateText(r), r.description])]);
   for (const line of lines) deps.io.out(line);
   if (runsOn !== undefined) deps.io.out(runsOnText(runsOn));
-  deps.io.out(`From ${originRepoName(list.entries[0]?.repo ?? "")}, at the commits this Collie release names. Add one on the phone: Settings, Tricks, Official tricks.`);
+  deps.io.out(`From ${originRepoName(list.entries[0]?.repo ?? "")}, at the commits this Collie release names. Add one on the phone: Settings, Tricks and the Hill, Official tricks.`);
   return EXIT.OK;
 }
 
@@ -364,7 +364,7 @@ export async function cmdTrickList(deps: TrickDeps, args: readonly string[]): Pr
   if (runsOn !== undefined) deps.io.out(runsOnText(runsOn));
   // Each SWITCH above is the trick's own; while tricks as a whole are off, none of them runs.
   if (!readTricksFeature(deps.ctx.stateDir).on) deps.io.out(TRICKS_OFF_LINE);
-  if (rows.some((r) => r.pending)) deps.io.out("NEW: a new version waits for your yes. Approve it in Settings, Tricks, on the phone, or with collie trick on <id>.");
+  if (rows.some((r) => r.pending)) deps.io.out("NEW: a new version waits for your yes. Approve it in Settings, Tricks and the Hill, on the phone, or with collie trick on <id>.");
   if (!bridge) deps.io.out("(the bridge did not answer: state and last run are from the files only)");
   if (rows.some((r) => r.skill && r.on)) deps.io.out("An agent reads what a trick asks of it with: collie trick skill <id>");
   return EXIT.OK;
@@ -389,7 +389,7 @@ export const TRICK_WRITE_BRIEF = [
   "  4. Fix what it reports, and run it again until it is clean.",
   "The draft lives in your own work folder. Nothing is added to this machine's tricks before the person's yes.",
   "Never switch it on yourself: `collie trick on <id>` is the person's approval of the code, and it refuses inside an agent's pane.",
-  "To hand it to the person, run `collie trick propose ./<id>`: they see your code on a card in this session on the phone and in Settings, Tricks, and nothing runs before their yes. `collie trick guide` says more.",
+  "To hand it to the person, run `collie trick propose ./<id>`: they see your code on a card in this session on the phone and in Settings, Tricks and the Hill, and nothing runs before their yes. `collie trick guide` says more.",
   "To teach other agents what the trick asks of them, add a SKILL.md to the folder. `collie trick skill <id>` prints it while the trick is on. SKILL.md is part of the trick's code: the trick runs the copy a person approved, so an edit waits for their yes before agents read it.",
 ] as const;
 
@@ -456,7 +456,7 @@ export function agentPaneRefusal(id: string): string[] {
   return [
     "error: collie trick on is a person's yes to the code, and this runs in a pane where an agent works.",
     `An agent does not approve its own trick. Tell your operator that ${id} is ready to switch on.`,
-    `A person approves it on the phone (Settings, Tricks), or runs collie trick on ${id} in a shell pane or a terminal.`,
+    `A person approves it on the phone (Settings, Tricks and the Hill), or runs collie trick on ${id} in a shell pane or a terminal.`,
   ];
 }
 

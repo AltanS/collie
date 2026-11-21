@@ -302,7 +302,7 @@ describe("The Usage row setting reaches the tag", () => {
         <UsageRowControl />
       </>,
     );
-    expect(screen.getByRole("radiogroup", { name: "Usage row" })).toBeInTheDocument();
+    expect(screen.getByRole("radiogroup", { name: "Context and limits" })).toBeInTheDocument();
     expect(screen.getByRole("radio", { name: "Percent" })).toHaveAttribute("aria-checked", "true");
     expect(stored().usageRow).toBeUndefined();
     await userEvent.click(screen.getByRole("radio", { name: "Dots" }));

@@ -83,7 +83,7 @@ export interface TricksOnDeps extends TricksSwitchDeps {
  */
 export async function cmdTricksOn(deps: TricksOnDeps, args: readonly string[]): Promise<number> {
   if (await paneNotProvenShell(deps.ctx.env, deps.paneKind)) {
-    for (const line of personOnlyRefusal("collie tricks on", "in Settings, Experiments")) deps.io.err(line);
+    for (const line of personOnlyRefusal("collie tricks on", "in Settings, Tricks and the Hill")) deps.io.err(line);
     return EXIT.REFUSED;
   }
   return cmdTricksSwitch(deps, "on", args);

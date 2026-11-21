@@ -588,9 +588,9 @@ export function SessionStream({
    * which is only true of a pane that should have one by now.
    */
   starting?: boolean;
-  /** Settings → Appearance. Off folds every run, including a lone step, to one summary line. */
+  /** Settings → Look and feel. Off folds every run, including a lone step, to one summary line. */
   showToolCalls: boolean;
-  /** Settings → Appearance. Off draws a compaction as a one-line marker and never builds its recap. */
+  /** Settings → Look and feel. Off draws a compaction as a one-line marker and never builds its recap. */
   showCompactions: boolean;
   /** The stream's own text size in px, from the belt's Display dock (`chatFontSize`). */
   fontSize: number;

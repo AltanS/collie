@@ -110,7 +110,7 @@ export function ProjectPictureSection() {
       </Group>
 
       <Group title="Settings">
-        <Card state="settings-switch" label="5. Settings switch" reach="Settings, Appearance, Project pictures. On until the person turns it off; off drops every picture the device kept.">
+        <Card state="settings-switch" label="5. Settings switch" reach="Settings, Look and feel, Project pictures. On until the person turns it off; off drops every picture the device kept.">
           <ProjectPicturesControl />
         </Card>
       </Group>

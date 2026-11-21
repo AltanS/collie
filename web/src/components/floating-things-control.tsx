@@ -9,7 +9,7 @@ import { t } from "@/lib/i18n";
 /**
  * Whether tricks may draw small moving pictures over the app (the `float` place, lib/tricks/float.ts).
  * ON by default: the pictures never cover a question and never block a tap, and each trick still has its
- * own switch in Settings → Tricks. Off hides every picture at once, on this device only.
+ * own switch in Settings → Tricks and the Hill. Off hides every picture at once, on this device only.
  */
 export function FloatingThingsControl() {
   useLocale();
@@ -21,11 +21,11 @@ export function FloatingThingsControl() {
         <div className="flex min-w-0 items-start gap-3">
           <Icon name="mods" className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
           <div className="min-w-0">
-            <div className="font-medium">{t("settings.floatingThings.title")}</div>
+            <div className="font-medium">{t("settings.floatingThings.label")}</div>
             <p className="text-sm text-muted-foreground">{t("settings.floatingThings.description")}</p>
           </div>
         </div>
-        <Switch checked={prefs.floatingThings} onCheckedChange={setFloatingThings} aria-label={t("settings.floatingThings.title")} />
+        <Switch checked={prefs.floatingThings} onCheckedChange={setFloatingThings} aria-label={t("settings.floatingThings.label")} />
       </div>
     </Card>
   );

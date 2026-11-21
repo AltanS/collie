@@ -196,7 +196,7 @@ describe("the menu place on the phone", () => {
     const { container } = mount(store);
     // alpha 5 + beta 6 = 11; gamma's 1 fits (12); zeta's 2 do not.
     expect(groups(container).map((el) => el.dataset.trick)).toEqual(["alpha", "beta", "gamma"]);
-    expect(container.querySelector('[data-slot="trick-menu-more"]')?.textContent).toBe("1 more trick has rows. See Settings, Tricks.");
+    expect(container.querySelector('[data-slot="trick-menu-more"]')?.textContent).toBe("1 more trick has rows. See Settings, Tricks and the Hill.");
   });
 
   it("N5: over the cap an agent view group shows its switch alone, its rows count like any other, and the trick counts as left out", async () => {
@@ -211,7 +211,7 @@ describe("the menu place on the phone", () => {
     expect(zeta.querySelectorAll('[role="switch"]')).toHaveLength(1);
     expect(zeta.querySelectorAll('[data-slot="trick-menu-row"]')).toHaveLength(0);
     expect(zeta.querySelector('[data-slot="trick-menu-footer"]')).toBeNull();
-    expect(container.querySelector('[data-slot="trick-menu-more"]')?.textContent).toBe("1 more trick has rows. See Settings, Tricks.");
+    expect(container.querySelector('[data-slot="trick-menu-more"]')?.textContent).toBe("1 more trick has rows. See Settings, Tricks and the Hill.");
   });
 
   it("agent sessions only, and on a crew member's session only where the instance binds", async () => {
@@ -243,7 +243,7 @@ describe("the menu place on the phone", () => {
     expect(group?.querySelector('[role="switch"]')).not.toBeNull();
     expect(baseElement.querySelectorAll('[role="switch"]')).toHaveLength(1);
     // No "Uses agent tokens" here (2026-11-12): at 360 px the chip does not fit the hint's second line and
-    // would add a third. The trick's own row in Settings, Tricks carries it.
+    // would add a third. The trick's own row in Settings, Tricks and the Hill carries it.
     expect(group?.querySelector('[data-slot="token-use"]')).toBeNull();
     void store;
   });

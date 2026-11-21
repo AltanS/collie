@@ -174,12 +174,12 @@ describe("the switch file", () => {
 });
 
 describe("the Hill is off by default", () => {
-  test("with no switch file a post is refused hill_off in the words that name Settings, Experiments; switched on, it posts", () => {
+  test("with no switch file a post is refused hill_off in the words that name Settings, Tricks and the Hill; switched on, it posts", () => {
     const r = rig();
     rmSync(hillSwitchPath(r.dir));
     expect(r.hill.isOn()).toBe(false);
     expect(r.hill.post(POSTER, input(1))).toEqual({ ok: false, code: "hill_off", error: HILL_OFF });
-    expect(HILL_OFF).toBe("the Hill is off on this Collie; your person can switch it on in Settings, Experiments, on the phone, or with: collie hill on");
+    expect(HILL_OFF).toBe("the Hill is off on this Collie; your person can switch it on in Settings, Tricks and the Hill, on the phone, or with: collie hill on");
     expect(r.store.all()).toEqual([]);
     expect(r.hill.switchTo(true, "Pixel 9")).toBe(true);
     posted(r.hill.post(POSTER, input(1)));

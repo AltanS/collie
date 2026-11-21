@@ -72,7 +72,7 @@ export function KeepChatControl() {
         <p role="status" className="min-w-0 text-sm text-muted-foreground">
           {cleared ? t("settings.keepChat.cleared") : ""}
         </p>
-        <Button variant="outline" size="sm" className="h-9 shrink-0" disabled={clearing} onClick={clearNow}>
+        <Button variant="outline" size="sm" className="h-11 shrink-0" disabled={clearing} onClick={clearNow}>
           {clearing ? <Icon name="busy" className="size-4 animate-spin" /> : <Icon name="delete" className="size-4" />}
           {t("settings.keepChat.clearNow")}
         </Button>

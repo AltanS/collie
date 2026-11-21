@@ -218,7 +218,7 @@ collie qr
    collie pair
    ```
 
-2. In Collie, open **Settings → System → Paired devices**.
+2. In Collie, open **Settings → Devices and machines → Paired devices**.
 3. Enter the code and a name, for example `my phone`, and tap **Pair this device**.
 
 Collie answers no device until it is paired: before step 3, the dashboard shows **Pair this

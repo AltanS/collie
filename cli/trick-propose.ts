@@ -28,7 +28,7 @@ import { isRequestId } from "../bridge/worktree-receipts.ts";
 // hardened way (regular files only, never through a link, within the caps of `collie trick add`), and
 // sent over the walky socket to this machine's bridge, which keeps it on a lead or a solo Collie and
 // forwards it to the lead on a crew member (bridge/tricks/propose-door.ts). The person sees a card of
-// Collie's own, on the Hill or, with the Hill off, in Settings, Tricks (M96 spec 14); nothing runs before
+// Collie's own, on the Hill or, with the Hill off, in Settings, Tricks and the Hill (M96 spec 14); nothing runs before
 // their yes.
 //
 // Left behind, never sent: dot files and dot folders (`.env`, `.git`), `node_modules/`, `*.log`, the
@@ -45,7 +45,7 @@ export const PROPOSE_NOT_HERE = "No Collie bridge on this machine knows this pan
  * Where the person finds a proposal's card (M96 spec 14): it needs no Hill, so the words never tell anyone
  * to switch the Hill on. The words of a bridge that does not say where the card is (before package I).
  */
-export const PROPOSE_WHERE = "on the Hill, or in Settings, Tricks, while the Hill is off";
+export const PROPOSE_WHERE = "on the Hill, or in Settings, Tricks and the Hill, while the Hill is off";
 
 /**
  * Where the card really is (package I, 2026-11-17), from the bridge's `where`: in the proposer's session on
@@ -57,10 +57,10 @@ export function proposeWhere(where: JsonValue | undefined): string {
   const session = asJsonBoolean(row?.session);
   const hill = asJsonBoolean(row?.hill);
   if (session === undefined || hill === undefined) return PROPOSE_WHERE;
-  if (session && hill) return "in this session on the phone, on the Hill, and in Settings, Tricks";
-  if (session) return "in this session on the phone, and in Settings, Tricks";
-  if (hill) return "on the Hill, and in Settings, Tricks";
-  return "in Settings, Tricks, on the phone";
+  if (session && hill) return "in this session on the phone, on the Hill, and in Settings, Tricks and the Hill";
+  if (session) return "in this session on the phone, and in Settings, Tricks and the Hill";
+  if (hill) return "on the Hill, and in Settings, Tricks and the Hill";
+  return "in Settings, Tricks and the Hill, on the phone";
 }
 
 /** What the CLI prints after "Sent …": the kinds of file a proposal never carries. */

@@ -9,6 +9,7 @@ import { useLocale } from "@/hooks/use-locale";
 import { t, type MessageKey } from "@/lib/i18n";
 import type { NotifyPrefs } from "@/lib/api";
 import type { CacheWatchListEntry } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
 // Which lifecycle events are worth a push. Bridge-wide (fans out to every device, like the snooze),
 // so the copy says so. Seven switches: "Needs you" (blocked, default on), "Finished" (done,
@@ -30,7 +31,7 @@ const ROWS: ReadonlyArray<{ key: keyof NotifyPrefs; labelKey: MessageKey; hintKe
   },
   {
     key: "updates",
-    labelKey: "settings.notify.updates.label",
+    labelKey: "settings.notify.newVersion.label",
     hintKey: "settings.notify.updates.hint",
   },
   // Machine alerts (ADR 0084). Default on: a machine only alerts once the operator set a rule on its
@@ -39,14 +40,21 @@ const ROWS: ReadonlyArray<{ key: keyof NotifyPrefs; labelKey: MessageKey; hintKe
   { key: "machines", labelKey: "settings.notify.machines.label", hintKey: "settings.notify.machines.hint" },
   // A Decision of priority `now` on the Hill (bridge/hill/push.ts). Default on: the poster's `now` is the
   // opt-in, and the bridge caps how often it rings. Above `cache` for the reason `machines` is.
-  { key: "decisions", labelKey: "settings.notify.decisions.label", hintKey: "settings.notify.decisions.hint" },
+  { key: "decisions", labelKey: "settings.notify.decisionNow.label", hintKey: "settings.notify.decisionNow.hint" },
   // The fourth, and the only one that is ALSO switchable per pane. Its hint says so, because the rule
   // is global OR per-pane with no per-pane off — a watched list keeps working under this switch, and an
   // operator who cannot see that would read a silent list as a list that stopped (ADR 0042).
   { key: "cache", labelKey: "settings.notify.cache.label", hintKey: "settings.notify.cache.hint" },
 ];
 
-export function NotifyPrefsControl() {
+/**
+ * `only` draws a part of the card, for a page that sets its switches under several headings (Settings,
+ * Notifications: "Notify me when", "Cache", "Machine load"). The page's heading then says what the card's own
+ * head said, so a part draws no head. Without it, the whole card, as the playground shows it.
+ */
+export type NotifyPart = { rows: readonly (keyof NotifyPrefs)[]; watched: boolean };
+
+export function NotifyPrefsControl({ only }: { only?: NotifyPart } = {}) {
   useLocale();
   const { prefs, busy, toggle } = useNotifyPrefs();
   const watched = useCacheWatchList();
@@ -59,6 +67,7 @@ export function NotifyPrefsControl() {
       entries={watched.entries}
       entriesBusy={watched.busy}
       onForget={(id) => void watched.forget(id)}
+      only={only}
     />
   );
 }
@@ -78,7 +87,9 @@ export function NotifyPrefsCard({
   entries,
   entriesBusy,
   onForget,
+  only,
 }: {
+  only?: NotifyPart | undefined;
   /** Null until the bridge answers. The switches stay disabled, the card's shape does not move. */
   prefs: NotifyPrefs | null;
   busy: boolean;
@@ -89,10 +100,11 @@ export function NotifyPrefsCard({
   onForget: (id: string) => void;
 }) {
   useLocale();
+  const rows = only === undefined ? ROWS : ROWS.filter((row) => only.rows.includes(row.key));
 
   return (
     <Card className="gap-0 py-0">
-      <div className="flex items-center justify-between gap-4 p-4">
+      {only === undefined && <div className="flex items-center justify-between gap-4 p-4">
         <div className="flex min-w-0 items-start gap-3">
           <Icon name="notifications" className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
           <div className="min-w-0">
@@ -101,17 +113,17 @@ export function NotifyPrefsCard({
           </div>
         </div>
         {!prefs && <Icon name="busy" className="size-4 shrink-0 animate-spin text-muted-foreground" />}
-      </div>
+      </div>}
 
       {/* Rendered before `prefs` lands, not after. ROWS is static, so the card's SHAPE is known from
           the first frame — only the switch values are pending. Gating the whole list on `prefs` grew
           this card by ~180px a moment after paint and pushed the rest of the page down with it. The
           switches stay disabled until the real values arrive, so nothing can be toggled from a
           placeholder state. */}
-      {ROWS.map((row) => (
+      {rows.map((row, i) => (
           <div
             key={row.key}
-            className="flex items-center justify-between gap-4 border-t border-border px-4 py-3"
+            className={cn("flex items-center justify-between gap-4 px-4 py-3", (only === undefined || i > 0) && "border-t border-border")}
           >
             <div className="min-w-0">
               <div className="text-sm font-medium">{t(row.labelKey)}</div>
@@ -126,7 +138,7 @@ export function NotifyPrefsCard({
           </div>
       ))}
 
-      <WatchedPanes entries={entries} busy={entriesBusy} onForget={onForget} />
+      {(only === undefined || only.watched) && <WatchedPanes entries={entries} busy={entriesBusy} onForget={onForget} />}
     </Card>
   );
 }

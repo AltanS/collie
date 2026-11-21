@@ -12,9 +12,9 @@ import { buildKeymap } from "@/lib/shortcuts/keymap";
 import { __resetShortcutRegistry } from "@/lib/shortcuts/registry";
 import { __resetShortcutState, publishShortcutKeymap } from "@/lib/shortcuts/state";
 
-import { SettingsDeviceRoute } from "./settings-sections";
+import { SettingsKeysRoute } from "./settings-sections";
 
-// Settings, Device: the Keyboard shortcuts row (M108), the visible control of the `help` action. It
+// Settings, Keys and touch: the Keyboard shortcuts row (M108), the visible control of the `help` action. It
 // opens the same sheet `prefix+?` opens, and it is drawn only on a device that has shown a hardware key
 // press, remembered in storage (lib/hardware-keyboard.ts).
 
@@ -22,8 +22,8 @@ const HARDWARE = { code: "KeyB", isComposing: false, keyCode: 66 } as const;
 
 function renderDevice() {
   const router = createMemoryRouter(
-    [{ path: "/settings/device", element: withHeaderHost(<><SettingsDeviceRoute /><ShortcutHelpDoor /></>) }],
-    { initialEntries: ["/settings/device"] },
+    [{ path: "/settings/keys", element: withHeaderHost(<><SettingsKeysRoute /><ShortcutHelpDoor /></>) }],
+    { initialEntries: ["/settings/keys"] },
   );
   return render(<RouterProvider router={router} />);
 }
@@ -41,10 +41,10 @@ afterEach(() => {
   __resetHardwareKeyboard();
 });
 
-describe("Settings → Device → Keyboard shortcuts", () => {
+describe("Settings → Keys and touch → Keyboard shortcuts", () => {
   it("is not on the page before this device has shown a hardware key press", async () => {
     renderDevice();
-    await screen.findByRole("heading", { name: "Device" });
+    await screen.findByRole("heading", { name: "Keys and touch" });
     await screen.findByText("Zen mode");
     expect(screen.queryByText("Keyboard shortcuts")).toBeNull();
     expect(screen.queryByRole("button", { name: "Show keyboard shortcuts" })).toBeNull();
@@ -52,7 +52,7 @@ describe("Settings → Device → Keyboard shortcuts", () => {
 
   it("is a row that opens the shortcut list once a hardware key was pressed", async () => {
     renderDevice();
-    await screen.findByRole("heading", { name: "Device" });
+    await screen.findByRole("heading", { name: "Keys and touch" });
     act(() => noteKeyPress(HARDWARE));
     expect(screen.queryByRole("dialog")).toBeNull();
     await userEvent.click(await screen.findByRole("button", { name: "Show keyboard shortcuts" }));

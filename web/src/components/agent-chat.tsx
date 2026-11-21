@@ -1031,7 +1031,7 @@ export function AgentChat({
       grammarsOn ? adapterFor(agent?.agent)?.extractStatusLines(splitLines(parseAnsi(display))) ?? [] : [],
     [display, agent?.agent, grammarsOn],
   );
-  // Settings → Harness configurations: whether this device draws the lifted status line, and for
+  // Settings → Chat and terminal: whether this device draws the lifted status line, and for
   // Claude Code the background-agents block under it, for THIS pane's harness (lib/harness-prefs.ts).
   // Keyed by the same exact agent string `adapterFor` takes. Only the DRAWING is gated: the parses
   // above still run and the Terminal body still shows the real rows, which is why the strip's

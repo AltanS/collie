@@ -51,7 +51,7 @@ export function ZenControl() {
       <div className="flex items-center justify-between gap-4 border-t border-border py-3 pl-12 pr-4">
         <div className="min-w-0">
           <div className={cn("text-sm font-medium", !enabled && "text-muted-foreground")}>
-            {t("settings.zen.auto.label")}
+            {t("settings.zen.turn.label")}
           </div>
           <p className="text-xs text-muted-foreground">{t("settings.zen.auto.hint")}</p>
         </div>
@@ -59,7 +59,7 @@ export function ZenControl() {
           checked={autoLandscape}
           disabled={!enabled}
           onCheckedChange={setAutoZenEnabled}
-          aria-label={t("settings.zen.auto.label")}
+          aria-label={t("settings.zen.turn.label")}
         />
       </div>
     </Card>

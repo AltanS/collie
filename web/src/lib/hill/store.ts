@@ -350,7 +350,7 @@ export function useHillClosedTotal(): number {
 }
 
 /**
- * The open cards of Collie's own about a trick (wire.ts `isTrickCard`), oldest first: what Settings, Tricks
+ * The open cards of Collie's own about a trick (wire.ts `isTrickCard`), oldest first: what Settings, Tricks and the Hill
  * lists and the Dashboard's line opens, with the Hill on or off (spec 14). The same array until the list changes.
  */
 export function useTrickCards(): readonly HillDecision[] {

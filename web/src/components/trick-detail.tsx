@@ -66,7 +66,7 @@ import { trickTokenUse, type TrickTokenFacts } from "@/lib/tricks/token-use";
 //      the date of the last commit are a second small line INSIDE that row: the row is 44 px with or without
 //      it, so the facts arriving move nothing. A failed read shows nothing.
 //      Then "Version 1.2.0" when the manifest names one;
-//   5. "Updates": the "Take changes without asking" switch with its hint, for a trick that is switched on
+//   5. "Updates": the "Update this trick without asking" switch with its hint, for a trick that is switched on
 //      and only on a bridge that runs tricks (a crew member runs none, so it has nothing to take). It is the
 //      same field `collie trick auto` writes. The switch shows only here, not on the card; the route owns the
 //      write state (`flipAuto`, hooks/use-trick-writes.ts): it flips at once, holds its position until the list
@@ -344,10 +344,10 @@ function UpdatesGroup({ auto, canWrite, onAuto }: { auto: boolean; canWrite: boo
       <ListGroup>
         <div className="flex min-h-11 items-center justify-between gap-4 px-3.5 py-2">
           <div className="min-w-0 flex-1">
-            <div className="text-sm">{t("settings.tricks.about.auto.label")}</div>
+            <div className="text-sm">{t("settings.tricks.about.autoUpdate.label")}</div>
             <p className="text-xs text-muted-foreground">{t("settings.tricks.about.auto.hint")}</p>
           </div>
-          <Switch checked={auto} onCheckedChange={onAuto} disabled={!canWrite} aria-label={t("settings.tricks.about.auto.label")} />
+          <Switch checked={auto} onCheckedChange={onAuto} disabled={!canWrite} aria-label={t("settings.tricks.about.autoUpdate.label")} />
         </div>
       </ListGroup>
     </section>

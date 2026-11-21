@@ -442,7 +442,7 @@ told.
 The Hill is an experiment, off until switched on. A member with no Hill switch file of its own follows
 the lead: it does not refuse the post or the image, it sends them, and the lead's switch decides. A
 lead with the Hill off refuses with "the Hill is off on the lead of this crew; your person can switch
-it on in Settings, Experiments, on the phone". Only a member whose own switch says off refuses on its
+it on in Settings, Tricks and the Hill, on the phone". Only a member whose own switch says off refuses on its
 own machine.
 
 A machine removed from the crew is another matter. After `collie crew remove` on the lead, or
@@ -539,7 +539,7 @@ The deputy trusts what its lead says you approved. It cannot see your yes on the
 starts, the deputy checks that its code is the version the lead names. A trick that does not match does
 not start, and the Hill says so after the takeover, with an OK button. It also checks that the trick
 asks for the rights the lead says you approved. A trick that asks for other rights stays off, and the
-Hill says "The trick `<name>` is off after the takeover". Read its rights in Settings → Tricks before you
+Hill says "The trick `<name>` is off after the takeover". Read its rights in Settings → Tricks and the Hill before you
 switch it on. When the deputy
 already has a trick folder of that name, Collie leaves the folder as it is, runs the approved version,
 and shows the folder's own code as a new version that waits for your yes.
@@ -620,9 +620,9 @@ report them, never `0`, and a member with no `host` is a machine of its own.
 Every Collie measures its own machine, the lead keeps a day of it for each machine in the crew, and
 the Machines pages show it and hold the alert rules.
 
-**Open the list from Settings, Machines.** It is there on a collie that runs on its own too, as one
-machine. On a lead with a crew, Settings, System has a second row for the same page, and a member's
-sheet on the Crew page links to that machine's own page with **Load and alerts**.
+**Open the list from Settings, Devices and machines.** It is there on a collie that runs on its own
+too, as one machine. On a lead with a crew, a member's sheet on the Crew page links to that machine's
+own page with **Load and alerts**.
 
 Only a lead, or a collie on its own, keeps the list. A crew member opened directly says there is no
 machine list on it; open the page on the lead.
@@ -761,7 +761,7 @@ A new rule starts at 90% for 10 minutes. Every change posts the whole set of rul
 changing the CPU threshold never drops the memory or disk rule. The card shows Saving, Saved or Could not save
 in its own status line, and after a failure it shows the rules the bridge last reported.
 
-The push goes to every device subscribed to this Collie. The card links to Settings, Alerts, where you
+The push goes to every device subscribed to this Collie. The card links to Settings, Notifications, where you
 choose which alerts you get.
 
 ## Starting something on a machine

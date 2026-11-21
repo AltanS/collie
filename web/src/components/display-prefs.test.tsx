@@ -85,12 +85,12 @@ describe("DisplayPrefsContent", () => {
 
   it("offers the stretchtext switch over both bodies, since Chat draws replies too", () => {
     draw({ chosen: "chat", showing: "chat" });
-    expect(screen.getByLabelText("Stretchtext replies")).toBeInTheDocument();
+    expect(screen.getByLabelText("Short form of long replies")).toBeInTheDocument();
   });
 
   it("offers the stretchtext switch over the mirror, where the Full reply card draws a reply", () => {
     draw({ chosen: "terminal", showing: "terminal" });
-    expect(screen.getByLabelText("Stretchtext replies")).toBeInTheDocument();
+    expect(screen.getByLabelText("Short form of long replies")).toBeInTheDocument();
   });
 
   it("the stream's text size is its own number, not the mirror's", async () => {

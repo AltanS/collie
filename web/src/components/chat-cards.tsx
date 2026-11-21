@@ -186,7 +186,7 @@ export function standsAlone(item: ChatItem): boolean {
  * things that happened, and folding them buys a line and costs a tap.
  *
  * ONE means every step folds, including a lone one, and that is how "tool calls off" is drawn
- * (Settings → Appearance). The stream then carries one summary line where the cards were, which is
+ * (Settings → Look and feel). The stream then carries one summary line where the cards were, which is
  * the same treatment collie's History page gives a turn's steps — one idea, one look, two surfaces.
  *
  * AN AGENT CALL AND A QUESTION NEVER JOIN A FOLD. A delegated `task` carries a summary and, later,
@@ -269,7 +269,7 @@ export const ToolGroup = memo(
     const waiting = useContext(CardWaitingCtx);
     // A RUNNING STEP OPENS ITS OWN RUN, UNLESS THE READER SAID NOT TO.
     //
-    // `liveOpens` is Settings → Appearance's "Tool calls", threaded down. Off, it was honoured only
+    // `liveOpens` is Settings → Look and feel's "Tool calls", threaded down. Off, it was honoured only
     // by `groupRuns(items, 1)` — which decides GROUPING, not whether a group draws open — so a run
     // with a step still running opened itself anyway, and `held` below then latched it open for
     // good. In a live session almost every run is running at some point, so "off" folded nothing:
@@ -515,7 +515,7 @@ function Notice({ item }: { item: Extract<ChatItem, { kind: "notice" }> }) {
 
 /**
  * A compaction. Claude Code draws one rule and a label; so does this, and the recap behind it is
- * the reader's to ask for (Settings → Appearance). With the recap withheld there is no text to
+ * the reader's to ask for (Settings → Look and feel). With the recap withheld there is no text to
  * build, only the marker. With it, the recap folds behind the same label and its body enters the
  * DOM only while open.
  */
