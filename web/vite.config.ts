@@ -16,6 +16,7 @@ import {
   type Channel,
   type ChannelEvidence,
 } from "./vite-icons";
+import { ineffectiveImportError, isForbiddenIneffectiveImport, mainChunkBudgetPlugin } from "./vite-bundle-guard";
 import { mathEnginesPlugin } from "./vite.math";
 import { glyphSetsPlugin, isGlyphChunkModule } from "./vite-glyphs";
 
@@ -321,6 +322,7 @@ export default defineConfig({
     mathEnginesPlugin(),
     buildInfoPlugin,
     channelIconsPlugin,
+    mainChunkBudgetPlugin,
     VitePWA({
       // Build the manifest + service worker. We use `injectManifest` (not the default generateSW)
       // because we hand-write the SW in `src/sw.ts` to add `push` + `notificationclick` handlers a
@@ -450,6 +452,12 @@ export default defineConfig({
     // A couple of small chunks beat one big one on a phone over the tailnet.
     chunkSizeWarningLimit: 900,
     rolldownOptions: {
+      // A lazy module that a static import pulled back into another chunk fails the build, except the
+      // listed ones (vite-bundle-guard.ts, ADR 0169). Every other log goes on as before.
+      onLog(level, log, handler) {
+        if (isForbiddenIneffectiveImport(log)) throw new Error(ineffectiveImportError(log));
+        handler(level, log);
+      },
       output: {
         codeSplitting: {
           groups: [{ name: "router", test: /node_modules\/(?:react-router|@remix-run)\// }],

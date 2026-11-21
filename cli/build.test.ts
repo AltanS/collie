@@ -227,6 +227,8 @@ function withGitBuildFixture<T>(
     writeFileSync(join(root, "cli", "main.ts"), "export {};\n");
     copyFileSync(join(sourceRoot, "web", "vite.config.ts"), join(web, "vite.config.ts"));
     copyFileSync(join(sourceRoot, "web", "vite-icons.ts"), join(web, "vite-icons.ts"));
+    // The config imports the bundle guard (ineffective imports, the main chunk's budget).
+    copyFileSync(join(sourceRoot, "web", "vite-bundle-guard.ts"), join(web, "vite-bundle-guard.ts"));
     // The config imports the glyph sets' build plugin, which imports the two family maps (their
     // only import, the key type, is erased).
     copyFileSync(join(sourceRoot, "web", "vite-glyphs.ts"), join(web, "vite-glyphs.ts"));
