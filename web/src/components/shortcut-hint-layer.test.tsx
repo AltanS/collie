@@ -44,12 +44,12 @@ function offer(...ids: ActionId[]) {
   for (const id of ids) registerShortcutHandler(id, () => undefined);
 }
 
-function keymapOf(user: UserShortcuts = {}, disabled: ReadonlySet<ActionId> = new Set()) {
-  return buildKeymap({ defaults: ACTIONS, user, mac: false, disabled });
+function keymapOf(user: UserShortcuts = {}) {
+  return buildKeymap({ defaults: ACTIONS, user, mac: false });
 }
 
-function arm(mode: Mode, user?: UserShortcuts, disabled?: ReadonlySet<ActionId>) {
-  publishShortcutKeymap(keymapOf(user, disabled));
+function arm(mode: Mode, user?: UserShortcuts) {
+  publishShortcutKeymap(keymapOf(user));
   publishShortcutMode(mode);
   return render(<ShortcutHintLayer />);
 }
@@ -166,14 +166,6 @@ describe("ShortcutHintLayer", () => {
     frame();
     expect(hints()).toEqual([]);
     act(() => void offer("open_actions"));
-    frame();
-    expect(hints().map(caps)).toEqual(["g"]);
-  });
-
-  it("shows the key of the stand-in on the Actions button while the palette is off", () => {
-    offer("switch_pane");
-    control(ACTIONS_BUTTON);
-    arm("prefix", undefined, new Set<ActionId>(["open_actions"]));
     frame();
     expect(hints().map(caps)).toEqual(["g"]);
   });

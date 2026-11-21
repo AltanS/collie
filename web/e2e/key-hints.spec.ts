@@ -292,19 +292,6 @@ test("with the sidebar folded the rail's controls wear their keys", async ({ pag
   await expectNoCapOverIcon(page);
 });
 
-test("with the Actions palette off the Actions button's cap is the pane list's key", async ({ page }, testInfo) => {
-  desktopOnly(testInfo);
-  await page.addInitScript(() => {
-    localStorage.setItem("collie:actions-palette:v1", "off");
-    localStorage.setItem("collie:wide-sidebar:v1", "0");
-  });
-  await openPane(page, "w2:p1");
-  await arm(page);
-  await expect(page.locator('[data-slot="space-header"]').getByRole("button", { name: en["actions.open.aria"], exact: true })).toHaveCount(0);
-  // The key runs Switch pane, and a control that stands for it would wear that key; the Belt keeps no button here.
-  await expect(caps(page, "open_actions")).toHaveCount(0);
-});
-
 test("the dashboard hints the Actions button and the gear, and says the pane key is not on this screen", async ({ page }, testInfo) => {
   desktopOnly(testInfo);
   await page.setViewportSize(DESKTOP);

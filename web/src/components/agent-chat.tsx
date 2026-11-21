@@ -102,7 +102,6 @@ import { paneGitHead } from "@/lib/git-head";
 import { CacheSheet } from "@/components/cache-sheet";
 import { PaneActionsSheet, togglePanePin } from "@/components/pane-actions-sheet";
 import { openActionsPalette, useActionsPaletteOpen } from "@/lib/actions-palette/state";
-import { useActionsPaletteOn } from "@/lib/actions-palette-store";
 import { CardWaitingCtx } from "@/components/chat-cards";
 import { chatStatusKey, SavedCopyRow, SessionStream, sharedFolderLine, type QueuedCardAction, type QueuedCardResult } from "@/components/session-stream";
 import { readingRefusal } from "@/components/send-notice";
@@ -783,42 +782,23 @@ export function AgentChat({
   // pane you are in, and the pane on screen already shows its own state.
   const hereKey = agent ? paneRowKey(agent) : null;
   const elsewhereNeedsYou = agents.some((a) => shownStatus(a) === "blocked" && paneRowKey(a) !== hereKey);
-  // The pinned button, by the device's Actions palette setting (lib/actions-palette-store.ts).
-  // ON: the Actions button on every width class. On a large screen's strip the sidebar beside it is the
-  // switcher, so there the belt is not a drag surface (no `ref`) and `pullHandle` is only the button.
-  // OFF: the Switch pane button it was before the palette, opening the pane list, on a phone only: the
-  // strip has its sidebar and no button. `switcherReachable` keeps the drag, the pane-nav handle and the
-  // `switch_pane` shortcut a phone-only thing, with the palette on or off.
-  const paletteOn = useActionsPaletteOn();
+  // The Actions button is pinned on every width class. On a large screen's strip the sidebar beside it is
+  // the switcher, so there the belt is not a drag surface (no `ref`) and `pullHandle` is only the button;
+  // `switcherReachable` keeps the drag, the pane-nav handle and the `switch_pane` shortcut a phone-only thing.
   const paletteOpen = useActionsPaletteOpen();
   const hasSomewhereToGo = agents.length + shellPanes.length > 0 || launchers.length > 0;
   const switcherReachable = !inStrip && hasSomewhereToGo;
-  const openSwitcher = () => {
-    buzz();
-    setDrawer("switcher");
-  };
-  const pullHandle = !hasSomewhereToGo
-    ? undefined
-    : paletteOn
-      ? {
-          ref: inStrip ? undefined : sheetPull.ref,
-          // The pill opens the Actions palette (ADR 0165); the drag up on the belt, and the pane-nav handle's,
-          // still bring up the Switch pane sheet.
-          onClick: openActionsPalette,
-          label: t(elsewhereNeedsYou ? "actions.open.ariaNeedsYou" : "actions.open.aria"),
-          alert: elsewhereNeedsYou,
-          open: paletteOpen,
-        }
-      : switcherReachable
-        ? {
-            ref: sheetPull.ref,
-            onClick: openSwitcher,
-            label: t(elsewhereNeedsYou ? "chat.switcher.ariaNeedsYou" : "chat.switcher.aria"),
-            icon: "pane-switcher" as const,
-            alert: elsewhereNeedsYou,
-            open: drawer === "switcher",
-          }
-        : undefined;
+  const pullHandle = hasSomewhereToGo
+    ? {
+        ref: inStrip ? undefined : sheetPull.ref,
+        // The pill opens the Actions palette (ADR 0165); the drag up on the belt, and the pane-nav handle's,
+        // still bring up the Switch pane sheet.
+        onClick: openActionsPalette,
+        label: t(elsewhereNeedsYou ? "actions.open.ariaNeedsYou" : "actions.open.aria"),
+        alert: elsewhereNeedsYou,
+        open: paletteOpen,
+      }
+    : undefined;
   // ── PANE NAVIGATION BY GESTURE (M70 spec 03, ADR 0121) ────────────────────────
   // Two fingers (the default): hold one finger still on the reading area, then swipe a second finger.
   // Joystick: hold the handle above the belt, then steer with the same finger. Off: neither. The axes
@@ -837,7 +817,12 @@ export function AgentChat({
     scope,
     // A quick drag up on the handle is the Switch pill's drag: the switcher sheet, where there is one.
     onSwitcher:
-      !switcherReachable ? undefined : openSwitcher,
+      !switcherReachable
+        ? undefined
+        : () => {
+            buzz();
+            setDrawer("switcher");
+          },
   });
   // The reading area is the pane-nav gesture's surface and also where a finger scroll up closes the
   // keyboard while the reply box keeps its draft (hooks/use-reading-releases-keyboard.ts, Altan,
