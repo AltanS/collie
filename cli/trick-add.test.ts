@@ -17,7 +17,7 @@ import { EXIT, type Io } from "./io.ts";
 import { realFiles } from "./sys.ts";
 import { hostFor } from "../bridge/host.ts";
 import { TRICKS_OFF_LINE } from "../web/src/lib/tricks/schema.ts";
-import { ADD_LIMITS, cmdTrickAdd, cmdTrickRemove, cmdTrickUpdate, GIT_HARDENING, gitRunEnv, manifestBlurb, OFFICIAL_TRICKS_REPO, parseTrickSource, sourceRefProblem, spawnGit, type GitRunner, type TrickAddDeps } from "./trick-add.ts";
+import { ADD_LIMITS, cmdTrickAdd, cmdTrickRemove, REMOVE_BRIDGE_RUNS_LINE, cmdTrickUpdate, GIT_HARDENING, gitRunEnv, manifestBlurb, OFFICIAL_TRICKS_REPO, parseTrickSource, sourceRefProblem, spawnGit, type GitRunner, type TrickAddDeps } from "./trick-add.ts";
 import { cmdTrickList, cmdTrickSwitch } from "./trick.ts";
 
 // `collie trick add`, `update` and `remove` (review 15), against a local bare repository through the test
@@ -643,6 +643,37 @@ describe.if(posix)("collie trick remove", () => {
     unmarkRun(r.stateDir, "legs");
     expect(await cmdTrickRemove(r, ["legs"])).toBe(EXIT.OK);
     expect(await stat(trickDir(r, "legs")).catch(() => null)).toBeNull();
+  });
+
+  // ADR 0168, C: a bridge that answers for this state folder holds the trick's views and Hill keys in memory; the
+  // command does not act on the files under it, whatever the bridge answers (a list, or a refusal).
+  for (const status of [200, 403]) {
+    test(`refuses while its own bridge answers (${String(status)}), and deletes nothing`, async () => {
+      const repo = await fixtureRepo([{ "trick.toml": txt(MANIFEST("legs")), "program.sh": PROGRAM }]);
+      const r = await rig();
+      expect(await cmdTrickAdd(r, [repo.bare])).toBe(EXIT.OK);
+      const asked: string[] = [];
+      const withBridge: TrickAddDeps = { ...r, fetch: async (url) => (asked.push(String(url)), new Response("{}", { status })) };
+      expect(await cmdTrickRemove(withBridge, ["legs"])).toBe(EXIT.FAIL);
+      expect(r.err.join("\n")).toContain(REMOVE_BRIDGE_RUNS_LINE);
+      expect(asked).toEqual([`http://127.0.0.1:${String(r.ctx.port)}/api/tricks`]);
+      expect((await stat(trickDir(r, "legs"))).isDirectory()).toBe(true);
+      // No bridge: the command works on the disk.
+      expect(await cmdTrickRemove(r, ["legs"])).toBe(EXIT.OK);
+      expect(await stat(trickDir(r, "legs")).catch(() => null)).toBeNull();
+    });
+  }
+
+  test("a switch file that does not read as switches refuses, deletes nothing and is not rewritten", async () => {
+    const repo = await fixtureRepo([{ "trick.toml": txt(MANIFEST("legs")), "program.sh": PROGRAM }]);
+    const r = await rig();
+    expect(await cmdTrickAdd(r, [repo.bare])).toBe(EXIT.OK);
+    await mkdir(dirname(switchesPath(r.stateDir)), { recursive: true });
+    await writeFile(switchesPath(r.stateDir), "{ torn");
+    expect(await cmdTrickRemove(r, ["legs"])).toBe(EXIT.FAIL);
+    expect(r.err.join("\n")).toContain("nothing was removed");
+    expect(await readFile(switchesPath(r.stateDir), "utf8")).toBe("{ torn");
+    expect((await stat(trickDir(r, "legs"))).isDirectory()).toBe(true);
   });
 
   test("refuses a symlinked state folder, deletes nothing, and forgets the views and Hill keys on a remove", async () => {
