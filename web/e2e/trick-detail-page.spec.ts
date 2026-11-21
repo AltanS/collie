@@ -108,7 +108,8 @@ for (const size of [
       await expect(page).toHaveURL(/\/settings\/tricks\/lodge%3Ashelf-12$/);
       await expect(page.locator('[data-slot="trick-detail-name"]')).toHaveText("Shelf 12");
       expect(await overflow(page)).toBeLessThanOrEqual(0);
-      await page.getByRole("button", { name: "Back" }).click();
+      // The last Back: on a large screen the header's leaves Settings, and the one beside the page title goes up a level.
+      await page.getByRole("button", { name: "Back" }).last().click();
       await expect(page).toHaveURL(/\/settings\/tricks$/);
       await expect.poll(() => listScroll(page)).toBe(before);
     });
@@ -132,7 +133,8 @@ for (const size of [
       expect(box.height).toBeGreaterThanOrEqual(44);
       await button.click();
       await expect(page).toHaveURL(/\/settings\/tricks\/lodge%3Akettle$/);
-      await page.getByRole("button", { name: "Back" }).click();
+      // The last Back: on a large screen the header's leaves Settings, and the one beside the page title goes up a level.
+      await page.getByRole("button", { name: "Back" }).last().click();
       await expect(page).toHaveURL(/\/trick\/trick%3Alodge%3Akettle%3Akettle$/);
       await expect(page.getByText("The kettle is warm.")).toBeVisible();
     });
