@@ -300,7 +300,7 @@ function HillClear({ answered }: { answered: number }) {
 /**
  * The Hill switched off (bridge/hill/switch.ts): the bare ridge, nobody on it, the words, and the way
  * back on, right here, because a stale notification or a bookmark is how a person lands on an off Hill.
- * The button is the switch in Settings → Experiments; a device that may not write sees it disabled.
+ * The button is the switch in Settings → Tricks and the Hill; a device that may not write sees it disabled.
  */
 export function HillOff({ canWrite, busy, onTurnOn }: { canWrite: boolean; busy: boolean; onTurnOn: () => void }) {
   useLocale();

@@ -100,7 +100,7 @@ export function ReportSection(): ReactNode {
         <SheetCard state="report-sheet-cut" n={5} label="a screen too long for the link (turn it on)" reach="Include the screen on a wide, full pane">
           <ReportSheetView context={CONTEXT} contextError={null} rows={SENDS} episodes={[]} fromSettings={false} loadScreen={async () => LONG_SCREEN} />
         </SheetCard>
-        <SheetCard state="report-sheet-settings" n={6} label="from Settings, no pane" reach="Settings, System, Report a problem">
+        <SheetCard state="report-sheet-settings" n={6} label="from Settings, no pane" reach="Settings, Updates and about, Report a problem">
           <ReportSheetView context={{ ...CONTEXT, harness: null, screenable: false }} contextError={null} rows={[]} episodes={EPISODES} fromSettings loadScreen={async () => ""} />
         </SheetCard>
       </Group>

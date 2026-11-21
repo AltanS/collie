@@ -33,7 +33,7 @@ import type { AgentView } from "@/lib/types";
 // first frame and in Cache Storage for the service worker, which has no localStorage. A push names its
 // pane, never a folder or a version.
 //
-// THE SWITCH. Settings, Appearance, "Project pictures", per device, on until the person turns it off.
+// THE SWITCH. Settings, Look and feel, "Project pictures", per device, on until the person turns it off.
 // Off: no picture anywhere, the agent logo everywhere, no push picture. Turning it off
 // also drops every copy and the map, so nothing of a repository's picture stays on the device.
 //

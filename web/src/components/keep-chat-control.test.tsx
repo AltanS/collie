@@ -11,7 +11,7 @@ afterEach(() => localStorage.clear());
 
 const stored = () => JSON.parse(localStorage.getItem("collie:display-prefs:v4") ?? "{}");
 
-// M46 spec 09: "Keep chat on this phone", Off, 1 day or 7 days, in Settings → Device.
+// M46 spec 09: "Keep chat on this phone", Off, 1 day or 7 days, in Settings → Privacy and data.
 describe("KeepChatControl", () => {
   it("starts at 1 day and stores a new choice", async () => {
     render(<KeepChatControl />);

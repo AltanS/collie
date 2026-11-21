@@ -85,7 +85,7 @@ your home screen:
 
 ColliePWA is not on the App Store or Google Play; home-screen installation is required. Launch the
 installed app, run `collie pair` on your computer, and enter the code under
-**Settings → System → Paired devices**. Pair within the home-screen app, not the browser: iOS keeps
+**Settings → Devices and machines → Paired devices**. Pair within the home-screen app, not the browser: iOS keeps
 their storage separate. The app displays no panes until paired.
 
 Agents awaiting input appear first. Tap an agent to reply. To configure Collie using an agent,
@@ -356,7 +356,7 @@ from 1.27.4, for a dialog a short hash of its key-hint row. It also says which a
 whether the optional data link was on for them, never how many. No IP
 address is stored. No content, nothing you type or read.
 
-Turn it off on each machine in Settings, System, **Telemetry**, with `COLLIE_TELEMETRY=0` (in the
+Turn it off on each machine in Settings, Privacy and data, **Telemetry**, with `COLLIE_TELEMETRY=0` (in the
 instance's `.env` for a service), `telemetry = false` in `config.toml` or `DO_NOT_TRACK=1`. Blocking
 the host in your firewall works too. The update check is a separate anonymous request to GitHub's
 public tags API. [Details](./docs/security.md#what-leaves-your-machine) ·

@@ -17,25 +17,25 @@ describe("ZenControl", () => {
 
   test("opens with zen off and the rotation row disabled", () => {
     render(<ZenControl />);
-    expect(screen.getByRole("switch", { name: /zen/i })).not.toBeChecked();
-    expect(screen.getByRole("switch", { name: /landscape/i })).toBeDisabled();
+    expect(screen.getByRole("switch", { name: "Zen mode" })).not.toBeChecked();
+    expect(screen.getByRole("switch", { name: "Zen when you turn the phone" })).toBeDisabled();
   });
 
   test("the header switch turns zen on, which frees the rotation row", async () => {
     const user = userEvent.setup();
     render(<ZenControl />);
 
-    await user.click(screen.getByRole("switch", { name: /zen/i }));
+    await user.click(screen.getByRole("switch", { name: "Zen mode" }));
 
     expect(zenEnabled()).toBe(true);
-    expect(screen.getByRole("switch", { name: /landscape/i })).toBeEnabled();
+    expect(screen.getByRole("switch", { name: "Zen when you turn the phone" })).toBeEnabled();
   });
 
   test("a disabled rotation row cannot be toggled, so no hidden choice is made", async () => {
     const user = userEvent.setup();
     render(<ZenControl />);
 
-    await user.click(screen.getByRole("switch", { name: /landscape/i }));
+    await user.click(screen.getByRole("switch", { name: "Zen when you turn the phone" }));
 
     expect(autoZenEnabled()).toBe(false); // untouched default, not a flip
   });
@@ -45,23 +45,23 @@ describe("ZenControl", () => {
     setAutoZenEnabled(true); // the operator who asked for zen on a turn of the phone
     render(<ZenControl />);
 
-    const header = screen.getByRole("switch", { name: /zen/i });
+    const header = screen.getByRole("switch", { name: "Zen mode" });
     await user.click(header); // on
-    expect(screen.getByRole("switch", { name: /landscape/i })).toBeChecked();
+    expect(screen.getByRole("switch", { name: "Zen when you turn the phone" })).toBeChecked();
 
     await user.click(header); // off again
     await user.click(header); // and on
 
     expect(autoZenEnabled()).toBe(true);
-    expect(screen.getByRole("switch", { name: /landscape/i })).toBeChecked();
+    expect(screen.getByRole("switch", { name: "Zen when you turn the phone" })).toBeChecked();
   });
 
   test("the rotation row writes its own bit once zen is available", async () => {
     const user = userEvent.setup();
     render(<ZenControl />);
 
-    await user.click(screen.getByRole("switch", { name: /zen/i }));
-    await user.click(screen.getByRole("switch", { name: /landscape/i }));
+    await user.click(screen.getByRole("switch", { name: "Zen mode" }));
+    await user.click(screen.getByRole("switch", { name: "Zen when you turn the phone" }));
 
     expect(autoZenEnabled()).toBe(true);
     expect(zenEnabled()).toBe(true);

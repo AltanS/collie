@@ -4,6 +4,7 @@ import type { GateLevel } from "../crew/peer-gate.ts";
 import type { JsonValue } from "../json.ts";
 import type { TrickMediaFile } from "./media.ts";
 import type { OfficialAnswer, OfficialTricksSurface } from "./official-install.ts";
+import type { RemoveAnswer } from "./remove-receipts.ts";
 import type { CodeAnswer, TricksSurface, SwitchAnswer, TapAnswer, ValueAnswer, VersionRouteAnswer } from "./service.ts";
 
 // The tricks routes' request halves (M94 slices 01 and 04), kept out of server.ts so that file only
@@ -31,6 +32,10 @@ import type { CodeAnswer, TricksSurface, SwitchAnswer, TapAnswer, ValueAnswer, V
 //                                         value, null to clear it; a receipt `{ rid, code: "ok", key,
 //                                         changed, info }`, or 400 `value-invalid` / `value-refused` (with
 //                                         `code` and `message`), 404, 409 `request-id-reused` / `not-here`
+//   POST /api/tricks/<host>/<id>/remove   → body `{ rid }` (ADR 0168, remove.ts): remove a trick that is off; a receipt
+//                                         `{ rid, code: "removed", id }`, or 400 `remove-invalid`, 404 `unknown-host` /
+//                                         `unknown-trick`, 409 `on` / `running` / `link` / `request-id-reused` /
+//                                         `unknown` (with `message`), 503 `write-failed`. No GET removes anything.
 //
 // Both are this bridge's own for now: a host that is not this one is 404, and the crew merge is a
 // later slice.
@@ -48,7 +53,7 @@ export const TRICKS_ROUTE_RIGHTS = {
   // A trick's code for the About sheet's folds: the approved copy's bytes, masked. It changes nothing and
   // shows what the list and a Hill proposal card already show a paired phone, so it is a read like them.
   code: "read",
-  // Take changes without asking, and go back a version (crew slice 3): both change what code runs.
+  // Update this trick without asking, and go back a version (crew slice 3): both change what code runs.
   auto: "write",
   undo: "write",
   // The official list (official.ts) is read only. Adding or updating from it fetches code onto the
@@ -64,7 +69,10 @@ export const TRICKS_ROUTE_RIGHTS = {
   feature: "write",
   // A trick's settings (contract 3): what a person keeps for it, so the switch's level. A value starts a run.
   value: "write",
-} as const satisfies Readonly<Record<"reply" | "tap" | "switch" | "media" | "code" | "auto" | "undo" | "official" | "officialAdd" | "repoList" | "repoAdd" | "feature" | "value", GateLevel>>;
+  // Removing a trick (ADR 0168): it deletes the trick's folder, its saved settings and its approved code, so the
+  // write right, as the switch. A read-only device and the host's own read key are refused at the gate.
+  remove: "write",
+} as const satisfies Readonly<Record<"reply" | "tap" | "switch" | "media" | "code" | "auto" | "undo" | "official" | "officialAdd" | "repoList" | "repoAdd" | "feature" | "value" | "remove", GateLevel>>;
 
 /** `since` as a rev, or undefined (every part) when absent or not a whole number at or above 0. */
 export function parseSince(raw: string | null): number | undefined {
@@ -157,6 +165,22 @@ export async function tricksValueRoute(tricks: TricksSurface, match: RegExpExecA
   const value = raw === null ? null : asFieldValue(raw);
   if (doc === undefined || rid === undefined || key === undefined || value === undefined || Object.keys(doc).length !== 3) return { status: 400, body: { error: "value-invalid" } };
   return await tricks.setValue(host, id, { rid, key, value });
+}
+
+/**
+ * `POST /api/tricks/<host>/<id>/remove` with `{ rid }` and nothing else (ADR 0168): `rid` a UUID the phone minted for
+ * this one confirm. Anything else is `remove-invalid`, so a stray field is never read. The id is a path segment that
+ * must decode and pass `isTrickId` in the service; nothing is joined from it here.
+ */
+export async function tricksRemoveRoute(tricks: TricksSurface, match: RegExpExecArray, body: JsonValue | undefined, device: string | null): Promise<RemoveAnswer> {
+  const host = segment(match[1] ?? "");
+  const id = segment(match[2] ?? "");
+  if (host === null) return { status: 404, body: { error: "unknown-host" } };
+  if (id === null || tricks.remove === undefined) return { status: 404, body: { error: "unknown-trick" } };
+  const doc = asJsonObject(body);
+  const rid = asJsonString(doc?.rid);
+  if (doc === undefined || rid === undefined || Object.keys(doc).length !== 1) return { status: 400, body: { error: "remove-invalid" } };
+  return await tricks.remove(host, id, rid, device);
 }
 
 /**

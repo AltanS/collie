@@ -21,7 +21,7 @@ check, and a review reads the repository's words.
 A theme that passes both is listed, with the repository's star count from GitHub. The steps are in
 [Share a theme on colliepwa.dev](#share-a-theme-on-colliepwadev).
 
-**How you get one.** Every way in starts in the **Theme** card in **Settings → Appearance**.
+**How you get one.** Every way in starts in the **Theme** card in **Settings → Look and feel**.
 
 - **Browse community themes** lists the store. Your host fetches the list, and your phone checks
   each theme again. See [Browse community themes](#browse-community-themes).
@@ -40,11 +40,11 @@ whatever a theme did. See [Troubleshooting](#troubleshooting).
 
 ## Make Collie your own
 
-Two choices in **Settings → Appearance** make the app look like yours, and both stay on this device.
+Two choices in **Settings → Look and feel** make the app look like yours, and both stay on this device.
 
 - **Theme** picks the colours, the typefaces and the shape. Pick one of four, or add one and try it before
   you keep it. See [Pick a theme](#pick-a-theme).
-- **Appearance** picks System, Light or Dark, which is the half of the theme you see.
+- **Light or dark** picks System, Light or Dark, which is the half of the theme you see.
 
 A theme you write can go further and put its own [character](#characters) in the header.
 
@@ -117,10 +117,10 @@ which the Collie theme sets to `grain`, `folder` and `box`. The words are explai
 
 ## Pick a theme
 
-Pick a theme in **Settings → Appearance**, and the whole app changes at once.
+Pick a theme in **Settings → Look and feel**, and the whole app changes at once.
 
 The **Theme** card is the first card. Tap a name and the app changes at once. Each name wears its own
-theme's corners and weight, so you see the shape before you tap. The card sits above the **Appearance**
+theme's corners and weight, so you see the shape before you tap. The card sits above the **Light or dark**
 card, which holds System, Light and Dark. These are two settings. The theme picks the colours, the shape and
 the look, and System, Light or Dark picks which half of the colours you see.
 
@@ -558,7 +558,7 @@ A character is the figure in the header of the app. Every character keeps the sa
 an orbit and drift slowly at rest while the app is visible. While Collie works for you they turn fast, in the character's own colours. An
 update and a reconnect turn them in the same colours for every character.
 
-A person can also pick a character for one device, in Settings > Appearance > Character. That choice
+A person can also pick a character for one device, in Settings → Look and feel → Character. That choice
 wins over the character a theme names, on that device only. It is stored on the device and is never sent
 to the bridge. "From the theme" gives the choice back to the theme.
 
@@ -620,7 +620,7 @@ key `characterMotion`, at the top level, which is `moves` or `still`. A theme wi
   a theme may set, and it is only the slow turn at rest.
 - **Working and updating still turn it.** `still` holds the character at rest only. While Collie works, while
   the app updates and when the link comes back, the beads turn as they do under every theme.
-- **A person's own switch wins.** In Settings > Appearance > Character, "Character moves" is on until you
+- **A person's own switch wins.** In Settings → Look and feel → Character, "Character moves" is on until you
   change it. Until you touch it, it follows the worn theme. From the first tap, your choice wins over every
   theme on that device. It is stored on the device and is never sent to the bridge.
 - **The system setting wins over both.** With reduced motion on in the operating system, the character
@@ -822,8 +822,8 @@ names it.
 - **The status bar follows a band.** Under `chrome: band` the browser's status bar takes the band colour, and
   under `page` it takes the page colour.
 - **`rows` reaches every list group.** That includes the list inside the Settings index.
-- **`zoom` sets no style.** It decides whether the belt carries the Zoom pill. The **Zoom pill** setting in
-  Settings, under Appearance, wins over it once you have chosen there.
+- **`zoom` sets no style.** It decides whether the belt carries the Zoom pill. The **Zoom button on the Belt** setting in
+  Settings, under Chat and terminal, wins over it once you have chosen there.
 - **`tabs` and `composer` set no style either.** The app reads the word and draws the tab row, the pane row
   and the composer itself. Under `folder` the tab row grows by no pixel, and the tap targets stay where they
   are. The colour of the edge is the optional token [`tab-active`](#the-optional-tokens).

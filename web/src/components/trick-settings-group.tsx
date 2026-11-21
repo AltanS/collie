@@ -49,7 +49,7 @@ export function TrickSettingsGroup({ trick, canWrite, onLead = false, onValue }:
   const writable = canWrite && !onLead;
   return (
     <section data-section="settings" className="pt-6">
-      <SectionLabel className="mb-2 block">{t("settings.tricks.about.settings")}</SectionLabel>
+      <SectionLabel className="mb-2 block">{t("settings.tricks.about.settingsHeading")}</SectionLabel>
       <p data-line="settings-no-secrets" className="pb-1 text-xs text-muted-foreground">
         {t("settings.tricks.fields.noSecrets")}
       </p>
@@ -69,7 +69,7 @@ export function TrickSettingsGroup({ trick, canWrite, onLead = false, onValue }:
         </p>
       )}
       {/* One bordered group, one row per field, a rule between rows: the look of the page's other sections (2026-11-21). */}
-      <ListGroup as="ul" aria-label={t("settings.tricks.about.settings")} className="mt-1">
+      <ListGroup as="ul" aria-label={t("settings.tricks.about.settingsHeading")} className="mt-1">
         {fields.map((field) => (
           <li key={field.key} className="px-3.5 py-1">
             <FieldRow field={field} stored={values[field.key]} disabled={!writable} onValue={onValue} />

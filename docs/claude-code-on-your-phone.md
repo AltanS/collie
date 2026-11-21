@@ -80,7 +80,7 @@ stay behind, because the new worktree starts from the last commit. Collie never 
 default is the copy of the branch you already have.
 
 **Branch folder** says where the worktree goes. **Default folder** puts it in the folder named in
-Settings, System, Worktree folder, as `<folder>/<repo>/<branch>`. While that is not set, it puts it
+Settings, Dashboard and projects, Worktree folder, as `<folder>/<repo>/<branch>`. While that is not set, it puts it
 where Herdr puts its own worktrees: `~/.herdr/worktrees/<repo>/<branch>`, unless Herdr's `config.toml`
 names another `[worktrees] directory`. Collie uses this folder on every multiplexer.
 **Other folder** puts it in a folder you name, which must already exist under your home folder, and

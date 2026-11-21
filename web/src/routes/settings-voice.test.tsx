@@ -11,11 +11,11 @@ import { CODEX_CONSENT_ID } from "@/lib/stt-consent";
 import type { SttCapability, SttHostStatus, WhistleStatus } from "@/lib/types";
 import { server } from "@/test/setup";
 import { withHeaderHost } from "@/test/header-host";
-import { SettingsDeviceRoute, SettingsVoiceHostRoute, SettingsVoiceModelRoute, SettingsVoiceRoute } from "./settings-sections";
+import { SettingsKeysRoute, SettingsVoiceHostRoute, SettingsVoiceModelRoute, SettingsVoiceRoute } from "./settings-sections";
 
 // Settings → Voice: a hub and two pages below it, Host speech and Whistle model. These cases pin the
 // routes as a person walks them (the hub's rows open the pages, Back climbs one level), the move off
-// Device, and the one thing the hub owes when its row is always offered: an answer when it has
+// Device (now Keys and touch), and the one thing the hub owes when its row is always offered: an answer when it has
 // nothing to show. The cards' own states are pinned in components/speech-control.test.tsx.
 
 vi.mock("@/lib/stt", async (importOriginal) => ({
@@ -46,18 +46,18 @@ function hostStatus(body: SttHostStatus) {
   return http.get("/api/stt/host", () => HttpResponse.json(body));
 }
 
-type Page = "voice" | "voice/host" | "voice/model" | "device";
+type Page = "voice" | "voice/host" | "voice/model" | "keys";
 
 function renderRoute(path: Page) {
   const element = {
     voice: <SettingsVoiceRoute />,
     "voice/host": <SettingsVoiceHostRoute />,
     "voice/model": <SettingsVoiceModelRoute />,
-    device: <SettingsDeviceRoute />,
+    keys: <SettingsKeysRoute />,
   } as const;
   const router = createMemoryRouter(
     [
-      ...(["voice", "voice/host", "voice/model", "device"] as const).map((p) => ({ path: `/settings/${p}`, element: withHeaderHost(element[p]) })),
+      ...(["voice", "voice/host", "voice/model", "keys"] as const).map((p) => ({ path: `/settings/${p}`, element: withHeaderHost(element[p]) })),
       { path: "/settings", element: <div data-testid="settings" /> },
     ],
     { initialEntries: [`/settings/${path}`] },
@@ -111,7 +111,7 @@ describe("Settings → Voice, the hub", () => {
     expect(screen.queryByRole("radiogroup")).toBeNull();
 
     await userEvent.click(change);
-    const phone = await screen.findByRole("radiogroup", { name: "Where this phone's speech becomes text." });
+    const phone = await screen.findByRole("radiogroup", { name: "Where this phone turns your speech into text. Other devices keep their own choice." });
     const host = await screen.findByRole("button", { name: /^Whistle on your host/ });
     const model = screen.getByRole("button", { name: /Whistle model/ });
     expect(follows(change, phone)).toBe(true);
@@ -180,7 +180,7 @@ describe("Settings → Voice, the hub", () => {
     server.use(config({}));
     vi.mocked(sttModel.storedModel).mockResolvedValue({ sha256: "b".repeat(64), bytes: BYTES });
     renderRoute("voice");
-    expect(await screen.findByRole("radiogroup", { name: "Where this phone's speech becomes text." })).toBeInTheDocument();
+    expect(await screen.findByRole("radiogroup", { name: "Where this phone turns your speech into text. Other devices keep their own choice." })).toBeInTheDocument();
     expect(screen.queryByText(/Nothing to set up here yet\./)).toBeNull();
   });
 });
@@ -253,16 +253,16 @@ describe("Settings → Voice → Whistle model", () => {
   });
 });
 
-describe("Settings → Device after the move", () => {
+describe("Settings → Keys and touch after the move", () => {
   it("no longer carries the Speech cards or the hands-free switch", async () => {
     server.use(config({ whistle: { ...WHISTLE, state: "ready" }, stt: STT }));
-    renderRoute("device");
-    await screen.findByRole("heading", { name: "Device" });
+    renderRoute("keys");
+    await screen.findByRole("heading", { name: "Keys and touch" });
     // The page has settled once its own always-present card is there; then nothing speech-shaped appears.
     await within(document.body).findByText("Zen mode");
     await new Promise((r) => setTimeout(r, 50));
     expect(screen.queryByText(/Whistle/)).toBeNull();
-    expect(screen.queryByRole("radiogroup", { name: "Where this phone's speech becomes text." })).toBeNull();
+    expect(screen.queryByRole("radiogroup", { name: "Where this phone turns your speech into text. Other devices keep their own choice." })).toBeNull();
     expect(screen.queryByRole("switch", { name: /Hands-free/ })).toBeNull();
   });
 });

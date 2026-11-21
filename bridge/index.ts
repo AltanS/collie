@@ -4313,10 +4313,11 @@ const tricks =
         // Only a lead or a solo bridge that is not deposed schedules tricks (§18.12): a peer, a deputy and
         // a deposed lead run no timer, so one trick never runs on two machines of a crew.
         active: () => crew.mode !== "peer" && deposed === null,
-        // And says so: Settings → Tricks and `collie trick list` on such a machine name the lead that runs them.
+        // And says so: Settings → Tricks and the Hill and `collie trick list` on such a machine name the lead that runs them.
         runsOn: tricksRunsOn,
-        // Every version the bridge approves, declines or undoes, `auto` included, leaves an audit line.
-        audit: (entry) => audit.record({ action: entry.action, detail: entry.detail }),
+        // Every version the bridge approves, declines or undoes, `auto` included, leaves an audit line; a remove
+        // names the paired device that asked (ADR 0168).
+        audit: (entry) => audit.record({ action: entry.action, device: entry.device ?? null, detail: entry.detail }),
         // A new version that waits gets its card on the Hill; the card goes when nothing waits any more.
         versions: versionCards,
         // Fault B: a trick stopped for its rights says so on the Hill too, once per trick and mismatch.
@@ -4363,7 +4364,7 @@ const officialTricks =
         forgetTrick,
         repoFacts,
       });
-// A repository's index (bridge/tricks/repo-index.ts): Settings, Tricks, "Add from a repository". Nothing is
+// A repository's index (bridge/tricks/repo-index.ts): Settings, Tricks and the Hill, "Add a trick from a repository". Nothing is
 // fetched until the person taps; github.com, gitlab.com and codeberg.org only; the fetch slot is shared.
 const repoTricks =
   tricks === undefined || cfg.tricksDir === undefined

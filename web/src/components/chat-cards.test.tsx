@@ -155,7 +155,7 @@ describe("harnessLabel", () => {
     expect(harnessLabel("not-a-harness")).toBe("not-a-harness");
   });
 
-  // Settings → Harness configurations names its rows with this table. The lower-case brands are written
+  // Settings → Chat and terminal names its rows with this table. The lower-case brands are written
   // that way by their products and in this repo; every other registry key needs a name of its own.
   it("names every registered adapter, keeping only the lower-case brands as they are", () => {
     const lowerCaseBrands = new Set(["opencode", "pi", "omp"]);

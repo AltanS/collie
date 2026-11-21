@@ -575,7 +575,7 @@ Behavior details for Claude configuration changes:
   account or setup. With the wrap, the figure is Claude Code's own percent, and between two statusLine
   runs the hooks read the token count from the end of the session transcript and divide it by that
   stated size. Without the wrap (no statusLine, `--no-statusline`, or Windows) the figure is the
-  token count itself, `ctx 222k`, never a guessed percent; with the Usage row on Dots there is no
+  token count itself, `ctx 222k`, never a guessed percent; with Context and limits on Dots there is no
   context dot then. `collie update` does not change your settings; `collie doctor` says in its
   `statusline-claude` row when a statusLine could be wrapped and is not.
 - **The limits the agent reports show on their own.** Usually that is the 5-hour and 7-day windows, and a weekly window for one model when the plan has it. They need no hook and no statusLine. While a

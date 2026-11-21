@@ -169,11 +169,11 @@ export function WorktreeFolderSection() {
   const [sheet, setSheet] = useState<CaseId>("default");
   return (
     <Section def={DEF}>
-      <Group title="Settings, System">
+      <Group title="Settings, Dashboard and projects">
         <Card
           state="worktree-folder-setting"
           label="1 Worktree folder card"
-          reach="open Settings, System. Each machine of a crew has its own row; a solo collie has one and no machine name."
+          reach="open Settings, Dashboard and projects. Each machine of a crew has its own row; a solo collie has one and no machine name."
           note="Change opens the New page's folder picker. Try a path outside ~ in Editing to see a refusal. Reads fixed answers, not the bridge."
         >
           <CardControls>

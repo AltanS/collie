@@ -1,4 +1,4 @@
-import { Fragment, useLayoutEffect, useRef, type ReactNode, type RefObject, type UIEventHandler } from "react";
+import { Fragment, useEffect, useLayoutEffect, useRef, type ReactNode, type RefObject, type UIEventHandler } from "react";
 import { createPortal } from "react-dom";
 import { useLocation } from "react-router";
 import { Icon } from "@/components/icons/icon";
@@ -11,6 +11,7 @@ import { useLocale } from "@/hooks/use-locale";
 import { useNav } from "@/hooks/use-nav";
 import { t, type MessageKey } from "@/lib/i18n";
 import { settingsPath } from "@/lib/nav";
+import { fragmentRowId } from "@/lib/settings/pages";
 import { useScope } from "@/lib/session";
 import { cn } from "@/lib/utils";
 import { BandMain } from "@/components/ui/strip-host";
@@ -32,6 +33,7 @@ import { BandMain } from "@/components/ui/strip-host";
 export function SettingsPage({
   title,
   heading,
+  blurb,
   parent,
   onScroll,
   foot,
@@ -45,6 +47,11 @@ export function SettingsPage({
   title: MessageKey;
   /** A title already in words (an account's own name). It stands in for `title`, which stays the page's key. */
   heading?: string;
+  /**
+   * What the page holds, in one line: the index's second line for it (lib/settings/pages.ts). The phone reads it on
+   * the index row; a large screen's list has no second line, so the page draws it once, muted, under its title.
+   */
+  blurb?: string | undefined;
   parent?: string;
   /** The column's scroll, for a page whose floating button folds as the list moves (Accounts). */
   onScroll?: UIEventHandler<HTMLElement>;
@@ -65,6 +72,7 @@ export function SettingsPage({
   const nav = useNav();
   const scroller = useRef<HTMLElement | null>(null);
   useEntryScroll(scroller, keepScroll);
+  useMarkedSetting(scroller);
   const scope = useScope();
   const shell = useSettingsShell();
   useLocale();
@@ -78,6 +86,7 @@ export function SettingsPage({
         crumbs={crumbs ?? [heading ?? t(title)]}
         headingBelow={headingBelow}
         backLabel={backLabel}
+        blurb={blurb}
         onScroll={onScroll}
         scroller={scroller}
         foot={foot}
@@ -133,6 +142,7 @@ function WideSettingsPage({
   crumbs,
   headingBelow,
   backLabel,
+  blurb,
   onScroll,
   scroller,
   foot,
@@ -140,6 +150,7 @@ function WideSettingsPage({
   children,
 }: {
   shell: SettingsShellApi;
+  blurb: string | undefined;
   name: string;
   parent: string | undefined;
   crumbs: readonly string[];
@@ -196,6 +207,12 @@ function WideSettingsPage({
             )}
             {action !== undefined && <div className="ml-auto flex shrink-0 items-center">{action}</div>}
           </div>
+          {blurb !== undefined && (
+            // Under the title and inside the column's rhythm: `-mt-3` sits it 4px under the title row, not 16.
+            <p data-slot="settings-page-blurb" className="-mt-3 text-sm text-muted-foreground">
+              {blurb}
+            </p>
+          )}
           {children}
         </div>
       </BandMain>
@@ -203,4 +220,50 @@ function WideSettingsPage({
       {foot !== undefined && <div data-slot="settings-foot" className={cn(SETTINGS_COLUMN, "[&>*]:px-0")}>{foot}</div>}
     </div>
   );
+}
+
+/** How long a row a search result opened stays marked. */
+export const MARK_MS = 2000;
+/** How long the page waits for the row to mount (a card that reads the machine first) before it gives up. */
+const FIND_MS = 1500;
+
+/**
+ * A search result opens the page with the row's registry id as the fragment (`/settings/look#look.math`). The page
+ * scrolls that row's slot into view and marks it in the focus frame's colour for {@link MARK_MS}, then lets go. A
+ * fragment that names no row's slot on the page is left alone. The id is read from the fragment's shape and
+ * the old fragments' table (lib/settings/pages.ts), so the page does not load the registry. Under
+ * reduced motion the scroll jumps and the mark has no fade; it is the same frame either way.
+ */
+function useMarkedSetting(scroller: RefObject<HTMLElement | null>) {
+  const { hash, key } = useLocation();
+  useEffect(() => {
+    const id = fragmentRowId(hash);
+    if (id === undefined) return undefined;
+    const started = performance.now();
+    let frame = 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let marked: HTMLElement | null = null;
+    const look = () => {
+      const root = scroller.current;
+      const slot = root?.querySelector<HTMLElement>(`[data-setting~="${CSS.escape(id)}"]`) ?? null;
+      if (slot === null || slot.childElementCount === 0) {
+        if (performance.now() - started < FIND_MS) frame = requestAnimationFrame(look);
+        return;
+      }
+      const still = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
+      slot.scrollIntoView({ block: "center", behavior: still ? "auto" : "smooth" });
+      slot.dataset.marked = "true";
+      marked = slot;
+      timer = setTimeout(() => {
+        delete slot.dataset.marked;
+        marked = null;
+      }, MARK_MS);
+    };
+    frame = requestAnimationFrame(look);
+    return () => {
+      cancelAnimationFrame(frame);
+      if (timer !== undefined) clearTimeout(timer);
+      if (marked !== null) delete marked.dataset.marked;
+    };
+  }, [hash, key, scroller]);
 }

@@ -14,7 +14,7 @@
  * reads as the row's ring and no ancestor clips it. `outline-solid` sets the style on the layer itself: the
  * button's own `outline-none` reaches the layer through the inherited `--tw-outline-style` (DESIGN.md §7.2).
  *
- * Settings, Tricks: a trick's row, an official entry before Add, and the Hill's built-in row.
+ * Settings, Tricks and the Hill: a trick's row, an official entry before Add, and the Hill's built-in row.
  */
 export const ROW_OPEN_ROW =
   "relative transition-colors [@media(hover:hover)]:has-[[data-row-open]:hover]:bg-muted/50 has-[[data-row-open]:active]:bg-muted/60";

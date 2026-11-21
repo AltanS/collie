@@ -28,7 +28,7 @@
 //   trick-phone.ts <out> goto:/hill "clickre:Not now"                            # the no
 //   bun e2e/rig/rig.ts down
 // A permission dialog of the agent is answered with: goto:/pane/w2%3Ap1 "clickre:^1\s*Yes$".
-// SINCE M96 SPEC 14 the Hill-on step is not needed: with the Hill off the card is in Settings, Tricks, under
+// SINCE M96 SPEC 14 the Hill-on step is not needed: with the Hill off the card is in Settings, Tricks and the Hill, under
 // "Waiting for your yes", and the Dashboard's line opens the oldest (not yet run on the rig):
 //   trick-phone.ts <out> goto:/settings clickre:^Tricks "clickre:^Switch on the trick" click:Next \
 //     click:Next click:Next "hold:Hold to switch on"

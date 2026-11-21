@@ -4,6 +4,7 @@ import { useParams } from "react-router";
 import { Bars, Foot } from "@/components/accounts-meter";
 import { AgentIcon } from "@/components/agent-icon";
 import { MiddleTruncate } from "@/components/changes-view";
+import { accountsLine } from "@/hooks/use-settings-rows";
 import { SettingsPage } from "@/components/settings-page";
 import { BottomBar } from "@/components/ui/bottom-bar";
 import { Button } from "@/components/ui/button";
@@ -147,6 +148,7 @@ export function SettingsAccountsRoute() {
   return (
     <SettingsPage
       title="accounts.title"
+      blurb={accountsLine(addedCount(body))}
       onScroll={(e) => setCollapsed(e.currentTarget.scrollTop > 24)}
       // On a large screen Add stands at the end of the column's title row, in the title-row size of the same button:
       // the floating one is placed against the phone's centred column, which is not where this column is.
@@ -266,7 +268,7 @@ function FoundBlock({ body, onAdd }: { body: AccountsBody; onAdd: (found: FoundF
               </p>
             </div>
             <Button variant="outline" className="h-11 shrink-0" onClick={() => onAdd(f)}>
-              {t("accounts.add.label")}
+              {t("accounts.found.addLabel")}
             </Button>
           </li>
         ))}

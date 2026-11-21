@@ -1,5 +1,5 @@
 // How the usage row of a session draws its gauges (components/model-tag.tsx): as a whole percentage, or as
-// five dots. A per-device choice in Settings, Appearance.
+// five dots. A per-device choice in Settings, Chat and terminal, Context and limits.
 //
 // PERCENT BY DEFAULT. The dots round down to a fifth (81% shows four), so 41% and 59% look alike; the
 // number is the exact figure the harness reported. Both draw the same quantity, the share USED, and

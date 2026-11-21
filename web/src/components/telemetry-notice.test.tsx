@@ -44,7 +44,7 @@ function renderNotice(initial: TelemetryView | "fail") {
   const router = createMemoryRouter(
     [
       { path: "/", element: <TelemetryNotice /> },
-      { path: "/settings/system/install-count", element: <Where /> },
+      { path: "/settings/privacy/install-count", element: <Where /> },
     ],
     { initialEntries: ["/"] },
   );
@@ -152,11 +152,11 @@ describe("the install-count notice", () => {
     expect(await screen.findByText(BODY)).toBeInTheDocument();
   });
 
-  it("the button opens the card on its page in Settings, System, and spends the notice", async () => {
+  it("the button opens the card on its page in Settings, Privacy and data, and spends the notice", async () => {
     const user = userEvent.setup();
     renderNotice(view());
     await user.click(await screen.findByRole("button", { name: "Open Settings" }));
-    expect(await screen.findByTestId("where")).toHaveTextContent("/settings/system/install-count");
+    expect(await screen.findByTestId("where")).toHaveTextContent("/settings/privacy/install-count");
     expect(localStorage.getItem(KEY)).toBe("2");
   });
 });

@@ -15,7 +15,7 @@ import { tricksConfigDir, tricksStateDir } from "./paths.ts";
 import { writeNewTrick } from "./proposal-install.ts";
 import { SeenWrites } from "./values.ts";
 
-// A REPOSITORY'S INDEX ON THE PHONE (2026-11-17, package J): Settings, Tricks, "Add from a repository".
+// A REPOSITORY'S INDEX ON THE PHONE (2026-11-17, package J): Settings, Tricks and the Hill, "Add a trick from a repository".
 //
 //   POST /api/tricks/repo/list  { rid, url }                  → RepoListReply, the index at the commit read
 //   POST /api/tricks/repo/add   { rid, url, folder, commit }  → RepoAddReply, the trick added OFF

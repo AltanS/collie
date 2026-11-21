@@ -28,7 +28,7 @@ export function BeltSizeControl() {
         <div className="flex min-w-0 items-start gap-3">
           <Icon name="belt-size" className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
           <div className="min-w-0">
-            <div className="font-medium">{t("settings.beltSize.title")}</div>
+            <div className="font-medium">{t("settings.beltSize.label")}</div>
             <p className="text-sm text-muted-foreground">{t("settings.beltSize.description")}</p>
           </div>
         </div>
@@ -36,7 +36,7 @@ export function BeltSizeControl() {
 
       <div
         role="radiogroup"
-        aria-label={t("settings.beltSize.title")}
+        aria-label={t("settings.beltSize.label")}
         className="flex gap-1 border-t border-border p-2"
       >
         {BELT_SCALES.map((scale) => {

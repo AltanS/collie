@@ -27,7 +27,7 @@ phone first, in the home screen app, because that app keeps its own storage, sep
 Then run `collie pair` on the host. The steps are in
 [Put Collie on your phone and pair it](five-minute-install.md#put-collie-on-your-phone-and-pair-it).
 
-In Collie, go to **Settings** → **System** → **Paired devices**, and enter the code with a label
+In Collie, go to **Settings** → **Devices and machines** → **Paired devices**, and enter the code with a label
 for the device. On a desktop, you can instead scan or open the QR code printed by the command,
 which opens that screen in a browser tab with the code already filled in. On a phone, type the
 code in the home screen app, because the camera opens the QR code in a browser tab.
@@ -581,7 +581,7 @@ Some ordinary text is masked too, for example a line of prose or YAML that reads
 What you type and send is never masked, and the audit trail keeps its own rules
 (`COLLIE_AUDIT_CONTENT`).
 
-The switch lives on the bridge only, as `COLLIE_REDACT`. Settings → System shows it read-only, as
+The switch lives on the bridge only, as `COLLIE_REDACT`. Settings → Devices and machines → Connection shows it read-only, as
 "Secret masking". The phone has no switch on purpose: a switch on the phone would let any paired
 phone, or a stolen one, turn the mask off. To read a masked value, read it on the machine. The first
 time a pane shows masked text, a short line on the phone says so, once per device. If you paste
@@ -725,7 +725,7 @@ the same fact for its own pane. The names come from fixed lists in Collie, and a
 keeps only the pairs it has seen, in its state file, and the list goes with the install ID when the count
 is off. A crew member reports its own agents and pings for itself.
 
-Turning it off is one switch: Settings, System, **Telemetry**. `COLLIE_TELEMETRY=0`,
+Turning it off is one switch: Settings, Privacy and data, **Telemetry**. `COLLIE_TELEMETRY=0`,
 `telemetry = false` in `config.toml` or `DO_NOT_TRACK=1` do the same, and so does blocking the one
 host it goes to, `ping.colliepwa.dev`, in your firewall. The first ping waits a day after the first
 start of a build that has it. The exact message is written down in the contract in the repository,
@@ -755,7 +755,7 @@ to host** or runs `collie stt whistle`, and it sends no data about you ([The spe
 (Whistle)](#the-speech-engine-whistle)).
 
 The math engines download is another outbound call, and it also happens only on a tap: **Download
-the math engines**, or picking an engine in **Settings → Appearance → Math** while the host has
+the math engines**, or picking an engine in **Settings → Look and feel → Math** while the host has
 none. The bridge makes two anonymous HTTPS `GET`s to GitHub, with the user-agent `Collie/<version>`
 and nothing about you:
 

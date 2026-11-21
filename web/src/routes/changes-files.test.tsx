@@ -766,7 +766,7 @@ describe("Changes tree: what a refusal reads as", () => {
     // The read latches the same refusal a write does, so the app's read-only strip names the remedy.
     expect(isNotPaired()).toBe(true);
     await userEvent.click(screen.getByRole("button", { name: en["files.pairLink"] }));
-    expect(router.state.location.pathname).toBe("/settings/system");
+    expect(router.state.location.pathname).toBe("/settings/devices");
     expect(router.state.location.hash).toBe("#paired-devices");
   });
 

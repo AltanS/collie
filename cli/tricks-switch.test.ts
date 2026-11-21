@@ -105,7 +105,7 @@ describe("collie tricks", () => {
     const pane = { ...r, ctx: { ...r.ctx, env: { ...r.ctx.env, HERDR_PANE_ID: "w1:p2", HERDR_SOCKET_PATH: "/run/user/1000/herdr.sock" } } };
     expect(await cmdTricksOn({ ...pane, paneKind: async () => "agent" as const }, [])).toBe(EXIT.REFUSED);
     expect(r.err[0]).toBe("error: collie tricks on is your person's choice, and this runs in a pane where an agent works.");
-    expect(r.err[1]).toContain("in Settings, Experiments");
+    expect(r.err[1]).toContain("in Settings, Tricks and the Hill");
     expect(readTricksFeature(r.stateDir).reading).toBe("unset");
     clear(r);
     expect(cmdTricksSwitch(pane, "off", [])).toBe(EXIT.OK);
@@ -119,7 +119,7 @@ describe("collie tricks", () => {
     // The check throws: refused with the same sentence, nothing written.
     expect(await cmdTricksOn({ ...pane, paneKind: async () => Promise.reject(new Error("socket gone")) }, [])).toBe(EXIT.REFUSED);
     expect(r.err[0]).toBe("error: collie tricks on is your person's choice, and this runs in a pane where an agent works.");
-    expect(r.err[1]).toContain("in Settings, Experiments");
+    expect(r.err[1]).toContain("in Settings, Tricks and the Hill");
     expect(readTricksFeature(r.stateDir).reading).toBe("unset");
     // The bridge does not know the pane: refused too.
     clear(r);
@@ -152,7 +152,7 @@ describe("the trick verbs while tricks are switched off", () => {
     clear(r);
     expect(await cmdTrickUpdate(r, ["legs"])).toBe(EXIT.FAIL);
     expect(r.err).toEqual([`error: ${TRICKS_OFF_LINE}`]);
-    expect(TRICKS_OFF_LINE).toContain("Settings, Experiments");
+    expect(TRICKS_OFF_LINE).toContain("Settings, Tricks and the Hill");
     expect(TRICKS_OFF_LINE).toContain("collie tricks on");
   });
 

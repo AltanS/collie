@@ -7,7 +7,7 @@ import { Notice } from "@/components/ui/notice";
 import { useLocale } from "@/hooks/use-locale";
 import { useNav } from "@/hooks/use-nav";
 import { useOfficialList, useTrickWrites, type TrickWriteCalls } from "@/hooks/use-trick-writes";
-import { fetchTrickCodeFile, fetchTrickCodeIndex } from "@/lib/api";
+import { apiErrorFields, fetchTrickCodeFile, fetchTrickCodeIndex, removeTrick } from "@/lib/api";
 import { t } from "@/lib/i18n";
 import { readTrickDetailKey, settingsSectionPath, type TrickDetailAddress } from "@/lib/nav";
 import { usePairing } from "@/lib/pairing";
@@ -17,7 +17,9 @@ import { TrickBoundary } from "@/lib/tricks/boundary";
 import { trickListRows, type TrickListRow } from "@/lib/tricks/list-order";
 import type { OfficialTricksReply } from "@/lib/tricks/schema";
 import { tricksStore, useTricksState, type TricksStore } from "@/lib/tricks/store";
+import { setStatus } from "@/lib/status";
 import { isReadOnly } from "@/lib/types";
+import { mintRequestId } from "@/lib/worktree-name";
 
 // SETTINGS → TRICKS → ONE TRICK (2026-11-21): a trick's details on a page of its own, one level below the list, in
 // place of the bottom sheet the list opened before ("it's a lot of info and deserving of an own page", Altan). The
@@ -31,7 +33,7 @@ import { isReadOnly } from "@/lib/types";
 //
 // The header's title is "Trick details"; the trick's name is the page's `h1`, in the head (2026-11-21).
 // Back goes up one level (ADR 0067): to the list, or to the trick's own page when its header opened this one.
-// Tricks switched off as a whole send a deep link to Settings, Experiments, as the list does.
+// Tricks switched off as a whole send a deep link to Settings, Tricks and the Hill, as the list does.
 
 export interface SettingsTrickRouteProps extends TrickWriteCalls {
   /** The store the trick is read from. The app's own by default; a test passes its own. */
@@ -42,6 +44,17 @@ export interface SettingsTrickRouteProps extends TrickWriteCalls {
   readOnly?: boolean;
   /** The zone dates are written in. Tests pin it. */
   timeZone?: string;
+  /** The remove write (ADR 0168). The real route by default; a test passes its own. */
+  onRemove?: (host: string, id: string, rid: string) => Promise<{ rid: string; id: string }>;
+}
+
+/** The words a failed remove shows in its row: the bridge's three refusals in the phone's words, else one line. */
+export function removeFailureLine<TThrown>(thrown: TThrown, name: string): string {
+  const code = apiErrorFields(thrown)?.error;
+  if (code === "on") return t("settings.tricks.remove.onLine");
+  if (code === "running") return t("settings.tricks.remove.running");
+  if (code === "link") return t("settings.tricks.remove.link");
+  return t("settings.tricks.remove.failed", { name });
 }
 
 /** The list's row this page is about: the trick of `host:id`, or the official entry (added or not) of `id`. */
@@ -53,11 +66,11 @@ export function rowOfAddress(rows: readonly TrickListRow[], address: TrickDetail
 export function SettingsTrickRoute(props: SettingsTrickRouteProps) {
   const root = useOptionalRootData();
   const scope = useScope();
-  if (root?.tricksOff === true) return <Navigate to={settingsSectionPath("experiments", scope)} replace />;
+  if (root?.tricksOff === true) return <Navigate to={settingsSectionPath("tricks", scope)} replace />;
   return <TrickPage {...props} />;
 }
 
-function TrickPage({ store = tricksStore, onOfficialList, readOnly, timeZone, ...calls }: SettingsTrickRouteProps) {
+function TrickPage({ store = tricksStore, onOfficialList, readOnly, timeZone, onRemove = removeTrick, ...calls }: SettingsTrickRouteProps) {
   useLocale();
   const { key = "" } = useParams<{ key: string }>();
   const scope = useScope();
@@ -123,6 +136,18 @@ function TrickPage({ store = tricksStore, onOfficialList, readOnly, timeZone, ..
           onValue={async (field, value) => await writes.saveValue(trick, field, value)}
           readCode={{ index: () => fetchTrickCodeIndex(trick.host, trick.id), file: (file) => fetchTrickCodeFile(trick.host, trick.id, file) }}
           timeZone={timeZone}
+          onRemove={async () => {
+            // One request id per confirm: the bridge removes once for it, also when the answer is lost and it is sent again.
+            try {
+              await onRemove(trick.host, trick.id, mintRequestId());
+            } catch (thrown) {
+              return removeFailureLine(thrown, trick.name);
+            }
+            // Up to the list, so Back never returns to the page of a trick that is gone; the list says what happened.
+            nav.up(list);
+            setStatus(t("settings.tricks.remove.done", { name: trick.name }), "info");
+            return null;
+          }}
         />
       </TrickBoundary>
     </SettingsPage>

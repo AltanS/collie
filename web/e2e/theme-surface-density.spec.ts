@@ -49,9 +49,9 @@ const PAGES: ReadonlyArray<{ path: string; world?: "crew" | "machines" }> = [
   { path: "/new" },
   { path: "/new/add?kind=agent" },
   { path: "/settings" },
-  { path: "/settings/appearance" },
+  { path: "/settings/look" },
   { path: "/settings/updates" },
-  { path: "/settings/system" },
+  { path: "/settings/devices" },
   { path: "/settings/voice" },
   { path: "/settings/voice/model" },
   { path: "/machines", world: "machines" },
@@ -268,7 +268,7 @@ for (const theme of [
       const page = await context.newPage();
       await installApiStub(page);
       await page.addInitScript((design) => localStorage.setItem("collie:design:v1", design), JSON.stringify({ ...STILL_MARK, ...theme.design }));
-      await open(page, "/settings/appearance", undefined);
+      await open(page, "/settings/look", undefined);
       await page.evaluate(() => document.fonts.ready);
       const select = page.getByRole("combobox", { name: "Theme", exact: true });
       await expect(select).toHaveCount(1);

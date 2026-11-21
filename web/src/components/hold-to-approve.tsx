@@ -11,7 +11,7 @@ import { t } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
 // THE YES TO A TRICK'S CODE (ADR 0156): one button for every card that asks it, the chat's approval card, the
-// agent view's, the Hill's and Settings, Tricks, for a proposed trick and for a new version. It is an option
+// agent view's, the Hill's and Settings, Tricks and the Hill, for a proposed trick and for a new version. It is an option
 // row (option-button.tsx `optionSurface`, the key badge, the detail line), and a hold of 1.5 seconds
 // approves (hooks/use-approve-hold.ts). Its words change with the hold, "Hold to switch on", "Keep holding…",
 // and for a key "Press again to confirm", all three in one slot sized by the widest, so nothing moves

@@ -110,7 +110,7 @@ export const ACK_MANIFEST = {
   },
   setTricksSwitch: {
     channel: "inline",
-    why: "The switch for tricks as a whole, a card in Settings, Experiments: the switch itself is the receipt, it holds the new place while the call runs and the snapshot's `tricksOff` then confirms it; a failed call puts the switch back and lands as a line under it, because the operator asked for something that did not happen.",
+    why: "The switch for tricks as a whole, a card in Settings, Tricks and the Hill: the switch itself is the receipt, it holds the new place while the call runs and the snapshot's `tricksOff` then confirms it; a failed call puts the switch back and lands as a line under it, because the operator asked for something that did not happen.",
   },
   setHillCrewState: {
     channel: "inline",
@@ -420,9 +420,13 @@ export const ACK_MANIFEST = {
     channel: "silent",
     why: "Undo under a trick that took a change without asking (components/tricks-settings-card.tsx): the line itself goes once the bridge's list shows the earlier version, so the row is the receipt; a refused or lost post says so in the status line, because the reason is about that one trick.",
   },
+  removeTrick: {
+    channel: "status",
+    why: "Remove trick in the confirm on a trick's details page (components/trick-remove-section.tsx) goes busy until the answer; a removal leaves the page for the list, which no longer holds the trick, and says Removed <name> in the status line, because the page that asked is gone (ADR 0168); a refusal stays on the page and says why in the Remove row, because the reason is about that one trick.",
+  },
   addOfficialTrick: {
     channel: "echo",
-    why: "Add (or Update) on an official row in Settings → Tricks swaps its word for Collie's spinner on the spot and stays busy until the trick shows among the installed ones, off (components/tricks-settings-card.tsx); a refused or lost post says why in the status line (offline, a code mismatch, another add running), because the reason is about that one trick.",
+    why: "Add (or Update) on an official row in Settings → Tricks and the Hill swaps its word for Collie's spinner on the spot and stays busy until the trick shows among the installed ones, off (components/tricks-settings-card.tsx); a refused or lost post says why in the status line (offline, a code mismatch, another add running), because the reason is about that one trick.",
   },
   listRepoTricks: {
     channel: "inline",

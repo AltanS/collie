@@ -9,7 +9,7 @@ import { Segmented } from "@/components/ui/segmented";
 import { Switch } from "@/components/ui/switch";
 import { useLocale } from "@/hooks/use-locale";
 import { isApiErrorStatus, setMachineAlerts } from "@/lib/api";
-import { t } from "@/lib/i18n";
+import { t, type MessageKey } from "@/lib/i18n";
 import { ALERT_DURATIONS, ALERT_THRESHOLDS, DEFAULT_ALERT_RULE } from "@/lib/machine-alerts";
 import { formatPercent } from "@/lib/machine-units";
 import { mutate } from "@/lib/mutate";
@@ -45,6 +45,12 @@ import { cn } from "@/lib/utils";
 // and the next poll.
 
 const METRICS = ["cpu", "mem", "disk"] as const satisfies readonly MachineMetric[];
+
+const METRIC_NAME = {
+  cpu: "machines.metric.cpu",
+  mem: "machines.metric.mem",
+  disk: "machines.metric.disk",
+} as const satisfies Record<MachineMetric, MessageKey>;
 
 const RULE_LABEL = {
   cpu: "machines.alerts.cpu",
@@ -194,7 +200,7 @@ export function MachineAlertsControl({
                 <span>{t("machines.alerts.push")}</span>
                 {onOpenAlerts !== undefined && (
                   <Button variant="link" size="sm" className="h-11 px-0 text-xs" onClick={onOpenAlerts}>
-                    {t("machines.alerts.pushLink")}
+                    {t("machines.alerts.pushLinkNotifications")}
                   </Button>
                 )}
               </div>
@@ -237,6 +243,8 @@ function RuleRow({
   onChange: (rule: MachineAlertRule) => void;
 }) {
   const label = t(RULE_LABEL[metric]);
+  // The two choices read with the metric's own name: "CPU above", "CPU for at least".
+  const name = t(METRIC_NAME[metric]);
   return (
     <div className="border-t border-border px-4 py-3">
       <div className="flex items-center justify-between gap-4">
@@ -250,14 +258,14 @@ function RuleRow({
         {rule !== undefined && (
           <div className="space-y-3 pt-3">
             <Segmented
-              label={t("machines.alerts.above", { metric: label })}
+              label={t("machines.alerts.overLabel", { metric: name })}
               options={withCurrent(ALERT_THRESHOLDS, rule.above).map((v) => ({ value: v, label: formatPercent(v) }))}
               value={rule.above}
               disabled={busy}
               onChange={(above) => onChange({ ...rule, above })}
             />
             <Segmented
-              label={t("machines.alerts.for", { metric: label })}
+              label={t("machines.alerts.forLabel", { metric: name })}
               options={withCurrent(ALERT_DURATIONS, rule.forMin).map((v) => ({ value: v, label: t("machines.alerts.minutes", { count: v }) }))}
               value={rule.forMin}
               disabled={busy}

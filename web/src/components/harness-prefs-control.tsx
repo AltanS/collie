@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 import { registeredAgents } from "@/lib/harness/registry";
 import { prefKey, setHarnessStatusLineShown, useHarnessStatusLineShown } from "@/lib/harness-prefs";
 
-// Settings → Harness configurations. One row per harness the web has an adapter for, because the
+// Settings → Chat and terminal. One row per harness the web has an adapter for, because the
 // adapter is what lifts a status line out of the screen: a harness without one has no strip to turn
 // off. The rows come from the adapter registry (`registeredAgents()`, in registration order, which
 // puts Claude Code first) and are named by `harnessLabel`, so adding a harness adapter adds its row

@@ -93,7 +93,7 @@ the phone cannot level.
 
 ### From the phone
 
-Open **Settings** and select **Updates**. The card displays the running version, the newest release,
+Open **Settings** and select **Updates and about**. The card displays the running version, the newest release,
 and the intermediate versions included in the update. If the host is on the newest release, the card
 says so and offers nothing.
 
@@ -149,7 +149,7 @@ next 09:00 after it. One urgent release makes the whole waiting train daily, and
 an ordinary patch. An install that predates this feature keeps the weekly window for an urgent
 patch until it has updated once. The card always shows the
 current state regardless of the window. The `updates` notification preference, under Settings →
-notifications ([Web Push](voice-and-push.md#web-push-optional)), is the single off switch.
+Notifications ([Web Push](voice-and-push.md#web-push-optional)), is the single off switch.
 
 On a crew lead, the button shows **Update crew to `<version>`**, and one confirmation applies to
 every machine. The lead updates first, under its own health gate. Each peer then levels itself to
@@ -455,7 +455,7 @@ collie crew update --all
 ```
 
 That is the terminal path, for a peer the phone cannot level. From the phone, update the whole crew
-with one tap and one confirmation: open **Settings → System → Updates** on the lead and select
+with one tap and one confirmation: open **Settings → Updates and about → Updates** on the lead and select
 **Update crew to `<version>`**. The preflight above the button covers every member, not just the
 lead. If a check is red anywhere, the button is disabled and names the failing machine and the
 reason.
@@ -651,7 +651,7 @@ Each machine is on one of two release lines. The default is **Stable**.
   pre-release, cut from the same tree a few days before the final release. It reaches volunteers
   first, so a regression is found before it reaches everybody.
 
-Set the line on the phone: **Settings → Updates → Release line**. The switch installs nothing. It
+Set the line on the phone: **Settings → Updates and about → Release line**. The switch installs nothing. It
 saves the line and shows a receipt. The Updates card then offers what the new line offers, through
 the normal update screen.
 

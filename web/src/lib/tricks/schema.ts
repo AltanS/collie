@@ -1739,7 +1739,7 @@ export const TRICK_STATES = ["ok", "failing", "stopped", "off", "skipped"] as co
  * switch); `skipped` (the manifest was refused, or asks for a newer trick contract).
  */
 export type TrickState = (typeof TRICK_STATES)[number];
-/** One trick as the phone lists it: belt order, Settings → Tricks, the doctor row's summary. */
+/** One trick as the phone lists it: belt order, Settings → Tricks and the Hill, the doctor row's summary. */
 export interface WireTrickInfo {
   /** The bridge's member id, as in `TrickPartKey.host`. Never the machine's host name. */
   host: string;
@@ -2003,7 +2003,7 @@ export interface TricksReply {
 
 /**
  * What a Windows machine says of tricks: no trick runs there, nothing is added or switched on, and no
- * agent view opens. The CLI prints it, the bridge answers it, and Settings, Experiments shows it (the phone's
+ * agent view opens. The CLI prints it, the bridge answers it, and Settings, Tricks and the Hill shows it (the phone's
  * copy is `settings.tricks.windows`, the same words). It lives here, not in limits.ts, which holds numbers only. The Windows review of 1.29 lists why: the env scrub,
  * the helper's output, the timeout kill and the shell line are not ready there yet.
  */
@@ -2014,7 +2014,7 @@ export const TRICKS_WINDOWS_LINE = "Tricks do not run on a Windows machine yet."
  * (bridge/tricks/feature-switch.ts): one sentence, and where a person switches them on. The phone says it in
  * its own words (`settings.tricks.switch.offLine`).
  */
-export const TRICKS_OFF_LINE = "Tricks are switched off on this machine; switch them on in Settings, Experiments, or run `collie tricks on`.";
+export const TRICKS_OFF_LINE = "Tricks are switched off on this machine; switch them on in Settings, Tricks and the Hill, or run `collie tricks on`.";
 
 /**
  * What a Windows machine says of a shell `run` line (fault d of the Windows milestone): Windows runs the

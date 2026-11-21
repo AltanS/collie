@@ -50,19 +50,19 @@ describe("Settings: the Accounts row", () => {
     expect(await screen.findByRole("button", { name: /Profiles/ })).toHaveTextContent("2 added");
   });
 
-  it("sits right after Harness configurations", async () => {
+  it("sits right after Dashboard and projects", async () => {
     serveAccounts(body());
     mount("/settings");
     await screen.findByRole("button", { name: /Profiles/ });
     const titles = screen.getAllByRole("button").map((b) => b.textContent ?? "");
     const at = (word: string) => titles.findIndex((x) => x.startsWith(word));
-    expect(at("Profiles")).toBe(at("Harness configurations") + 1);
+    expect(at("Profiles")).toBe(at("Dashboard and projects") + 1);
   });
 
   it("is not drawn when the route answers 404", async () => {
     serveAccountsStatus(404);
     mount("/settings");
-    await screen.findByRole("button", { name: /Appearance/ });
+    await screen.findByRole("button", { name: /Look and feel/ });
     await new Promise((r) => setTimeout(r, 30));
     expect(screen.queryByRole("button", { name: /Profiles/ })).toBeNull();
   });
@@ -114,7 +114,7 @@ describe("Accounts: the list", () => {
     expect(screen.getByText("~/.claude-alt")).toBeInTheDocument();
     expect(screen.getByText("Claude Code · A session reported it")).toBeInTheDocument();
     expect(screen.getByText("Claude Code · The name and layout match")).toBeInTheDocument();
-    expect(screen.getAllByRole("button", { name: "Add" }).length).toBeGreaterThanOrEqual(3);
+    expect(screen.getAllByRole("button", { name: "Add as a profile" })).toHaveLength(2);
   });
 
   it("adds a found folder as an own account after asking only for the name, prefilled", async () => {
@@ -129,7 +129,7 @@ describe("Accounts: the list", () => {
     mount("/settings/accounts");
     await screen.findByText("Found 1 folder in use");
     const row = screen.getByText("~/.claude-alt").closest("li")!;
-    await userEvent.click(within(row).getByRole("button", { name: "Add" }));
+    await userEvent.click(within(row).getByRole("button", { name: "Add as a profile" }));
     const field = await screen.findByRole("textbox", { name: "Name" });
     expect(field).toHaveValue("Alt");
     await userEvent.clear(field);
@@ -143,7 +143,7 @@ describe("Accounts: the list", () => {
     serveAccounts(body({ found: [FOUND_ALT] }));
     mount("/settings/accounts");
     await screen.findByText("Found 1 folder in use");
-    const add = within(screen.getByText("~/.claude-alt").closest("li")!).getByRole("button", { name: "Add" });
+    const add = within(screen.getByText("~/.claude-alt").closest("li")!).getByRole("button", { name: "Add as a profile" });
     expect(add).toHaveClass("h-11");
   });
 
@@ -152,7 +152,7 @@ describe("Accounts: the list", () => {
     server.use(http.post("/api/accounts", () => HttpResponse.json({ ok: false, error: "x", code: "accounts.label_taken" }, { status: 409 })));
     mount("/settings/accounts");
     await screen.findByText("Found 1 folder in use");
-    await userEvent.click(within(screen.getByText("~/.claude-alt").closest("li")!).getByRole("button", { name: "Add" }));
+    await userEvent.click(within(screen.getByText("~/.claude-alt").closest("li")!).getByRole("button", { name: "Add as a profile" }));
     await screen.findByRole("textbox", { name: "Name" });
     await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Add" }));
     expect(await screen.findByText("Another profile of this agent has this name.")).toBeInTheDocument();

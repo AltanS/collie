@@ -256,7 +256,7 @@ Four steps left:
        collie qr
 
   4. Pair your phone. Collie answers no device until one is paired. Run this, then type the code
-     on the phone in Settings, System, Paired devices. On an iPhone, use the home screen app,
+     on the phone in Settings, Devices and machines, Paired devices. On an iPhone, use the home screen app,
      not Safari:
        collie pair
 EOF

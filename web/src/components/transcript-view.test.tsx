@@ -15,7 +15,7 @@ import type { TranscriptEntry } from "@/lib/types";
 // behaviours: tool output stays collapsed so prose isn't buried, every string renders as TEXT (the
 // same XSS boundary as the mirror), and a compaction summary is visibly not a human turn.
 
-// Tool calls are OFF by default (Settings → Appearance), so a case about how a tool call DRAWS has
+// Tool calls are OFF by default (Settings → Look and feel), so a case about how a tool call DRAWS has
 // to turn them on first. The cases about the hiding itself live at the bottom of this file and set
 // nothing, which is what makes the default the thing they test.
 function showToolCalls() {

@@ -431,7 +431,7 @@ async function openChange(page: Page): Promise<void> {
   await expect(changeRow(page)).toHaveAttribute("aria-expanded", "true");
   // Wait for the fold to finish opening. While it glides its box clips, and a click that scrolls a
   // control inside into view would scroll the clipping box itself, leaving the rows offset after.
-  const fold = page.locator('[data-slot="collapse"]', { has: page.getByRole("heading", { name: en["settings.voice.phone.label"] }) });
+  const fold = page.locator('[data-slot="collapse"]', { has: page.getByRole("heading", { name: en["settings.voice.phoneSpeech.label"] }) });
   await expect(fold).toHaveCSS("overflow-y", "visible");
 }
 

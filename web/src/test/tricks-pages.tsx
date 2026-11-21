@@ -8,7 +8,7 @@ import { SettingsTrickRoute, type SettingsTrickRouteProps } from "@/routes/setti
 import { withHeaderHost } from "@/test/header-host";
 
 /**
- * Settings, Tricks and a trick's details page under one router, as the app mounts them: the list at
+ * Settings, Tricks and the Hill and a trick's details page under one router, as the app mounts them: the list at
  * `/settings/tricks`, the page at `/settings/tricks/:key`, both under the root route (its loader is the root data
  * the two read: the device, `tricksOff`) and the one header host. A tap on a row's name goes to the page; the
  * page's Back comes up to the list. The two share the store; each takes its own calls, as in the app.

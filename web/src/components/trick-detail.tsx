@@ -12,6 +12,7 @@ import { SectionLabel } from "@/components/ui/section-label";
 import { Switch } from "@/components/ui/switch";
 import { TokenUseChip, tokenUseWhy, useTokenUseShown } from "@/components/token-use-label";
 import { TrickCodeFolds, type TrickCodeReader } from "@/components/trick-code-folds";
+import { TrickRemoveSection } from "@/components/trick-remove-section";
 import { TrickSettingsGroup } from "@/components/trick-settings-group";
 import { valueSentence } from "@/components/trick-value";
 import { useLocale } from "@/hooks/use-locale";
@@ -65,7 +66,7 @@ import { trickTokenUse, type TrickTokenFacts } from "@/lib/tricks/token-use";
 //      the date of the last commit are a second small line INSIDE that row: the row is 44 px with or without
 //      it, so the facts arriving move nothing. A failed read shows nothing.
 //      Then "Version 1.2.0" when the manifest names one;
-//   5. "Updates": the "Take changes without asking" switch with its hint, for a trick that is switched on
+//   5. "Updates": the "Update this trick without asking" switch with its hint, for a trick that is switched on
 //      and only on a bridge that runs tricks (a crew member runs none, so it has nothing to take). It is the
 //      same field `collie trick auto` writes. The switch shows only here, not on the card; the route owns the
 //      write state (`flipAuto`, hooks/use-trick-writes.ts): it flips at once, holds its position until the list
@@ -343,10 +344,10 @@ function UpdatesGroup({ auto, canWrite, onAuto }: { auto: boolean; canWrite: boo
       <ListGroup>
         <div className="flex min-h-11 items-center justify-between gap-4 px-3.5 py-2">
           <div className="min-w-0 flex-1">
-            <div className="text-sm">{t("settings.tricks.about.auto.label")}</div>
+            <div className="text-sm">{t("settings.tricks.about.autoUpdate.label")}</div>
             <p className="text-xs text-muted-foreground">{t("settings.tricks.about.auto.hint")}</p>
           </div>
-          <Switch checked={auto} onCheckedChange={onAuto} disabled={!canWrite} aria-label={t("settings.tricks.about.auto.label")} />
+          <Switch checked={auto} onCheckedChange={onAuto} disabled={!canWrite} aria-label={t("settings.tricks.about.autoUpdate.label")} />
         </div>
       </ListGroup>
     </section>
@@ -480,10 +481,12 @@ export interface TrickDetailProps {
   timeZone?: string;
   /** The reads behind the "Read the code" folds, bound to this trick. Without it the section is not drawn. */
   readCode?: TrickCodeReader;
+  /** Remove the trick from this machine (ADR 0168): null when it went, else the words to show. Without it no Remove section. */
+  onRemove?: () => Promise<string | null>;
 }
 
 /** The details of one trick on a machine: the head, then the sheet's groups in the sheet's order. */
-export function TrickDetail({ trick, runsOn, origin, checked, onFlip, auto, canWrite = true, onAuto, onValue, timeZone, readCode }: TrickDetailProps) {
+export function TrickDetail({ trick, runsOn, origin, checked, onFlip, auto, canWrite = true, onAuto, onValue, timeZone, readCode, onRemove }: TrickDetailProps) {
   useLocale();
   const paragraphs = trick.about === undefined ? [] : aboutParagraphs(trick.about);
   const tokens = useTokenUseShown();
@@ -523,6 +526,8 @@ export function TrickDetail({ trick, runsOn, origin, checked, onFlip, auto, canW
       {trick.on && runsOn === undefined && onAuto !== undefined && trick.rules === undefined && trick.rulesUnshown !== true && trick.agentView !== true && <UpdatesGroup auto={auto ?? trick.auto === true} canWrite={canWrite} onAuto={onAuto} />}
       {/* The version a read shows moves with the row: the switch (the copy that runs, or the folder) and the hash a switch on approves. */}
       {readCode !== undefined && <TrickCodeFolds reader={readCode} scope={`${trick.host}/${trick.id}/${String(trick.on)}/${trick.approves ?? ""}`} />}
+      {/* The last section: the one place that removes a trick. A trick that is on, also one held on by a flip, cannot go. */}
+      {onRemove !== undefined && <TrickRemoveSection name={trick.name} on={on || trick.on} canWrite={canWrite} onRemove={onRemove} />}
     </div>
   );
 }

@@ -43,12 +43,12 @@ describe("menu-sheet-labels", () => {
     }
     const listed = new Set<string>(SHEET_LABEL_KEYS);
     expect([...named].filter((key) => !listed.has(key))).toEqual([]);
-    expect(named.has("tricks.menu.more.other")).toBe(true);
+    expect(named.has("tricks.menu.moreSee.other")).toBe(true);
     // The list is read from the files, not kept by hand: a row the sheet gains is in it at once.
-    expect(sheetLabels.labelKeysIn([`<Row label={t(on ? "paneActions.pin.done" : "tricks.menu.more")} data="no.such.key" />`])).toEqual([
+    expect(sheetLabels.labelKeysIn([`<Row label={t(on ? "paneActions.pin.done" : "tricks.menu.moreSee")} data="no.such.key" />`])).toEqual([
       "paneActions.pin.done",
-      "tricks.menu.more.one",
-      "tricks.menu.more.other",
+      "tricks.menu.moreSee.one",
+      "tricks.menu.moreSee.other",
     ]);
   });
 });

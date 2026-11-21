@@ -93,7 +93,7 @@ moment Collie recognises a password prompt it drops the stored draft too
 causes, in the order the command distinguishes them:
 push says it's disabled (the keys never reached the bridge — run `push-keys` and restart, see
 [Web Push](voice-and-push.md#web-push-optional)); it says there are no subscribed devices (this phone never enabled
-them in Settings → Alerts); or it reports a send and nothing arrives (the phone is on a
+them in Settings → Notifications); or it reports a send and nothing arrives (the phone is on a
 plain-HTTP origin, which is not a secure context — Settings flags it `insecure`).
 
 **Collie is gone after a reboot.** On Linux this is almost always lingering, so run
@@ -238,7 +238,7 @@ it anyway, because the issue is public. **Open on GitHub** opens the filled-in f
 under your own GitHub account, and puts the whole report on your clipboard too: the GitHub app
 opens the form with every field empty, and then you paste it there. **Copy report** copies the same
 text. Tap **Already reported?**
-first to find an issue with the same signature line. The pane menu and **Settings → System** open
+first to find an issue with the same signature line. The pane menu and **Settings → Updates and about** open
 the same sheet at any time. The cross closes the card on that pane until a send works again. A
 crew member's pane does not offer a report yet; use the steps above.
 
@@ -483,7 +483,7 @@ A durable agent you attached has its own checks, reasons and cases. Start with `
 
 ## Tricks and the Hill
 
-A trick that does not run shows why in its row in Settings → Tricks, and in `collie trick list`. The
+A trick that does not run shows why in its row in Settings → Tricks and the Hill, and in `collie trick list`. The
 lines Collie prints, and what fixes each, are in [Tricks](tricks.md#troubleshooting). A Decision that
 does not show on the Hill is usually the Hill switch or a refused post. Run `collie hill list` in the
 agent's pane, and read [When a post fails](hill.md#when-a-post-fails).

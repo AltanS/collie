@@ -1,7 +1,7 @@
 import type { PlaceKind } from "./schema";
 
 // WHETHER A TRICK MAKES AN AGENT READ OR WRITE MORE (2026-11-12). The answer comes from facts the phone already
-// holds, never from a flag a person sets by hand. Settings, Tricks draws it as "Uses agent tokens" after the
+// holds, never from a flag a person sets by hand. Settings, Tricks and the Hill draws it as "Uses agent tokens" after the
 // name, and the About sheet says why in one sentence (components/token-use-label.tsx).
 //
 // What spends an agent's tokens is text the agent reads or writes. A trick reaches an agent in three ways:
