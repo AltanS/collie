@@ -135,7 +135,7 @@ declare global {
     __rest: () => Promise<Geometry>;
     __record: (index: number, point: { x: number; y: number }) => void;
     __recorded: () => Promise<Sample[]>;
-    __watch: (index: number) => void;
+    __watch: (index: number, clock: FrameClock) => void;
     __firstWrites: () => FirstWrites;
     __touchedWhileGliding: () => boolean[];
     __tapped: (before: string | null) => Promise<void>;
@@ -230,12 +230,14 @@ async function installSampler(page: Page): Promise<void> {
     // `document.timeline.currentTime`, and values written a frame apart do not.
     let firsts: FirstWrites = {};
     let watcher: MutationObserver | null = null;
-    window.__watch = (index) => {
+    window.__watch = (index, clock) => {
       firsts = {};
       watcher?.disconnect();
       const node = strip();
       const docTimeline = document.timeline;
-      const frameNow = () => Number(docTimeline.currentTime);
+      // On the test's clock every callback of one driven frame reads that frame's time from
+      // `performance.now()`, while the document's timeline goes on in real frames, a few driven ones each.
+      const frameNow = () => (clock === "test" ? performance.now() : Number(docTimeline.currentTime));
       const col = node.querySelectorAll<HTMLElement>("[data-col-index]")[index]!;
       const add = node.querySelector<HTMLElement>('[data-slot="add-column"]')!;
       const startCol = col.style.flex;
@@ -347,20 +349,53 @@ interface FirstWrites {
   scroll?: number;
 }
 
+/**
+ * Which clock a page's frames run on. "test": Playwright's clock, so the test draws every frame of a
+ * motion at the time the spring reads (`holdFrames`, `driveFrames`). "real": the engine's own frames.
+ */
+type FrameClock = "test" | "real";
+
+/**
+ * THE GLIDE RUNS ON THE TEST'S CLOCK. The spring takes its time from `requestAnimationFrame` and
+ * `performance.now()`. On a busy machine the real frames come 50 to 130 ms apart, and the first one after
+ * the tap comes late, so a curve read against wall time measured the machine and not the spring: the CI
+ * run of 2026-11-21 read a third of the motion done at a third of the time. So a page that glides installs
+ * Playwright's clock before it loads (time flows as usual while it loads and rests), the clock stops just
+ * before the act, and the test then advances it in frames of 16 ms until the motion rests. Every frame of
+ * the glide is drawn, at the time the spring reads, however slow the machine is. The clock goes on in
+ * real time afterwards.
+ */
+const DRIVE_MS = 2000;
+
+async function holdFrames(page: Page): Promise<void> {
+  const now = await page.evaluate(() => Date.now());
+  await page.clock.pauseAt(now + 50);
+}
+
+async function driveFrames(page: Page, ms = DRIVE_MS): Promise<void> {
+  await page.clock.runFor(ms);
+}
+
 /** Tap the focused column's width button `taps` times (a second tap `gapMs` after the first), record. */
-async function cycleFocused(page: Page, index: number, taps: 1 | 2, gapMs = 80): Promise<Run> {
+async function cycleFocused(page: Page, index: number, taps: 1 | 2, gapMs: number, clock: FrameClock): Promise<Run> {
   const before = await rest(page);
   const box = (await widthButton(page).boundingBox())!;
   const point = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  if (clock === "test") await holdFrames(page);
   await page.evaluate((arg) => {
     window.__record(arg.index, arg.point);
-    window.__watch(arg.index);
-  }, { index, point });
+    window.__watch(arg.index, arg.clock);
+  }, { index, point, clock });
   await page.mouse.click(point.x, point.y);
   if (taps === 2) {
-    await page.waitForTimeout(gapMs);
+    if (clock === "test") await driveFrames(page, gapMs);
+    else await page.waitForTimeout(gapMs);
     // Wherever the button is now: the second press of the same control, mid-glide.
     await page.evaluate(() => document.querySelector<HTMLButtonElement>("[data-slot='header-dock-trail'] [data-slot='column-width']")!.click());
+  }
+  if (clock === "test") {
+    await driveFrames(page);
+    await page.clock.resume();
   }
   const samples = await page.evaluate(() => window.__recorded());
   const after = await rest(page);
@@ -405,7 +440,7 @@ function doneAt(run: Run, series: Series, t: number): number {
 }
 
 /**
- * A spring from rest, by time and not by frames, so a dropped frame cannot change the verdict: the
+ * A spring from rest, by the time the spring reads (the test's clock, `driveFrames`): the
  * motion runs from the last sample at its start value to the first sample at its end value, and by a
  * third of that time more than half the travel is done (a constant speed does a third; the spring about
  * four fifths), while the last third adds under a quarter (a constant speed adds a third; the spring a
@@ -553,12 +588,13 @@ for (const c of [
 ]) {
   test(`a width change glides: ${c.name}`, async ({ page, browser }) => {
     test.setTimeout(90_000);
+    await page.clock.install();
     await openStrip(page, c.cols, c.focus, false);
     if (c.scrollTo !== undefined) {
       await page.locator('[data-slot="strip"]').evaluate((el, x) => el.scrollTo({ left: x, behavior: "auto" }), c.scrollTo);
       await rest(page);
     }
-    const glided = await cycleFocused(page, c.index, c.taps);
+    const glided = await cycleFocused(page, c.index, c.taps, 80, "test");
 
     // The same act on a device that reduces motion, in a page of its own.
     const context = await browser.newContext({ viewport: VIEW, hasTouch: true, deviceScaleFactor: 2, serviceWorkers: "block", baseURL: new URL(page.url()).origin });
@@ -570,7 +606,7 @@ for (const c of [
       await rest(other);
     }
     // The reduced run taps the second time only after the first change landed, as a jump allows.
-    const jumped = await cycleFocused(other, c.index, c.taps, 150);
+    const jumped = await cycleFocused(other, c.index, c.taps, 150, "real");
     await context.close();
 
     // Where it started is the same in both runs, so the two ends can be compared.
@@ -811,22 +847,28 @@ test("a focus step by the keyboard moves the scroll on the same spring and rests
     ["w2:p3", "half"],
     ["w2:p2", "half"],
   ] as const;
-  const step = async (p: Page) => {
+  const step = async (p: Page, clock: FrameClock) => {
     const before = await rest(p);
+    if (clock === "test") await holdFrames(p);
     await p.evaluate(() => {
       if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
       window.__record(2, { x: 0, y: 0 });
     });
     await p.keyboard.press("Control+b");
     await p.keyboard.press("l");
+    if (clock === "test") {
+      await driveFrames(p);
+      await p.clock.resume();
+    }
     const samples = await p.evaluate(() => window.__recorded());
     return { before, after: await rest(p), samples, url: p.url() } satisfies Run;
   };
+  await page.clock.install();
   await openStrip(page, three, "w2:p3", false);
-  const glided = await step(page);
+  const glided = await step(page, "test");
   const { context, other } = await reducedPage(browser);
   await openStrip(other, three, "w2:p3", true);
-  const jumped = await step(other);
+  const jumped = await step(other, "real");
   await context.close();
 
   expect(new URL(glided.url).pathname).toBe(paneUrl("w2:p2"));
