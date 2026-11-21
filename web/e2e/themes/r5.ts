@@ -160,8 +160,43 @@ export interface R5Options {
   focuses?: number;
 }
 
+/** How long R5 waits for a page's finite animations and transitions to end before it fails the case. */
+export const SETTLE_CEILING_MS = 2000;
+
+/**
+ * THE PAGE AT REST (2026-11-21): R5 reads nothing while a sheet slides in or a fade runs. It waits until every FINITE
+ * animation and transition of the page has ended, then two frames. The endless ones (the marks' SVG loops, 38 on a
+ * pane) are left out, or the wait would never end; one that is paused is left out too, as it never finishes on its
+ * own. A chain (one ending starts the next) is waited out in rounds. Past SETTLE_CEILING_MS the case fails with the
+ * names of what still runs, so a new endless-but-finite animation cannot hang every case or let one pass by luck.
+ * Measured on pane-menu@390: the menu's "Close" is at y 861 while the sheet slides in and at y 283 once it rests.
+ */
+export async function settle(page: Page): Promise<void> {
+  const left = await page.evaluate(async (ceiling) => {
+    // Inside the page, so the filter is written out where it is used (a helper here would not reach the browser).
+    const deadline = performance.now() + ceiling;
+    for (let pass = 0; pass < 20; pass += 1) {
+      const now = document.getAnimations().filter((a) => a.playState === "running" && Number.isFinite(Number(a.effect?.getComputedTiming().endTime ?? Infinity)));
+      if (now.length === 0) break;
+      const ms = deadline - performance.now();
+      if (ms <= 0) break;
+      await Promise.race([Promise.all(now.map((a) => a.finished.catch(() => null))), new Promise((done) => setTimeout(done, ms))]);
+    }
+    const still = document.getAnimations().filter((a) => a.playState === "running" && Number.isFinite(Number(a.effect?.getComputedTiming().endTime ?? Infinity))).map((a) => {
+      // SAFETY: every animation document.getAnimations() returns from CSS or from element.animate() has a KeyframeEffect.
+      const target = (a.effect as KeyframeEffect | null)?.target;
+      const name = a instanceof CSSAnimation ? a.animationName : a instanceof CSSTransition ? a.transitionProperty : a.id || "script";
+      return `${name} on ${target?.getAttribute("data-slot") ?? target?.tagName.toLowerCase() ?? "?"}`;
+    });
+    for (let i = 0; i < 2; i += 1) await new Promise((done) => requestAnimationFrame(() => done(null)));
+    return still;
+  }, SETTLE_CEILING_MS);
+  if (left.length > 0) throw new Error(`R5: the page still runs finite animations after ${String(SETTLE_CEILING_MS)} ms, so it is not at rest to be read: ${left.slice(0, 6).join(", ")}`);
+}
+
 export async function runContrast(page: Page, opts: R5Options): Promise<R5Result & { shot: Buffer }> {
   const { scale } = opts;
+  await settle(page);
   const dialog = (await page.locator('[role="dialog"]').count()) > 0;
   if (!opts.touch) {
     const size = page.viewportSize();
@@ -333,6 +368,13 @@ export async function runContrast(page: Page, opts: R5Options): Promise<R5Result
       // SAFETY: `focusVisible` is a FocusOptions member Chromium reads (since 120) and the DOM lib does not list yet.
       el.focus({ focusVisible: true } as FocusOptions);
       await new Promise((done) => requestAnimationFrame(() => done(null)));
+      // The focus may start a transition on the ring itself (`Button` carries `transition-all`, so the outline eases
+      // in): wait for the control's own finite animations to end, at most a second, then one more frame.
+      const own = el.getAnimations().filter((a) => a.playState === "running" && Number.isFinite(Number(a.effect?.getComputedTiming().endTime ?? Infinity)));
+      if (own.length > 0) {
+        await Promise.race([Promise.all(own.map((a) => a.finished.catch(() => null))), new Promise((done) => setTimeout(done, 1000))]);
+        await new Promise((done) => requestAnimationFrame(() => done(null)));
+      }
       const r = el.getBoundingClientRect();
       return el.matches(":focus-visible") ? { outline: getComputedStyle(el).outlineStyle, box: { x: r.x, y: r.y, w: r.width, h: r.height } } : null;
     }, f.index);
