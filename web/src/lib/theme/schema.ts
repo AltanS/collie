@@ -145,14 +145,25 @@ export type OptionalThemeToken = (typeof OPTIONAL_THEME_TOKENS)[number];
 
 /**
  * The optional tokens whose default is DERIVED from the theme's own tokens rather than a fixed pair: the
- * large screen's recess and paper (DESIGN.md §4, index.css). Their `:root` value is one expression for
- * both halves, so the theme file for `collie` holds no value for them, and a theme that sets one half
- * only gets the expression in the other (`lightDark`).
+ * large screen's recess and paper (DESIGN.md §4, index.css). Their `:root` value is an expression per
+ * half (one `light-dark()` in index.css, or the bare expression when both halves share it), so the theme
+ * file for `collie` holds no value for them, and a theme that sets one half only gets the expression in
+ * the other (`lightDark`). The paper in dark sits halfway between the page and the card 0.05 lighter:
+ * the full step read as too bright a sheet on a desktop (2026-11-21); light keeps the full step.
  */
 export const DERIVED_THEME_TOKENS = {
-  "surface-recess": "oklch(from var(--background) calc(l - 0.05) c h)",
-  "surface-paper": "oklch(from var(--card) min(1, calc(l + 0.05)) c h)",
-} as const satisfies Partial<Record<OptionalThemeToken, string>>;
+  "surface-recess": { light: "oklch(from var(--background) calc(l - 0.05) c h)", dark: "oklch(from var(--background) calc(l - 0.05) c h)" },
+  "surface-paper": {
+    light: "oklch(from var(--card) min(1, calc(l + 0.05)) c h)",
+    dark: "color-mix(in oklch, var(--background), oklch(from var(--card) calc(l + 0.05) c h))",
+  },
+} as const satisfies Partial<Record<OptionalThemeToken, { light: string; dark: string }>>;
+
+/** The one CSS value index.css declares for a derived token: the shared expression, or a `light-dark()`. */
+export function derivedRootValue(token: DerivedThemeToken): string {
+  const { light, dark } = DERIVED_THEME_TOKENS[token];
+  return light === dark ? light : `light-dark(${light}, ${dark})`;
+}
 
 export type DerivedThemeToken = keyof typeof DERIVED_THEME_TOKENS;
 
@@ -1301,8 +1312,8 @@ export function fillHalves(theme: Theme, base: Theme): FilledHalves {
  */
 export function lightDark(filled: FilledHalves, token: AnyThemeToken): string {
   const derived = isDerivedThemeToken(token) ? DERIVED_THEME_TOKENS[token] : undefined;
-  const l = filled.light[token] ?? derived;
-  const d = filled.dark[token] ?? derived;
+  const l = filled.light[token] ?? derived?.light;
+  const d = filled.dark[token] ?? derived?.dark;
   if (l === undefined || d === undefined) throw new Error(`theme token "${token}" has no value in both halves`);
   return `light-dark(${l}, ${d})`;
 }

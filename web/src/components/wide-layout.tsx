@@ -578,17 +578,7 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
           {/* Folded with two columns, the header is cut at the fold like the strip under it: the name
               over the left column, the buttons over the right one, nothing on the hinge. */}
           <div className={cn("flex min-w-0 items-center", bookPair ? "fold-left-col pl-4" : "flex-1")}>
-            {/* The bar's title: the space, in the face and weight of the pane names under it. At the
-                medium tier it gives up more of the row to the tabs: there a long name and the position
-                left the tab row under 90px on a 705px foldable, so the open tab was cut and its "+"
-                fell off the end (1.27.1). */}
-            <div
-              data-slot="space-title"
-              className={cn("min-w-0 shrink-0 truncate text-sm font-semibold", widthClass === "medium" ? "max-w-[30%]" : "max-w-[45%]")}
-            >
-              {space?.label ?? ""}
-              {machine !== undefined && <span className="font-normal text-muted-foreground"> · {machine}</span>}
-            </div>
+            <SpaceTitle label={space?.label ?? ""} machine={machine} widthClass={widthClass} besideTabs={agent !== undefined} />
             {agent !== undefined ? (
               <TabStrip
                 workspaceId={agent.workspaceId}
@@ -1042,6 +1032,42 @@ function PositionStrip({
         ))}
         <span className="pointer-events-none absolute inset-y-[-1px] border border-foreground" style={{ left: `${view.start * 100}%`, width: `${view.size * 100}%` }} />
       </div>
+    </div>
+  );
+}
+
+/**
+ * The bar's title: the space, in the face and weight of the pane names under it. At the medium tier it
+ * gives up more of the row to the tabs: there a long name and the position left the tab row under 90px
+ * on a 705px foldable, so the open tab was cut and its "+" fell off the end (1.27.1). Beside tabs it takes
+ * at most a third of the row.
+ *
+ * ONE LINE, AND THE TABS START AFTER IT. The tab row cancels its own 16px gutter so its first label sits
+ * on the route's edge, and the folder look's card then starts on the row's very first pixel: flush
+ * against the end of this title, where a long name and its machine read as running under the open tab
+ * (since 1.27.0, the folder look). `mr-3` keeps the scroller's own 12px between the two. Where room runs
+ * out the machine gives way first (`shrink-[999]`: it is gone before the name loses a letter), then the
+ * name ends in an ellipsis; `title` carries the whole line.
+ */
+export function SpaceTitle({ label, machine, widthClass, besideTabs }: { label: string; machine: string | undefined; widthClass: WideLayoutProps["widthClass"]; besideTabs: boolean }) {
+  return (
+    <div
+      data-slot="space-title"
+      title={machine === undefined ? label : `${label} · ${machine}`}
+      className={cn(
+        "mr-3 flex min-w-0 shrink-0 whitespace-nowrap text-sm font-semibold",
+        widthClass === "medium" ? "max-w-[30%]" : besideTabs ? "max-w-1/3" : "max-w-[45%]",
+      )}
+    >
+      <span data-slot="space-title-name" className="min-w-0 truncate">
+        {label}
+      </span>
+      {machine !== undefined && (
+        <span data-slot="space-title-machine" className="min-w-0 shrink-[999] truncate font-normal text-muted-foreground">
+          {"\u00a0· "}
+          {machine}
+        </span>
+      )}
     </div>
   );
 }

@@ -960,7 +960,7 @@ describe("the optional tokens", () => {
     expect(parsed.ok).toBe(true);
     if (!parsed.ok) return;
     const filled = fillHalves(parsed.theme, base);
-    expect(lightDark(filled, "surface-paper")).toBe(`light-dark(${DERIVED_THEME_TOKENS["surface-paper"]}, oklch(0.3 0 0))`);
+    expect(lightDark(filled, "surface-paper")).toBe(`light-dark(${DERIVED_THEME_TOKENS["surface-paper"].light}, oklch(0.3 0 0))`);
     const checks = contrastReport(parsed.theme, base).map((f) => `${f.half} ${f.check}`);
     expect(checks).toContain("dark foreground on surface-paper");
     expect(checks).toContain("dark muted-foreground on surface-paper");

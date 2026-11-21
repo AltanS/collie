@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { prepareGrokDisplay } from "./grok/chrome";
+import { prepareOmpDisplay } from "./omp/display";
 import { adapterFor, hasBlockGrammar, registeredAgents } from "./registry";
 
 // The single source of truth for "which agents get the block grammars". Both gates (the render
@@ -71,8 +72,12 @@ describe("prepareDisplay", () => {
     expect(adapterFor("grok")?.prepareDisplay).toBe(prepareGrokDisplay);
   });
 
+  it("is omp's display pass on the omp adapter", () => {
+    expect(adapterFor("omp")?.prepareDisplay).toBe(prepareOmpDisplay);
+  });
+
   it("is absent on every other adapter and on an unknown agent", () => {
-    for (const agent of registeredAgents().filter((a) => a !== "grok")) {
+    for (const agent of registeredAgents().filter((a) => a !== "grok" && a !== "omp")) {
       expect(adapterFor(agent)?.prepareDisplay).toBeUndefined();
     }
     expect(adapterFor("shell")?.prepareDisplay).toBeUndefined();

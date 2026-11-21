@@ -251,7 +251,7 @@ Each half, `light` and `dark`, takes any of these. A token that a half leaves ou
 | `tab-active` | The top edge of the open tab and the ring of the open pane, when the theme sets `tabs` to `folder`. A half that leaves it out takes its own text colour. | `oklch(0.14 0 0)` | `oklch(0.985 0 0)` |
 | `find` | The ground under a found or matched piece of text: a hit of Find in Chat, and the marked letters of the session filter. Give it an alpha, because it lies over the surface under the text and the text keeps its own colour. A half that leaves it out takes the amber of the theme Collie. | `oklch(0.879 0.169 91.605 / 0.7)` | `oklch(0.769 0.188 70.08 / 0.4)` |
 | `surface-recess` | On a large screen, the ground of the sidebar and the tab strip: one step below the page. A half that leaves it out takes the page, 0.05 darker. | `oklch(from var(--background) calc(l - 0.05) c h)` | `oklch(from var(--background) calc(l - 0.05) c h)` |
-| `surface-paper` | On a large screen, the ground of the pane you are working in: the lightest surface on the screen. A half that leaves it out takes the card, 0.05 lighter. | `oklch(from var(--card) min(1, calc(l + 0.05)) c h)` | `oklch(from var(--card) min(1, calc(l + 0.05)) c h)` |
+| `surface-paper` | On a large screen, the ground of the pane you are working in: the lightest surface on the screen. A half that leaves it out takes, in light, the card 0.05 lighter, and in dark, the point halfway between the page and the card 0.05 lighter. | `oklch(from var(--card) min(1, calc(l + 0.05)) c h)` | `color-mix(in oklch, var(--background), oklch(from var(--card) calc(l + 0.05) c h))` |
 
 ## Shape and look
 

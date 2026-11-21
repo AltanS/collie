@@ -15,8 +15,7 @@
 // Conservative: the whole shape has to match at the tail or the buffer is returned untouched (same
 // reference). Pure; no pane access, no network.
 
-import type { AnsiSegment } from "../../ansi";
-import type { StyledLine } from "../../blocks";
+import { sliceStyledLine, type StyledLine } from "../../blocks";
 import {
   composerInnerText,
   composerPromptText,
@@ -217,28 +216,6 @@ export function stripChrome(lines: StyledLine[]): StyledLine[] {
   }
 
   return end === lines.length ? lines : lines.slice(0, end);
-}
-
-/**
- * Slice `line.segments` to the `[start, end)` range of the JOINED (rstripped) line text, keeping
- * each surviving piece's original SGR. Indices come from `composerStatusSpan`, which classifies the
- * same rstripped string locateComposer already walked.
- */
-function sliceStyledLine(line: StyledLine, start: number, end: number): StyledLine {
-  const out: AnsiSegment[] = [];
-  let i = 0;
-  for (const seg of line.segments) {
-    const segStart = i;
-    const segEnd = i + seg.text.length;
-    i = segEnd;
-    if (segEnd <= start || segStart >= end) continue;
-    const from = Math.max(0, start - segStart);
-    const to = Math.min(seg.text.length, end - segStart);
-    const text = seg.text.slice(from, to);
-    if (text.length === 0) continue;
-    out.push({ ...seg, text });
-  }
-  return { segments: out };
 }
 
 /**

@@ -543,8 +543,9 @@ may leave them out.
 When a theme leaves out `pane-active` in a half, that half takes the ink of the theme Collie. When it
 leaves out `tab-active`, that half takes its own text colour, so a folder tab draws its top edge in ink.
 When it leaves out `find`, that half takes the amber of the theme Collie. A theme may set `surface-recess` and
-`surface-paper` but need not: a half that leaves them out takes its own page 0.05 darker and its own card 0.05
-lighter, so the pane you work in stays the lightest surface in every theme.
+`surface-paper` but need not: a half that leaves them out takes its own page 0.05 darker for the recess, and for
+the paper its own card 0.05 lighter in light, halfway between the page and that in dark, so the pane you work
+in stays the lightest surface in every theme.
 Collie measures each one only in a half that sets it. See [The contrast report](#the-contrast-report). A file
 that sets one of them must say [version 3](#versions).
 
