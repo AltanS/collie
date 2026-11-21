@@ -195,6 +195,11 @@ describe("Settings on a large screen", () => {
     expect(header.className).toContain("var(--surface-recess)_70%,var(--border)");
     expect(header.querySelector('[data-slot="header-row"]')?.className).toContain("min-h-12");
     expect(header.querySelector('[data-slot="settings-title"]')?.textContent).toBe("Settings");
+    // Its arrow leaves Settings and is named for that, so "Back" is only ever the step up beside a page's title.
+    const close = header.querySelector('[data-slot="header-row"] button')!;
+    expect(close).toHaveAccessibleName("Close Settings");
+    expect(close).toHaveAttribute("title", "Close Settings");
+    expect([...header.querySelectorAll("button")].filter((b) => b.getAttribute("aria-label") === "Back")).toHaveLength(0);
   });
 });
 

@@ -100,7 +100,10 @@ for (const size of WIDTHS) {
       await expect(title(page)).toHaveText("Device");
 
       // The header's Back leaves Settings for where it was opened from, past every section walked through.
-      await page.getByRole("banner").getByRole("button", { name: en["settings.nav.back"] }).click();
+      // It is named for what it does, so the Back beside a deep page's title is the only Back on the page.
+      const close = page.getByRole("banner").getByRole("button", { name: en["settings.nav.close"], exact: true });
+      await expect(close).toHaveAttribute("title", en["settings.nav.close"]);
+      await close.click();
       await expect(page).toHaveURL(/\/$/u);
     } finally {
       await page.context().close();
@@ -165,6 +168,44 @@ test("a profile's Change login names its path in the header, and Back beside the
   }
 });
 
+/** The content box of the section's column: the column less its 24px gutters. */
+async function contentBox(page: Page) {
+  const box = (await page.locator('[data-slot="settings-column"]').boundingBox())!;
+  const pad = await page.locator('[data-slot="settings-column"]').evaluate((el) => parseFloat(getComputedStyle(el).paddingLeft));
+  return { x: box.x + pad, width: box.width - 2 * pad, y: box.y, height: box.height };
+}
+
+for (const size of WIDTHS) {
+  test(`at ${String(size.width)}px a page's own controls stay inside the content column`, async ({ browser }, testInfo) => {
+    onlyOnce(testInfo);
+    const page = await openAt(browser, testInfo, size);
+    try {
+      // Profiles' Add: at the end of the column's title row, never against the window or the phone's centred column.
+      await openIn(page, "accounts", "/settings/accounts");
+      const add = page.locator('[data-slot="settings-page-head"]').getByRole("button", { name: en["accounts.add.label"] });
+      await expect(add).toBeVisible();
+      const col = await contentBox(page);
+      const a = (await add.boundingBox())!;
+      expect(a.x).toBeGreaterThanOrEqual(col.x - 0.5);
+      expect(a.x + a.width).toBeLessThanOrEqual(col.x + col.width + 0.5);
+      expect(a.y).toBeGreaterThanOrEqual(col.y - 0.5);
+      await expect(page.locator("main").getByRole("button", { name: en["accounts.add.label"] })).toHaveCount(1);
+      // A form's band (Change login, Add profile) ends on the content column's edges.
+      for (const path of ["/settings/accounts/acct-work/login", "/settings/accounts/add"]) {
+        await page.goto(path);
+        const button = page.locator('[data-slot="settings-foot"] button').first();
+        await expect(button).toBeVisible();
+        const b = (await button.boundingBox())!;
+        const c = await contentBox(page);
+        expect(Math.abs(b.x - c.x)).toBeLessThanOrEqual(1);
+        expect(Math.abs(b.x + b.width - (c.x + c.width))).toBeLessThanOrEqual(1);
+      }
+    } finally {
+      await page.context().close();
+    }
+  });
+}
+
 // THE PHONE IS UNCHANGED. The boxes below are the ones `stage/next` drew at 390x844 before this layout (measured on
 // a36fd0bc5): the header and the first three rows of the index. The layout route draws only its outlet there.
 const PHONE_BOXES = {
@@ -215,6 +256,31 @@ const SHOT_PAGES: { name: string; path: string; setup?: "tricks" | "accounts" }[
   { name: "17-character", path: "/settings/appearance/character" },
   { name: "18-install-count", path: "/settings/system/install-count" },
 ];
+
+test("shots: five pages at 1920x1080", async ({ browser }, testInfo) => {
+  onlyOnce(testInfo);
+  test.skip(SHOTS === undefined, "set SETTINGS_SHOTS=<dir> to write the shots");
+  test.setTimeout(120_000);
+  const dir = SHOTS!;
+  for (const shot of SHOT_PAGES.filter((each) => ["01-updates", "02-appearance", "04-profiles", "10-tricks", "11-trick-details"].includes(each.name))) {
+    const page = await openAt(browser, testInfo, WIDTHS[1]);
+    try {
+      if (shot.setup === undefined) await page.goto(shot.path);
+      else await openIn(page, shot.setup, shot.path);
+      await page.waitForSelector('[data-slot="settings-list"] [data-settings-row]');
+      await page.evaluate(() => document.fonts.ready);
+      await page.waitForTimeout(900);
+      // The list does not grow with the window, and nothing in the column is wider than the column.
+      expect((await list(page).boundingBox())!.width).toBe(280);
+      const col = await contentBox(page);
+      const widest = await page.locator('[data-slot="settings-column"] > *').evaluateAll((els) => Math.max(...els.map((el) => el.getBoundingClientRect().right)));
+      expect(widest).toBeLessThanOrEqual(col.x + col.width + 0.5);
+      await page.screenshot({ path: join(dir, `1920-${shot.name}.png`) });
+    } finally {
+      await page.context().close();
+    }
+  }
+});
 
 test("shots: every section at 1440x900, and three sheets", async ({ browser }, testInfo) => {
   onlyOnce(testInfo);

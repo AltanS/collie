@@ -183,7 +183,7 @@ function WideSettings() {
         span
         override={
           <>
-            <Button variant="ghost" size="icon" className="size-11" onClick={leave} aria-label={t("settings.nav.back")}>
+            <Button variant="ghost" size="icon" className="size-11" onClick={leave} aria-label={t("settings.nav.close")} title={t("settings.nav.close")}>
               <Icon name="back" className="size-5" />
             </Button>
             <p data-slot="settings-title" className="shrink-0 text-base font-semibold tracking-tight">

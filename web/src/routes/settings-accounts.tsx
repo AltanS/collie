@@ -9,7 +9,8 @@ import { BottomBar } from "@/components/ui/bottom-bar";
 import { Button } from "@/components/ui/button";
 import { Chip } from "@/components/ui/chip";
 import { CopyableBlock } from "@/components/ui/copyable-block";
-import { Fab } from "@/components/ui/fab";
+import { Fab, FabButton } from "@/components/ui/fab";
+import { useSettingsShell } from "@/components/settings-shell";
 import { FoldPanel, MoreToggle } from "@/components/ui/fold-toggle";
 import { ListGroup } from "@/components/ui/list-group";
 import { Notice } from "@/components/ui/notice";
@@ -140,14 +141,22 @@ export function SettingsAccountsRoute() {
   const [naming, setNaming] = useState<FoundFolder | null>(null);
   const body = accounts.body;
   const canAdd = body !== null && body.harnesses.some((h) => h.kinds.length > 0);
+  // Inside the large-screen Settings (components/settings-shell.tsx).
+  const wide = useSettingsShell() !== null;
 
   return (
-    <SettingsPage title="accounts.title" onScroll={(e) => setCollapsed(e.currentTarget.scrollTop > 24)}>
+    <SettingsPage
+      title="accounts.title"
+      onScroll={(e) => setCollapsed(e.currentTarget.scrollTop > 24)}
+      // On a large screen Add stands at the end of the column's title row, in the title-row size of the same button:
+      // the floating one is placed against the phone's centred column, which is not where this column is.
+      action={wide && canAdd ? <FabButton size="compact" label={t("accounts.add.label")} onClick={() => nav.down(accountsAddPath(scope))} /> : undefined}
+    >
       <IntroLines />
       <Unavailable status={accounts.status} />
       {body !== null && (
         // The last row clears the floating button.
-        <div className="flex flex-col gap-4 pb-20">
+        <div className={cn("flex flex-col gap-4", !wide && "pb-20")}>
           {groupAccounts(body).map((group) => (
             <section key={group.harness} aria-label={group.label}>
               <div className="mb-1.5 flex items-center gap-2 px-0.5">
@@ -167,7 +176,7 @@ export function SettingsAccountsRoute() {
           {addedCount(body) > 0 && <Hint>{t("accounts.removeNote")}</Hint>}
         </div>
       )}
-      {canAdd && (
+      {canAdd && !wide && (
         <Fab
           label={t("accounts.add.label")}
           // Nothing sits under the list, so the button stands a gutter above the safe area.

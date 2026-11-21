@@ -58,6 +58,8 @@ export const en = {
   "settings.section.machines.title": "Machines",
   "settings.section.machines.blurb": "CPU, memory, disk, network, alert rules",
   "settings.nav.back": "Back",
+  // The large-screen Settings header's arrow (components/settings-shell.tsx): it leaves Settings, while "Back" beside a page's title goes up one level.
+  "settings.nav.close": "Close Settings",
 
   // --- settings.theme ---
   // The opening of Settings → Appearance (components/appearance-intro.tsx).
@@ -4444,6 +4446,7 @@ export const PENDING_TRANSLATION = [
   "composer.protocol.draftSheet.appendHint",
   "composer.protocol.draftSheet.replaceHint",
   "composer.protocol.draftSheet.cancelHint",
+  "settings.nav.close",
 ] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */

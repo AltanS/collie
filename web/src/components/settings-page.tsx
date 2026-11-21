@@ -39,6 +39,7 @@ export function SettingsPage({
   headingBelow = false,
   backLabel = "settings.nav.back",
   crumbs,
+  action,
   children,
 }: {
   title: MessageKey;
@@ -57,6 +58,8 @@ export function SettingsPage({
   backLabel?: MessageKey;
   /** The path below the section, for the large screen's header (a trick's name; an account's name, then Change login). Default: the page's title. */
   crumbs?: readonly string[];
+  /** The page's primary action at the end of its title row, on a large screen only (Profiles' Add). The phone draws its own. */
+  action?: ReactNode;
   children: ReactNode;
 }) {
   const nav = useNav();
@@ -78,6 +81,7 @@ export function SettingsPage({
         onScroll={onScroll}
         scroller={scroller}
         foot={foot}
+        action={action}
       >
         {children}
       </WideSettingsPage>
@@ -132,6 +136,7 @@ function WideSettingsPage({
   onScroll,
   scroller,
   foot,
+  action,
   children,
 }: {
   shell: SettingsShellApi;
@@ -143,6 +148,7 @@ function WideSettingsPage({
   onScroll: UIEventHandler<HTMLElement> | undefined;
   scroller: RefObject<HTMLElement | null>;
   foot: ReactNode;
+  action: ReactNode;
   children: ReactNode;
 }) {
   const nav = useNav();
@@ -170,7 +176,7 @@ function WideSettingsPage({
           )
         : null}
       <BandMain base={16} onScroll={onScroll} scrollRef={scroller} className="relative flex min-h-0 flex-1 flex-col overflow-y-auto">
-        <div className={cn(SETTINGS_COLUMN, "flex flex-col space-y-4 pt-4 pb-8")}>
+        <div data-slot="settings-column" className={cn(SETTINGS_COLUMN, "flex flex-col space-y-4 pt-4 pb-8")}>
           <div data-slot="settings-page-head" className="flex min-h-11 items-center gap-1">
             {parent !== undefined && (
               // One level up, as the phone header's arrow on this page. -12px: the arrow's drawing stands on the column's edge.
@@ -188,11 +194,13 @@ function WideSettingsPage({
                 {name}
               </h1>
             )}
+            {action !== undefined && <div className="ml-auto flex shrink-0 items-center">{action}</div>}
           </div>
           {children}
         </div>
       </BandMain>
-      {foot !== undefined && <div className={cn(SETTINGS_COLUMN, "px-0")}>{foot}</div>}
+      {/* The page's band (a form's button) ends on the column's edges: the column's gutter, and none of the band's own. */}
+      {foot !== undefined && <div data-slot="settings-foot" className={cn(SETTINGS_COLUMN, "[&>*]:px-0")}>{foot}</div>}
     </div>
   );
 }
