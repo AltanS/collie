@@ -11,13 +11,13 @@
 
    [0m[1mContext[0m
 
-   [0m[38;2;177;185;249m/var/home/altan/playground/collie-demo-herd/biscuit [0mis a [0m[1mcompletely empty directory [0m(created 2026-07-09; no files, no dotfiles, no git). It sits in the [0m[38;2;177;185;249mcollie-demo-herd[0m
+   [0m[38;2;177;185;249m/var/home/robin/playground/collie-demo-herd/biscuit [0mis a [0m[1mcompletely empty directory [0m(created 2026-07-09; no files, no dotfiles, no git). It sits in the [0m[38;2;177;185;249mcollie-demo-herd[0m
    playground alongside four dog-named siblings ([0m[38;2;177;185;249mclover[0m, [0m[38;2;177;185;249mcomet[0m, [0m[38;2;177;185;249mjuniper[0m, [0m[38;2;177;185;249mthistle[0m), which suggests each subdirectory is a separate demo/sandbox. Since there is no code to
    document, the README will be a short orientation/placeholder doc that gives the directory an identity until real content lands.
 
    [0m[1mChange[0m
 
-   Create one file: [0m[38;2;177;185;249m/var/home/altan/playground/collie-demo-herd/biscuit/README.md [0mwith:
+   Create one file: [0m[38;2;177;185;249m/var/home/robin/playground/collie-demo-herd/biscuit/README.md [0mwith:
 
    1. [0m[1mTitle[0m — [0m[38;2;177;185;249m# biscuit[0m
    2. [0m[1mOne-line description [0m— a demo/sandbox directory in the [0m[38;2;177;185;249mcollie-demo-herd [0mplayground.
