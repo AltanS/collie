@@ -306,6 +306,19 @@ export const SETUPS = {
     await files.first().click();
     await page.getByRole("heading", { name: "space-01" }).waitFor({ state: "detached", timeout: 8000 });
   },
+  /** Files with Changes only chosen: the list of changes, not the tree. */
+  changesList: async (page, screen) => {
+    await page.addInitScript((key) => window.localStorage.setItem(key, JSON.stringify({ changesOnly: true })), DASH_PREFS);
+    await visit(page, screen);
+  },
+  /** A changed file open beside the list, its diff side by side by the person's choice. */
+  changesSplit: async (page, screen) => {
+    await page.addInitScript((key) => {
+      window.localStorage.setItem(key, JSON.stringify({ changesOnly: true }));
+      window.localStorage.setItem("collie:diff-layout:v1", "split");
+    }, DASH_PREFS);
+    await visit(page, screen);
+  },
   /** Six tricks with an item in the views switch of the Dashboard's header. */
   dashboardTricks: async (page, screen) => {
     await installApiStub(page);

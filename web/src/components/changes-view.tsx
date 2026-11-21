@@ -28,6 +28,7 @@ import {
 import { parseUnifiedDiff, type DiffRow } from "@/lib/unified-diff";
 import { cn } from "@/lib/utils";
 import { FOCUS_RING, FOCUS_RING_INSET, HOVER_FILL } from "@/components/ui/button";
+import { NAV_ROW_HEIGHT } from "@/components/ui/nav-row";
 import { Icon } from "@/components/icons/icon";
 
 // The Changes view's two drawings (ADR 0065): the list of changed files, grouped by repo, and one
@@ -134,11 +135,14 @@ export function ChangePath({ path, className }: { path: string; className?: stri
 function RepoSections({
   repos,
   paneRepo,
+  dense = false,
   children,
 }: {
   repos: readonly ChangedRepo[];
   /** The repo holding the asking pane's folder (the pane route only), marked "This pane". */
   paneRepo?: string;
+  /** The large screen's left column: each repo's line drawn as the tree's root line. */
+  dense?: boolean;
   children: (repo: ChangedRepo) => React.ReactNode;
 }) {
   useLocale();
@@ -155,7 +159,13 @@ function RepoSections({
             data-pane-repo={mine ? "" : undefined}
             className="flex scroll-mt-4 flex-col"
           >
-            {headed && (
+            {headed && dense && (
+              <p className="flex min-w-0 items-baseline gap-2 px-2 pb-1 font-mono text-xs leading-6 text-muted-foreground">
+                <span className="min-w-0 truncate">{tn("changes.repoFiles", repo.files.length, { name: repo.name })}</span>
+                {mine && <span className="shrink-0 text-primary">{t("changes.thisPane")}</span>}
+              </p>
+            )}
+            {headed && !dense && (
               <SectionLabel caps={false} className="mb-1.5 flex min-w-0 items-baseline gap-2">
                 <span className="min-w-0 truncate">{tn("changes.repoFiles", repo.files.length, { name: repo.name })}</span>
                 {mine && <span className="shrink-0 text-primary">{t("changes.thisPane")}</span>}
@@ -167,6 +177,19 @@ function RepoSections({
       })}
     </div>
   );
+}
+
+/** A row of the large screen's flat list and tree: the tree's own row (lib's NAV_ROW_HEIGHT), set on the recess. */
+const DENSE_ROW = cn("flex w-full min-w-0 items-center gap-2 rounded-md text-left transition-colors", NAV_ROW_HEIGHT, FOCUS_RING_INSET);
+
+/** The large screen's list group: a plain list, the rows carry their own look. */
+function DenseGroup({ children }: { as: "ul"; children: React.ReactNode }) {
+  return <ul className="flex flex-col">{children}</ul>;
+}
+
+/** The tree's indent on the recess: the explorer's 8px edge and 14px a level. */
+function denseIndent(depth: number) {
+  return { paddingLeft: 8 + Math.min(depth, INDENT_MAX_LEVELS) * 14 };
 }
 
 /** Whether `current` names this file of this repo. */
@@ -183,9 +206,36 @@ export function ChangesList({
   repos: readonly ChangedRepo[];
   paneRepo?: string;
   onOpen: (ref: ChangeRef) => void;
-  /** The file open beside the list (the large screen's two columns): drawn chosen. */
+  /** The file open beside the list on a large screen: the list draws the tree's flat rows, this one chosen. */
   current?: ChangeRef | null;
 }) {
+  if (current !== undefined) {
+    return (
+      <RepoSections repos={repos} paneRepo={paneRepo} dense>
+        {(repo) => (
+          <ul className="flex flex-col">
+            {repo.files.map((file) => {
+              const here = isCurrent(current, repo.relPath, file.path);
+              return (
+                <li key={file.path}>
+                  <button
+                    type="button"
+                    onClick={() => onOpen({ repo: repo.relPath, path: file.path })}
+                    aria-current={here ? "page" : undefined}
+                    className={cn(DENSE_ROW, "px-2", here ? "bg-accent text-accent-foreground" : HOVER_FILL)}
+                  >
+                    <StatusLetter status={file.status} />
+                    <ChangePath path={file.path} className="flex-1" />
+                    <Counts file={file} />
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </RepoSections>
+    );
+  }
   return (
     <RepoSections repos={repos} paneRepo={paneRepo}>
       {(repo) => (
@@ -195,12 +245,7 @@ export function ChangesList({
               <button
                 type="button"
                 onClick={() => onOpen({ repo: repo.relPath, path: file.path })}
-                aria-current={isCurrent(current, repo.relPath, file.path) ? "page" : undefined}
-                className={cn(
-                  "flex min-h-11 w-full items-center gap-3 px-3.5 py-2 text-left transition-colors active:bg-muted",
-                  LIST_ROW_CORNERS,
-                  current !== undefined && (isCurrent(current, repo.relPath, file.path) ? "bg-accent text-accent-foreground" : HOVER_FILL),
-                )}
+                className={cn("flex min-h-11 w-full items-center gap-3 px-3.5 py-2 text-left transition-colors active:bg-muted", LIST_ROW_CORNERS)}
               >
                 <StatusLetter status={file.status} />
                 <ChangePath path={file.path} className="flex-1" />
@@ -331,8 +376,15 @@ function TreeRows({
     return new Set([...collapsed].flatMap((k) => (k.startsWith(prefix) ? [k.slice(prefix.length)] : [])));
   }, [collapsed, repo.relPath]);
   const rows = visibleTreeRows(nodes, closed);
+  // On a large screen (a `current` is passed) the rows are the tree's flat rows on the recess, not the phone's cards.
+  const dense = current !== undefined;
+  const Group = dense ? DenseGroup : ListGroup;
+  const rowLook = (here: boolean) =>
+    dense
+      ? cn(DENSE_ROW, "pr-2", here ? "bg-accent text-accent-foreground" : HOVER_FILL)
+      : cn("flex min-h-11 w-full items-center gap-3 py-2 pr-3.5 text-left transition-colors active:bg-muted", FOCUS_RING_INSET, HOVER_FILL, LIST_ROW_CORNERS);
   return (
-    <ListGroup as="ul">
+    <Group as="ul">
       {rows.map((node) => {
         if (node.kind === "folder") {
           const open = !closed.has(node.key);
@@ -343,8 +395,8 @@ function TreeRows({
                 aria-expanded={open}
                 aria-label={tn("changes.tree.folderAria", node.fileCount, { name: node.label })}
                 onClick={() => onToggle(folderKey(repo.relPath, node.key))}
-                style={indent(node.depth)}
-                className={cn("flex min-h-11 w-full items-center gap-3 py-2 pr-3.5 text-left transition-colors active:bg-muted", FOCUS_RING_INSET, HOVER_FILL, LIST_ROW_CORNERS)}
+                style={dense ? denseIndent(node.depth) : indent(node.depth)}
+                className={rowLook(false)}
               >
                 <Icon
                   name="disclosure"
@@ -372,13 +424,8 @@ function TreeRows({
               type="button"
               onClick={() => onOpen({ repo: repo.relPath, path: node.file.path })}
               aria-current={isCurrent(current, repo.relPath, node.file.path) ? "page" : undefined}
-              style={indent(node.depth)}
-              className={cn(
-                "flex min-h-11 w-full items-center gap-3 py-2 pr-3.5 text-left transition-colors active:bg-muted",
-                FOCUS_RING_INSET,
-                LIST_ROW_CORNERS,
-                isCurrent(current, repo.relPath, node.file.path) ? "bg-accent text-accent-foreground" : HOVER_FILL,
-              )}
+              style={dense ? denseIndent(node.depth) : indent(node.depth)}
+              className={rowLook(isCurrent(current, repo.relPath, node.file.path))}
             >
               <StatusLetter status={node.file.status} />
               <MiddleTruncate text={node.name} className="flex-1 font-mono text-[13px] font-medium text-foreground" />
@@ -387,7 +434,7 @@ function TreeRows({
           </li>
         );
       })}
-    </ListGroup>
+    </Group>
   );
 }
 
@@ -412,7 +459,7 @@ export function ChangesTree({
 }) {
   const trees = useMemo(() => new Map(repos.map((r) => [r.relPath, buildChangeTree(r.files)])), [repos]);
   return (
-    <RepoSections repos={repos} paneRepo={paneRepo}>
+    <RepoSections repos={repos} paneRepo={paneRepo} dense={current !== undefined}>
       {(repo) => (
         <TreeRows
           repo={repo}
@@ -872,7 +919,7 @@ export function DiffView({
   diff: string;
   path?: string;
   commenting?: DiffViewCommentProps;
-  /** LAB (wide-files, proposal 3): the old lines at the left and the new at the right, on a large screen. */
+  /** The old lines at the left and the new at the right (a large screen, lib/diff-layout.ts). A diff with one side only stays in one column. */
   split?: boolean;
 }) {
   const parsed = useMemo(() => parseUnifiedDiff(diff), [diff]);
@@ -903,8 +950,7 @@ export function DiffView({
   // Both gutters sized once, by the widest number, so no row's text starts at a different x.
   const gutter = { width: `calc(${Math.max(String(parsed.maxLineNo).length, 2)}ch + 0.5rem)` };
   // A new or a deleted file has one side only: it stays unified, so half the column is not empty.
-  const twoSided = parsed.rows.some((r) => r.kind === "del" || r.kind === "context") && parsed.rows.some((r) => r.kind === "add" || r.kind === "context");
-  if (split && twoSided) {
+  if (split && diffHasTwoSides(parsed.rows)) {
     return (
       <SplitDiffRows
         rows={parsed.rows}
@@ -914,6 +960,7 @@ export function DiffView({
         syntax={syntax}
         gutter={gutter}
         commenting={commenting}
+        unanchored={unanchoredComments}
       />
     );
   }
@@ -1011,41 +1058,13 @@ export function DiffView({
           <Fragment key={rowKey}>
             {lineEl}
             {pinned.map((c) => (
-              <button
-                key={`comment-${c.id}`}
-                type="button"
-                onClick={() => commenting?.onEditComment(c)}
-                className="my-1 mr-3 ml-12 flex max-w-[calc(100%-3.75rem)] items-center justify-between gap-2 rounded-md border border-primary/40 bg-primary/10 px-2.5 py-1.5 font-sans text-xs text-foreground transition-colors hover:border-primary"
-              >
-                <span className="min-w-0 flex-1 truncate text-left">
-                  <span className="font-mono font-semibold text-primary">
-                    <Icon name="comment" aria-hidden className="mr-1 inline size-3 align-[-1px]" />
-                    {c.lineLabel}:{" "}
-                  </span>
-                  {c.note}
-                </span>
-                <Icon name="disclosure" aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
-              </button>
+              <CommentChip key={`comment-${c.id}`} comment={c} anchored onEdit={() => commenting?.onEditComment(c)} />
             ))}
           </Fragment>
         );
       })}
       {unanchoredComments.map((c) => (
-        <button
-          key={`comment-${c.id}`}
-          type="button"
-          onClick={() => commenting?.onEditComment(c)}
-          className="my-1 mr-3 ml-3 flex max-w-[calc(100%-1.5rem)] items-center justify-between gap-2 rounded-md border border-primary/40 bg-primary/10 px-2.5 py-1.5 font-sans text-xs text-foreground transition-colors hover:border-primary"
-        >
-          <span className="min-w-0 flex-1 truncate text-left">
-            <span className="font-mono font-semibold text-primary">
-              <Icon name="comment" aria-hidden className="mr-1 inline size-3 align-[-1px]" />
-              {c.lineLabel}:{" "}
-            </span>
-            {c.note}
-          </span>
-          <Icon name="disclosure" aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
-        </button>
+        <CommentChip key={`comment-${c.id}`} comment={c} anchored={false} onEdit={() => commenting?.onEditComment(c)} />
       ))}
     </div>
   );
@@ -1083,7 +1102,7 @@ export function splitLines(rows: readonly DiffRow[]): SplitLine[] {
   return out;
 }
 
-/** LAB (wide-files, proposal 3): the side-by-side body of {@link DiffView}, from the same parsed rows, tokens and comment keys. */
+/** The side-by-side body of {@link DiffView}, from the same parsed rows, tokens and comment keys. */
 function SplitDiffRows({
   rows,
   keys,
@@ -1092,6 +1111,7 @@ function SplitDiffRows({
   syntax,
   gutter,
   commenting,
+  unanchored,
 }: {
   rows: readonly DiffRow[];
   keys: readonly string[];
@@ -1100,6 +1120,8 @@ function SplitDiffRows({
   syntax: ReturnType<typeof useSyntaxTokens>;
   gutter: { width: string };
   commenting?: DiffViewCommentProps;
+  /** Comments no line of this diff anchors: drawn above the first hunk, across both halves, so none goes missing. */
+  unanchored: readonly DiffComment[];
 }) {
   const lines = useMemo(() => splitLines(rows), [rows]);
   const half = (i: number | null, side: "old" | "new") => {
@@ -1139,6 +1161,9 @@ function SplitDiffRows({
   };
   return (
     <div className="font-mono text-xs leading-5 [font-variant-ligatures:none]" data-slot="diff" data-split="" data-highlighted={syntax ? "" : undefined}>
+      {unanchored.map((c) => (
+        <CommentChip key={`comment-${c.id}`} comment={c} anchored={false} onEdit={() => commenting?.onEditComment(c)} />
+      ))}
       {lines.map((line) => {
         if (line.kind === "full") {
           const row = rows[line.i]!;
@@ -1163,25 +1188,40 @@ function SplitDiffRows({
               {half(line.right, "new")}
             </div>
             {pinned.map((c) => (
-              <button
-                key={`comment-${c.id}`}
-                type="button"
-                onClick={() => commenting?.onEditComment(c)}
-                className="my-1 mr-3 ml-12 flex max-w-[calc(100%-3.75rem)] items-center justify-between gap-2 rounded-md border border-primary/40 bg-primary/10 px-2.5 py-1.5 font-sans text-xs text-foreground transition-colors hover:border-primary"
-              >
-                <span className="min-w-0 flex-1 truncate text-left">
-                  <span className="font-mono font-semibold text-primary">
-                    <Icon name="comment" aria-hidden className="mr-1 inline size-3 align-[-1px]" />
-                    {c.lineLabel}:{" "}
-                  </span>
-                  {c.note}
-                </span>
-                <Icon name="disclosure" aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
-              </button>
+              <CommentChip key={`comment-${c.id}`} comment={c} anchored onEdit={() => commenting?.onEditComment(c)} />
             ))}
           </Fragment>
         );
       })}
     </div>
+  );
+}
+
+/** Whether a diff has an old side and a new side to set beside each other: a new or a deleted file has one only. */
+export function diffHasTwoSides(rows: readonly DiffRow[]): boolean {
+  const context = rows.some((r) => r.kind === "context");
+  return context || (rows.some((r) => r.kind === "del") && rows.some((r) => r.kind === "add"));
+}
+
+/** A comment of the batch on its line (`anchored`, indented past the gutters) or above the diff when no line holds it. */
+function CommentChip({ comment, anchored, onEdit }: { comment: DiffComment; anchored: boolean; onEdit: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onEdit}
+      className={cn(
+        "my-1 mr-3 flex items-center justify-between gap-2 rounded-md border border-primary/40 bg-primary/10 px-2.5 py-1.5 font-sans text-xs text-foreground transition-colors hover:border-primary",
+        anchored ? "ml-12 max-w-[calc(100%-3.75rem)]" : "ml-3 max-w-[calc(100%-1.5rem)]",
+      )}
+    >
+      <span className="min-w-0 flex-1 truncate text-left">
+        <span className="font-mono font-semibold text-primary">
+          <Icon name="comment" aria-hidden className="mr-1 inline size-3 align-[-1px]" />
+          {comment.lineLabel}:{" "}
+        </span>
+        {comment.note}
+      </span>
+      <Icon name="disclosure" aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
+    </button>
   );
 }

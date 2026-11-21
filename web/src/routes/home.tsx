@@ -25,7 +25,7 @@ import { Fab } from "@/components/ui/fab";
 import { useAnySheetOpen } from "@/components/ui/sheet";
 import { DashboardTabBar } from "@/components/dashboard-tab-bar";
 import { TrickDashboardStrip } from "@/components/trick-place-items";
-import { WorkspaceChangesList, type WorkspaceChangesRow, type WorkspaceChangesLayout } from "@/components/workspace-changes-list";
+import { WorkspaceChangesList, type WorkspaceChangesRow } from "@/components/workspace-changes-list";
 import { useDashPrefs, openForCount } from "@/hooks/use-dash-prefs";
 import { useDashboardBar } from "@/hooks/use-dashboard-bar";
 import { useKeyboardOpen } from "@/hooks/use-keyboard";
@@ -61,8 +61,7 @@ import { usePairing } from "@/lib/pairing";
 import { usePins } from "@/lib/pins";
 import { programScope, programSessions, programsAbove, waitingPrograms } from "@/lib/session-cards";
 import { cn } from "@/lib/utils";
-import { contentWidth, gridWidth, SPACE_GAP_X, SPACE_WIDTH, spaceColumns, WIDE_GUTTER } from "@/lib/wide-dashboard";
-import { wideFilesLab } from "@/lib/wide-files-lab";
+import { contentWidth, gridWidth, SPACE_WIDTH, spaceColumns, WIDE_GUTTER } from "@/lib/wide-dashboard";
 import { isReadOnly, type AgentView, type ServerSummary, type SessionSummary } from "@/lib/types";
 import { useRootData } from "@/lib/route-data";
 import { Button } from "@/components/ui/button";
@@ -77,21 +76,24 @@ const NO_TRICK_SESSIONS: readonly AgentView[] = [];
  * refresh starts when the tab opens and stops when the operator leaves it. One row per workspace the
  * strip leaves shown, each asked on the machine and session its panes live on.
  */
+/** The large screen's Files view: its column's widest, in CSS px. */
+const FILES_VIEW_MAX = 720;
+
 function ChangesTabBody({
   groups,
   scope,
   servers,
   sessions,
   lookup,
-  layout,
+  line,
 }: {
   groups: readonly WorkspaceGroup[];
   scope: Scope;
   servers: readonly ServerSummary[] | undefined;
   sessions: readonly SessionSummary[] | undefined;
   lookup: ChangesLookup;
-  /** LAB (wide-files): how the list stands on a large screen. */
-  layout?: WorkspaceChangesLayout;
+  /** The large screen: one line a space, its counts at the right. */
+  line: boolean;
 }) {
   const nav = useNav();
   const rows = useMemo<WorkspaceChangesRow[]>(
@@ -121,7 +123,7 @@ function ChangesTabBody({
     <WorkspaceChangesList
       rows={rows}
       counts={counts}
-      layout={layout}
+      line={line}
       onOpen={(row, from) => {
         const to = spaceChangesPath(row.workspaceId, row.scope);
         glideForward("changes", to, () => nav.down(to), from);
@@ -378,18 +380,10 @@ export function HomeRoute() {
   // Tricks Space) stand in one Space's width after the last Space.
   const gridList = wide && view === "dashboard" && !screenless;
   const inColumn = (node: ReactNode) => (wide ? <WideColumn width={columnWidth}>{node}</WideColumn> : node);
-  // LAB (wide-files, `?fw=1|2|3`): the Files view stands on the grid's left edge, as wide as its proposal needs:
-  // one Space (1), the grid with the rows run into its columns (2), two Spaces with one line a row (3).
-  const fwLab = wideFilesLab();
-  const filesWide = wide && view === "changes" && fwLab !== 0;
-  const filesLayout: WorkspaceChangesLayout | undefined = !filesWide
-    ? undefined
-    : fwLab === 2
-      ? { kind: "columns", columns, width: SPACE_WIDTH, gap: SPACE_GAP_X }
-      : fwLab === 3
-        ? { kind: "line" }
-        : undefined;
-  const filesWidth = fwLab === 2 ? gridWidth(columns) : fwLab === 3 ? Math.min(gridWidth(columns), 2 * SPACE_WIDTH + SPACE_GAP_X) : SPACE_WIDTH;
+  // The Files view on a large screen (ADR 0158, addendum 2026-11-21): one line a space, in a column of at most
+  // FILES_VIEW_MAX px that starts at the grid's left edge, under the mark, and scrolls with the page.
+  const filesWide = wide && view === "changes";
+  const filesWidth = Math.min(gridWidth(columns), FILES_VIEW_MAX);
   const narrowed = (node: ReactNode) =>
     wide && !gridList ? (
       filesWide ? (
@@ -597,6 +591,7 @@ export function HomeRoute() {
               reveal={reveal}
               needsYouOnly={needsYouOnly}
               onNeedsYouOnlyChange={setNeedsYouOnly}
+              narrowFilter={filesWide}
               renderBody={
                 view === "changes"
                   ? (shown) => (
@@ -606,7 +601,7 @@ export function HomeRoute() {
                         servers={data.servers}
                         sessions={data.sessions}
                         lookup={lookup}
-                        layout={filesLayout}
+                        line={filesWide}
                       />
                     )
                   : undefined

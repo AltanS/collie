@@ -137,14 +137,15 @@ import { fitPath } from "@/lib/fit-path";
 import { useElementWidth } from "@/hooks/use-element-width";
 import { summarizeChanges, type WorkspaceChangeCount } from "@/lib/workspace-changes";
 import { useWidthClass } from "@/hooks/use-width-class";
-import { wideFilesLab } from "@/lib/wide-files-lab";
+import { diffLayoutFor, setDiffLayout, useDiffLayoutChoice, type DiffLayout } from "@/lib/diff-layout";
 import {
+  DiffLayoutControl,
   explorerRows,
+  FileSteps,
   FilesColumns,
   FilesExplorer,
   FilesNothingChosen,
   foldersAbove,
-  parentDir,
   useFolderReads,
 } from "@/components/files-wide";
 
@@ -401,10 +402,9 @@ function ChangesScreen() {
   // The thumb side of the bottom Back (display pref `hand`, as the pane screen reads it).
   const hand = handOf(useDisplayPrefs().prefs);
   const phone = useMediaQuery(PHONE_QUERY);
-  // LAB (wide-files, `?fw=1|2|3`): Files and Changes as two columns under one header on a large screen. 0 is today.
-  const wideClass = useWidthClass() === "expanded";
-  const lab = wideFilesLab();
-  const wide = wideClass && lab !== 0;
+  // Files and Changes on a large screen (ADR 0158, addendum 2026-11-21): two columns under one header. A phone, a
+  // tablet and Large-screen layout Off keep the one column below.
+  const wide = useWidthClass() === "expanded";
   const layout = prefs.changesLayout;
   const lookup: ChangesLookup = useMemo(
     () => ({ depth: prefs.changesDepth, nested: prefs.changesNested }),
@@ -434,13 +434,12 @@ function ChangesScreen() {
   const commitRepo = commitView ? repoParam : null;
   const commitOpen: ChangeRef | null = commitView ? fileRef : null;
 
-  // ── LAB: the large screen's left column (wide-files) ─────────────────────
-  // The left column shows the list of changes when the address is one of the list's (a list file, the commit view, the
-  // root with Changes chosen), and the tree otherwise. Proposal 1 shows one folder at a time, the folder the address
-  // names or the open file's own; proposals 2 and 3 a tree that opens folders in place.
+  // ── The large screen's left column ───────────────────────────────────────
+  // The list of changes when the address is one of the list's (a list file, the commit view, the root with Changes
+  // chosen), and otherwise the tree, which opens folders in place: a folder's rows open under it with no move of the
+  // address, and only a file is a new entry.
   const leftList = open !== null || commitView || showList;
-  const leftDir = treeFile !== null ? parentDir(treeFile) : (treeDir ?? "");
-  const explorer = wide && lab !== 1 && !leftList;
+  const explorer = wide && !leftList;
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set([""]));
   // The folders above what the address names open once when it names it, so a deep link and Back show their row.
   const addressKey = treeFile !== null ? `file\n${treeFile}` : `dir\n${treeDir ?? ""}`;
@@ -559,9 +558,19 @@ function ChangesScreen() {
   // list shows, its folder chain is opened in the tree and its group is scrolled into view; a 5 s
   // re-read never moves the list, and a folder the operator closes afterwards stays closed.
   const mainRef = useRef<HTMLElement>(null);
-  // LAB (wide-files): the large screen's two scrollers, the left column's and the right's.
+  // The large screen's two scrollers, the left column's and the right's.
   const leftRef = useRef<HTMLElement>(null);
   const rightRef = useRef<HTMLElement>(null);
+  // The right column's width picks a diff's layout until the person chooses one (lib/diff-layout.ts).
+  const [measureRight, rightWidth] = useElementWidth<HTMLElement>(0, "client");
+  const holdRight = useCallback(
+    (el: HTMLElement | null) => {
+      rightRef.current = el;
+      measureRight(el);
+    },
+    [measureRight],
+  );
+  const diffChoice = useDiffLayoutChoice();
   const markedFor = useRef<string | null>(null);
   const paneCwd = pane?.cwd ?? "";
   useEffect(() => {
@@ -703,7 +712,7 @@ function ChangesScreen() {
 
   // One read of the bridge per folder or file, keyed by machine, target and place, so a move to
   // another level starts clean. A deleted file is not on disk, and is not asked for.
-  // On the large screen (lab) the folders are read for the left column by `useFolderReads` below; this read is the file's.
+  // On the large screen the folders are read for the left column by `useFolderReads` below; this read is the file's.
   const filesKey = treeDir !== null && !wide ? `dir\n${treeDir}` : treeFile !== null && !treeDeleted ? `file\n${treeFile}` : null;
   const readKey = filesKey === null ? null : `${scope.host ?? ""}\n${scope.session ?? ""}\n${targetKey}\n${filesKey}`;
   const filesPathTo = (to?: FilesAt) => (target.kind === "pane" ? filesPath(paneId, scope, to) : spaceFilesPath(spaceId, scope, to));
@@ -720,9 +729,8 @@ function ChangesScreen() {
     if (folder.outcome === "body" && folder.body.available && !signal.aborted) nav.side(filesPathTo({ dir: treeFile }));
     return folder.outcome === "body" && folder.body.available ? folder : read;
   });
-  // LAB (wide-files): the folders the left column draws, each read once: proposal 1's one folder, or every folder the
-  // tree has open.
-  const wideDirs = useMemo(() => (lab === 1 ? [leftDir] : [...expanded].toSorted()), [lab, leftDir, expanded]);
+  // The large screen's folders: every folder the tree has open, each read once.
+  const wideDirs = useMemo(() => [...expanded].toSorted(), [expanded]);
   const folderReads = useFolderReads(wide && !leftList ? `${scope.host ?? ""}\n${scope.session ?? ""}\n${targetKey}` : null, wideDirs, (dir, signal) =>
     fetchFilesDir(target, dir, scope, signal),
   );
@@ -744,39 +752,19 @@ function ChangesScreen() {
     const left = markFolder([], treeDir, changeIndex);
     return left.entries.length > 0 ? left : null;
   }, [treeDir, listing, folderGone, changeIndex]);
-  // The name filter is one folder's: another folder, or a file, starts it blank and closed. On the large screen (lab) it
-  // is the left column's: proposal 1's folder, or the whole tree, which a file opened beside it does not reset.
-  const filesFilter = useFilesFilter(
-    wide ? (lab === 1 ? `dir\n${leftDir}` : "explorer") : treeFile !== null ? `file\n${treeFile}` : `dir\n${treeDir ?? ""}`,
-  );
+  // The name filter is one folder's: another folder, or a file, starts it blank and closed. On the large screen it is the
+  // whole tree's, which a file opened beside it does not reset.
+  const filesFilter = useFilesFilter(wide ? "tree" : treeFile !== null ? `file\n${treeFile}` : `dir\n${treeDir ?? ""}`);
   const counted =
     markedFolder === null || markedFolder.entries.length === 0
       ? null
       : folderView(markedFolder.entries, filesFilter.query, prefs.filesShowIgnored);
-  // LAB (wide-files): proposal 1's one folder, joined to the change set like the phone's.
-  const leftRead: FilesReadState<TreeRead> = folderReads.reads.get(leftDir) ?? { key: leftDir, phase: "loading" };
-  const leftListing = leftRead.phase === "ready" && leftRead.data.available && "entries" in leftRead.data ? leftRead.data : null;
-  const leftMarked = useMemo(
-    () => (leftListing === null ? null : markFolder(leftListing.entries, leftDir, changeIndex)),
-    [leftListing, leftDir, changeIndex],
-  );
-  // Proposals 2 and 3: every open folder's rows, under the same filter.
+  // The tree: every open folder's rows, under the filter.
   const tree = useMemo(
     () => explorerRows({ reads: folderReads.reads, expanded, index: changeIndex, query: filesFilter.query, showIgnored: prefs.filesShowIgnored }),
     [folderReads.reads, expanded, changeIndex, filesFilter.query, prefs.filesShowIgnored],
   );
-  const wideCounted: { shown: number; total: number } | null = !wide || leftList
-    ? null
-    : lab === 1
-      ? leftMarked === null || leftMarked.entries.length === 0
-        ? null
-        : (() => {
-            const view = folderView(leftMarked.entries, filesFilter.query, prefs.filesShowIgnored);
-            return { shown: view.rows.length, total: view.pool };
-          })()
-      : tree.pool === 0
-        ? null
-        : { shown: tree.shown, total: tree.pool };
+  const wideCounted: { shown: number; total: number } | null = !explorer || tree.pool === 0 ? null : { shown: tree.shown, total: tree.pool };
 
   // ── One file ──────────────────────────────────────────────────────────────
   // Keyed with the screen it belongs to, so a commit's file and the same uncommitted file differ. A
@@ -845,10 +833,10 @@ function ChangesScreen() {
     };
   }, [openKey, readFile]);
 
-  // LAB (wide-files): another file opens at its top; the left column keeps its scroll.
+  // On the large screen another file opens at its top; the left column keeps its scroll.
   const rightFor = current !== null ? `${current.repo}\n${current.path}` : (treeFile ?? "");
   useEffect(() => {
-    if (wide) rightRef.current?.scrollTo({ top: 0 });
+    if (wide && rightRef.current !== null) rightRef.current.scrollTop = 0;
   }, [wide, rightFor]);
 
   // ── Re-reading ────────────────────────────────────────────────────────────
@@ -944,7 +932,7 @@ function ChangesScreen() {
     }
     if (on && treeAt !== null) nav.upExact(filesPathTo());
   };
-  // LAB (wide-files): on the large screen the control is always there, and the open file stays open across it where the
+  // On the large screen the control is always there, and the open file stays open across it where the
   // other body has it: a changed file of the tree opens on its diff in the list, a file of the list opens in the tree.
   // A replace, a switch within the level.
   const wideMode = (on: boolean) => {
@@ -984,13 +972,13 @@ function ChangesScreen() {
     if (glidesHome) glideBack("changes", spaceChangesPath(spaceId, scope), () => nav.up(backFallback));
     else nav.up(backFallback);
   };
-  // LAB (wide-files): the large screen's header arrow leaves the screen for where it was opened from, as Settings' does:
+  // The large screen's header arrow leaves the screen for where it was opened from, as Settings' does:
   // a step back past the files and folders walked through when the trail holds them, else up to the pane or the space.
   const routeBase = pathOnly(pathTo());
   const leaveFiles = () => {
     const idx = historyIdx();
     if (idx === undefined) {
-      backOut();
+      nav.upTo(backFallback);
       return;
     }
     const entries = navTrail.entries();
@@ -1003,7 +991,7 @@ function ChangesScreen() {
       void navigate(-(idx - at));
       return;
     }
-    backOut();
+    nav.upTo(backFallback);
   };
   const backAriaKey: MessageKey = backDestination.startsWith("/pane/")
     ? "changes.backAria.pane"
@@ -1488,19 +1476,10 @@ function ChangesScreen() {
     </>
   );
 
-  // ── LAB: the large screen (wide-files, `?fw=1|2|3`) ─────────────────────
+  // ── The large screen: two columns under one header (ADR 0158, addendum 2026-11-21) ──
   if (wide) {
-    const leftWidth = lab === 1 ? 320 : lab === 2 ? 280 : 360;
-    const split = lab === 3;
-    const modeControl = (
-      <FilesModeControl
-        compact
-        changesOnly={leftList}
-        count={changedFiles}
-        onChange={changeChangesOnly}
-        className={lab === 2 ? "w-60 shrink-0" : "w-full"}
-      />
-    );
+    const modeControl = <FilesModeControl compact changesOnly={leftList} count={changedFiles} onChange={changeChangesOnly} className="w-full" />;
+    const diffLayout: WideDiff = { layout: diffLayoutFor(diffChoice, rightWidth), onLayout: setDiffLayout };
     const listFilterOn = leftList && !(commitView && commitState?.phase !== "ready");
     const overlays = (
       <div className="relative">
@@ -1562,36 +1541,12 @@ function ChangesScreen() {
           />
         </div>
       );
-    } else if (lab === 1) {
-      left = (
-        <div className="flex flex-col gap-2 px-1">
-          <FilesBreadcrumb dir={leftDir} rootName={rootName} hrefFor={(to) => filesPathTo(to === "" ? undefined : { dir: to })} onOpen={openCrumb} />
-          <TreeFolderBody
-            state={leftRead}
-            folder={leftMarked}
-            truncated={leftListing?.truncated === true}
-            listAvailable={list.phase === "ready" && list.data.available}
-            query={filesFilter.query}
-            showIgnored={prefs.filesShowIgnored}
-            onShowIgnored={setFilesShowIgnored}
-            onClearQuery={filesFilter.clear}
-            onOpen={(entry) => {
-              const rel = entryPath(leftDir, entry);
-              nav.down(filesPathTo(entry.kind === "dir" ? { dir: rel } : { path: rel }), entry.kind === "link" ? { viaLink: true } : undefined);
-            }}
-            onPair={pair}
-            onChangesOnly={changesOnlyNow}
-            current={treeFile === null ? undefined : baseName(treeFile)}
-          />
-        </div>
-      );
     } else {
       left = (
         <FilesExplorer
           rows={tree.rows}
           current={treeFile ?? (treeDir === "" ? null : treeDir)}
           rootName={rootName}
-          sizes={lab === 3}
           onToggle={toggleExpanded}
           onOpen={(path, entry) => nav.down(filesPathTo({ path }), entry.kind === "link" ? { viaLink: true } : undefined)}
         />
@@ -1613,7 +1568,7 @@ function ChangesScreen() {
           onStep={stepTo}
           back={null}
           hand={hand}
-          split={split}
+          wide={diffLayout}
         />
       );
     } else if (treeFile !== null) {
@@ -1633,7 +1588,7 @@ function ChangesScreen() {
           images={fileImages}
           line={treeLine}
           onPair={pair}
-          split={split}
+          wide={diffLayout}
         />
       );
     } else {
@@ -1662,8 +1617,7 @@ function ChangesScreen() {
                   {staleNote}
                 </div>
               </div>
-              {lab === 2 && modeControl}
-              <div className={cn("flex shrink-0 items-center", lab === 2 && "flex-1 justify-end")}>
+              <div className="flex shrink-0 items-center">
                 {listFilterOn && (
                   <>
                     <ChangesLayoutToggle layout={layout} onChange={setChangesLayout} />
@@ -1687,12 +1641,12 @@ function ChangesScreen() {
           }
         />
         <FilesColumns
-          leftWidth={leftWidth}
+          leftWidth={WIDE_LEFT_PX}
           leftRef={leftRef}
-          rightRef={rightRef}
+          rightRef={holdRight}
           leftTop={
             <>
-              {lab !== 2 && <div className="shrink-0 px-2 pt-2">{modeControl}</div>}
+              <div className="shrink-0 px-2 pt-2">{modeControl}</div>
               {overlays}
             </>
           }
@@ -1972,7 +1926,7 @@ function ListBody({
   onOpen: (ref: ChangeRef) => void;
   /** Open a clean repo's last commit. */
   onShowCommit: (repo: string) => void;
-  /** The file open beside the list (lab, the large screen). */
+  /** The file open beside the list on the large screen: drawn chosen, in the tree's flat rows. */
   current?: ChangeRef | null;
 }) {
   if (state.phase === "loading") return <ChangesListSkeleton label={t("changes.loading")} />;
@@ -2069,7 +2023,7 @@ function CommitBody({
   uncommitted: boolean;
   onLoadNewer: () => void;
   onShowUncommitted: () => void;
-  /** The file open beside the list (lab, the large screen). */
+  /** The file open beside the list on the large screen: drawn chosen, in the tree's flat rows. */
   current?: ChangeRef | null;
 }) {
   if (state === null) return <Quiet>{t("changes.commit.unknown")}</Quiet>;
@@ -2116,7 +2070,7 @@ export function FileScreen({
   onStep,
   back,
   hand,
-  split = false,
+  wide,
 }: {
   path: string;
   oldPath: string | undefined;
@@ -2133,9 +2087,11 @@ export function FileScreen({
   /** The screen's Back, on a phone only: it joins Previous / Next in their bar, on the thumb side. */
   back: BackControl | null;
   hand: Hand;
-  /** LAB (wide-files, proposal 3): the diff side by side. */
-  split?: boolean;
+  /** The large screen: the diff's layout control and Previous / Next sit in the file's row, and the foot bar goes. */
+  wide?: WideDiff;
 }) {
+  const oneSide = status === "A" || status === "D" || status === "?";
+  const layout = wide === undefined || oneSide ? "unified" : wide.layout;
   return (
     <>
       {/* Sticky, so the reader always knows which file this is, however far down the diff. */}
@@ -2160,14 +2116,21 @@ export function FileScreen({
             {t("changes.file.preview")}
           </Button>
         )}
+        {wide && (
+          <>
+            <DiffLayoutControl value={layout} onChange={wide.onLayout} disabled={oneSide} />
+            <FileSteps onPrev={prev && (() => onStep(prev))} onNext={next && (() => onStep(next))} />
+          </>
+        )}
       </div>
 
       <div className="flex-1 py-2">
-        <FileBody state={state} commenting={commenting} split={split} />
+        <FileBody state={state} commenting={commenting} split={layout === "split"} />
       </div>
 
-      {/* Across what the list shows, repos included: the filtered files, in the layout's order.
-          Disabled rather than hidden at either end, so the pair never moves. */}
+      {wide === undefined && (
+      // Across what the list shows, repos included: the filtered files, in the layout's order.
+      //  Disabled rather than hidden at either end, so the pair never moves.
       <BottomBar
         className={cn("grid gap-2", back === null ? "grid-cols-2" : hand === "left" ? "grid-cols-[auto_1fr_1fr]" : "grid-cols-[1fr_1fr_auto]")}
       >
@@ -2182,9 +2145,19 @@ export function FileScreen({
         </Button>
         {back && hand !== "left" && <BackButton back={back} className="px-3" />}
       </BottomBar>
+      )}
     </>
   );
 }
+
+/** What the large screen hands a file's screen: the diff's layout and the way to keep a new choice. */
+interface WideDiff {
+  layout: DiffLayout;
+  onLayout: (layout: DiffLayout) => void;
+}
+
+/** The large screen's left column, the tree or the list, in CSS px. */
+const WIDE_LEFT_PX = 360;
 
 function FileBody({ state, commenting, split = false }: { state: FileState | null; commenting?: DiffViewCommentProps; split?: boolean }) {
   if (state === null || state.phase === "loading") return <Loading label={t("changes.loading")} />;
@@ -2241,7 +2214,7 @@ function TreeFileScreen({
   images,
   line,
   onPair,
-  split = false,
+  wide,
 }: {
   path: string;
   change: RootChange | undefined;
@@ -2261,15 +2234,17 @@ function TreeFileScreen({
   /** The line a printed path named, marked in the Source (ADR 0088). */
   line?: number;
   onPair: () => void;
-  /** LAB (wide-files, proposal 3): the diff side by side. */
-  split?: boolean;
+  /** The large screen: the diff's layout control in the file's row while the Diff view is chosen. */
+  wide?: WideDiff;
 }) {
   useLocale();
   const folder = path.includes("/") ? path.slice(0, path.lastIndexOf("/") + 1) : "";
   const size = read.phase === "ready" && read.data.available && "size" in read.data ? read.data.size : null;
   let body: React.ReactNode;
+  const oneSide = change === undefined || change.status === "A" || change.status === "D" || change.status === "?";
+  const layout = wide === undefined || oneSide ? "unified" : wide.layout;
   if (waiting) body = <FilesLoading />;
-  else if (view === "diff") body = <FileBody state={diff} commenting={commenting} split={split} />;
+  else if (view === "diff") body = <FileBody state={diff} commenting={commenting} split={layout === "split"} />;
   else if (read.phase === "loading") body = <FilesLoading />;
   else if (read.phase === "error") {
     body = (
@@ -2320,6 +2295,7 @@ function TreeFileScreen({
               options={views.map((value) => ({ value, label: t(TREE_VIEW_LABEL[value]), icon: TREE_VIEW_ICON[value] }))}
             />
           )}
+          {wide && !waiting && view === "diff" && <DiffLayoutControl value={layout} onChange={wide.onLayout} disabled={oneSide} />}
         </div>
         {folder && <FilePathRow folder={folder} path={path} />}
       </div>

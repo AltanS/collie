@@ -7,11 +7,7 @@ import { useLocale } from "@/hooks/use-locale";
 import { t } from "@/lib/i18n";
 import { spaceChangesPath } from "@/lib/nav";
 import { cn } from "@/lib/utils";
-import { runsIntoColumns } from "@/lib/wide-dashboard";
 import type { WorkspaceChangeCount } from "@/lib/workspace-changes";
-
-/** LAB (wide-files): how the list stands on a large dashboard. */
-export type WorkspaceChangesLayout = { kind: "columns"; columns: number; width: number; gap: number } | { kind: "line" };
 
 /** One row: the workspace's heading text and where its answer is kept. */
 export interface WorkspaceChangesRow extends WorkspaceChangeTarget {
@@ -34,27 +30,15 @@ export function WorkspaceChangesList({
   rows,
   counts,
   onOpen,
-  layout,
+  line = false,
 }: {
   rows: readonly WorkspaceChangesRow[];
   counts: ReadonlyMap<string, WorkspaceChangeCount>;
   onOpen: (row: WorkspaceChangesRow, from: HTMLElement) => void;
-  /** LAB (wide-files): the rows run into the large dashboard's columns, or one line a row. Default: the phone's list. */
-  layout?: WorkspaceChangesLayout;
+  /** The large dashboard: one line a space, its counts at the right. The phone's rows hold the counts under the label. */
+  line?: boolean;
 }) {
   useLocale();
-  if (layout?.kind === "columns") {
-    return (
-      <div className="flex items-start" style={{ gap: layout.gap }}>
-        {runsIntoColumns(rows, layout.columns).map((run) => (
-          <div key={run[0]?.key ?? "none"} className="shrink-0" style={{ width: layout.width }}>
-            <WorkspaceChangesList rows={run} counts={counts} onOpen={onOpen} />
-          </div>
-        ))}
-      </div>
-    );
-  }
-  const line = layout?.kind === "line";
   return (
     <ListGroup as="ul" aria-label={t("home.changes.listAria")}>
       {rows.map((row) => {

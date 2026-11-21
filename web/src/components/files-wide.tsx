@@ -3,10 +3,13 @@ import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type Reac
 import { Icon } from "@/components/icons/icon";
 import type { IconKey } from "@/components/icons/keys";
 import { STATUS_FILL, TREE_TONE } from "@/components/changes-view";
-import { FOCUS_RING_INSET, HOVER_FILL } from "@/components/ui/button";
+import { Button, FOCUS_RING_INSET, HOVER_FILL } from "@/components/ui/button";
+import { Segmented } from "@/components/ui/segmented";
 import { NAV_EDGE } from "@/components/ui/nav-edge";
+import { NAV_ROW_HEIGHT } from "@/components/ui/nav-row";
 import { useLocale } from "@/hooks/use-locale";
 import type { FilesAnswer } from "@/lib/api";
+import type { DiffLayout } from "@/lib/diff-layout";
 import { isAbortError } from "@/lib/loaders";
 import { folderView } from "@/lib/files-filter";
 import { markFolder, type ChangeIndex, type EntryMark } from "@/lib/files-marks";
@@ -17,14 +20,14 @@ import type { WorkspaceChangeCount } from "@/lib/workspace-changes";
 import type { FilesReadState, TreeRead } from "@/routes/changes-files";
 import { cn } from "@/lib/utils";
 
-// FILES AND CHANGES ON A LARGE SCREEN (lab, step 1 of the wide-files round, 2026-11-21). The parts the Changes screen
+// FILES AND CHANGES ON A LARGE SCREEN (ADR 0158, addendum 2026-11-21). The parts the Changes screen
 // draws only in the `expanded` width class: the two columns (the tree or the list of changes at the left on the
 // navigation's recess, the chosen file at the right on the page), the folder reads the left column needs, the tree that
 // opens folders in place, and the calm right column while nothing is chosen. The screen's state stays in `ChangesScreen`:
 // these parts are drawn by it and own no route state.
 
 /** The folder a root-relative path sits in: "" for a name at the root. */
-export function parentDir(path: string): string {
+function parentDir(path: string): string {
   const at = path.lastIndexOf("/");
   return at === -1 ? "" : path.slice(0, at);
 }
@@ -195,7 +198,7 @@ function ExplorerMark({ mark }: { mark: EntryMark | undefined }) {
 const INDENT_PX = 14;
 
 /**
- * The root's folders as a tree that opens in place (proposals 2 and 3): a folder row opens and closes its rows under it,
+ * The root's folders as a tree that opens in place: a folder row opens and closes its rows under it,
  * a file row opens the file in the right column. The arrows walk the rows (Up, Down, Home, End), Right opens a folder and
  * Left closes it or steps to its parent; one tab stop for the whole tree, on the chosen row.
  */
@@ -203,7 +206,6 @@ export function FilesExplorer({
   rows,
   current,
   rootName,
-  sizes,
   onToggle,
   onOpen,
 }: {
@@ -211,8 +213,6 @@ export function FilesExplorer({
   /** The open file's path, or the folder the address names. */
   current: string | null;
   rootName: string | null;
-  /** Each file's size at the row's end (proposal 3, the wider tree). */
-  sizes: boolean;
   onToggle: (dir: string) => void;
   onOpen: (path: string, entry: FileEntry) => void;
 }) {
@@ -264,7 +264,7 @@ export function FilesExplorer({
           const pad = { paddingLeft: 8 + row.depth * INDENT_PX };
           if (row.kind !== "entry") {
             return (
-              <li key={`${row.kind}:${row.path}`} role="none" style={pad} className="flex h-9 items-center gap-2 text-xs text-muted-foreground">
+              <li key={`${row.kind}:${row.path}`} role="none" style={pad} className={cn("flex items-center gap-2 text-xs text-muted-foreground", NAV_ROW_HEIGHT)}>
                 {row.kind === "loading" ? <Icon name="busy" className="size-3.5 animate-spin" /> : t("files.error")}
               </li>
             );
@@ -290,7 +290,8 @@ export function FilesExplorer({
                 onClick={() => (dir ? onToggle(row.path) : onOpen(row.path, entry))}
                 style={pad}
                 className={cn(
-                  "flex h-9 w-full min-w-0 items-center gap-2 rounded-md pr-2 text-left transition-colors",
+                  "flex w-full min-w-0 items-center gap-2 rounded-md pr-2 text-left transition-colors",
+                  NAV_ROW_HEIGHT,
                   FOCUS_RING_INSET,
                   here ? "bg-accent text-accent-foreground" : HOVER_FILL,
                 )}
@@ -315,7 +316,7 @@ export function FilesExplorer({
                 >
                   {entry.name}
                 </span>
-                {sizes && entry.kind === "file" && entry.size !== undefined && (
+                {entry.kind === "file" && entry.size !== undefined && (
                   <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{formatBytes(entry.size)}</span>
                 )}
                 <ExplorerMark mark={mark} />
@@ -367,8 +368,8 @@ export function FilesColumns({
 }
 
 /**
- * The right column while no file is chosen: the files glyph, the folder's name, and the count of changed files when
- * there are any. Words the screen already has; a sentence of its own waits for the lead.
+ * The right column while no file is chosen: the files glyph, the folder's name, the count of changed files when there
+ * are any, and the one sentence that says what the column is for.
  */
 export function FilesNothingChosen({ name, count }: { name: string; count: WorkspaceChangeCount }) {
   useLocale();
@@ -384,6 +385,47 @@ export function FilesNothingChosen({ name, count }: { name: string; count: Works
           </>
         )}
       </p>
+      <p className="pt-2 text-sm">{t("files.nothingChosen")}</p>
+    </div>
+  );
+}
+
+/**
+ * One column or side by side, in the file's header row: the compact segmented control with two glyphs, named in words.
+ * Disabled for a new or a deleted file, whose diff has one side only and stays in one column.
+ */
+export function DiffLayoutControl({ value, onChange, disabled }: { value: DiffLayout; onChange: (layout: DiffLayout) => void; disabled: boolean }) {
+  useLocale();
+  return (
+    <Segmented<DiffLayout>
+      label={t("files.view.aria")}
+      value={value}
+      onChange={onChange}
+      disabled={disabled}
+      compact
+      className="shrink-0 [&>button]:w-9 [&>button]:flex-none"
+      options={[
+        { value: "unified", label: t("changes.diffLayout.unified"), icon: <Icon name="diff-unified" /> },
+        { value: "split", label: t("changes.diffLayout.split"), icon: <Icon name="diff-split" /> },
+      ]}
+    />
+  );
+}
+
+/** A step that has nowhere to go: no box, muted ink, its 1px border kept so the pair never moves (as in the foot bar). */
+const STEP_OFF = "disabled:border-transparent disabled:bg-transparent disabled:shadow-none disabled:text-muted-foreground disabled:opacity-40";
+
+/** Previous file and Next file in the file's header row on a large screen: two small buttons, the foot bar's names and its disabled rule. */
+export function FileSteps({ onPrev, onNext }: { onPrev: (() => void) | undefined; onNext: (() => void) | undefined }) {
+  useLocale();
+  return (
+    <div className="flex shrink-0 items-center gap-1" data-slot="file-steps">
+      <Button variant="outline" size="icon" className={cn("size-9", STEP_OFF)} disabled={onPrev === undefined} onClick={onPrev} aria-label={t("changes.file.prev")} title={t("changes.file.prev")}>
+        <Icon name="file-prev" className="size-4" />
+      </Button>
+      <Button variant="outline" size="icon" className={cn("size-9", STEP_OFF)} disabled={onNext === undefined} onClick={onNext} aria-label={t("changes.file.next")} title={t("changes.file.next")}>
+        <Icon name="file-next" className="size-4" />
+      </Button>
     </div>
   );
 }
