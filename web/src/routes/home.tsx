@@ -47,7 +47,7 @@ import { isolateSpaces } from "@/lib/spaces";
 import { ambientHost, ambientPanes, isMultiHost, paneRowKey, paneScope, sessionsOnHost } from "@/lib/hosts";
 import { setMachineHidden, useHiddenMachines } from "@/lib/hidden-machines";
 import type { ChangesLookup } from "@/lib/api";
-import { t } from "@/lib/i18n";
+import { t, tn } from "@/lib/i18n";
 import { prefetchFolders } from "@/lib/folders";
 import { glideForward } from "@/lib/glide";
 import { hillPath, homePath, newPath, trickSessionPath, spaceChangesPath, spacePath } from "@/lib/nav";
@@ -64,6 +64,13 @@ import { cn } from "@/lib/utils";
 import { contentWidth, SPACE_WIDTH, spaceColumns, WIDE_GUTTER } from "@/lib/wide-dashboard";
 import { isReadOnly, type AgentView, type ServerSummary, type SessionSummary } from "@/lib/types";
 import { useRootData } from "@/lib/route-data";
+import { wideHomeLab, type WideHomeLab } from "@/lib/wide-home-lab";
+import { Segmented, type SegmentedOption } from "@/components/ui/segmented";
+import { Button } from "@/components/ui/button";
+import { FabButton } from "@/components/ui/fab";
+import { Icon } from "@/components/icons/icon";
+import { NAV_EDGE } from "@/components/strip-column";
+import type { DashView } from "@/lib/dash-view";
 
 const NO_TRICK_SESSIONS: readonly AgentView[] = [];
 
@@ -338,6 +345,16 @@ export function HomeRoute() {
   );
   const columns = spaceColumns(scrollerWidth);
   const columnWidth = contentWidth(columns);
+  // LAB (wide-home, `?dw=1|2|3`): three proposals for the dashboard on a large screen. 0 is today.
+  const lab: WideHomeLab = wide ? wideHomeLab() : 0;
+  const labOn = lab !== 0;
+  // The foot tab bar is drawn only off the lab: a proposal moves the views into the header.
+  const footBar = tabsShown && !labOn;
+  const herdEmpty = data.agents.length === 0 && data.shellPanes.length === 0;
+  const emptyHome = labOn && herdEmpty && view === "dashboard" && !screenless;
+  // P2 puts the New button at the end of the summary row; the others keep it floating.
+  // An empty home's own first-start card is the New action there, so no button floats in the corner.
+  const fabFloat = fabOffered && lab !== 2 && !emptyHome;
   // The install-count notice's one read: a device that has not spent the notice keeps the list unseen for
   // at most 400 ms while it answers, so the notice never opens above a list that has painted (calm load).
   const telemetry = useTelemetryNoticeRead();
@@ -363,7 +380,7 @@ export function HomeRoute() {
   const narrowed = (node: ReactNode) => (wide && !gridList ? <div className="mx-auto max-w-screen-sm">{node}</div> : node);
   const underGrid = (node: ReactNode) =>
     gridList ? (
-      <div style={{ width: SPACE_WIDTH }}>
+      <div className={cn(emptyHome && "mx-auto")} style={{ width: SPACE_WIDTH }}>
         <PhoneParts on>{node}</PhoneParts>
       </div>
     ) : (
@@ -388,12 +405,12 @@ export function HomeRoute() {
       <BuildStamp
         className={cn(
           "px-4 pt-3",
-          fabOffered ? (tabsShown ? "pb-20" : "pb-[calc(5rem_+_env(safe-area-inset-bottom))]") : tabsShown ? "pb-2" : "pb-[calc(0.5rem_+_env(safe-area-inset-bottom))]",
+          fabFloat ? (footBar ? "pb-20" : "pb-[calc(5rem_+_env(safe-area-inset-bottom))]") : footBar ? "pb-2" : "pb-[calc(0.5rem_+_env(safe-area-inset-bottom))]",
         )}
       />
     </>
   );
-  const tabBar = tabsShown && (
+  const tabBar = footBar && (
     <DashboardTabBar
       view={view}
       onSelect={setDashView}
@@ -409,15 +426,71 @@ export function HomeRoute() {
       onOpenSession={openTrickSession}
     />
   );
+  // LAB: the views as the compact segmented control the pane view's sidebar head uses (ui/segmented), in the header.
+  const viewOptions: SegmentedOption<DashView>[] = [
+    ...(multi ? [{ value: "crew" as const, label: t("crew.title"), icon: <Icon name="crew" /> }] : []),
+    {
+      value: "dashboard",
+      label: t("home.tabs.dashboard"),
+      icon: <Icon name="tab-dashboard" />,
+      badge: blockedCount,
+      badgeLabel: tn("home.tabs.blocked", blockedCount),
+    },
+    ...(!screenless ? [{ value: "changes" as const, label: t("files.title"), icon: <Icon name="files" /> }] : []),
+  ];
+  const worded = lab === 2;
+  const viewsControl = labOn && tabsShown && viewOptions.length > 1 && (
+    <Segmented<DashView>
+      semantics="tabs"
+      compact
+      options={
+        worded
+          ? viewOptions.map(({ icon: _icon, ...o }) => o)
+          : // An icon segment has no room for a count over its glyph: the blocked count is a mark beside it, said in words.
+            viewOptions.map(({ badge, badgeLabel, ...o }) => (badge !== undefined && badge > 0 && badgeLabel !== undefined ? { ...o, mark: badgeLabel } : o))
+      }
+      value={view}
+      onChange={setDashView}
+      label={t("home.tabs.aria")}
+      className="w-full"
+    />
+  );
+  const viewsBox = viewsControl && (
+    <div data-slot="lab-views" className="shrink-0" style={{ width: viewOptions.length * (worded ? 144 : 52) }}>
+      {viewsControl}
+    </div>
+  );
+  const hillButton = labOn && bar.hill !== null && (
+    <Button variant="ghost" size="lg" className="relative size-11 px-0" aria-label={t("hill.title")} onClick={() => nav.down(hillPath(data.scope))}>
+      <Icon name={bar.hillNow ? "hill-now" : "hill"} className={cn("size-5", bar.hillNow && "text-status-working")} />
+      {bar.hill > 0 && (
+        <span aria-hidden className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-sm bg-status-blocked px-1 text-[10px] font-semibold text-white">
+          {bar.hill}
+        </span>
+      )}
+    </Button>
+  );
+  const sheet = lab === 3;
+  const scrollBody = (node: ReactNode) =>
+    sheet ? (
+      <div data-slot="lab-sheet" className={cn("mx-auto flex w-full flex-1 flex-col border-x bg-background", NAV_EDGE)} style={{ maxWidth: columnWidth + 2 }}>
+        {node}
+      </div>
+    ) : (
+      node
+    );
   return (
-    <div className={wide ? "mx-auto flex min-h-0 w-full flex-1 flex-col" : "mx-auto flex min-h-0 w-full max-w-screen-sm flex-1 flex-col"}>
+    <div className={wide ? cn("mx-auto flex min-h-0 w-full flex-1 flex-col", sheet && "bg-surface-recess") : "mx-auto flex min-h-0 w-full max-w-screen-sm flex-1 flex-col"}>
       {/* The dashboard header: wordmark + the session switcher (dashboard-only), then the shared pill
           and the Settings gear. The switcher self-hides on a single-session install. */}
       <RouteHeader
         wordmark
         width={wide ? columnWidth : "column"}
+        span={labOn}
         rightLead={
           <>
+            {lab === 3 && viewsBox && <div className="mr-2 flex items-center">{viewsBox}</div>}
+            {hillButton}
             {/* Host first, then session — outer dimension first, and the two are deliberately
                 different shapes (bordered server pill vs filled layers capsule) so a glance can tell
                 "change machine" from "change session on this machine". Both self-hide. */}
@@ -428,25 +501,30 @@ export function HomeRoute() {
           </>
         }
         rightTrail={<SettingsGear scope={data.scope} />}
-      />
+      >
+        {lab === 1 && viewsBox && <div className="ml-4 flex items-center">{viewsBox}</div>}
+        {lab === 2 && viewsBox && <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">{viewsBox}</div>}
+      </RouteHeader>
 
       {/* Content region below the header: a viewport-clipped internal scroller. `relative` is
           load-bearing: it makes this scroller the containing block for its absolutely-positioned
           descendants. Tailwind's `sr-only` is `position: absolute`, so every status label in the
           list would otherwise escape this scroller's clip and grow the document's own scrollbar. */}
       <div ref={setScroller} className={cn("relative flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto", telemetry.held && "invisible")}>
+        {scrollBody(
+          <>
         {/* A notice BELOW the header is content, not viewport chrome: it is an inset box on the
             page gutter, not a full-bleed strip. Full-bleed it ran its left edge 16px outside the
             list it sat on top of — two left edges stacked, the loudest misalignment on the page. */}
         {inColumn(
           <PhoneParts on={wide}>
-            <ReadOnlyBanner device={data.device} />
+            {!(labOn && notPaired && data.error) && <ReadOnlyBanner device={data.device} />}
             {/* Once per device: the install count is on by default (M86 spec 02). Self-hides. */}
             <TelemetryNotice read={telemetry} />
           </PhoneParts>,
         )}
 
-        <main className="flex-1">
+        <main className={cn("flex-1", emptyHome && lab !== 1 && "flex flex-col justify-center")}>
           {inColumn(
             <>
           {/* THE TRICKS' TILES (the `dashboard` place, 2026-11-10): one per trick, in a strip at the top
@@ -534,7 +612,18 @@ export function HomeRoute() {
                     )
                   : undefined
               }
-              wide={gridList ? { columns } : undefined}
+              wide={
+                gridList
+                  ? {
+                      columns,
+                      tail:
+                        lab === 2 && fabOffered ? (
+                          <FabButton size="compact" label={t("home.new.label")} busy={creatingSpace || launching.size > 0} onClick={openNew} />
+                        ) : undefined,
+                    }
+                  : undefined
+              }
+              emptyLook={labOn ? (lab === 2 ? "card" : lab === 3 ? "middle" : undefined) : undefined}
             />,
             )
           )}
@@ -549,6 +638,7 @@ export function HomeRoute() {
               {/* Above Launch, so Launch keeps its place directly over the Spaces it creates into. */}
               {programsFirst && <ProgramSection programs={programs} servers={data.servers} onOpen={openProgram} />}
               <LaunchStrip open={launchOpen} onOpenChange={setLaunchOpen} scope={data.scope} />
+              {!(labOn && herdEmpty && data.workspaces.length === 0) && (
               <SpaceOverview
                 workspaces={isolateSpaces(data.workspaces, isolatedSpaces)}
                 agents={navPanes.agents}
@@ -561,6 +651,7 @@ export function HomeRoute() {
                 onOpenChange={setSpacesOpen}
                 scope={data.scope}
               />
+              )}
               {!programsFirst && <ProgramSection programs={programs} servers={data.servers} onOpen={openProgram} />}
               {/* The Tricks Space (M94 slice 03): a trick's own sessions, after the Programs, outside the
                   herd's groups and counts. Nothing when no trick has a session part. */}
@@ -573,12 +664,14 @@ export function HomeRoute() {
 
         {wide ? (
           <WideColumn width={columnWidth}>
-            <div style={{ width: SPACE_WIDTH }}>
+            <div className={cn((emptyHome || (labOn && !gridList)) && "mx-auto")} style={{ width: SPACE_WIDTH }}>
               <PhoneParts on>{footer}</PhoneParts>
             </div>
           </WideColumn>
         ) : (
           footer
+        )}
+          </>,
         )}
       </div>
 
@@ -610,11 +703,11 @@ export function HomeRoute() {
           the button's top edge, never over it. Capability, not the button's transient hides. */}
       <ToastViewport
         className={
-          tabsShown
-            ? fabOffered
+          footBar
+            ? fabFloat
               ? "bottom-[calc(3.5rem+1px+1rem+3rem)]"
               : "bottom-[calc(3.5rem+1px)]"
-            : fabOffered
+            : fabFloat
               ? "bottom-[calc(env(safe-area-inset-bottom)_+_1rem_+_3rem)]"
               : "bottom-[env(safe-area-inset-bottom)]"
         }
@@ -642,12 +735,12 @@ export function HomeRoute() {
         onPinChange={(pane) => setReveal({ rowKey: paneRowKey(pane) })}
       />
 
-      {fabOffered && !sheetOpen && !keyboardOpen && (
+      {fabFloat && !sheetOpen && !keyboardOpen && (
         <Fab
           label={t("home.new.label")}
           // The footer's 56px row and 1px rule and the safe area under it, then 16px of air.
           bottom={
-            tabsShown
+            footBar
               ? "bottom-[calc(3.5rem_+_1px_+_env(safe-area-inset-bottom)_+_1rem)]"
               : "bottom-[calc(env(safe-area-inset-bottom)_+_1rem)]"
           }

@@ -34,6 +34,7 @@ import { SectionLabel } from "@/components/ui/section-label";
 import type { BridgeStatus } from "@/lib/types";
 import type { Scope } from "@/lib/scope";
 import { Icon } from "@/components/icons/icon";
+import { NAV_EDGE } from "@/components/strip-column";
 
 /** What a route claims about the SHAPE of the shared row, as opposed to the content it portals into
  *  it. These are the three things the shell itself has to draw differently, and every one of them is
@@ -78,13 +79,15 @@ interface HeaderClaim {
   /** An agent is starting on this screen: the mark turns with most of its beads in the info colour
    *  (`CollieHome`'s `starting`). A claim, not a prop on the mark, because the shell owns the mark. */
   starting: boolean;
+  /** LAB (wide-home, `?dw`): the bar spans the window on the recess, and only its row keeps the numeric width. */
+  span: boolean;
 }
 
 // What a route gets when no route has claimed the row: the bare shell. This is the FORGOT case, and
 // it is deliberately benign rather than empty — the mark, the strip, the rule and the 60px floor are
 // all the shell's own, so a route that renders no <RouteHeader/> at all still gets a real header of
 // the right height. The one thing it cannot get wrong is the thing the operator was looking at.
-const UNCLAIMED: HeaderClaim = { wordmark: false, width: "full", override: false, hidden: false, starting: false };
+const UNCLAIMED: HeaderClaim = { wordmark: false, width: "full", override: false, hidden: false, starting: false, span: false };
 
 function sameClaim(a: HeaderClaim, b: HeaderClaim): boolean {
   return (
@@ -92,7 +95,8 @@ function sameClaim(a: HeaderClaim, b: HeaderClaim): boolean {
     a.width === b.width &&
     a.override === b.override &&
     a.hidden === b.hidden &&
-    a.starting === b.starting
+    a.starting === b.starting &&
+    a.span === b.span
   );
 }
 
@@ -325,6 +329,7 @@ export function AppHeaderHost({ bridge, error, lastSeenAt, children }: AppHeader
 
   // A claim of a number of px (the large-screen dashboard's grid), as that number; the three words give null.
   const claimedPx = claim.width === "column" || claim.width === "wide" || claim.width === "full" ? null : claim.width;
+  const spanned = dockedRow === null && claim.span;
   const header = (
     <>
       {/* A column, not a row: the sticky bar reserves the safe-area inset (see the class list), and
@@ -370,14 +375,15 @@ export function AppHeaderHost({ bridge, error, lastSeenAt, children }: AppHeader
           // reserved in the base string above. While a route has the row hidden (zen) there are no
           // two regions left to cut apart, so the edge goes transparent; nothing moves by a pixel
           // when it comes back.
-          claim.hidden ? "border-transparent" : "border-band-rule",
+          claim.hidden ? "border-transparent" : spanned ? NAV_EDGE : "border-band-rule",
+          spanned && "w-full bg-surface-recess [--accent:var(--surface-paper)] [--band-ground:var(--surface-recess)] [--chrome:var(--surface-recess)]",
           dockedRow === null && claim.width === "column" && "mx-auto w-full max-w-screen-sm",
-          dockedRow === null && claimedPx !== null && "mx-auto w-full",
+          dockedRow === null && claimedPx !== null && !spanned && "mx-auto w-full",
           dockedRow === null &&
             claim.width === "wide" &&
             "mx-auto w-full max-w-screen-md lg:max-w-screen-lg xl:max-w-screen-xl 2xl:max-w-[1400px]",
         )}
-        style={dockedRow === null && claimedPx !== null ? { maxWidth: claimedPx } : undefined}
+        style={dockedRow === null && claimedPx !== null && !spanned ? { maxWidth: claimedPx } : undefined}
       >
         {/* The row and the prerelease strip leave TOGETHER, and through `Collapse` — DESIGN.md §1's
             only sanctioned way an in-flow surface arrives or leaves, which is what makes "hide the
@@ -416,7 +422,11 @@ export function AppHeaderHost({ bridge, error, lastSeenAt, children }: AppHeader
               `py-2` would now read identically and would hand a future taller-than-44px child its 8px
               back. That is a PROPOSAL, not a change — the number is left exactly where it was measured,
               one variable at a time. */}
-          <div data-slot="header-row" className="flex min-h-15 items-center gap-2 pl-4 pr-2 py-1">
+          <div
+            data-slot="header-row"
+            className={cn("flex min-h-15 items-center gap-2 pl-4 pr-2 py-1", spanned && "relative mx-auto w-full")}
+            style={spanned && claimedPx !== null ? { maxWidth: claimedPx } : undefined}
+          >
             {!claim.override && (
               <>
                 {/* The mark is the shell's, not a slot — which is now literal rather than a promise: it
@@ -556,7 +566,7 @@ export function AppHeaderHost({ bridge, error, lastSeenAt, children }: AppHeader
                 <div
                   data-slot="header-center"
                   ref={setCenter}
-                  className="relative flex min-w-0 flex-1 items-center"
+                  className={cn("flex min-w-0 flex-1 items-center", !spanned && "relative")}
                 />
                 {/* gap-1, not gap-3: the icon buttons now carry their own 12px of padding to reach 44px,
                     so a 12px gap on top of that reads as a gulf. 4px keeps the apparent spacing between
@@ -629,6 +639,8 @@ interface RouteHeaderProps {
   /** An agent is starting on this screen (the bridge has not read its first screen yet). The mark
    *  turns at the loading pace with three beads in four in the info colour. See `HeaderClaim.starting`. */
   starting?: boolean;
+  /** LAB (wide-home): see `HeaderClaim.span`. */
+  span?: boolean;
 }
 
 /**
@@ -666,6 +678,7 @@ export function RouteHeader({
   override,
   hidden = false,
   starting = false,
+  span = false,
 }: RouteHeaderProps) {
   const slots = useContext(HeaderSlotContext);
   // Loud, not lenient. A <RouteHeader/> outside the host means a route was mounted with no header
@@ -680,9 +693,9 @@ export function RouteHeader({
   // effect, not a passive one: it lands in the same commit the portal's children do, before the
   // browser paints, so there is no frame in which the row's shape and its contents disagree.
   useLayoutEffect(() => {
-    claim(owner, { wordmark, width, override: overridden, hidden, starting });
+    claim(owner, { wordmark, width, override: overridden, hidden, starting, span });
     return () => release(owner);
-  }, [claim, release, owner, wordmark, width, overridden, hidden, starting]);
+  }, [claim, release, owner, wordmark, width, overridden, hidden, starting, span]);
 
   // The mark's tap. No deps: `onHome` is a new closure on every render and the shell reads this
   // through a ref at click time, so keeping it current costs one assignment and re-renders nothing.

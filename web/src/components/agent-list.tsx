@@ -211,7 +211,10 @@ interface AgentListProps {
    * Dashboard tab in the `expanded` width class with Large-screen layout not Off, and `columns` comes from the
    * measured width (`spaceColumns`). Absent, the list is the phone's column, byte for byte.
    */
-  wide?: { columns: number };
+  wide?: { columns: number; tail?: ReactNode };
+  /** LAB (wide-home, `?dw`): how an empty state stands on a large screen. `card` sets it on the paper in a
+   *  bordered card; `middle` drops the phone's tall padding so the route can centre it in the window. */
+  emptyLook?: "card" | "middle";
 }
 
 /** What a workspace heading's "+" needs from the route (AgentListProps.newTab). */
@@ -361,6 +364,7 @@ export function AgentList({
   filterHidden = PANE_FILTER.hidden,
   filter: filterOwn,
   wide,
+  emptyLook,
 }: AgentListProps) {
   useLocale();
   // THE FILTER'S QUERY (M97): the module store by default, so it outlives this route (a session opens by
@@ -423,6 +427,16 @@ export function AgentList({
   }, [reveal]);
   // A herd with nothing but bare shells in it is still something to show, and "No agents running."
   // is then true rather than empty — so the placeholder waits for BOTH lists to be empty.
+  // LAB (wide-home): the empty state's frame on a large screen. Nothing changes without `emptyLook`.
+  const emptyPad = emptyLook === undefined ? "py-24" : emptyLook === "middle" ? "py-6" : "py-8";
+  const labEmpty = (node: ReactNode) =>
+    emptyLook === "card" ? (
+      <div data-slot="lab-empty-card" className="mx-auto w-full max-w-md rounded-md border border-border bg-surface-paper shadow-sm">
+        {node}
+      </div>
+    ) : (
+      node
+    );
   if (agents.length === 0 && shellPanes.length === 0) {
     if (!emptyState) return null;
     // "No agents running." is a claim about the herd, and only the bridge can make it. A stale render
@@ -432,19 +446,19 @@ export function AgentList({
     if (error && notPaired) {
       // The strip above the list is the link to the pair form; this names what to run on the host
       // first. The command stays literal, never translated, as on the pair form itself.
-      return (
-        <div className="flex flex-col items-center justify-center gap-3 px-4 py-24 text-muted-foreground">
+      return labEmpty(
+        <div className={cn("flex flex-col items-center justify-center gap-3 px-4 text-muted-foreground", emptyPad)}>
           <Icon name="pairing" className="size-7" />
           <span className="text-sm font-medium text-foreground">{t("settings.devices.pair.title")}</span>
           <code className="font-mono text-[13px]">collie pair</code>
           {/* Or, with no terminal at hand, a paired phone lets this browser in (ADR 0139). */}
           <PhonePairingCard />
-        </div>
+        </div>,
       );
     }
     if (error) {
-      return (
-        <div className="flex flex-col items-center justify-center gap-3 px-4 py-24 text-muted-foreground">
+      return labEmpty(
+        <div className={cn("flex flex-col items-center justify-center gap-3 px-4 text-muted-foreground", emptyPad)}>
           <Icon name="offline" className="size-7" />
           <span className="text-sm">
             {lastSeenAt === undefined
@@ -455,7 +469,7 @@ export function AgentList({
               too. When the bridge refuses this browser before pairing, the block says pairing cannot
               fix it rather than leaving the operator to guess (ADR 0139). */}
           {refused && <PhonePairingCard />}
-        </div>
+        </div>,
       );
     }
     if (bridge === "connected" && onFirstStart !== undefined) {
@@ -480,8 +494,8 @@ export function AgentList({
         </div>
       );
     }
-    return (
-      <div className="flex flex-col items-center justify-center gap-3 px-4 py-24 text-muted-foreground">
+    return labEmpty(
+      <div className={cn("flex flex-col items-center justify-center gap-3 px-4 text-muted-foreground", emptyPad)}>
         <Icon name="empty-state" className="size-7" />
         <span className="text-sm">
           {bridge === "connected" ? t("home.empty.noAgents") : t("home.empty.waiting")}
@@ -817,6 +831,7 @@ export function AgentList({
               {switchSlot}
               {magnifier}
             </div>
+            {wide.tail}
           </div>
           {fieldSlot}
         </div>
