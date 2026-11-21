@@ -562,23 +562,30 @@ describe("AgentChat — the pane header's identity block", () => {
     expect(name + gap + placeBox).toBeLessThan(44);
   });
 
-  it("carries the WORKSPACE on line 2, never the tab crumb or the cwd", () => {
+  it("carries the WORKSPACE on the space's door, never the tab crumb or the cwd", () => {
     // The one place rule (lib/pane-name.test.ts pins the rule itself); the header now takes only the
     // `space` half of it, because the tab strip directly under the header already names the open tab.
+    // On the phone with the tab row shown the door is that row's first cell (ADR 0171), so line 2 holds no
+    // space name; with no tab row it is line 2 again (the next assertion).
     const base = fixtureAgents[0]!; // workspaceLabel "webapp", tab w1:t1, cwd /home/you/webapp
+    const bare = renderChat({ agent: base, agents: [base] }).container;
+    expect(slot(bare, "place")?.textContent).toBe("webapp");
+    cleanup();
     const tab = { tabId: "w1:t1", workspaceId: "w1", number: 1, label: "review", focused: false, paneCount: 1 };
+    const door = (c: HTMLElement) => c.querySelector('nav [data-slot="pane-identity"]')?.textContent;
     const named = renderChat({ agent: base, agents: [base], tabs: [tab] }).container;
-    expect(slot(named, "place")?.textContent).toBe("webapp");
+    expect(door(named)).toBe("webapp");
+    expect(slot(named, "place")?.textContent).toBe("");
     cleanup();
     // A named tab, a positional tab or no tab at all — the tab's title never reaches this line, only
     // the tab strip below shows it now.
     const numbered = renderChat({ agent: base, agents: [base], tabs: [{ ...tab, label: "2" }] }).container;
-    expect(slot(numbered, "place")?.textContent).toBe("webapp");
+    expect(door(numbered)).toBe("webapp");
     cleanup();
     // The path is gone from this line, even for a pane sitting away from its space root.
     const worktree = { ...base, cwd: "/home/you/webapp/worktrees/fix-42" };
     const away = renderChat({ agent: worktree, agents: [worktree], tabs: [tab] }).container;
-    expect(slot(away, "place")?.textContent).toBe("webapp");
+    expect(door(away)).toBe("webapp");
     expect(away.textContent).not.toContain("worktrees/fix-42");
   });
 
@@ -1403,15 +1410,16 @@ describe("AgentChat — status rides the header title slot, not the tab strip", 
   it("shows a live status in place of the title, and the tab strip's + stays usable", () => {
     renderChat({ tabs: fixtureTabs });
 
-    // The title is showing, no status yet. Line 2 now names the workspace alone — the tab crumb
-    // left this line for the tab strip under the header.
-    expect(screen.getByText("webapp")).toBeInTheDocument();
+    // No status yet: line 2 holds no space name on the phone, whose tab row carries the space's door (ADR 0171).
+    const place = () => document.querySelector('[data-slot="pane-place"]')!;
+    expect(place().textContent).toBe("");
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
 
     act(() => setStatus("Sent", "success"));
 
-    // The title's own text is gone from the header slot — the status replaced it in place.
-    expect(screen.queryByText("webapp")).not.toBeInTheDocument();
+    // The status shows in the header, and the door keeps the space's name.
     expect(screen.getByRole("status")).toHaveTextContent("Sent");
+    expect(document.querySelector('nav [data-slot="pane-identity"]')).toHaveTextContent("webapp");
 
     // The tab strip's "+" never moved and is still enabled — the control the operator just
     // tapped to earn this exact status, on the old placement, is untouched by the swap.
@@ -1428,7 +1436,7 @@ describe("AgentChat — status rides the header title slot, not the tab strip", 
     act(() => vi.advanceTimersByTime(2500));
 
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
-    expect(screen.getByText("webapp")).toBeInTheDocument();
+    expect(document.querySelector('[data-slot="pane-place"]')?.textContent).toBe("");
   });
 });
 
@@ -5321,7 +5329,8 @@ describe("AgentChat — the focused column of a large screen's strip (ADR 0120)"
     const phone = renderChat(strips);
     expect(within(phone.container).queryByRole("navigation", { name: "Tabs" })).not.toBeNull();
     expect(within(phone.container).queryByRole("navigation", { name: "Panes" })).not.toBeNull();
-    expect(phone.container.querySelector('[data-slot="pane-place"]')?.textContent).not.toBe("");
+    // On the phone the space's name is the tab row's first cell, the door to the space (ADR 0171).
+    expect(phone.container.querySelector('nav [data-slot="pane-identity"]')?.textContent).not.toBe("");
     cleanup();
     const { container } = renderChat({ ...strips, inStrip: true });
     expect(within(container).queryByRole("navigation", { name: "Tabs" })).toBeNull();

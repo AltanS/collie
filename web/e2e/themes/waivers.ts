@@ -95,7 +95,7 @@ export const WAIVERS: readonly Waiver[] = [
   {
     id: "ring-on-tinted-ground",
     rule: "ring",
-    reason: "FINDING: `--ring` is one fixed colour per half, 3:1 only against the page: on the Belt, a filled pill, the primary button (Harbour's teal ring on its teal button 1.46) or a mid-grey ground it falls under 3:1 on one side",
+    reason: "FINDING: `--ring` is one fixed colour per half, 3:1 only against the page: on the Belt, a filled pill, the primary button (Harbour's teal ring on its teal button 1.46) or a mid-grey ground it falls under 3:1 on one side; more positions under the sticky prompt since the 44 px phone rows (ADR 0171): the message actions ring is no longer cut, and is now read on the mid-grey ground of three generated themes",
   },
   // ── States ──
   {

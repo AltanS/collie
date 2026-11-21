@@ -277,6 +277,7 @@ The rule today: [0148](./0148-a-theme-names-words-never-drawings-and-the-device-
 | [0136](./0136-a-theme-may-name-a-mark-and-every-mark-keeps-one-contract.md) | A theme may name a mark from a closed list, and every mark keeps one contract. | Superseded by 0148 |
 | [0137](./0137-a-theme-may-name-a-glyph-set-from-a-closed-list.md) | A theme may name a glyph set from a closed list, and every icon is named by its meaning. | Superseded by 0148 |
 | [0138](./0138-an-app-left-alone-draws-no-frame.md) | The mark moves while the page is visible (title and first rules reversed by amendments). | Superseded by 0148 |
+| [0171](./0171-the-tab-bar-stands-on-a-firm-edge-in-both-tab-looks.md) | The large screen's tab bar stands on `--edge-firm`, a derived line, with a 6px page band; `folder` cuts the open tab from the band, `plain` marks it with a 2px bar of ink; one type for both, and the phone's tab and pane rows are 44px. | Accepted |
 
 ### Launch, worktrees, files and changes
 
