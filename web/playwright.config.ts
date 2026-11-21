@@ -55,8 +55,10 @@ const TABLET = { width: 820, height: 1180 } as const;
  * because it never depends on a resolver. This is why the service-worker cases can live in this
  * tier at all.
  */
-const APP_PORT = 4173;
+const APP_PORT = Number(process.env.E2E_APP_PORT ?? 4173);
 const APP_BASE_URL = `http://127.0.0.1:${APP_PORT}`;
+// `E2E_APP_PORT` moves the app target off 4173 (2026-11-21). Several worktrees run this tier on one machine, and
+// `reuseExistingServer` would hand a run the OTHER worktree's `vite preview`, its bundle and not this one.
 
 /** Tier 2 lives under `e2e/live/**` and has its own config (`e2e/live/playwright.config.ts`).
  *  It needs the live dev lane, so tier 1 never collects it; `make e2e` runs tier 2. The browser leg
@@ -81,22 +83,30 @@ const SWAP_SPECS = ["**/service-worker.spec.ts", "**/update-screen.spec.ts"];
  *  no other set, so only `E2E_SET=screens` runs it. */
 const SCREENS_SPEC = "**/screens.spec.ts";
 
-/** Which specs this run collects: `swap`, `rest`, `screens`, or (unset) swap and rest. Anything else is a typo, and a
- *  typo that silently ran nothing would read as a green run. */
+/** R5 `contrast`, the screen list in every theme (`e2e/themes.spec.ts`), in no other set: only `E2E_SET=themes` runs it. */
+const THEMES_SPEC = "**/themes.spec.ts";
+
+/** Which specs this run collects: `swap`, `rest`, `screens`, `themes`, or (unset) swap and rest. Anything else is a typo,
+ *  and a typo that silently ran nothing would read as a green run. */
 const E2E_SET = process.env.E2E_SET;
-if (E2E_SET !== undefined && E2E_SET !== "" && E2E_SET !== "swap" && E2E_SET !== "rest" && E2E_SET !== "screens") {
-  throw new Error(`E2E_SET must be "swap", "rest", "screens" or unset, got "${E2E_SET}"`);
+if (E2E_SET !== undefined && E2E_SET !== "" && E2E_SET !== "swap" && E2E_SET !== "rest" && E2E_SET !== "screens" && E2E_SET !== "themes") {
+  throw new Error(`E2E_SET must be "swap", "rest", "screens", "themes" or unset, got "${E2E_SET}"`);
 }
 const RUN_SCREENS = E2E_SET === "screens";
-const RUN_SWAP = E2E_SET !== "rest" && !RUN_SCREENS;
-const RUN_REST = E2E_SET !== "swap" && !RUN_SCREENS;
+const RUN_THEMES = E2E_SET === "themes";
+const RUN_SWAP = E2E_SET !== "rest" && !RUN_SCREENS && !RUN_THEMES;
+const RUN_REST = E2E_SET !== "swap" && !RUN_SCREENS && !RUN_THEMES;
+/** The specs that run only in a set of their own. */
+const OWN_SETS = [SCREENS_SPEC, THEMES_SPEC];
 
 /** The spec selection every project shares: never the tier-2 specs, plus the set filter. */
 const SPECS = RUN_SCREENS
   ? { testIgnore: LIVE_TEST_IGNORE, testMatch: [SCREENS_SPEC] }
-  : RUN_REST
-    ? { testIgnore: RUN_SWAP ? [...LIVE_TEST_IGNORE, SCREENS_SPEC] : [...LIVE_TEST_IGNORE, SCREENS_SPEC, ...SWAP_SPECS] }
-    : { testIgnore: LIVE_TEST_IGNORE, testMatch: SWAP_SPECS };
+  : RUN_THEMES
+    ? { testIgnore: LIVE_TEST_IGNORE, testMatch: [THEMES_SPEC] }
+    : RUN_REST
+      ? { testIgnore: RUN_SWAP ? [...LIVE_TEST_IGNORE, ...OWN_SETS] : [...LIVE_TEST_IGNORE, ...OWN_SETS, ...SWAP_SPECS] }
+      : { testIgnore: LIVE_TEST_IGNORE, testMatch: SWAP_SPECS };
 
 type WebServer = Exclude<PlaywrightTestConfig["webServer"], unknown[] | undefined>;
 
@@ -162,7 +172,7 @@ export default defineConfig({
   ],
   // Each entry starts only for the set that has a client; see the note on `E2E_SET` at the top.
   webServer: [
-    ...(RUN_REST || RUN_SCREENS
+    ...(RUN_REST || RUN_SCREENS || RUN_THEMES
       ? [
         {
           // The SHIPPED bundle off disk, not `vite dev`: the service worker exists only in a real build
@@ -186,7 +196,7 @@ export default defineConfig({
         },
       ] satisfies WebServer[]
       : []),
-    // The screen list's set needs the app on 4173 and nothing else.
+    // The screen list's set and the themes set need the app on 4173 and nothing else.
     ...(RUN_REST
       ? [
         {
