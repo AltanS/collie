@@ -6,6 +6,7 @@ import { BuildStamp } from "@/components/build-stamp";
 import { Icon } from "@/components/icons/icon";
 import type { IconKey } from "@/components/icons/keys";
 import { InstallRow } from "@/components/install-control";
+import { StatusLive } from "@/components/status-area";
 import { NAV_EDGE } from "@/components/ui/nav-edge";
 import { Button, FOCUS_RING, HOVER_FILL } from "@/components/ui/button";
 import { useUpdatesStatus } from "@/components/updates-settings-card";
@@ -83,10 +84,18 @@ export function settingsSectionOf(pathname: string): string | null {
   return pathname.split("/").filter((part) => part !== "")[1] ?? null;
 }
 
-/** The route element of `settings`: only the outlet, except on the large screen. */
+/**
+ * The route element of `settings`: only the outlet, except on the large screen. Beside it on both widths the status
+ * line for a screen reader (`StatusLive`), because no part of Settings draws the status line (ADR 0168).
+ */
 export function SettingsLayout() {
   const wide = useWidthClass() === "expanded";
-  return wide ? <WideSettings /> : <Outlet />;
+  return (
+    <>
+      {wide ? <WideSettings /> : <Outlet />}
+      <StatusLive />
+    </>
+  );
 }
 
 interface ListRow {

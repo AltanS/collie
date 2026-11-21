@@ -173,12 +173,16 @@ const TRICK_SESSION: AgentView = {
   view: "lodge/ci/run",
 };
 
-async function tricksWorld(page: Page): Promise<void> {
+async function tricksWorld(page: Page, tricks: readonly WireTrickInfo[] = TRICKS): Promise<void> {
   const snapshot: SnapshotResponse = { ...fixtureSnapshot, tricksRev: 1, agents: [...fixtureSnapshot.agents, TRICK_SESSION] };
   await serveSnapshot(page, snapshot);
-  await page.route("**/api/tricks?*", (route) => json(route, { rev: 1, tricks: TRICKS, parts: TRICK_PARTS, present: TRICK_PARTS.map(partKey) }));
-  await page.route("**/api/tricks", (route) => json(route, { rev: 1, tricks: TRICKS, parts: TRICK_PARTS, present: TRICK_PARTS.map(partKey) }));
+  await page.route("**/api/tricks?*", (route) => json(route, { rev: 1, tricks, parts: TRICK_PARTS, present: TRICK_PARTS.map(partKey) }));
+  await page.route("**/api/tricks", (route) => json(route, { rev: 1, tricks, parts: TRICK_PARTS, present: TRICK_PARTS.map(partKey) }));
 }
+
+/** The tricks world with Kettle Watch switched off: its details page offers Remove (ADR 0168). */
+const KETTLE_OFF: WireTrickInfo = { ...KETTLE, on: false, state: "off" };
+const TRICKS_KETTLE_OFF = TRICKS.map((trick) => (trick.id === "kettle" ? KETTLE_OFF : trick));
 
 // ── The accounts world, the durable conversations and the machine pages ──────────────────────────────────────────
 async function accountsWorld(page: Page): Promise<void> {
@@ -414,6 +418,21 @@ export const SETUPS = {
     await installApiStub(page);
     await tricksWorld(page);
     await visit(page, screen);
+  },
+  /** A trick that is off: its details page scrolled to its last section, Remove (ADR 0168). */
+  trickRemove: async (page, screen) => {
+    await installApiStub(page);
+    await tricksWorld(page, TRICKS_KETTLE_OFF);
+    await visit(page, screen);
+    await page.locator('[data-section="remove"]').scrollIntoViewIfNeeded();
+  },
+  /** The same, with the Remove confirm open. */
+  trickRemoveConfirm: async (page, screen) => {
+    await installApiStub(page);
+    await tricksWorld(page, TRICKS_KETTLE_OFF);
+    await visit(page, screen);
+    await page.locator('[data-section="remove"]').getByRole("button", { name: en["settings.tricks.remove.button"] }).click();
+    await dialogShown(page);
   },
   /** The decision a card of Collie's own asks about. */
   hillCard: async (page, screen) => {

@@ -4,7 +4,8 @@ import tailwindcss from "@tailwindcss/vite";
 import { VitePWA } from "vite-plugin-pwa";
 import { execSync } from "node:child_process";
 import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { createRequire } from "node:module";
+import { dirname, resolve } from "node:path";
 import {
   channelFor,
   includeAssetsFor,
@@ -234,6 +235,24 @@ function chunkFolder(ids: readonly string[]): string {
   return "assets";
 }
 
+// THE BUILD TAKES REACT ROUTER'S PRODUCTION FILES. Its package exports map names only
+// `dist/development/` for every condition, so a plain import bundles the development build. The
+// production twin beside it differs by one flag, `ENABLE_DEV_WARNINGS = false`, which lets the minifier
+// drop the console warnings the development build carries. Build only: `vite dev` keeps the warnings.
+// Found through the package's own `package.json` export, so a hoisted install resolves it too.
+const REACT_ROUTER_PRODUCTION = resolve(
+  dirname(createRequire(import.meta.url).resolve("react-router/package.json")),
+  "dist/production/index.mjs",
+);
+const reactRouterProductionPlugin: Plugin = {
+  name: "collie-react-router-production",
+  apply: "build",
+  enforce: "pre",
+  resolveId(source) {
+    return source === "react-router" ? REACT_ROUTER_PRODUCTION : null;
+  },
+};
+
 // ADR 0052: ONE BUILD SERVES ANY MOUNT. The shell (index.html) is built ROOT-ABSOLUTE, every
 // reference `/…`, and the bridge resolves it to the mount it was started with when it serves the
 // file (bridge/server.ts, `mountIndexHtml`); at the root it is served as it lies on disk. Inside the
@@ -279,6 +298,7 @@ export default defineConfig({
   },
   define: { __BUILD_INFO__: JSON.stringify(BUILD_INFO) },
   plugins: [
+    reactRouterProductionPlugin,
     react(),
     glyphSetsPlugin(import.meta.dirname),
     tailwindcss(),
@@ -367,8 +387,8 @@ export default defineConfig({
         // every install for glyphs most herds never paint. src/sw.ts caches them on first use.
         globPatterns: ["**/*.{js,css,html,svg,png,ico,webmanifest}"],
         // The main chunk must stay in the precache (M46 offline reading), and Workbox refuses to
-        // build past its 2 MiB default. See PRECACHE_MAX_FILE_BYTES in vite-icons.ts for the size
-        // history and for what to do before raising it again.
+        // build past its 2 MiB default. ADR 0169 holds the size
+        // history and what to do before raising it again.
         maximumFileSizeToCacheInBytes: PRECACHE_MAX_FILE_BYTES,
         // A release build's precache must not carry the dev channel's icons, and neither build
         // may carry the playground's — see vite-icons.ts's precacheIgnoresFor. Without this, a

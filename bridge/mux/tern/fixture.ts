@@ -82,8 +82,8 @@ export class FakeTern implements TernExec {
       id: 101,
       tabId: 11,
       sessionId: 1,
-      title: "π - denis",
-      cwd: "/home/denis",
+      title: "π - casey",
+      cwd: "/home/casey",
       program: "/bin/zsh",
       args: ["-l"],
       focused: true,
@@ -96,7 +96,7 @@ export class FakeTern implements TernExec {
       tabId: 11,
       sessionId: 1,
       title: "bash",
-      cwd: "/home/denis",
+      cwd: "/home/casey",
       program: "/bin/bash",
       args: [],
       focused: false,
@@ -109,7 +109,7 @@ export class FakeTern implements TernExec {
       tabId: 12,
       sessionId: 1,
       title: "vim",
-      cwd: "/home/denis/docs",
+      cwd: "/home/casey/docs",
       program: "vim",
       args: [],
       // Tern remembers a focused block PER TAB, so a hidden tab reports one too (measured on 0.4.5).
@@ -123,7 +123,7 @@ export class FakeTern implements TernExec {
       tabId: 21,
       sessionId: 2,
       title: "cargo build",
-      cwd: "/home/denis/work",
+      cwd: "/home/casey/work",
       program: "cargo",
       args: ["build"],
       focused: true,
@@ -280,7 +280,7 @@ export class FakeTern implements TernExec {
           paneIds: [paneId],
         };
         const cwdIdx = args.indexOf("--cwd");
-        const cwd = cwdIdx >= 0 && args[cwdIdx + 1] ? args[cwdIdx + 1] : "/home/denis";
+        const cwd = cwdIdx >= 0 && args[cwdIdx + 1] ? args[cwdIdx + 1] : "/home/casey";
 
         const newPane: FakePane = {
           id: paneId,
@@ -310,7 +310,7 @@ export class FakeTern implements TernExec {
         const paneId = this.nextId++;
 
         const cwdIdx = args.indexOf("--cwd");
-        const cwd = cwdIdx >= 0 && args[cwdIdx + 1] ? args[cwdIdx + 1] : "/home/denis";
+        const cwd = cwdIdx >= 0 && args[cwdIdx + 1] ? args[cwdIdx + 1] : "/home/casey";
 
         const newSession: FakeSession = {
           id: sessionId,
@@ -474,7 +474,7 @@ export class FakeTern implements TernExec {
       tabId,
       sessionId: s.id,
       title: "silent",
-      cwd: "/home/denis",
+      cwd: "/home/casey",
       program: "/bin/sh",
       args: [],
       focused: true,

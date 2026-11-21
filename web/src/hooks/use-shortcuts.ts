@@ -10,8 +10,7 @@ import { markKeyboardHintDone } from "@/lib/keyboard-hint";
 import { homePath, newPath, resolveHomeScope, settingsPath } from "@/lib/nav";
 import { useOperatorShortcuts, type OperatorShortcutsWire } from "@/lib/operator-config";
 import type { Scope } from "@/lib/scope";
-import { useActionsPaletteOn } from "@/lib/actions-palette-store";
-import { ACTIONS, type ActionId } from "@/lib/shortcuts/actions";
+import { ACTIONS } from "@/lib/shortcuts/actions";
 import { buildKeymap } from "@/lib/shortcuts/keymap";
 import { hasShortcutTarget, paneKeySink, runShortcutAction, type PaneKeySink } from "@/lib/shortcuts/registry";
 import { createResolver, type Resolver } from "@/lib/shortcuts/resolve";
@@ -112,12 +111,7 @@ function handleKeyDown(event: KeyboardEvent, resolver: Resolver): void {
  */
 export function useShortcutKeyboard(routeKey: string): Keymap {
   const user = useOperatorShortcuts();
-  // The Actions palette's setting (lib/actions-palette-store.ts): off, `open_actions` holds no key and its keys run Switch pane.
-  const paletteOn = useActionsPaletteOn();
-  const keymap = useMemo(
-    () => buildKeymap({ defaults: ACTIONS, user: userBindings(user), mac: isMacPlatform(), disabled: paletteOn ? new Set<ActionId>() : new Set<ActionId>(["open_actions"]) }),
-    [user, paletteOn],
-  );
+  const keymap = useMemo(() => buildKeymap({ defaults: ACTIONS, user: userBindings(user), mac: isMacPlatform() }), [user]);
   const resolver = useMemo(() => createResolver(keymap), [keymap]);
 
   // The on-screen keyboard's state, read by `noteKeyPress` (lib/hardware-keyboard.ts): a key it makes is no proof of a hardware one.

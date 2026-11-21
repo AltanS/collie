@@ -71,7 +71,7 @@ const WIRE_PANE: PaneWire = {
   tabId: "ws-notes:research",
   agent: "durable",
   status: "blocked",
-  cwd: "/home/denis/notes/papers",
+  cwd: "/home/casey/notes/papers",
   focused: false,
   kind: "agent",
 };
@@ -87,7 +87,7 @@ describe("openAsks", () => {
         kind: "permission",
         toolCallId: "call-02-1",
         revision: 1,
-        title: "write_note wants to write /home/denis/notes/summary.txt",
+        title: "write_note wants to write /home/casey/notes/summary.txt",
         itemId: "item-02-7",
         options: [
           { id: "allow", label: "Allow once", effect: "allow" },
@@ -95,7 +95,7 @@ describe("openAsks", () => {
           { id: "deny", label: "Deny", effect: "deny" },
         ],
         reason: "The summary is the answer to your last question.",
-        tool: { name: "write_note", summary: "path=/home/denis/notes/summary.txt" },
+        tool: { name: "write_note", summary: "path=/home/casey/notes/summary.txt" },
       },
     ]);
     expect(adapter.openAsks("conv-01")).toEqual([]);

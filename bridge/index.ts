@@ -4315,8 +4315,9 @@ const tricks =
         active: () => crew.mode !== "peer" && deposed === null,
         // And says so: Settings → Tricks and `collie trick list` on such a machine name the lead that runs them.
         runsOn: tricksRunsOn,
-        // Every version the bridge approves, declines or undoes, `auto` included, leaves an audit line.
-        audit: (entry) => audit.record({ action: entry.action, detail: entry.detail }),
+        // Every version the bridge approves, declines or undoes, `auto` included, leaves an audit line; a remove
+        // names the paired device that asked (ADR 0168).
+        audit: (entry) => audit.record({ action: entry.action, device: entry.device ?? null, detail: entry.detail }),
         // A new version that waits gets its card on the Hill; the card goes when nothing waits any more.
         versions: versionCards,
         // Fault B: a trick stopped for its rights says so on the Hill too, once per trick and mismatch.
