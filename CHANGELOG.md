@@ -53,6 +53,8 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 - **The Project pictures setting says the picture also marks pushes.** Its hint in Settings, Appearance now says that the picture shows as the icon of a session's pushes too, so turning it off is clearly the way to keep Collie's icon there.
 
+- **A button shows that its menu is open.** The three dots in a pane's header, the open tab, the open Space chip and the Actions button take the blue of an open dock while their menu is open, on a phone as well as beside the button on a computer. Fold rows in Chat, Changes and Settings and a few header buttons that showed no ring under the keyboard or no change under the mouse now show both.
+
 ### Fixed
 
 - **The Belt scrolls with a mouse.** Before, a Belt with more pills than room ran under its fade on a desktop and nothing moved it, because a wheel turns up and down and the Belt scrolls sideways. Over the Belt's scrolling part, a wheel turn, a sideways swipe or Shift with the wheel now moves the pills while there is room, and at the end the page scrolls as before. The Belt also drags with the mouse, and a drag never taps the pill under it. With a mouse, an arrow button over each fade edge that still hides pills scrolls it by most of its width. A phone's touch scrolling is unchanged, and no arrow shows there.

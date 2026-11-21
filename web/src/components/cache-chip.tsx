@@ -7,6 +7,7 @@ import { cacheChipView } from "@/lib/cache-view";
 import { t } from "@/lib/i18n";
 import type { PaneCache } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { FOCUS_RING } from "@/components/ui/button";
 import { Icon } from "@/components/icons/icon";
 
 // How long this pane's prompt cache stays warm, as one small run of type.
@@ -154,7 +155,7 @@ export function CacheChip({ cache, variant = "row", onOpen, className }: CacheCh
         data-slot="cache-chip"
         onClick={onOpen}
         aria-label={`${label}, ${view.label}`}
-        className={cn(shared, "transition-opacity active:opacity-60")}
+        className={cn(shared, "rounded-sm transition-opacity hover:text-foreground active:opacity-60", FOCUS_RING)}
       >
         {body}
       </button>

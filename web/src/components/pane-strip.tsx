@@ -248,7 +248,7 @@ function PanePill({
             ? "bg-[color-mix(in_oklab,var(--tab-active)_14%,var(--background))] font-semibold text-foreground ring-1 ring-inset ring-tab-active"
             : "bg-secondary text-muted-foreground hover:bg-secondary/70"
           : active
-            ? "bg-primary text-primary-foreground"
+            ? cn("bg-primary text-primary-foreground", onTapActive !== undefined && "hover:bg-primary/90")
             : "bg-muted text-muted-foreground hover:bg-muted/70",
       )}
     >

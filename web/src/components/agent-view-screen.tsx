@@ -51,6 +51,7 @@ import type { TapState } from "@/lib/tricks/store";
 import { trickTimeText } from "@/lib/tricks/time";
 import type { TranscriptEntry } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { FOCUS_RING_INSET } from "@/components/ui/button";
 
 // AN AGENT VIEW: the third body of an agent session, beside Terminal and Chat, that the session's own
 // agent draws for a trick (lib/agent-view/wire.ts). The agent answers a request by drawing ONE screen,
@@ -328,7 +329,7 @@ function ViewRequestBubble({ text }: { text: string }) {
       role="button"
       tabIndex={0}
       aria-expanded={open}
-      className="min-w-0 cursor-pointer"
+      className={cn("min-w-0 cursor-pointer", FOCUS_RING_INSET)}
       onClick={() => setOpen((was) => !was)}
       onKeyDown={(event) => {
         if (event.key !== "Enter" && event.key !== " ") return;

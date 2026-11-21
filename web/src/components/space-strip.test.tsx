@@ -204,6 +204,21 @@ describe("SpaceStrip on a program that takes renames", () => {
     });
   });
 
+  it("the active chip says its menu is open while the sheet stands, and not after", async () => {
+    serve({ renameSpace: true });
+    render(<SpaceStrip workspaces={[ws]} agents={[]} selected="w1" onSelect={vi.fn()} onNewSpace={vi.fn()} onRenamed={vi.fn()} />);
+    const user = userEvent.setup();
+    const chip = () => screen.getByRole("button", { name: /anchorgenius/ });
+    await waitFor(async () => {
+      await user.click(chip());
+      expect(screen.getByRole("button", { name: "Rename" })).toBeInTheDocument();
+    });
+    expect(chip()).toHaveAttribute("aria-expanded", "true");
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Rename" })).toBeNull());
+    expect(chip()).toHaveAttribute("aria-expanded", "false");
+  });
+
   it("with no renameSpace declared, or no onRenamed, a tap on the active chip opens nothing", async () => {
     serve({ renameSpace: false });
     const { unmount } = render(

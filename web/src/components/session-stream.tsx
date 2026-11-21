@@ -6,7 +6,7 @@ import { ItemView, PendingTurn, ToolGroup, groupRuns, standsAlone } from "@/comp
 import { StreamBlock } from "@/components/stream-block";
 import { PromptPin } from "@/components/prompt-pin";
 import { StatusDot } from "@/components/status-badge";
-import { Button } from "@/components/ui/button";
+import { Button, FOCUS_RING } from "@/components/ui/button";
 import { QUEUED_BLOCK, QUEUED_BUTTON, QUEUED_HEAD, QUEUED_LABEL, QUEUED_TEXT } from "@/components/queued-block";
 import { ChatPending } from "@/components/chat-pending";
 import { ChatMessageList, type ChatMessageListHandle } from "@/components/ui/chat/chat-message-list";
@@ -455,7 +455,7 @@ function topBlock(el: HTMLElement): number {
 
 /** The top affordance, the same shape and the same words the mirror's own scrollback row uses. */
 const EDGE_ROW =
-  "mb-2 flex w-full items-center justify-center gap-1.5 rounded-md py-2 text-xs font-medium text-muted-foreground transition-colors active:bg-muted/50 disabled:opacity-60";
+  `mb-2 flex w-full items-center justify-center gap-1.5 rounded-md py-2 text-xs font-medium text-muted-foreground transition-colors active:bg-muted/50 disabled:opacity-60 ${FOCUS_RING} enabled:hover:bg-accent`;
 
 /** The room the top edge leaves for a prompt pin over it: the pin's fixed `h-14` (prompt-pin.tsx)
  *  plus the 4px its overlay sits down from the scrollport's top (ChatMessageList). */
