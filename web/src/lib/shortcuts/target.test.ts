@@ -16,6 +16,10 @@ describe("shortcutTarget", () => {
     expect(shortcutTarget("open_dashboard", { corner: "top-right" })).toEqual({ "data-shortcut-action": "open_dashboard" });
   });
 
+  it("can name the icon as the anchor of the cap", () => {
+    expect(shortcutTarget("open_dashboard", { icon: true })).toEqual({ "data-shortcut-action": "open_dashboard", "data-shortcut-icon": "true" });
+  });
+
   it("accepts only an id of the action table", () => {
     // @ts-expect-error not an action
     expect(shortcutTarget("make_coffee")["data-shortcut-action"]).toBe("make_coffee");

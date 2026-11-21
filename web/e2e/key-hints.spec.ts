@@ -45,11 +45,40 @@ async function anchorBox(control: Locator) {
   return control.evaluate((node) => {
     const whole = node.getBoundingClientRect();
     const glyph = node.querySelector("svg, img")?.getBoundingClientRect();
-    const hasText = (node.textContent ?? "").trim() !== "";
+    const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+    let hasText = false;
+    for (let text = walker.nextNode(); text !== null && !hasText; text = walker.nextNode()) {
+      hasText = (text.textContent ?? "").trim() !== "" && text.parentElement?.closest("svg") == null;
+    }
     const roomy = glyph !== undefined && (whole.width - glyph.width > 12 || whole.height - glyph.height > 12);
-    const r = !hasText && roomy ? glyph : whole;
-    return { x: r.left, y: r.top, width: r.width, height: r.height };
+    const icon = glyph !== undefined && !hasText && (roomy || node.getAttribute("data-shortcut-icon") === "true");
+    const r = icon ? glyph : whole;
+    return { x: r.left, y: r.top, width: r.width, height: r.height, icon };
   });
+}
+
+/**
+ * Every cap on the page against every icon: no cap's box meets the box of an icon or picture (svg, img) on the
+ * page, beyond the 2px at which a cap joins its own icon. The layer's own drawings are not icons of the page.
+ */
+async function expectNoCapOverIcon(page: Page) {
+  const covered = await page.evaluate((layerSelector) => {
+    const hints = [...document.querySelectorAll(`${layerSelector} [data-slot="shortcut-hint"]`)].map((hint) => ({ text: hint.textContent ?? "", box: hint.getBoundingClientRect() }));
+    const found: string[] = [];
+    for (const glyph of document.querySelectorAll("svg, img")) {
+      if (glyph.closest(layerSelector) !== null || glyph.closest("[aria-hidden='true']:not(button):not(a)") !== null) continue;
+      const r = glyph.getBoundingClientRect();
+      if (r.width === 0 || r.height === 0) continue;
+      const style = getComputedStyle(glyph);
+      if (style.visibility === "hidden" || style.display === "none" || style.opacity === "0") continue;
+      for (const cap of hints) {
+        const meets = cap.box.left < r.right - 2 && cap.box.right > r.left + 2 && cap.box.top < r.bottom - 2 && cap.box.bottom > r.top + 2;
+        if (meets) found.push(`cap ${cap.text} covers an icon at ${Math.round(r.left)},${Math.round(r.top)} ${Math.round(r.width)}x${Math.round(r.height)}`);
+      }
+    }
+    return found;
+  }, LAYER);
+  expect(covered).toEqual([]);
 }
 
 /**
@@ -92,12 +121,12 @@ async function expectNoCapOverText(page: Page) {
 }
 
 /**
- * The cap of `action` that sits on `control`: it overlaps the control's box, reaches the control's top right
- * corner (within a cap's reach, since a corner at the window's edge pushes the cap in), and lies wholly inside
- * the window. Returns the key it shows.
+ * The cap of `action` that belongs to `control`, and the key it shows. A cap on an icon lies outside the icon and
+ * touches it (within 3px); a cap on a control's box reaches the box's top right corner (within a cap's reach, since
+ * a corner at the window's edge pushes the cap in). Either way it lies wholly inside the window.
  */
 async function capOn(page: Page, action: string, control: Locator): Promise<string> {
-  const box = (await anchorBox(control))!;
+  const anchor = (await anchorBox(control))!;
   const view = page.viewportSize()!;
   const all = await caps(page, action).evaluateAll((nodes) =>
     nodes.map((node) => {
@@ -105,17 +134,26 @@ async function capOn(page: Page, action: string, control: Locator): Promise<stri
       return { left: r.left, top: r.top, right: r.right, bottom: r.bottom, text: node.textContent ?? "" };
     }),
   );
-  const on = all.filter((cap) => {
-    const overlaps = cap.left < box.x + box.width && cap.right > box.x && cap.top < box.y + box.height && cap.bottom > box.y;
-    const nearCorner = Math.abs((cap.left + cap.right) / 2 - (box.x + box.width)) <= 12 && Math.abs((cap.top + cap.bottom) / 2 - box.y) <= 14;
+  const near = all.filter((cap) => {
+    if (anchor.icon) {
+      const gapX = Math.max(anchor.x - cap.right, cap.left - (anchor.x + anchor.width), 0);
+      const gapY = Math.max(anchor.y - cap.bottom, cap.top - (anchor.y + anchor.height), 0);
+      return gapX <= 3 && gapY <= 3;
+    }
+    const overlaps = cap.left < anchor.x + anchor.width && cap.right > anchor.x && cap.top < anchor.y + anchor.height && cap.bottom > anchor.y;
+    const nearCorner = Math.abs((cap.left + cap.right) / 2 - (anchor.x + anchor.width)) <= 12 && Math.abs((cap.top + cap.bottom) / 2 - anchor.y) <= 14;
     return overlaps && nearCorner;
   });
-  expect(on, `a ${action} cap on the control`).toHaveLength(1);
-  const [cap] = on;
+  expect(near, `a ${action} cap on the control`).toHaveLength(1);
+  const [cap] = near;
   expect(cap!.left).toBeGreaterThanOrEqual(0);
   expect(cap!.top).toBeGreaterThanOrEqual(0);
   expect(cap!.right).toBeLessThanOrEqual(view.width);
   expect(cap!.bottom).toBeLessThanOrEqual(view.height);
+  if (anchor.icon) {
+    const inside = cap.left < anchor.x + anchor.width - 2 && cap.right > anchor.x + 2 && cap.top < anchor.y + anchor.height - 2 && cap.bottom > anchor.y + 2;
+    expect(inside, `the ${action} cap covers its own icon`).toBe(false);
+  }
   return cap!.text;
 }
 
@@ -141,6 +179,7 @@ test("the prefix puts the key of the Actions button, the pane menu's dots and th
   await expect(caps(page, "previous_space")).toHaveCount(0);
   expect(await capOn(page, "next_space", page.getByRole("button", { name: en["wide.space.next"], exact: true }))).toBe("j");
   await expectNoCapOverText(page);
+  await expectNoCapOverIcon(page);
 });
 
 test("the mark's cap sits on its top left corner and covers no letter of the wordmark", async ({ page }, testInfo) => {
@@ -159,10 +198,10 @@ test("the mark's cap sits on its top left corner and covers no letter of the wor
   expect(cap!.text).toBe("q");
   const meets = cap!.left < word.x + word.width && cap!.right > word.x && cap!.top < word.y + word.height && cap!.bottom > word.y;
   expect(meets, "the q cap meets the wordmark").toBe(false);
-  // The cap sits on the mark's own top left corner.
-  const mark = (await page.locator('[data-slot="sidebar-mark"] button').boundingBox())!;
-  expect(Math.abs((cap!.left + cap!.right) / 2 - mark.x)).toBeLessThanOrEqual(14);
+  // The cap touches the mark's icon and covers none of it.
+  expect(await capOn(page, "open_dashboard", page.locator('[data-slot="sidebar-mark"] button'))).toBe("q");
   await expectNoCapOverText(page);
+  await expectNoCapOverIcon(page);
 });
 
 test("a numbered cap sits on each tab, and a tab scrolled out of its strip shows none", async ({ page }, testInfo) => {
@@ -238,6 +277,7 @@ test("a row of two panes hints the focused pane's remove control only", async ({
   await expect(caps(page, "new_tab")).toHaveCount(1);
   expect(await capOn(page, "pane_menu", page.locator("section[data-focused]").getByRole("button", { name: en["chat.paneMenu.aria"], exact: true }))).toBe("m");
   await expectNoCapOverText(page);
+  await expectNoCapOverIcon(page);
 });
 
 test("with the sidebar folded the rail's controls wear their keys", async ({ page }, testInfo) => {
@@ -249,6 +289,7 @@ test("with the sidebar folded the rail's controls wear their keys", async ({ pag
   expect(await capOn(page, "toggle_sidebar", page.locator('[data-slot="sidebar-toggle"]'))).toBe("b");
   expect(await capOn(page, "new_space", page.locator('[data-slot="new-space"]'))).toBe("\u21e7N");
   await expectNoCapOverText(page);
+  await expectNoCapOverIcon(page);
 });
 
 test("with the Actions palette off the Actions button's cap is the pane list's key", async ({ page }, testInfo) => {
@@ -278,6 +319,7 @@ test("the dashboard hints the Actions button and the gear, and says the pane key
   await expect(caps(page, "pane_menu")).toHaveCount(0);
   await expect(caps(page, "new_tab")).toHaveCount(0);
   await expectNoCapOverText(page);
+  await expectNoCapOverIcon(page);
   // The pane key does nothing here, and the bar says so.
   await page.keyboard.press("m");
   await expect(page.getByText(en["shortcuts.bar.notHere"])).toBeVisible();

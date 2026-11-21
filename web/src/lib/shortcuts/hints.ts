@@ -14,7 +14,7 @@
 import { ACTIONS, type ActionId } from "./actions";
 import { chordKeycaps } from "./parse";
 import { isShortcutActionAvailable } from "./registry";
-import { TARGET_ATTRIBUTE, TARGET_CORNER_ATTRIBUTE, TARGET_INDEX_ATTRIBUTE, type HintCorner } from "./target";
+import { TARGET_ATTRIBUTE, TARGET_CORNER_ATTRIBUTE, TARGET_ICON_ATTRIBUTE, TARGET_INDEX_ATTRIBUTE, type HintCorner } from "./target";
 import type { Keymap } from "./types";
 
 /** A rectangle by its four edges, in viewport pixels. */
@@ -69,9 +69,18 @@ export interface PlaceInput {
   readonly glyph?: Box | null;
   /** The control draws words of its own. Then the cap goes on its box, never on a glyph among its letters. */
   readonly hasText?: boolean;
-  /** The corner of the anchor the cap's centre goes on. Default the top right. */
+  /** The control names its icon as the anchor, whatever the box around it measures (the mark). */
+  readonly icon?: boolean;
+  /** The side the cap goes on: the top right by default, the top left for a control with a label at its right. */
   readonly corner?: HintCorner;
+  /** The boxes of texts that a cap must not cover: the control's own and its neighbours'. Used for the icon case. */
+  readonly avoid?: readonly Box[];
+  /** The caps already placed in this frame. A cap that would meet one tries its next place. */
+  readonly placed?: readonly Box[];
 }
+
+/** How far a cap overlaps its icon's corner, and how far it keeps from the icon's side, so the two read as one. */
+export const HINT_TOUCH_PX = 2;
 
 /** How much larger than its glyph a control's box must be in one direction before the cap goes on the glyph. */
 export const GLYPH_SLACK_PX = 12;
@@ -81,19 +90,46 @@ export const GLYPH_SLACK_PX = 12;
  * either direction) is looked at as its icon: a 44px button around a 20px glyph, a button spread over a whole
  * row. The cap goes on that glyph's corner, not on the invisible corner of the box. Any other control is its box.
  */
-export function anchorOf(input: { box: Box; glyph?: Box | null; hasText?: boolean }): Box {
-  const { box, glyph, hasText } = input;
+export function anchorOf(input: { box: Box; glyph?: Box | null; hasText?: boolean; icon?: boolean }): Box {
+  const { box, glyph, hasText, icon } = input;
   if (hasText === true || glyph === null || glyph === undefined) return box;
+  if (icon === true) return glyph;
   const wider = box.right - box.left - (glyph.right - glyph.left) > GLYPH_SLACK_PX;
   const taller = box.bottom - box.top - (glyph.bottom - glyph.top) > GLYPH_SLACK_PX;
   return wider || taller ? glyph : box;
 }
 
+function meets(a: Box, b: Box): boolean {
+  return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+}
+
+/** The places, in order, for the cap of an icon: it lies outside the icon and touches it. */
+function iconPlaces(input: { glyph: Box; cap: Size; corner: HintCorner }): { left: number; top: number }[] {
+  const { glyph, cap, corner } = input;
+  const touch = HINT_TOUCH_PX;
+  const right = corner === "top-right";
+  const side = right ? glyph.right + touch : glyph.left - touch - cap.width;
+  const out = right ? glyph.right - touch : glyph.left - cap.width + touch;
+  return [
+    { left: out, top: glyph.top - cap.height + touch },
+    { left: side, top: glyph.top },
+    { left: out, top: glyph.bottom - touch },
+    { left: right ? glyph.left - touch - cap.width : glyph.right + touch, top: glyph.top },
+    // Straight below the icon, then straight above it, aligned to the side the cap belongs to: for an icon in a
+    // corner of the window, where the four places above have no room.
+    { left: right ? glyph.right - cap.width : glyph.left, top: glyph.bottom + touch },
+    { left: right ? glyph.right - cap.width : glyph.left, top: glyph.top - cap.height - touch },
+  ];
+}
+
 /**
- * Where the cap goes: centred on the control's top right corner, half over it, and always inside the window
- * with a margin. "none" when a person cannot see the control: it has no box, or its centre is outside the
- * window or outside what a scrolling ancestor shows of it. A control seen only in part keeps its cap on the
- * part that shows.
+ * Where the cap goes. For an icon (see `anchorOf`): outside the icon, touching it, in the first of four places
+ * that lies inside the window, misses the icon, misses every text in `avoid` and every cap already `placed`: up
+ * and aside, beside it (top aligned), below and aside, on its other side, straight below, straight above. When
+ * none fits it takes the corner place, so a hint never goes for lack of room. For any other control: centred on its top right corner (top
+ * left with `corner`), half over it. Always inside the window with a margin. "none" when a person cannot see
+ * the control: it has no box, or its centre is outside the window or outside what a scrolling ancestor shows of
+ * it. A control seen only in part keeps its cap on the part that shows.
  */
 export function placeHint(input: PlaceInput): { left: number; top: number } | "none" {
   const { box, cap, viewport, clip, corner = "top-right" } = input;
@@ -103,12 +139,21 @@ export function placeHint(input: PlaceInput): { left: number; top: number } | "n
   const bounds: Box = { left: 0, top: 0, right: viewport.width, bottom: viewport.height };
   const room = clip === null ? bounds : intersect(bounds, clip);
   if (room === null || !holds(room, { x: (box.left + box.right) / 2, y: (box.top + box.bottom) / 2 })) return "none";
-  const left = (corner === "top-left" ? shown.left : shown.right) - cap.width / 2;
-  const top = shown.top - cap.height / 2;
-  return {
+  const keep = (left: number, top: number) => ({
     left: Math.max(HINT_MARGIN_PX, Math.min(left, viewport.width - cap.width - HINT_MARGIN_PX)),
     top: Math.max(HINT_MARGIN_PX, Math.min(top, viewport.height - cap.height - HINT_MARGIN_PX)),
-  };
+  });
+  if (anchor !== box) {
+    // The icon may be overlapped by the touch distance, no more.
+    const own: Box = { left: shown.left + HINT_TOUCH_PX, top: shown.top + HINT_TOUCH_PX, right: shown.right - HINT_TOUCH_PX, bottom: shown.bottom - HINT_TOUCH_PX };
+    const free = [...(input.avoid ?? []), ...(input.placed ?? [])];
+    for (const at of iconPlaces({ glyph: shown, cap, corner })) {
+      const area: Box = { left: at.left, top: at.top, right: at.left + cap.width, bottom: at.top + cap.height };
+      const inside = area.left >= HINT_MARGIN_PX && area.top >= HINT_MARGIN_PX && area.right <= viewport.width - HINT_MARGIN_PX && area.bottom <= viewport.height - HINT_MARGIN_PX;
+      if (inside && !meets(area, own) && !free.some((other) => meets(area, other))) return at;
+    }
+  }
+  return keep((corner === "top-left" ? shown.left : shown.right) - cap.width / 2, shown.top - cap.height / 2);
 }
 
 function actionById(id: string): ActionId | undefined {
@@ -191,12 +236,60 @@ function clipOf(element: Element, view: Window): Box | null {
   return clip;
 }
 
+/** Whether the control draws words of its own. The title of an icon is no word: it is not drawn. */
+function drawsWords(element: Element): boolean {
+  const doc = element.ownerDocument;
+  const walker = doc.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+  for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
+    if ((node.textContent ?? "").trim() !== "" && node.parentElement?.closest("svg") == null) return true;
+  }
+  return false;
+}
+
 /** The box of the first icon or picture inside the control, or null when it has none or it draws nothing. */
 function glyphBox(element: Element): Box | null {
   const glyph = element.querySelector("svg, img");
   if (glyph === null) return null;
   const rect = glyph.getBoundingClientRect();
   return rect.right > rect.left && rect.bottom > rect.top ? { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom } : null;
+}
+
+/** The most text nodes one frame reads, so a long transcript cannot slow the loop that follows a scroll. */
+const TEXT_NODE_LIMIT = 4000;
+
+/**
+ * The boxes of the texts on screen, which a cap must not cover: every visible text node outside the hint layer,
+ * and every labelled drawing of letters.
+ * Read once per frame, and only when an icon needs a place.
+ */
+function textBoxes(doc: Document): Box[] {
+  const view = doc.defaultView;
+  const body = doc.body;
+  if (view === null || body === null || !("createRange" in doc)) return [];
+  const boxes: Box[] = [];
+  const range = doc.createRange();
+  // A test window lays nothing out and draws no range boxes.
+  if (!("getClientRects" in range)) return boxes;
+  const walker = doc.createTreeWalker(body, NodeFilter.SHOW_TEXT);
+  let read = 0;
+  for (let node = walker.nextNode(); node !== null && read < TEXT_NODE_LIMIT; node = walker.nextNode()) {
+    read += 1;
+    const parent = node.parentElement;
+    if (parent === null || (node.textContent ?? "").trim() === "") continue;
+    if (parent.closest("script, style, noscript, [data-slot='shortcut-hint-layer']") !== null) continue;
+    const style = view.getComputedStyle(parent);
+    if (style.visibility === "hidden" || style.display === "none" || style.opacity === "0") continue;
+    range.selectNodeContents(node);
+    for (const rect of range.getClientRects()) {
+      if (rect.width > 0 && rect.height > 0) boxes.push({ left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom });
+    }
+  }
+  // A drawing of letters, such as the wordmark, is a labelled picture, and counts as a text.
+  for (const drawing of doc.querySelectorAll("svg[role='img']")) {
+    const rect = drawing.getBoundingClientRect();
+    if (rect.width > 0 && rect.height > 0) boxes.push({ left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom });
+  }
+  return boxes;
 }
 
 /**
@@ -220,6 +313,8 @@ export function collectHints(input: { doc: Document; keymap: Keymap; viewport: S
   if (view === null) return [];
   const hints: Hint[] = [];
   const seen = new Map<string, number>();
+  const placed: Box[] = [];
+  let texts: Box[] | null = null;
   for (const element of doc.querySelectorAll(`[${TARGET_ATTRIBUTE}]`)) {
     const id = actionById(element.getAttribute(TARGET_ATTRIBUTE) ?? "");
     if (id === undefined || isInUnfocusedColumn(element)) continue;
@@ -233,14 +328,19 @@ export function collectHints(input: { doc: Document; keymap: Keymap; viewport: S
     const box: Box = { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom };
     const glyph = glyphBox(element);
     const corner = element.getAttribute(TARGET_CORNER_ATTRIBUTE) === "top-left" ? "top-left" : "top-right";
-    const hasText = (element.textContent ?? "").trim() !== "";
-    const place = placeHint({ box, cap: capSize(caps), viewport, clip: clipOf(element, view), glyph, hasText, corner });
+    const hasText = drawsWords(element);
+    const cap = capSize(caps);
+    const icon = element.getAttribute(TARGET_ICON_ATTRIBUTE) === "true";
+    const iconCase = anchorOf({ box, glyph, hasText, icon }) !== box;
+    if (iconCase) texts ??= textBoxes(doc);
+    const place = placeHint({ box, cap, viewport, clip: clipOf(element, view), glyph, hasText, icon, corner, avoid: iconCase ? (texts ?? []) : [], placed });
     if (place === "none") continue;
     const hit = doc.elementFromPoint((box.left + box.right) / 2, (box.top + box.bottom) / 2);
     if (hit === null || !element.contains(hit)) continue;
     const slot = `${id}:${index ?? ""}`;
     const ordinal = seen.get(slot) ?? 0;
     seen.set(slot, ordinal + 1);
+    placed.push({ left: place.left, top: place.top, right: place.left + cap.width, bottom: place.top + cap.height });
     hints.push({ key: `${slot}:${ordinal}`, action: id, caps, left: place.left, top: place.top });
   }
   return hints;

@@ -49,7 +49,7 @@ next. It follows the keys you set. `Esc` cancels it.
 While the prefix waits, each control shows its key. A small key cap sits on the corner of the Actions
 button, the Settings gear, the new-tab "+", each numbered tab, the three dots of the pane menu, the space
 arrows, the sidebar's fold button and the others that a key presses. On a control that is a bare icon in
-a larger box, the cap sits on the icon's corner. The cap shows the key you set, and nothing for an action
+a larger box, the cap stands beside the icon and touches it, never over the icon or a word. The cap shows the key you set, and nothing for an action
 with no key. A key with Shift shows as one cap, `⇧N`. It shows only on a control that you can see, and
 only where the key works on this screen. In a row of panes it shows on the focused pane. A sheet or the
 Actions list that is open covers the page, and then only the controls inside it show a key.
