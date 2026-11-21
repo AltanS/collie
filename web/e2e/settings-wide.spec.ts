@@ -246,13 +246,16 @@ test("shots: every section at 1440x900, and three sheets", async ({ browser }, t
       await page.goto(sheet.path);
       await page.waitForSelector('[data-slot="settings-list"] [data-settings-row]');
       await column(page).getByRole("button", { name: sheet.open, exact: true }).first().click();
-      const dialog = page.locator('[role="dialog"]').first();
-      await dialog.waitFor({ state: "visible" });
+      const head = page.locator('[data-slot="sheet-title-row"]').first();
+      await head.waitFor({ state: "visible" });
       await page.waitForTimeout(600);
-      const box = (await dialog.boundingBox())!;
-      // Centred in the window, and not glued to its foot as a bottom sheet would be.
-      expect(Math.abs(box.x + box.width / 2 - WIDTHS[0].width / 2)).toBeLessThanOrEqual(2);
-      expect(WIDTHS[0].height - (box.y + box.height)).toBeGreaterThan(8);
+      // Centred in the window, with no grab handle, and not glued to its foot as a bottom sheet would be.
+      const top = (await head.boundingBox())!;
+      const body = (await page.locator('[data-slot="sheet-body"]').first().boundingBox())!;
+      expect(Math.abs(top.x + top.width / 2 - WIDTHS[0].width / 2)).toBeLessThanOrEqual(2);
+      expect(top.y).toBeGreaterThan(8);
+      expect(WIDTHS[0].height - (body.y + body.height)).toBeGreaterThan(8);
+      await expect(page.locator('[data-slot="sheet-handle"]')).toHaveCount(0);
       await page.screenshot({ path: join(dir, `${sheet.name}.png`) });
     } finally {
       await page.context().close();
