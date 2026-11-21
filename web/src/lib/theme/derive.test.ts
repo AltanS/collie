@@ -5,6 +5,8 @@ import { describe, expect, it } from "vitest";
 import { generateThemes } from "../../../e2e/themes/generate";
 import {
   contrast,
+  formatColour,
+  rgbToLab,
   DERIVED_TOKENS,
   deriveTokens,
   distance,
@@ -19,7 +21,7 @@ import {
   type DerivedHalf,
   type Lab,
 } from "./derive";
-import { fillHalves, parseTheme, type Half, type Theme } from "./schema";
+import { fillHalves, isColour, parseTheme, type Half, type Theme } from "./schema";
 
 const read = (id: string): Theme => {
   const parsed = parseTheme(readFileSync(resolve(__dirname, `../../themes/${id}.json`), "utf8"), { maxBytes: 64 * 1024, allowReservedId: true });
@@ -149,4 +151,74 @@ describe("a ground at each end of the lightness range", () => {
       expect(brokenFloors(tokens, deriveTokens(tokens, half))).toEqual([]);
     });
   }
+});
+
+describe("one grammar, finite numbers", () => {
+  it("reads white at lightness 1 (Ottosson's coefficients, none truncated)", () => {
+    expect(Math.abs(rgbToLab([1, 1, 1])[0] - 1)).toBeLessThan(1e-6);
+  });
+
+  it("refuses what the schema refuses, and reads what it reads", () => {
+    for (const bad of ["oklch(1.2.3 0 0)", "oklch(0.5 0.1)", "#abc", "rgb(0 0 0)", "oklch(2 0 0)", "oklch(0.5 0.1 20 / 2)", "var(--x)"]) {
+      expect(isColour(bad), bad).toBe(false);
+      expect(() => parseColour(bad), bad).toThrow(/not a theme colour/u);
+    }
+    for (const good of ["#a1b2c3", "#a1b2c380", "oklch(0.5 0.1 20)", "oklch(.5 0.1 20 / 50%)", "OKLCH( 0.5 0.1 20 )"]) {
+      expect(isColour(good), good).toBe(true);
+      expect(parseColour(good, [0.5, 0, 0]).every((x) => Number.isFinite(x)), good).toBe(true);
+    }
+  });
+
+  it("refuses to write a colour that is not finite", () => {
+    expect(() => formatColour([Number.NaN, 0, 0])).toThrow(/not a finite colour/u);
+  });
+});
+
+/** A small seeded generator (mulberry32), so the fuzz is the same on every run. */
+function seeded(seed: number): () => number {
+  let a = seed;
+  return () => {
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4_294_967_296;
+  };
+}
+
+describe("a few thousand random halves", () => {
+  it("never throws, and every derived value is finite and a colour the schema accepts", () => {
+    const rand = seeded(172);
+    // SAFETY: the index is below the length of a list that is never empty.
+    const pick = <T,>(xs: readonly T[]): T => xs[Math.floor(rand() * xs.length)] as T;
+    const n = (x: number) => String(Math.round(x * 1000) / 1000);
+    const colour = (): string => {
+      const L = pick([0, 1, rand(), rand(), rand() * 0.1, 1 - rand() * 0.1]);
+      const C = pick([0, rand() * 0.05, rand() * 0.37]);
+      const H = rand() * 360;
+      const alpha = pick([undefined, undefined, undefined, rand()]);
+      if (rand() < 0.3) {
+        const byte = () => Math.floor(rand() * 256).toString(16).padStart(2, "0");
+        return `#${byte()}${byte()}${byte()}${alpha === undefined ? "" : byte()}`;
+      }
+      return alpha === undefined ? `oklch(${n(L)} ${n(C)} ${n(H)})` : `oklch(${n(L)} ${n(C)} ${n(H)} / ${n(alpha)})`;
+    };
+    const keys = ["background", "card", "foreground", "muted-foreground", "accent", "control-on", "control-on-foreground", "ring", "secondary", "muted", "surface-recess", "surface-paper"] as const;
+    let halves = 0;
+    for (let i = 0; i < 1500; i += 1) {
+      for (const half of ["light", "dark"] as const) {
+        const tokens: Half = { ...filled(COLLIE)[half] };
+        for (const key of keys) if (key === "background" || rand() < 0.7) tokens[key] = colour();
+        // The edge cases on purpose: the page as the card, the ink as the page.
+        if (i % 7 === 0) tokens.card = tokens.background;
+        if (i % 11 === 0) tokens.foreground = tokens.background;
+        if (i % 13 === 0) tokens["muted-foreground"] = tokens.background;
+        if (rand() < 0.5) delete tokens["surface-recess"];
+        if (rand() < 0.5) delete tokens["surface-paper"];
+        const out = deriveTokens(tokens, half);
+        for (const token of DERIVED_TOKENS) expect(isColour(out[token]), `${token} = ${out[token]}`).toBe(true);
+        halves += 1;
+      }
+    }
+    expect(halves).toBe(3000);
+  }, 120_000);
 });

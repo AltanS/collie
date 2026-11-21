@@ -48,7 +48,7 @@ import {
   type FilledHalves,
   type Theme,
 } from "./schema";
-import { DERIVED_TOKENS, deriveTokens } from "./derive";
+import { DERIVED_TOKENS, deriveTokens, type DerivedHalf } from "./derive";
 import { isThemeEscape, withoutThemeEscape } from "./escape";
 import { readOrigin, type ThemeOrigin } from "./origin";
 import { sameTheme } from "./registry-match";
@@ -556,8 +556,17 @@ export function applyTheme(theme: Theme, source: ThemeSource): void {
  * the two together.
  */
 function setDerived(root: HTMLElement, filled: FilledHalves): void {
-  const light = deriveTokens(filled.light, "light");
-  const dark = deriveTokens(filled.dark, "dark");
+  let light: DerivedHalf;
+  let dark: DerivedHalf;
+  // A theme never breaks the start: a derivation that throws leaves the derived tokens unset, so the stylesheet's
+  // relations hold, and the rest of the theme (its metas included) is applied as usual.
+  try {
+    light = deriveTokens(filled.light, "light");
+    dark = deriveTokens(filled.dark, "dark");
+  } catch (error) {
+    console.warn(`[theme] the derived colours are not set: ${error instanceof Error ? error.message : String(error)}`);
+    return;
+  }
   for (const token of DERIVED_TOKENS) root.style.setProperty(`--${token}`, `light-dark(${light[token]}, ${dark[token]})`);
 }
 

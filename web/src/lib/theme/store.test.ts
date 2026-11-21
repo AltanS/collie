@@ -84,6 +84,32 @@ beforeEach(() => {
   vi.restoreAllMocks();
 });
 
+describe("a derivation that fails", () => {
+  it("leaves the derived tokens unset, warns once, and applies the rest of the theme, metas included", async () => {
+    vi.doMock("./derive", async (original) => ({
+      ...(await original<typeof import("./derive")>()),
+      deriveTokens: () => {
+        throw new Error("derive: a test failure");
+      },
+    }));
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    try {
+      const { store, theme } = await boot();
+      expect(store.addImported(midnight())).toEqual({ ok: true });
+      // A sentinel in the metas: only a run that reaches the meta step writes the theme's colours over it.
+      for (const meta of document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]')) meta.content = "#010203";
+      store.setActiveTheme("midnight");
+      expect(inlineDerived().filter((t) => t !== "ring")).toEqual([]);
+      expect(inlineBase().length).toBeGreaterThan(0);
+      expect(metas()).toEqual([theme.metaColours().light, theme.metaColours().dark]);
+      expect(metas()).not.toContain("#010203");
+      expect(warn.mock.calls.filter(([m]) => String(m).includes("derived colours are not set"))).toHaveLength(1);
+    } finally {
+      vi.doUnmock("./derive");
+    }
+  });
+});
+
 describe("the default theme", () => {
   it("applies nothing: no attribute and no inline property, metas as before", async () => {
     const { store } = await boot();

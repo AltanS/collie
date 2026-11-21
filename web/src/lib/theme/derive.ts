@@ -16,7 +16,7 @@
 // Pure: no DOM, no package. `applyTheme` (store.ts) calls it for every theme it applies; Collie applies no theme and
 // keeps its stylesheet.
 
-import type { AnyThemeToken, Half } from "./schema";
+import { readColour, type AnyThemeToken, type Half } from "./schema";
 
 // ── The floors ────────────────────────────────────────────────────────────────────────────────
 
@@ -55,21 +55,8 @@ export const DERIVED_TOKENS = [
 ] as const;
 export type DerivedToken = (typeof DERIVED_TOKENS)[number];
 
-/** One half's derived tokens, each an `oklch()` value. */
-export interface DerivedHalf {
-  "surface-recess": string;
-  "surface-paper": string;
-  "state-hover-page": string;
-  "state-hover-recess": string;
-  "state-hover-paper": string;
-  "state-on-page": string;
-  "state-on-recess": string;
-  "state-on-paper": string;
-  "state-open-page": string;
-  "state-open-recess": string;
-  "state-open-paper": string;
-  ring: string;
-}
+/** One half's derived tokens, each an `oklch()` value; keyed by DERIVED_TOKENS, so a new token is one entry there. */
+export type DerivedHalf = Record<DerivedToken, string>;
 
 // ── Colour ────────────────────────────────────────────────────────────────────────────────────
 
@@ -82,9 +69,9 @@ const toGamma = (c: number): number => (c <= 0.0031308 ? 12.92 * c : 1.055 * c *
 const clamp01 = (x: number): number => Math.min(1, Math.max(0, x));
 const each = (t: Rgb, f: (x: number) => number): Rgb => [f(t[0]), f(t[1]), f(t[2])];
 
-function rgbToLab(rgb: Rgb): Lab {
+export function rgbToLab(rgb: Rgb): Lab {
   const [r, g, b] = each(rgb, toLinear);
-  const l = Math.cbrt(0.4122214708 * r + 0.5363282 * g + 0.0514459929 * b);
+  const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
   const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
   const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
   return [0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s, 1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s, 0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s];
@@ -108,44 +95,43 @@ export function painted(c: Lab): Lab {
   return rgbToLab(labToRgb(c));
 }
 
-const HEX = /^#([0-9a-f]{6})([0-9a-f]{2})?$/iu;
-const OKLCH = /^oklch\(\s*([\d.]+)\s+([\d.]+)\s+([\d.]+)\s*(?:\/\s*([\d.]+)(%?)\s*)?\)$/u;
+/** A non-finite number inside the derivation is a defect: it throws, and `applyTheme` keeps the stylesheet's relations. */
+function finite(c: Lab, what: string): Lab {
+  if (!c.every((x) => Number.isFinite(x))) throw new Error(`derive: ${what} is not a finite colour`);
+  return c;
+}
 
-/** A theme colour (`#rrggbb`, `#rrggbbaa`, `oklch(L C H)`, `oklch(L C H / A)`) as OKLab, laid over `ground` when it has alpha. */
+/**
+ * A theme colour as OKLab, laid over `ground` when it has alpha. It reads with the schema's own grammar (`readColour`:
+ * `#rrggbb`, `#rrggbbaa`, `oklch(L C H)`, `oklch(L C H / A[%])`), so it accepts exactly what a theme file may hold.
+ */
 export function parseColour(value: string, ground?: Lab): Lab {
+  const parts = readColour(value);
+  if (parts === undefined) throw new Error(`derive: not a theme colour: ${value.slice(0, 64)}`);
   let lab: Lab;
-  let alpha = 1;
-  const hex = HEX.exec(value);
-  const lch = OKLCH.exec(value);
-  if (hex !== null) {
-    const h = hex[1] ?? "000000";
-    const byte = (i: number) => Number.parseInt(h.slice(i, i + 2), 16) / 255;
-    lab = rgbToLab([byte(0), byte(2), byte(4)]);
-    if (hex[2] !== undefined) alpha = Number.parseInt(hex[2], 16) / 255;
-  } else if (lch !== null) {
-    const c = Number(lch[2]);
-    const h = (Number(lch[3]) * Math.PI) / 180;
-    lab = [Number(lch[1]), c * Math.cos(h), c * Math.sin(h)];
-    if (lch[4] !== undefined) alpha = Number(lch[4]) / (lch[5] === "%" ? 100 : 1);
-  } else {
-    throw new Error(`not a theme colour: ${value}`);
+  if (parts.form === "hex") lab = rgbToLab(parts.rgb);
+  else {
+    const h = (parts.h * Math.PI) / 180;
+    lab = [parts.l, parts.c * Math.cos(h), parts.c * Math.sin(h)];
   }
-  if (alpha >= 1 || ground === undefined) return lab;
+  finite(lab, value.slice(0, 64));
+  if (parts.alpha >= 1 || ground === undefined) return lab;
   // Alpha composites in sRGB, as the browser does.
   const top = labToRgb(lab);
   const under = labToRgb(ground);
-  const over = (i: 0 | 1 | 2) => top[i] * alpha + under[i] * (1 - alpha);
-  return rgbToLab([over(0), over(1), over(2)]);
+  const over = (i: 0 | 1 | 2) => top[i] * parts.alpha + under[i] * (1 - parts.alpha);
+  return finite(rgbToLab([over(0), over(1), over(2)]), value.slice(0, 64));
 }
 
 const places = (x: number): string => String(Math.round(x * 10_000) / 10_000);
 
 /** As `oklch(L C H)`, four places: the value written to a custom property. */
 export function formatColour(c: Lab): string {
-  const [L, a, b] = c;
+  const [L, a, b] = finite(c, "a derived value");
   const C = Math.hypot(a, b);
   const H = C < 1e-4 ? 0 : ((Math.atan2(b, a) * 180) / Math.PI + 360) % 360;
-  return `oklch(${places(L)} ${places(C)} ${places(H)})`;
+  // Lightness is written inside 0..1 (a value a hair outside is the clip's rounding), so the output passes the grammar.
+  return `oklch(${places(clamp01(L))} ${places(C)} ${places(H)})`;
 }
 
 /** Distance in OKLab, of the painted colours. */
@@ -407,19 +393,6 @@ export function deriveTokens(tokens: Half, half: Half2): DerivedHalf {
   };
   const w: Work = { half, tokens, colour, out: {} };
   for (const step of STEPS) step(w);
-  const v = (token: DerivedToken): string => formatColour(made(w, token));
-  return {
-    "surface-recess": v("surface-recess"),
-    "surface-paper": v("surface-paper"),
-    "state-hover-page": v("state-hover-page"),
-    "state-hover-recess": v("state-hover-recess"),
-    "state-hover-paper": v("state-hover-paper"),
-    "state-on-page": v("state-on-page"),
-    "state-on-recess": v("state-on-recess"),
-    "state-on-paper": v("state-on-paper"),
-    "state-open-page": v("state-open-page"),
-    "state-open-recess": v("state-open-recess"),
-    "state-open-paper": v("state-open-paper"),
-    ring: v("ring"),
-  };
+  // SAFETY: the entries are exactly DERIVED_TOKENS, each made above (`made` throws for one that is not).
+  return Object.fromEntries(DERIVED_TOKENS.map((token) => [token, formatColour(made(w, token))])) as DerivedHalf;
 }
