@@ -109,9 +109,10 @@ const COLUMN_PASSES_X = "[&_*]:overscroll-x-auto!";
 const RAIL_MARK_PX = 26;
 
 /** The mark's drawing in the open sidebar's top row, a step above the rail's; the row stays 48px (h-12)
- *  and the mark's tap box 44px (size-11). It was 36; 40 is a try. To change it back, change this line and
- *  the row's left padding in `SidebarTop` (`pl-3.5` here, `pl-3` at 36, and a `-ml-0.5` on the word). */
-const SIDEBAR_MARK_PX = 40;
+ *  and the mark's tap box 44px (size-11). 32 leaves 8px above and below it in the row, the head's step
+ *  (2026-11-21; it was 40, then 36). To change it, change this line and the row's left padding in
+ *  `SidebarTop` with it, so the drawing still starts 16px in: (44 - size) / 2 + padding = 16. */
+const SIDEBAR_MARK_PX = 32;
 
 interface WideLayoutProps {
   widthClass: "medium" | "expanded";
@@ -859,11 +860,11 @@ function SidebarTop({ open, setMark, toggle: hasToggle }: { open: boolean; setMa
     );
   }
   return (
-    // `pl-3.5`: the mark's box is 44px and its drawing SIDEBAR_MARK_PX (40), so the drawing starts
-    // 14 + 2 = 16px in, on the list's inset. The word follows the box and the gap: 2px of air + 4px gap = 6px
-    // from the drawing (the 36px drawing had 4 + 4 - 2 = 6 with a `-ml-0.5` on the word; no margin is needed now).
+    // `pl-2.5`: the mark's box is 44px and its drawing SIDEBAR_MARK_PX (32), so the drawing starts
+    // 10 + 6 = 16px in, on the list's inset, the x of every text and icon below it. The word follows the
+    // box and the gap: 6px of air + 4px gap = 10px from the drawing.
     // `wordmark-lockup`: the row is the pointer target that lights the name's suffix (index.css).
-    <div className="wordmark-lockup flex h-12 shrink-0 items-center gap-1 border-b border-rule pl-3.5 pr-1">
+    <div data-slot="sidebar-top" className="wordmark-lockup flex h-12 shrink-0 items-center gap-1 border-b border-rule pl-2.5 pr-1">
       <div ref={setMark} data-slot="sidebar-mark" className="flex size-11 shrink-0 items-center justify-center" />
       {/* The product's name outside (components/collie-wordmark.tsx, the brand's outlines): Collie in the text colour, PWA in the
           herd's three colours under a pointer. Not translated. */}
@@ -937,9 +938,9 @@ function SidebarList({ agent, paneId, scope, onSelect }: { agent: AgentView | un
         onLaunchOpenChange={dash.setLaunchOpen}
         order={dash.prefs.paneOrder}
         onOrderChange={dash.setPaneOrder}
-        className="px-2 py-2"
-        // The filter field sticks at the top of the sidebar's scroller, its rule across the sidebar.
-        filterClassName="top-0 -mx-2 px-2"
+        // No top pad: the head block (the filter and the summary row) sticks at the top of the scroller and
+        // draws its own 8px steps, its rule across the sidebar.
+        className="px-2 pt-0 pb-2"
         roomy
       />
       {sheet}
