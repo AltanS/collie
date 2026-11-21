@@ -248,7 +248,7 @@ test("the index lines take at most two lines at 390px and 360px and are never cu
     try {
       await openIn(page, "accounts", "/settings");
       await expect(page.locator("main [data-slot=list-group] > button").first()).toBeVisible();
-      await expect(row(page, "accounts")).toBeVisible();
+      await expect(page.locator("main [data-slot=list-group] > button", { hasText: en["accounts.title"] })).toBeVisible();
       const lines = await page.locator("main [data-slot=list-group] > button p").evaluateAll((els) =>
         els.map((el) => {
           const style = getComputedStyle(el);
