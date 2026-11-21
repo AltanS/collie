@@ -4,6 +4,7 @@ import type { MouseEvent as ReactMouseEvent } from "react";
 import { useRevalidator } from "react-router";
 import { useReadingReleasesKeyboard } from "@/hooks/use-reading-releases-keyboard";
 import { useKeyboardOpen } from "@/hooks/use-keyboard";
+import { useWidthClass } from "@/hooks/use-width-class";
 import { useSheetPull } from "@/hooks/use-sheet-pull";
 import { usePaneNavigation } from "@/components/pane-nav";
 import { besideOf, useNewTabOrSheet } from "@/hooks/use-new-tab-or-sheet";
@@ -959,6 +960,12 @@ export function AgentChat({
   // the inside of the folder and the mirror's rule stays as its floor.
   const tabLook = useTabLook();
   const folderJoins = tabLook === "folder" && stripsExist && !zen && !folded;
+  // THE PHONE'S ROWS (ADR 0171): at the compact width the tab row and the pane row are drawn at the 44px tap floor,
+  // and the space's door is the tab row's first cell, so the pane's name in the header is one 60px target. Only
+  // while the tab row is on screen: folded, in zen or with no row, the door stays the header's second line.
+  const widthClass = useWidthClass();
+  const phoneRows = !inStrip && widthClass === "compact";
+  const doorInRow = phoneRows && stripsExist && !zen && !folded && agent != null;
   // Fold state for the "Switch pane" sheet's two long tails, shared with the dashboard so one
   // "hide the long tail" preference means the same thing in both places.
   const dash = useDashPrefs();
@@ -2696,8 +2703,10 @@ export function AgentChat({
                   onClick={() => setDrawer("paneSettings")}
                   aria-label={t("chat.header.openPaneSettingsAria", { name })}
                   data-slot="pane-identity-name"
-                  className={cn("min-h-0 flex-1 rounded-t-lg transition-colors active:bg-muted/60", FOCUS_RING_INSET, HOVER_FILL)}
+                  className={cn("min-h-0 flex-1 rounded-t-lg transition-colors active:bg-muted/60", doorInRow && "rounded-b-lg", FOCUS_RING_INSET, HOVER_FILL)}
                 />
+                {/* On the phone with the tab row shown the door to the space is that row's first cell, not this line. */}
+                {!doorInRow && (
                 <button
                   type="button"
                   onClick={() => openSpace(agent.workspaceId)}
@@ -2719,6 +2728,7 @@ export function AgentChat({
                   data-slot="pane-identity"
                   className={cn("min-h-0 flex-1 rounded-b-lg transition-colors active:bg-muted/60", FOCUS_RING_INSET, HOVER_FILL)}
                 />
+                )}
               </div>
               )}
               {/* TWO lines with 4px between them — see the row's own note in app-header.tsx for why
@@ -2864,7 +2874,7 @@ export function AgentChat({
                     className={cn(inStrip ? "text-xs" : "text-[11px]", "min-w-0 shrink-[3] truncate leading-3 text-muted-foreground")}
                   >
                     {/* In a strip the space header names the space, so the line keeps only the pane's own. */}
-                    {headerLine ?? (inStrip ? null : <CrossfadeText text={workspace} identity={paneSpaceKey(agent)} />)}
+                    {headerLine ?? (inStrip || doorInRow ? null : <CrossfadeText text={workspace} identity={paneSpaceKey(agent)} />)}
                   </span>
                   {/* The branch the pane's folder is on, after the workspace and in the same 12px
                       line box, so the 36px block above holds with or without it. The workspace gives
@@ -3044,7 +3054,8 @@ export function AgentChat({
               >
                 {/* `pb-1` — the 4px of page the open folder tab sits on, which lives HERE rather than
                     on the mirror so that it leaves with the tabs. See `mirrorGap` above. */}
-                <div className={tabLook === "folder" ? undefined : "pb-1"}>
+                {/* With the pane row on the phone, two 44px rows with their own air, the plain look's 4px is that row's. */}
+                <div className={tabLook === "folder" || (phoneRows && tabPanes.length > 1) ? undefined : "pb-1"}>
                 {/* In-pane tab bar: the current space's tabs above the mirror — switch tab without
                     leaving the pane, or create one with +. No "All" here (you're always in a
                     specific tab). */}
@@ -3075,6 +3086,26 @@ export function AgentChat({
                     // the space has nothing left to land on. Closing any other tab just revalidates so it
                     // drops out of the strip.
                     onClosed={(tabId) => (agent?.tabId === tabId ? closeCurrentTab(tabId) : revalidator.revalidate())}
+                    // THE SPACE'S DOOR, the row's first cell on the phone (ADR 0171): the space's name and a chevron,
+                    // 44px tall, where the header's second line used to be the way to the space overview. It keeps
+                    // that button's slot and its label, the space and the pane's state, for a screen reader.
+                    leading={
+                      doorInRow ? (
+                        <button
+                          type="button"
+                          data-slot="pane-identity"
+                          onClick={() => openSpace(agent.workspaceId)}
+                          aria-label={t("chat.header.openOverviewAria", {
+                            workspace: agent.workspaceLabel,
+                            status: t("chat.header.statusAria", { label: isShell ? t("status.shellBadge") : statusLabel(shownStatus(agent)) }),
+                          })}
+                          className={cn("-ml-2 flex h-11 max-w-[40%] shrink-0 items-center gap-1 rounded-md px-2 text-[12px] font-semibold text-foreground transition-colors", FOCUS_RING_INSET, HOVER_FILL)}
+                        >
+                          <span className="min-w-0 truncate">{agent.workspaceLabel}</span>
+                          <Icon name="row-go" className="size-3.5 shrink-0 text-muted-foreground" />
+                        </button>
+                      ) : undefined
+                    }
                     // The fold's own control, pinned to the row's trailing end where it costs no height:
                     // a 28px circle centred in the 30px tab row, its hit box the row itself and no
                     // lower (the way every tab's is: a reach below the row steals taps from the content). A transparent
@@ -3088,8 +3119,9 @@ export function AgentChat({
                         aria-expanded={true}
                         aria-label={t(foldLabelKey(stripTabs.length, tabPanes.length))}
                         className={cn(
-                          TAB_ROW_SQUARE_TAP_TARGET,
-                          "flex size-7 shrink-0 items-center justify-center rounded-full border border-transparent text-muted-foreground transition-colors hover:bg-accent active:scale-95",
+                          // The phone draws it at the 44px floor, the row's whole height; a wider window keeps the 28px circle.
+                          phoneRows ? "size-11 rounded-md" : cn(TAB_ROW_SQUARE_TAP_TARGET, "size-7 rounded-full"),
+                          "flex shrink-0 items-center justify-center border border-transparent text-muted-foreground transition-colors hover:bg-accent active:scale-95",
                           FOCUS_RING,
                         )}
                       >

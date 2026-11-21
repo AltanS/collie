@@ -101,17 +101,17 @@ export function PaneMeta({ host, cache, session, onOpenCache, plainHost, full = 
           variant={onOpenCache === undefined ? "row" : "button"}
           onOpen={onOpenCache}
           fullTone={full}
-          // Reached, not drawn: 12px of line plus 2px above and 16px below is 30px. A drawn box would
+          // Reached, not drawn: 12px of line plus 2px above and 4px below is 18px. A drawn box would
           // be nearly three times the line and would set the surrounding row's height on its own.
           // The reach hangs DOWN, not both ways: the pane name's button ends 4px above this line,
           // and 16px up put the cache tap over the lower half of the name (1.17.0 review).
           className={cn(
             full ? "text-xs/3" : "text-[11px]/3",
+            // THE REACH STOPS AT THE HEADER'S EDGE (ADR 0171): 4px below the line, not 16. The 16px reached past the
+            // header into the phone's tab row and took the top 11px of New tab's 44px (measured with
+            // `elementFromPoint`, 2026-11-21); in a large screen's 54px header it reached the transcript.
             onOpenCache !== undefined &&
-              "relative before:absolute before:inset-x-0 before:-top-0.5 before:-bottom-4 before:content-['']",
-            // In a large screen's 54px header the line ends 5px above the header's edge: the reach stops at
-            // the edge, so a pointer on the transcript's first line is never a tap on the time.
-            onOpenCache !== undefined && full && "before:-bottom-1",
+              "relative before:absolute before:inset-x-0 before:-top-0.5 before:-bottom-1 before:content-['']",
           )}
         />
       </span>
