@@ -22,6 +22,12 @@ describe("sheetRows", () => {
     expect(rows.commands.map((r) => r.key)).toEqual(["row:htop"]);
   });
 
+  it("lists the person's own agents first, then installed built-ins, then those not installed (lib/new-page.ts agentsInPickOrder)", () => {
+    const review = item({ key: "row:claude --review", start: { command: "claude --review" }, group: "agents", label: "Review bot", harness: "claude", command: "claude --review", source: "added" });
+    const rows = sheetRows(state({ items: [CODEX_OFF, CLAUDE, review, SHELL] }), undefined);
+    expect(rows.agents.map((r) => r.key)).toEqual(["row:claude --review", "harness:claude", "harness:codex"]);
+  });
+
   it("lists nothing before the answer for that machine is in", () => {
     expect(sheetRows(state({ loadedFor: null }), undefined)).toEqual({ agents: [], commands: [] });
     expect(sheetRows(state(), { host: "workshop" })).toEqual({ agents: [], commands: [] });

@@ -127,6 +127,8 @@ export interface OfferItem {
   unavailable: Unavailable | null;
   /** A starter a durable program offers (ADR 0102): it takes no folder and no text. Absent on every other item. */
   program?: true;
+  /** The person's own agent: a row of the machine's `launchers.toml` or one made with "Add your own". Absent on a built-in. */
+  own?: true;
 }
 
 /** The shell, which every machine can start. Its label is the page's own word (`newPage.shell`). */
@@ -229,6 +231,7 @@ function fromItem(item: LauncherItem): OfferItem {
   if (item.command !== undefined) out.command = item.command;
   if (item.cwd !== undefined) out.cwd = item.cwd;
   if (item.source === "program") out.program = true;
+  if (item.source === "operator" || item.source === "added") out.own = true;
   return out;
 }
 
@@ -355,6 +358,20 @@ export function offerFor(input: OfferInput): Offer {
  */
 export function takesFolder(what: StartWhat | null): boolean {
   return what?.kind !== "starter";
+}
+
+/**
+ * The order a person picks an agent to start in: their own agents first, in the order the machine stores them,
+ * then the built-in agents that are installed, then the built-in agents that are not, each group in the order
+ * it came in. Every list of agents to start draws through this (the New page's Agent select, the New tab
+ * sheet). It orders the drawing only: the agent New opens on is chosen from the offer's own order
+ * ({@link agentChoice}), so an own agent, which may skip permission prompts, never becomes the default by
+ * standing first.
+ */
+export function agentsInPickOrder<T extends OfferItem>(agents: readonly T[]): T[] {
+  const own = agents.filter((a) => a.own === true);
+  const builtIn = agents.filter((a) => a.own !== true);
+  return [...own, ...builtIn.filter((a) => a.unavailable === null), ...builtIn.filter((a) => a.unavailable !== null)];
 }
 
 /** The agents that can start now. */
