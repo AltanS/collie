@@ -68,6 +68,9 @@ const KEYS = new Map<string, KeyFate>([
   ["collie:theme:v1", { area: "local", prefix: false, fate: "kept", why: "preference" }],
   ["collie:design:v1", { area: "local", prefix: false, fate: "kept", why: "preference" }],
   ["collie:themes:v1", { area: "local", prefix: false, fate: "kept", why: "preference, the imported colour themes (M57)" }],
+  // The fate of the theme it was derived from (collie:design:v1 names it, collie:themes:v1 holds it), so the two never
+  // disagree after an unpair. theme-init.js uses it only for the applied theme, matched by id and the hash of its halves.
+  ["collie:derived:v1", { area: "local", prefix: false, fate: "kept", why: "cache, the derived colours of the applied theme (ADR 0172)" }],
   ["collie:key-board:v1", { area: "local", prefix: false, fate: "kept", why: "preference, this phone's key layout" }],
   ["collie:display-prefs:v4", { area: "local", prefix: false, fate: "kept", why: "preference" }],
   ["collie:dash-prefs:v1", { area: "local", prefix: false, fate: "kept", why: "preference" }],
