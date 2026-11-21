@@ -437,7 +437,7 @@ export const PLACES = {
   tabbar: {
     id: "tabbar",
     name: "Bottom bar item",
-    where: "An item in the Dashboard's bottom bar, after the Hill.",
+    where: "An item in the Dashboard's bottom bar, after the Hill. On a large screen there is no bar: the item stands after the views, in the control of the Dashboard's header.",
     shows: "One item: an icon over a short name, with a `badge` and a `tone`. It takes no view.",
     tap: "A tap opens the trick's Page when it has one. Without a Page the item is drawn and takes no tap.",
     limits: [
