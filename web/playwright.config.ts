@@ -75,9 +75,9 @@ const WEBKIT =
     ? false
     : Boolean(process.env.CI) || process.env.COLLIE_E2E_WEBKIT === "1";
 
-/** The two specs that deploy bundles under a running browser, through the lock in
- *  `e2e/fixtures/builds.ts`. Both use `SWAP_BASE_URL` (4174) and no other server. */
-const SWAP_SPECS = ["**/service-worker.spec.ts", "**/update-screen.spec.ts"];
+/** The specs that deploy bundles under a running browser, through the lock in
+ *  `e2e/fixtures/builds.ts`. All use `SWAP_BASE_URL` (4174) and no other server. */
+const SWAP_SPECS = ["**/service-worker.spec.ts", "**/update-screen.spec.ts", "**/swap-lazy-screen.spec.ts"];
 
 /** The screen list's own spec (`e2e/screens.spec.ts`): one page per entry of `e2e/screens/list.ts`. It is in
  *  no other set, so only `E2E_SET=screens` runs it. */
