@@ -327,7 +327,9 @@ function isoOf(value: JsonValue | undefined): string {
  * not a content read. The manifest is not trusted for identity — the folder name is.
  */
 export class McodeTranscriptSource implements TranscriptSource {
-  private readonly pathCache = new Map<string, string>();
+  // The root travels with the cached path, as in every other source: a cache hit is re-checked
+  // against the root that built it, never against a root guessed from the path itself.
+  private readonly pathCache = new Map<string, { path: string; root: string }>();
 
   private readonly roots: string[];
 
@@ -351,19 +353,16 @@ export class McodeTranscriptSource implements TranscriptSource {
     const sessionId = ref.value;
     const cached = this.pathCache.get(sessionId);
     if (cached !== undefined) {
-      // The cache memoises the scan, not the containment verdict: `exists` follows a symlink, so a
-      // file replaced by an outward link after the first resolve would otherwise be served.
-      const real = await containedRealpath(cached, rootOf(cached, this.roots));
-      if (real !== null) {
-        if (real !== cached) this.pathCache.set(sessionId, real);
-        return real;
-      }
+      // The cache memoises the scan, not the containment verdict: a file replaced by an outward link
+      // after the first resolve must be refused. A root that left the config serves nothing more.
+      const real = this.roots.includes(cached.root) ? await containedRealpath(cached.path, cached.root) : null;
+      if (real !== null) return real;
       this.pathCache.delete(sessionId);
     }
     for (const root of this.roots) {
       const hit = await this.findUnder(root, sessionId);
       if (hit === null) continue;
-      this.pathCache.set(sessionId, hit);
+      this.pathCache.set(sessionId, { path: hit, root });
       return hit;
     }
     return null;
@@ -498,11 +497,6 @@ export class McodeTranscriptSource implements TranscriptSource {
 
   /** The live read, byte-counted like every harness that writes a JSONL file. */
   readSince = readSinceFile;
-}
-
-/** The root a cached path was resolved through — the one that may still contain it. */
-function rootOf(cached: string, roots: readonly string[]): string {
-  return roots.find((root) => cached.startsWith(root)) ?? cached;
 }
 
 /**
