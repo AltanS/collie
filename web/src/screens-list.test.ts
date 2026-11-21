@@ -11,7 +11,9 @@ import { NOT_A_SCREEN, SCREENS } from "../e2e/screens/list";
 /** Entries that are still the phone's column on a large screen (`wide: "column"`). Lower it when a screen gets its large-screen layout. */
 const COLUMN_CEILING = 17;
 /** Waivers of a layout rule on an entry. Lower it when a defect is fixed and its waiver goes. */
-const WAIVER_CEILING = 26;
+// 28 since ADR 0168 (2026-11-21): the two Remove states of a trick's details page carry the page's own phone-target
+// waiver (the trick switch, 44x24, and the sheet's Close, 32x32), the open items of e2e/hitbox/known.json.
+const WAIVER_CEILING = 28;
 
 /** Every path the router can match, as `router.tsx` spells them: no leading slash, "/" for the index. */
 function routePaths(routes: readonly RouteObject[], parent = ""): string[] {
