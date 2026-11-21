@@ -63,6 +63,27 @@ function grounds(page: Page, selectors: Record<string, string>): Promise<Record<
   }, selectors);
 }
 
+/**
+ * The colour the screen PAINTS at one point, read back from a screenshot: a computed style can name a colour
+ * the border never shows (a `light-dark()` around a relative colour computed fine and painted as the paper).
+ */
+async function painted(page: Page, x: number, y: number): Promise<Rgb> {
+  const png = (await page.screenshot({ clip: { x, y, width: 1, height: 1 }, animations: "disabled", caret: "hide" })).toString("base64");
+  return page.evaluate(async (src) => {
+    const img = new Image();
+    img.src = `data:image/png;base64,${src}`;
+    await img.decode();
+    const canvas = document.createElement("canvas");
+    canvas.width = 1;
+    canvas.height = 1;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
+    ctx.drawImage(img, 0, 0);
+    const d = ctx.getImageData(0, 0, 1, 1).data;
+    const rgb: Rgb = [d[0]!, d[1]!, d[2]!];
+    return rgb;
+  }, png);
+}
+
 const lin = (v: number) => {
   const c = v / 255;
   return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
@@ -103,6 +124,9 @@ for (const [scheme, theme] of [
   ["dark", "harbour"],
   ["dark", "nightwatch"],
   ["light", "daylight"],
+  ["light", "harbour"],
+  ["light", "nightwatch"],
+  ["dark", "daylight"],
 ] as const) {
   test(`the focused column is the lightest plane, inside a 3:1 frame (${scheme}${theme ? `, ${theme}` : ""})`, async ({ page }) => {
     await page.setViewportSize(VIEW);
@@ -118,6 +142,9 @@ for (const [scheme, theme] of [
     expect(L("recess")).toBeLessThanOrEqual(L("page") + 0.001);
     expect(L("paper")).toBeGreaterThan(L("page") + 0.01);
     expect(L("paper")).toBeGreaterThan(L("recess") + 0.05);
+    // In dark the paper is a small lift, half the card's step (2026-11-21: the full step, 0.12 on Collie and
+    // 0.21 on a black page, read as too bright a sheet); the frame marks the focus.
+    if (scheme === "dark") expect(L("paper") - L("page")).toBeLessThan(0.11);
     expect(L("tabs")).toBeCloseTo(L("recess"), 2);
     // The pane's own header is the paper too: the column is one sheet.
     expect(L("header")).toBeCloseTo(L("paper"), 2);
@@ -128,6 +155,11 @@ for (const [scheme, theme] of [
     expect(contrast(g["paper:edge"]!, g.paper!)).toBeGreaterThanOrEqual(3);
     expect(contrast(g["paper:edge"]!, g.page!)).toBeGreaterThanOrEqual(3);
     expect(contrast(g["paper:edge"]!, g.recess!)).toBeGreaterThanOrEqual(3);
+    // And the screen paints it: the frame's left edge, halfway down, is the colour the styles name.
+    const box = (await page.locator(FOCUSED).boundingBox())!;
+    const edge = await painted(page, Math.floor(box.x), Math.floor(box.y + box.height / 2));
+    expect(contrast(edge, g.paper!)).toBeGreaterThanOrEqual(3);
+    expect(contrast(edge, g.page!)).toBeGreaterThanOrEqual(3);
   });
 }
 

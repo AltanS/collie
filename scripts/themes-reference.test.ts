@@ -129,8 +129,8 @@ describe("every example passes the real parser", () => {
     for (const token of TOKENS) {
       // A derived token's default is the expression the stylesheet derives it with, not a colour a file holds.
       if (isDerivedThemeToken(token.token)) {
-        expect(token.light).toBe(DERIVED_THEME_TOKENS[token.token]);
-        expect(token.dark).toBe(DERIVED_THEME_TOKENS[token.token]);
+        expect(token.light).toBe(DERIVED_THEME_TOKENS[token.token].light);
+        expect(token.dark).toBe(DERIVED_THEME_TOKENS[token.token].dark);
         continue;
       }
       expect(isColour(token.light), `${token.token} light`).toBe(true);

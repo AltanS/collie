@@ -306,19 +306,21 @@ export function PaneColumnBody({
  * Each plane re-points the grounds its children already read, so the pane's own header (`bg-band-ground`),
  * its bottom block (`bg-chrome`) and the status marks backed with those grounds follow the plane, and the
  * phone, which never draws a column frame, keeps its own. On the paper the inert fill (`--muted`) is the
- * page: a run of tool steps, a code block and the reply box are set into the paper in the page's tone.
+ * page: a run of tool steps, a code block and the reply box are set into the paper in the page's tone. On
+ * the page, in dark, it is the paper (light keeps the theme's own), so those fills lean toward the focused column and never outshine it: in dark
+ * the paper is only a small lift over the page (index.css), and a theme's own `--muted` stood above it on a
+ * black page (Nightwatch), so a column without focus drew a Belt and a reply box lighter than the focus.
  *
  * Inside both planes: the Belt takes ONE tint, `--muted` at 20% over its ground, which sits between the
- * ground and the reply box (`--muted` at 40%) and so is never lighter than the paper; its brand wash is a
+ * ground and the reply box (`--muted` at 40%), both short of the other plane, so never lighter than the paper; its brand wash is a
  * phone look and is dropped here. The reading area's top rule is not drawn: the header above already
  * closes that seam (§4, "A boundary is drawn once"), 4px higher.
  */
 export const PAPER_PLANE =
   "bg-surface-paper [--band-ground:var(--surface-paper)] [--chrome:var(--surface-paper)] [--muted:var(--background)]";
-export const PAGE_PLANE = "bg-background [--band-ground:var(--background)] [--chrome:var(--background)]";
+export const PAGE_PLANE = "bg-background [--band-ground:var(--background)] [--chrome:var(--background)] dark:[--muted:var(--surface-paper)]";
 const IN_EITHER_PLANE =
   "[&_[data-slot=composer-actions]]:bg-muted/20 [&_[data-slot=belt-track]]:bg-transparent [&_[data-slot=pane-reading]]:border-t-transparent";
-
 
 /**
  * THE FOCUS FRAME: the theme's `--pane-active` mixed 65% into the page. At full strength it was the
@@ -326,8 +328,17 @@ const IN_EITHER_PLANE =
  * or the recess beside it in every shipped theme (`e2e/wide-planes.spec.ts` measures it), so the focus
  * still reads where the paper cannot show it: the Terminal view, whose mirror stays dark, and a theme whose
  * page is black.
+ *
+ * IN LIGHT THE MIX IS CLAMPED AT L 0.55. A light `--pane-active` (Nightwatch's amber, L 0.56) mixed into a
+ * near-white page came out at L 0.70, 2.0:1 against the recess, under the 3:1 rule. The clamp darkens only
+ * the frame, never the theme's own tokens, and leaves a frame already darker than 0.55 (Collie's ink) as it
+ * is. L 0.55 holds 3:1 against any light recess down to L 0.88 (`e2e/wide-planes.spec.ts` measures every
+ * bundled light half, from the painted pixels). Dark needs no clamp: the mix sits far above the page
+ * there, so `dark:` takes the plain mix. Not one `light-dark()` around both: Chromium computed that value
+ * but painted the border in the paper's colour, so the frame vanished while `getComputedStyle` said 3.6:1.
  */
-export const FOCUS_FRAME = "border-[color-mix(in_oklch,var(--pane-active)_65%,var(--background))]";
+export const FOCUS_FRAME =
+  "border-[oklch(from_color-mix(in_oklch,var(--pane-active)_65%,var(--background))_min(l,0.55)_c_h)] dark:border-[color-mix(in_oklch,var(--pane-active)_65%,var(--background))]";
 
 /**
  * The class a column's frame takes: the plane, and the 2px frame, reserved on every column and drawn on the

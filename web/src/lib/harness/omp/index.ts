@@ -126,7 +126,7 @@ import {
   stripRuleChrome,
 } from "./rule";
 import { answerEditorDraft, answerEditorPrompt, locateAnswerEditor } from "./answer-editor";
-import { decorateOmpDisplay } from "./display";
+import { decorateOmpDisplay, prepareOmpDisplay } from "./display";
 import { ompModalOnScreen } from "./modal";
 import { detectApprovalRegion } from "./approval";
 import { detectAskSelectRegion } from "./ask";
@@ -255,6 +255,7 @@ export const ompAdapter: HarnessAdapter = {
   draftIsOpaque: ompOpaqueDraft,
   agent: "omp",
   buildBlocks: ompBuildBlocks,
+  prepareDisplay: prepareOmpDisplay,
   extractStatusLines,
   extractInputDraft: (lines) => (hasComposer(lines) ? extractInputDraft(lines) : answerEditorDraft(lines)),
   // The reply path's pre-flight. Either input is a place typing belongs; their absence is exactly the

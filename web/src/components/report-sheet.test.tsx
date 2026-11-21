@@ -84,6 +84,59 @@ describe("ReportSheetView (ADR 0123)", () => {
     expect(queryByRole("switch", { name: "Include the screen" })).toBeNull();
   });
 
+  // The issue form says "If the fields below are empty, the report is still on your clipboard": the
+  // GitHub app opens the link with every field empty. So a link that fits copies the report too, and
+  // the tap still opens the link as it always did (#817, #833, #834, #835 arrived with only a title).
+  it("a link that fits: Open on GitHub also copies the whole report, and the link opens as before", async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn(async (_text: string) => {});
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+    const open = vi.spyOn(window, "open").mockReturnValue(null);
+    const seen: boolean[] = [];
+    const watch = (event: Event): void => {
+      seen.push(event.defaultPrevented);
+      event.preventDefault(); // jsdom does not navigate; keep the test page where it is
+    };
+    try {
+      const { container } = render(<ReportSheetView context={CONTEXT} contextError={null} rows={SENDS} episodes={[]} fromSettings={false} loadScreen={vi.fn()} />);
+      const link = fitLink(reportFields(base()));
+      expect(link.clipboard).toBe(false);
+      const anchor = container.querySelector<HTMLAnchorElement>('[data-slot="report-open"]')!;
+      expect(anchor.getAttribute("href")).toBe(link.url);
+      document.addEventListener("click", watch);
+      await user.click(anchor);
+      expect(writeText).toHaveBeenCalledExactlyOnceWith(reportText(reportFields(base())));
+      expect(seen).toEqual([false]);
+      expect(open).not.toHaveBeenCalled();
+    } finally {
+      document.removeEventListener("click", watch);
+      open.mockRestore();
+      Reflect.deleteProperty(navigator, "clipboard");
+    }
+  });
+
+  it("a link that fits: a copy that fails still opens the link, because the link holds the report", async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn(async () => Promise.reject(new Error("denied")));
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+    const seen: boolean[] = [];
+    const watch = (event: Event): void => {
+      seen.push(event.defaultPrevented);
+      event.preventDefault();
+    };
+    try {
+      const { container } = render(<ReportSheetView context={CONTEXT} contextError={null} rows={SENDS} episodes={[]} fromSettings={false} loadScreen={vi.fn()} />);
+      document.addEventListener("click", watch);
+      await user.click(container.querySelector<HTMLAnchorElement>('[data-slot="report-open"]')!);
+      expect(writeText).toHaveBeenCalledTimes(1);
+      expect(seen).toEqual([false]);
+      expect(container.querySelector('[data-slot="report-preview"]')).not.toBeNull();
+    } finally {
+      document.removeEventListener("click", watch);
+      Reflect.deleteProperty(navigator, "clipboard");
+    }
+  });
+
   it("says what the link left out, when the screen does not fit", async () => {
     const user = userEvent.setup();
     const long = Array.from({ length: 40 }, (_, i) => `row ${String(i)} ${"x".repeat(200)}`).join("\n");

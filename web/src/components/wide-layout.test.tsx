@@ -1060,7 +1060,7 @@ describe("the space header", () => {
     await waitFor(() => expect(router.state.location.pathname).toBe(panePath("w1:p1")));
   });
 
-  it("gives the tabs more of the row at the medium tier: a narrower title and no position text", async () => {
+  it("gives the tabs more of the row at the medium tier: a narrower title and no position text; at the expanded tier the title takes a third", async () => {
     const medium = await mount("w1:p1", 700);
     const header = q(medium.container, '[data-slot="space-header"]')!;
     expect(q(header, '[data-slot="space-title"]')?.className).toContain("max-w-[30%]");
@@ -1070,7 +1070,7 @@ describe("the space header", () => {
     cleanup();
     const expanded = await mount("w1:p1", 1200);
     const wide = q(expanded.container, '[data-slot="space-header"]')!;
-    expect(q(wide, '[data-slot="space-title"]')?.className).toContain("max-w-[45%]");
+    expect(q(wide, '[data-slot="space-title"]')?.className).toContain("max-w-1/3");
     expect(q(wide, '[data-slot="space-position"]')?.textContent).toBe("space 1 of 2");
   });
 });
