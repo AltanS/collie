@@ -338,7 +338,7 @@ const IN_EITHER_PLANE =
  * 2026-11-21 that token is a derived colour: Collie's relation is the "on" ink (`--control-on-foreground`) mixed
  * into the page in OKLab, 70% in light and 60% in dark (index.css), and `deriveTokens` (lib/theme/derive.ts) holds
  * it at 3:1 or more against the three grounds it touches, the recess or the page beside it and the paper inside
- * it, in every theme. A theme that sets its own `pane-active` gives the start colour. The old 2px frame of the ink
+ * it, in every theme. A theme that sets its own `pane-active` has it mixed the same way. The old 2px frame of the ink
  * mixed 65% into the page was a grey ring a pixel from the keyboard focus ring (`--ring`, also 2px grey), so it
  * read as a click's leftover focus; the coloured hairline does not. It carries the focus where the paper cannot:
  * the Terminal view, whose mirror stays dark, and a theme whose page is black.

@@ -540,9 +540,10 @@ may leave them out.
 | `surface-recess` | On a large screen, the ground of the sidebar and the tab strip: one step below the page. |
 | `surface-paper` | On a large screen, the ground of the pane you are working in: the lightest surface on the screen. |
 
-When a theme leaves out `pane-active` in a half, that half takes its own "on" ink (`control-on-foreground`)
-mixed into its page, 70% in light and 60% in dark. Collie keeps the frame at 3:1 or more against the grounds
-it touches, so it may move a theme's own `pane-active` lighter or darker. When it
+Collie draws `pane-active` as a quiet line: it mixes the colour into the page, 70% in light and 60% in dark.
+When a theme leaves out `pane-active` in a half, that half uses its own "on" ink (`control-on-foreground`) in
+the mix. Collie keeps the frame at 3:1 or more against the grounds it touches, so it may make the mix lighter
+or darker. When it
 leaves out `tab-active`, that half takes its own text colour, so a folder tab draws its top edge in ink.
 When it leaves out `find`, that half takes the amber of the theme Collie. A theme may set `surface-recess` and
 `surface-paper` but need not: a half that leaves them out takes its own page 0.05 darker for the recess, and for

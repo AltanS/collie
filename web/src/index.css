@@ -368,7 +368,7 @@
      "on" ink mixed into the page in OKLab, 70% in light and 60% in dark, so a quiet blue line and not a grey
      ring beside the focus ring. A DERIVED token (schema.ts DERIVED_THEME_TOKENS): the file for `collie` holds no
      value, and `deriveTokens` (lib/theme/derive.ts) holds every other theme's at 3:1 on the recess, the page and
-     the paper; a theme that sets its own `pane-active` gives the start colour. */
+     the paper; a theme that sets its own `pane-active` has it mixed the same way, in place of the "on" ink. */
   --pane-active: light-dark(color-mix(in oklab, var(--control-on-foreground) 70%, var(--background)), color-mix(in oklab, var(--control-on-foreground) 60%, var(--background)));
   /* The open folder tab's top edge and the open pane's ring (theme surface word `tabs: folder`,
      lib/tab-look.ts). Drawn only under that word. The default is the foreground ink of each half

@@ -120,6 +120,31 @@ describe("index.css holds the relations derive.ts mirrors", () => {
   }
 });
 
+describe("the pane frame (ADR 0174)", () => {
+  it("fills no pane-active from Collie, so a value that reaches deriveTokens is always the theme's own", () => {
+    expect(COLLIE.light?.["pane-active"]).toBeUndefined();
+    expect(COLLIE.dark?.["pane-active"]).toBeUndefined();
+    expect(filled(read("harbour")).light["pane-active"]).toBeUndefined();
+    expect(filled(read("nightwatch")).dark["pane-active"]).toBe(read("nightwatch").dark?.["pane-active"]);
+  });
+
+  it("mixes a theme's own pane-active into the page by the half's share, as Collie's on ink is", () => {
+    for (const half of ["light", "dark"] as const) {
+      const tokens = filled(read("nightwatch"))[half];
+      const page = parseColour(tokens.background ?? "");
+      const relation = cssMixOklab(parseColour(tokens["pane-active"] ?? "", page), page, half === "light" ? 0.7 : 0.6);
+      const d = deriveTokens(tokens, half);
+      const frame = parseColour(d["pane-active"]);
+      const worst = Math.min(...[page, parseColour(d["surface-recess"]), parseColour(d["surface-paper"])].map((g) => contrast(frame, g)));
+      expect(worst, half).toBeGreaterThanOrEqual(FRAME_FLOOR);
+      // Dark: the mix of the amber holds 3:1, so the frame is the relation itself (3.8:1, where the amber alone was
+      // 14:1). Light: 70% of the amber into a near-white page is 2.6:1 on the recess, so the floor darkens it.
+      if (half === "dark") expect(distance(frame, relation)).toBeLessThanOrEqual(REFERENCE_TOLERANCE);
+      if (half === "light") expect(frame[0]).toBeLessThan(relation[0]);
+    }
+  });
+});
+
 /** Every floor of one derived half, as the list of the ones that fail. */
 function brokenFloors(tokens: Half, d: DerivedHalf): string[] {
   const page = parseColour(tokens.background ?? "");

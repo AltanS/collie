@@ -48,7 +48,7 @@ export const PLANE_GAP = 0.025;
  * a relation): the first frame (`public/theme-init.js`) then ignores the values an older version stored. The golden
  * values in `derive.golden.test.ts` show such a change as a diff.
  */
-export const DERIVE_VERSION = 4;
+export const DERIVE_VERSION = 5;
 
 /** The planes a state fill is made for. */
 export const PLANES = ["page", "recess", "paper"] as const;
@@ -419,15 +419,18 @@ function edgeFirm(w: Work): void {
 }
 
 /**
- * THE PANE FRAME (ADR 0174): the 1px hairline around the pane you are in on a large screen. Collie's relation is
- * index.css's own `--pane-active`, the "on" ink mixed into the page in OKLab, 70% in light and 60% in dark; a theme
- * that sets its own `pane-active` starts from that colour. Floor: 3:1 against the three grounds it touches, the
- * recess (the rail at its left), the page (a column without focus at its right) and the paper inside it, pushed
- * away from the page.
+ * THE PANE FRAME (ADR 0174): the 1px hairline around the pane you are in on a large screen. The relation is
+ * index.css's own `--pane-active`: a start colour mixed into the page in OKLab, 70% in light and 60% in dark. The
+ * start is the theme's own `pane-active` when the half sets one, and the "on" ink (`control-on-foreground`) when it
+ * does not, so a theme's colour is drawn as quiet as Collie's. `filled` comes from `fillHalves` over Collie, whose
+ * file holds no `pane-active` (a derived token), so a value here is always the theme's own. Floor: 3:1 against the
+ * three grounds it touches, the recess (the rail at its left), the page (a column without focus at its right) and
+ * the paper inside it, pushed away from the page.
  */
 function paneFrame(w: Work): void {
   const page = w.colour("background");
-  const start = w.tokens["pane-active"] === undefined ? mixOklab(w.colour("control-on-foreground"), page, FRAME_SHARE[w.half]) : w.colour("pane-active");
+  const own = w.tokens["pane-active"] === undefined ? w.colour("control-on-foreground") : w.colour("pane-active");
+  const start = mixOklab(own, page, FRAME_SHARE[w.half]);
   const grounds = [page, made(w, "surface-recess"), made(w, "surface-paper")];
   const worst = (c: Lab) => Math.min(...grounds.map((g) => contrast(c, g)));
   w.out["pane-active"] = pushLightness(start, awayFrom(start, page), (c, m) => worst(c) >= FRAME_FLOOR + (m ? MARGIN.ratio : 0), worst);

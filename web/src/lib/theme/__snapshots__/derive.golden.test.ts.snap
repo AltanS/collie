@@ -34,7 +34,7 @@ exports[`the golden values of the bundled looks > collie 1`] = `
     "surface-paper": "oklch(1 0 0)",
     "surface-recess": "oklch(0.905 0.003 80.0001)",
   },
-  "version": 4,
+  "version": 5,
 }
 `;
 
@@ -72,7 +72,7 @@ exports[`the golden values of the bundled looks > daylight 1`] = `
     "surface-paper": "oklch(1 0 0)",
     "surface-recess": "oklch(0.935 0 0)",
   },
-  "version": 4,
+  "version": 5,
 }
 `;
 
@@ -110,7 +110,7 @@ exports[`the golden values of the bundled looks > harbour 1`] = `
     "surface-paper": "oklch(0.9982 0.0025 197.1164)",
     "surface-recess": "oklch(0.9 0.01 234.9999)",
   },
-  "version": 4,
+  "version": 5,
 }
 `;
 
@@ -118,7 +118,7 @@ exports[`the golden values of the bundled looks > nightwatch 1`] = `
 {
   "dark": {
     "edge-firm": "oklch(0.522 0.007 80)",
-    "pane-active": "oklch(0.88 0.06 75)",
+    "pane-active": "oklch(0.528 0.036 75)",
     "ring": "oklch(0.68 0.09 70)",
     "state-hover-page": "oklch(0.26 0.01 70)",
     "state-hover-paper": "oklch(0.26 0.01 70)",
@@ -134,7 +134,7 @@ exports[`the golden values of the bundled looks > nightwatch 1`] = `
   },
   "light": {
     "edge-firm": "oklch(0.5129 0.0166 61.3)",
-    "pane-active": "oklch(0.56 0.1 62)",
+    "pane-active": "oklch(0.5855 0.0736 62.3902)",
     "ring": "oklch(0.56 0.1 62)",
     "state-hover-page": "oklch(0.89 0.016 70)",
     "state-hover-paper": "oklch(0.89 0.016 70)",
@@ -148,6 +148,6 @@ exports[`the golden values of the bundled looks > nightwatch 1`] = `
     "surface-paper": "oklch(0.9974 0.0068 101.7459)",
     "surface-recess": "oklch(0.895 0.012 70.0001)",
   },
-  "version": 4,
+  "version": 5,
 }
 `;

@@ -38,10 +38,14 @@ to 2.66:1, and on a theme whose light half is dark it vanished (1.04:1; the them
    var(--control-on-foreground) 70%, var(--background))` in light and the same at 60% in dark. Mixed in OKLab, so
    the hue does not drift toward the page's own. `pane-active` joins `surface-recess` and `surface-paper` as a
    derived theme token: the file for `collie` holds no value, and a half that leaves it out takes the relation.
-3. **It is a derived token with a floor.** `deriveTokens` makes it after the firm edge: Collie's relation, or a
-   theme's own `pane-active` as the start, then the lightness pushed away from the page until it holds 3:1
-   against the three grounds it touches, the recess at its left, the page at its right and the paper inside.
-   `DERIVE_VERSION` is 4. The reference test holds Collie's within 0.005 of the stylesheet: the distance is 0.0000
+3. **It is a derived token with a floor.** `deriveTokens` makes it after the firm edge. The relation is a start
+   colour mixed into the page by the half's share (70% light, 60% dark, in OKLab); the start is the theme's own
+   `pane-active` when the half sets one, and `control-on-foreground` when it does not. Then the lightness is pushed
+   away from the page until it holds 3:1 against the three grounds it touches, the recess at its left, the page at
+   its right and the paper inside. A theme's own colour goes through the same mix, so the frame is as quiet in
+   every theme: Altan asked for a subtler frame than the old one. The base tokens reach `deriveTokens` filled from
+   the file for `collie`, which holds no `pane-active`, so a value there is always the theme's own.
+   `DERIVE_VERSION` is 5. The reference test holds Collie's within 0.005 of the stylesheet: the distance is 0.0000
    in both halves.
 
 ## Measured
@@ -56,11 +60,12 @@ From the painted pixels at 1440x900 (`e2e/wide-planes.spec.ts`), against the rec
 | Daylight dark | 5.33 | 5.17 | 4.74 |
 | Harbour light | 3.64 | 4.25 | 4.89 |
 | Harbour dark | 5.21 | 4.75 | 4.20 |
-| Nightwatch light | 3.48 | 4.07 | 4.73 |
-| Nightwatch dark | 14.58 | 14.58 | 14.24 |
+| Nightwatch light | 3.11 | 3.63 | 4.22 |
+| Nightwatch dark | 3.95 | 3.95 | 3.86 |
 
-No bundled half needed the floor. Nightwatch sets its own `pane-active` (amber), which is now the start as it is,
-no longer mixed 65% into the page: in dark that is its full pale amber.
+Nightwatch sets its own `pane-active` (amber); it goes through the mix. In dark the mix holds 3:1 as it is. In
+light 70% of the amber into a near-white page is under 3:1 on the recess, and the floor darkens it. No other
+bundled half needed the floor.
 
 ## Consequences
 
@@ -68,4 +73,4 @@ no longer mixed 65% into the page: in dark that is its full pale amber.
   break on the mid-grey generated theme fell with it. No held Collie state moved: R5 holds the paper beside the
   frame, never the frame's own colour.
 - The column's content starts a pixel higher (the frame is 1px where it was 2px).
-- A theme's own `pane-active` is drawn as it is when it holds the floor, where it used to be mixed 65% into the page.
+- A theme's own `pane-active` is mixed 70% (light) or 60% (dark) into the page, where it used to be mixed 65%.
