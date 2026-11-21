@@ -5,6 +5,7 @@ import { dirname } from "node:path";
 import type { JsonObject, JsonValue } from "../json.ts";
 import { asJsonBoolean, asJsonNumber, asJsonObject, asJsonString, parseJson } from "../../web/src/lib/json.ts";
 import { tricksStateDir, switchesPath } from "./paths.ts";
+import { holdStat, sameStat, statFactsOf, stillHolds, type StatFacts, type StatHeld } from "../stat-held.ts";
 
 // THE ON AND OFF SWITCH (M94 slice 01, version 3 since the approved copy). Bridge state, not a phone
 // preference, so two phones agree and an "off" trick does not run. One file,
@@ -523,7 +524,8 @@ export async function withSwitchLock<T>(stateDir: string, work: () => Promise<T>
 }
 
 /**
- * The bridge's reader: the switches behind a stat check, last read kept until the file moves.
+ * The bridge's reader: the switches behind a stat check, last read kept until the file moves, and read again
+ * while the file's modified time is within the racy window of the last read (stat-held.ts).
  *
  * Reads are TAKEN IN TURN. Two reads at once could cross: one stats the old file and is still reading it
  * when a write lands and a second read stats and reads the new one; the first then finishes last and keeps
@@ -531,30 +533,41 @@ export async function withSwitchLock<T>(stateDir: string, work: () => Promise<T>
  * (until the next write). The runner reads while an approval writes (an immediate start run after a yes),
  * so this is no longer a rare overlap. In turn, each read sees the file as it is when its turn comes.
  */
-export function createSwitchReader(stateDir: string, warn: (line: string) => void): () => Promise<Switches> {
+/** What the switch reader looks with: the clock of a read (the racy window) and the `stat`, for a test. */
+export interface SwitchLook {
+  now?: () => number;
+  stat?: (path: string) => Promise<{ size: number; mtimeMs: number; ino?: number; ctimeMs?: number }>;
+}
+
+export function createSwitchReader(stateDir: string, warn: (line: string) => void, look: SwitchLook = {}): () => Promise<Switches> {
   const path = switchesPath(stateDir);
-  let seen: string | undefined;
+  const now = look.now ?? Date.now;
+  const statOf = look.stat ?? stat;
+  // The stat of the last read (stat-held.ts), or "none" for a missing file, or undefined before the first read.
+  let seen: StatHeld | "none" | undefined;
   let current = EMPTY;
   let turn: Promise<unknown> = Promise.resolve();
   const read = async (): Promise<Switches> => {
-    let stamp: string;
+    const readAt = now();
+    let facts: StatFacts | null;
     try {
-      const st = await stat(path);
-      // The inode moves on every rename, so two writes in the same millisecond are still told apart.
-      stamp = `${String(st.mtimeMs)}:${String(st.ino)}:${String(st.size)}`;
+      // The inode moves on every rename, so two writes in the same millisecond are still told apart where the
+      // platform gives one; the racy window covers a rewrite within one timestamp tick everywhere.
+      facts = statFactsOf(await statOf(path));
     } catch {
-      stamp = "none";
+      facts = null;
     }
-    if (stamp === seen) return current;
-    if (stamp === "none") {
-      seen = stamp;
+    if (facts === null) {
+      seen = "none";
       current = EMPTY;
       return current;
     }
+    if (seen !== "none" && stillHolds(seen, facts)) return current;
     const { switches, problem } = parseSwitches(await readText(path));
-    if (problem !== null) warn(problem);
+    // A re-read of the same write (in the racy window) says a problem once, not on every look.
+    if (problem !== null && !(seen !== "none" && sameStat(seen, facts))) warn(problem);
     // Kept only after the read went through: a read that throws leaves the last good answer and asks again.
-    seen = stamp;
+    seen = holdStat(facts, readAt);
     current = switches;
     return current;
   };

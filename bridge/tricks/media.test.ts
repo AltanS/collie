@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -181,21 +181,74 @@ describe("a trick's picture versions", () => {
     expect(held.of(dir)["media/a.png"]).toBe(before);
   });
 
-  test("a file that is not read again keeps its version while its size and time hold", () => {
+  // The racy-timestamp rule (stat-held.ts): the stat is held still by a fake `lstat` (same size, modified time,
+  // inode and change time), so only the clock of the read decides. No sleep, no file system's resolution.
+  const stillStat = (at: number, reads: string[]) => (path: string) => {
+    reads.push(path);
+    const real = lstatSync(path);
+    return { isFile: () => real.isFile(), size: real.size, mode: real.mode, mtimeMs: at, ino: 7, ctimeMs: at };
+  };
+
+  test("a same-size rewrite within the racy window of the read gets the new version", () => {
     const { dir } = trick();
     const file = join(dir, "media", "a.png");
-    const held = new TrickMediaVersions();
-    // A whole second: a time in float seconds does not survive the trip through utimes exactly on NTFS (100 ns ticks).
-    const at = Math.floor(Date.now() / 1000);
+    const at = 1_000_000;
+    let clock = at + 500;
+    const held = new TrickMediaVersions({ now: () => clock, lstat: stillStat(at, []) });
     writeFileSync(file, png(64));
-    utimesSync(file, at, at);
     const first = held.of(dir)["media/a.png"];
-    // Same size and the same modified time, other bytes: the held version stands (the walk never rereads it).
     const other = png(64);
     other[40] = 7;
     writeFileSync(file, other);
-    utimesSync(file, at, at);
+    clock = at + 900;
+    expect(held.of(dir)["media/a.png"]).toBe(mediaVersionOfBytes(other));
+    expect(held.of(dir)["media/a.png"]).not.toBe(first);
+  });
+
+  test("a file read safely after its last write keeps its version while its stat holds, unread", () => {
+    const { dir } = trick();
+    const file = join(dir, "media", "a.png");
+    const at = 1_000_000;
+    const held = new TrickMediaVersions({ now: () => at + 5_000, lstat: stillStat(at, []) });
+    writeFileSync(file, png(64));
+    const first = held.of(dir)["media/a.png"];
+    // Same facts, other bytes: the read was settled, so the held version stands and the file is not read.
+    const other = png(64);
+    other[40] = 7;
+    writeFileSync(file, other);
     expect(held.of(dir)["media/a.png"]).toBe(first);
+    // A file whose inode moved (a replace by rename) is read again.
+    let ino = 8;
+    const moved = new TrickMediaVersions({ now: () => at + 5_000, lstat: (path) => ({ ...stillStat(at, [])(path), ino }) });
+    writeFileSync(file, png(64));
+    moved.of(dir);
+    writeFileSync(file, other);
+    ino = 9;
+    expect(moved.of(dir)["media/a.png"]).toBe(mediaVersionOfBytes(other));
+  });
+
+  test("the sync copies a same-size rewrite within the window, and leaves a settled file unread", () => {
+    const { dir: src } = trick();
+    const { dir: copy } = trick();
+    const file = join(src, "media", "a.png");
+    const at = 1_000_000;
+    let clock = at + 500;
+    const reads: string[] = [];
+    const sync = new TrickMediaSync({ now: () => clock, lstat: stillStat(at, reads) });
+    writeFileSync(file, png(64));
+    expect(sync.sync(src, copy)).toBe(1);
+    const other = png(64);
+    other[40] = 7;
+    writeFileSync(file, other);
+    expect(sync.sync(src, copy)).toBe(1);
+    expect(readFileSync(join(copy, "media", "a.png"))).toEqual(Buffer.from(other));
+    // Settled: the next look reads only the stat, never the bytes, so a rewrite with the same facts is not seen.
+    clock = at + 5_000;
+    expect(sync.sync(src, copy)).toBe(0);
+    writeFileSync(file, png(64));
+    expect(sync.sync(src, copy)).toBe(0);
+    expect(readFileSync(join(copy, "media", "a.png"))).toEqual(Buffer.from(other));
+    expect(reads.every((path) => path.startsWith(src))).toBe(true);
   });
 
   test("a symlink, a hidden name, a file that is no picture, one over 2 MB and a missing folder are left out", () => {

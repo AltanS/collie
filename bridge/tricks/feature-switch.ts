@@ -3,6 +3,7 @@ import { join } from "node:path";
 
 import { asJsonBoolean, asJsonObject, parseJson } from "../../web/src/lib/json.ts";
 import { tricksStateDir } from "./paths.ts";
+import { holdStat, sameStat, statFactsOf, stillHolds, type StatFacts, type StatHeld } from "../stat-held.ts";
 
 // THE SWITCH FOR TRICKS AS A WHOLE (package H, 2026-11-17). Tricks are an experiment and OFF by default:
 // this one setting turns them on for this machine, on every phone at once. It is the Hill's switch
@@ -100,13 +101,15 @@ export interface TricksFeaturePort {
 export type TricksFeatureListener = (on: boolean) => void;
 
 /**
- * The bridge's switch: read behind a stat check (the last reading is kept until the file moves), and
+ * The bridge's switch: read behind a stat check (the last reading is kept until the file moves, and not while
+ * the file's modified time is within the racy window of the read, stat-held.ts), and
  * written by the phone's route. Synchronous, because the snapshot, a run's check and the local API ask it
  * on their own path. {@link onChange} tells a listener of every move a read or a write sees; the tricks
  * runner reads it every second (service.ts `tick`), so a terminal's write reaches listeners within a second.
  */
 export class TricksFeatureSwitch implements TricksFeaturePort {
-  private seen: string | undefined;
+  // The stat of the last reading (stat-held.ts), "none" for no file, undefined before the first.
+  private seen: StatHeld | "none" | undefined;
   private current: TricksFeatureReading = "unset";
   private readonly listeners = new Set<TricksFeatureListener>();
 
@@ -114,6 +117,8 @@ export class TricksFeatureSwitch implements TricksFeaturePort {
     private readonly stateDir: string,
     private readonly warn: (line: string) => void = (line) => console.warn(`[tricks] ${line}`),
     private readonly now: () => number = Date.now,
+    /** The wall clock of a read, for the racy window, and the `stat`; apart from `now`, which a test may hold still. */
+    private readonly look: { clock?: () => number; stat?: (path: string) => { size: number; mtimeMs: number; ino?: number; ctimeMs?: number } } = {},
   ) {}
 
   /** Whether tricks are on now. Unset is off. */
@@ -124,22 +129,24 @@ export class TricksFeatureSwitch implements TricksFeaturePort {
   /** What the switch holds now: on, off, or unset (no file). */
   reading(): TricksFeatureReading {
     const path = tricksFeaturePath(this.stateDir);
-    let stamp: string;
+    const readAt = (this.look.clock ?? Date.now)();
+    let facts: StatFacts | null;
     try {
-      const st = statSync(path);
-      // The inode moves on every rename, so two writes in the same millisecond are still told apart.
-      stamp = `${String(st.mtimeMs)}:${String(st.ino)}:${String(st.size)}`;
+      // The inode moves on every rename where the platform gives one; the racy window covers the rest.
+      facts = statFactsOf(this.look.stat === undefined ? statSync(path) : this.look.stat(path));
     } catch {
-      stamp = "none";
+      facts = null;
     }
-    if (stamp === this.seen) return this.current;
+    if (facts === null ? this.seen === "none" : this.seen !== "none" && stillHolds(this.seen, facts)) return this.current;
     const wasOn = this.current === "on";
-    this.seen = stamp;
-    if (stamp === "none") {
+    // A re-read of the same write (in the racy window) says a problem once, not on every look.
+    const again = facts !== null && this.seen !== "none" && sameStat(this.seen, facts);
+    this.seen = facts === null ? "none" : holdStat(facts, readAt);
+    if (facts === null) {
       this.current = "unset";
     } else {
       const read = readTricksFeature(this.stateDir);
-      if (read.problem !== null) this.warn(read.problem);
+      if (read.problem !== null && !again) this.warn(read.problem);
       this.current = read.on ? "on" : "off";
     }
     const isOn = this.current === "on";

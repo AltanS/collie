@@ -426,7 +426,8 @@ describe("discovery", () => {
     const root = await tempDir();
     await trickDir(root, "legs");
     const { fs, reads } = counting();
-    const scanner = createTrickScanner(root, { fs });
+    // A clock past the racy window of every write (stat-held.ts), so a settled read is reused.
+    const scanner = createTrickScanner(root, { fs, now: () => Date.now() + 10_000 });
     const first = await scanner.scan();
     expect(first.tricks[0]?.manifest?.name).toBe("legs");
     // Once for the manifest, once for the code hash.
@@ -444,7 +445,7 @@ describe("discovery", () => {
     const root = await tempDir();
     const dir = await trickDir(root, "legs", { "p.sh": "#!/bin/sh\n", "lib/util.sh": "x=1\n", "config.toml": "a = 1\n" });
     const { fs, reads } = counting();
-    const scanner = createTrickScanner(root, { fs });
+    const scanner = createTrickScanner(root, { fs, now: () => Date.now() + 10_000 });
     const first = (await scanner.scan()).tricks[0]!;
     expect(first.codeHash).toMatch(/^[0-9a-f]{64}$/);
     expect(first.configHash).toMatch(/^[0-9a-f]{64}$/);

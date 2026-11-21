@@ -208,7 +208,8 @@ describe("nothing unseen enters the copy (security re-review)", () => {
     await writeFile(join(snap.dir, "inputs", "lodge", "w6X_3a3", "notes", "a.ts"), 'console.log("a session file");\n');
     expect(await copyListing(snap.dir)).toBe(before);
     if (before === null) throw new Error("the copy does not list");
-    expect(await verifyCopy(snap.dir, snap.hash)).toEqual({ ok: true, listing: before });
+    // A clock past the racy window of the copy's writes (stat-held.ts): a settled check gives the listing.
+    expect(await verifyCopy(snap.dir, snap.hash, undefined, () => Date.now() + 10_000)).toEqual({ ok: true, listing: before });
     expect(await hashOf(snap.dir)).toBe(snap.hash);
     // A fetch again (a new set of files) moves nothing either: the next fetch is not a new version.
     await rm(join(snap.dir, "inputs", "lodge"), { recursive: true });

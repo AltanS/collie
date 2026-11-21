@@ -34,6 +34,7 @@ import { dirname, join, sep } from "node:path";
 import { isImageSrc, TRICK_MEDIA_DIR, TRICK_MEDIA_VERSIONS_MAX, type WireTrickInfo } from "../../web/src/lib/tricks/schema.ts";
 import { HILL_MEDIA_BYTES_MAX, type HillMediaMime } from "../../web/src/lib/hill/wire.ts";
 import { readPostedImage } from "../hill/media.ts";
+import { holdStat, statFactsOf, stillHolds, type StatFacts, type StatHeld } from "../stat-held.ts";
 
 /** One picture of a trick, read and checked. */
 export interface TrickMediaFile {
@@ -73,20 +74,23 @@ export function mediaVersionOfBytes(bytes: Uint8Array): string {
 export type MediaVersionMap = NonNullable<WireTrickInfo["media"]>;
 
 interface SeenFile {
-  readonly mtimeMs: number;
-  readonly size: number;
+  readonly held: StatHeld;
   readonly version: string;
 }
 
 /**
  * The versions of the pictures in trick folders, by `src`. A file is read once per (path, modified time,
- * size): a replaced file gets a new version, a file with the same bytes keeps its one. What it lists is what
+ * size, inode, change time), and again while its modified time is within the racy window of the read
+ * (stat-held.ts): a replaced file gets a new version, also one of the same size written within one timestamp
+ * tick, and a file with the same bytes keeps its one. What it lists is what
  * {@link readTrickMedia} would serve: it reads every file through it, so a symlink, a hidden name, a file over
  * 2 MB or a file that is not a PNG, JPEG or WebP is left out. At most {@link TRICK_MEDIA_VERSIONS_MAX}
  * pictures, in name order. Total: no input makes it throw.
  */
 export class TrickMediaVersions {
   private readonly seen = new Map<string, Map<string, SeenFile>>();
+
+  constructor(private readonly look: MediaLook = {}) {}
 
   /** The `src` to version map of the pictures under `dir`'s `media/`; empty when there are none. */
   of(dir: string): MediaVersionMap {
@@ -104,13 +108,14 @@ export class TrickMediaVersions {
     for (const rel of walkMedia(root, TRICK_MEDIA_DIR, 0, budget)) {
       if (Object.keys(out).length === TRICK_MEDIA_VERSIONS_MAX) break;
       if (!isImageSrc(rel)) continue;
-      const stat = statOf(join(root, rel));
+      const readAt = (this.look.now ?? Date.now)();
+      const stat = statOf(join(root, rel), this.look.lstat);
       if (stat === null) continue;
       const known = before.get(rel);
-      const kept = known !== undefined && known.mtimeMs === stat.mtimeMs && known.size === stat.size ? known : null;
+      const kept = stillHolds(known?.held, stat.facts) ? known : undefined;
       const version = kept?.version ?? versionOfFile(root, rel);
       if (version === null) continue;
-      now.set(rel, { mtimeMs: stat.mtimeMs, size: stat.size, version });
+      now.set(rel, kept ?? { held: holdStat(stat.facts, readAt), version });
       out[rel] = version;
     }
     this.seen.set(dir, now);
@@ -125,11 +130,27 @@ export class TrickMediaVersions {
   }
 }
 
-function statOf(path: string): { mtimeMs: number; size: number; executable: boolean } | null {
+/** What a picture cache looks with: the clock a read is timed with (the racy window, stat-held.ts) and the `lstat`. */
+export interface MediaLook {
+  now?: () => number;
+  lstat?: (path: string) => MediaStat;
+}
+
+/** The part of an `lstat` result the picture caches read. */
+export interface MediaStat {
+  isFile(): boolean;
+  size: number;
+  mtimeMs: number;
+  mode: number;
+  ino: number;
+  ctimeMs: number;
+}
+
+function statOf(path: string, look: (path: string) => MediaStat = lstatSync): { mtimeMs: number; size: number; executable: boolean; facts: StatFacts } | null {
   try {
-    const stat = lstatSync(path);
+    const stat = look(path);
     if (!stat.isFile() || stat.size > HILL_MEDIA_BYTES_MAX) return null;
-    return { mtimeMs: stat.mtimeMs, size: stat.size, executable: (stat.mode & 0o111) !== 0 };
+    return { mtimeMs: stat.mtimeMs, size: stat.size, executable: (stat.mode & 0o111) !== 0, facts: statFactsOf(stat) };
   } catch {
     return null;
   }
@@ -162,8 +183,7 @@ function walkMedia(root: string, base: string, depth: number, budget: { entries:
 }
 
 interface SyncedFile {
-  readonly mtimeMs: number;
-  readonly size: number;
+  readonly held: StatHeld;
   /** The sha256 hex of the source bytes the copy last took (or was found to hold). */
   readonly hash: string;
 }
@@ -182,6 +202,8 @@ interface SyncedFile {
 export class TrickMediaSync {
   private readonly synced = new Map<string, Map<string, SyncedFile>>();
 
+  constructor(private readonly look: MediaLook = {}) {}
+
   /** Sync one trick; the number of files written to the copy. */
   sync(srcDir: string, copyDir: string): number {
     let srcRoot: string;
@@ -199,10 +221,11 @@ export class TrickMediaSync {
     for (const rel of walkMedia(srcRoot, TRICK_MEDIA_DIR, 0, budget)) {
       if (now.size === TRICK_MEDIA_VERSIONS_MAX) break;
       if (!isImageSrc(rel)) continue;
-      const stat = statOf(join(srcRoot, rel));
+      const readAt = (this.look.now ?? Date.now)();
+      const stat = statOf(join(srcRoot, rel), this.look.lstat);
       if (stat === null || stat.executable) continue;
       const known = before.get(rel);
-      if (known !== undefined && known.mtimeMs === stat.mtimeMs && known.size === stat.size) {
+      if (known !== undefined && stillHolds(known.held, stat.facts)) {
         now.set(rel, known);
         continue;
       }
@@ -212,7 +235,7 @@ export class TrickMediaSync {
       const changed = known === undefined ? this.firstLook(copyRoot, rel, hash, stat.mtimeMs) : known.hash !== hash;
       if (changed && !putPicture(copyRoot, rel, read.bytes)) continue;
       if (changed) written += 1;
-      now.set(rel, { mtimeMs: stat.mtimeMs, size: stat.size, hash });
+      now.set(rel, { held: holdStat(stat.facts, readAt), hash });
     }
     this.synced.set(srcDir, now);
     return written;
