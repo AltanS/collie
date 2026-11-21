@@ -8,6 +8,10 @@ import { reloadOnChunkError, type ChunkPreload } from "./chunk-reload";
 // chunk when a navigation first matches the route: the old screen stays up and the mark turns while it
 // loads, as it does for a loader. Only the component is lazy; a route's loader stays in the table.
 //
+// A chunk that is not a route (a feature's own door, e.g. a search loaded on the first typed word) uses
+// `lazyChunk(load)` the same way: the returned function imports through `reloadOnChunkError`, and the
+// chunk joins the background preload.
+//
 // Two ways in, one chunk. A NAVIGATION goes through `reloadOnChunkError`: an old page asking for a chunk
 // the new build dropped reloads once onto the new build. The BACKGROUND PRELOAD (lib/route-preload.ts)
 // takes the bare import that `preloadOf` hands back, and never reloads.
@@ -42,4 +46,38 @@ export function preloadOf(lazy: RouteObject["lazy"]): ChunkPreload | null {
 /** Whether a route's `lazy` came from `lazyScreen`. */
 export function isLazyScreen(lazy: RouteObject["lazy"]): lazy is LazyScreen {
   return lazy !== undefined && PRELOADS.has(lazy);
+}
+
+// The preloads of `lazyChunk` doors. Collected until the background preload starts, then handed straight
+// to it (lib/route-preload.ts `drainChunkPreloads`): a door whose module is first evaluated during the
+// preload, because it lives in a lazy screen's chunk, still gets its chunk fetched in the same run.
+let pendingChunks: ChunkPreload[] = [];
+let chunkSink: ((load: ChunkPreload) => void) | null = null;
+
+/**
+ * A dynamic import that is not a route: call the returned function where the feature needs the module.
+ * It imports through `reloadOnChunkError`, and the chunk is fetched by the background preload. Call
+ * `lazyChunk` at module scope, once per chunk.
+ */
+export function lazyChunk<M>(load: () => Promise<M>): () => Promise<M> {
+  const bare: ChunkPreload = async () => {
+    await load();
+  };
+  if (chunkSink === null) pendingChunks.push(bare);
+  else chunkSink(bare);
+  return () => reloadOnChunkError(load);
+}
+
+/** For the preload: every `lazyChunk` door so far; any later one goes to `sink`. */
+export function drainChunkPreloads(sink: (load: ChunkPreload) => void): ChunkPreload[] {
+  chunkSink = sink;
+  const drained = pendingChunks;
+  pendingChunks = [];
+  return drained;
+}
+
+/** Test seam: forget the `lazyChunk` doors and the sink. */
+export function __resetChunkPreloads(): void {
+  pendingChunks = [];
+  chunkSink = null;
 }

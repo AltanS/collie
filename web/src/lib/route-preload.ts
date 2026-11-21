@@ -1,7 +1,7 @@
 import type { RouteObject } from "react-router";
 
 import { preloadQuietly, type ChunkPreload } from "./chunk-reload";
-import { preloadOf } from "./lazy-route";
+import { __resetChunkPreloads, drainChunkPreloads, preloadOf } from "./lazy-route";
 
 // EVERY LAZY SCREEN IS FETCHED IN THE BACKGROUND ONCE THE APP IS IDLE (ADR 0169). The split only moves
 // bytes out of the first file: after a few idle seconds the tab holds every screen in memory, as it did
@@ -10,7 +10,8 @@ import { preloadOf } from "./lazy-route";
 // Once per page load, after the first paint, when the browser is idle (`requestIdleCallback`; Safari has
 // none, so a timer of IDLE_FALLBACK_MS stands in), and never while the document is hidden: a hidden tab
 // waits until it is shown. The chunks go one after another, so the preload never competes with itself,
-// and a failure is swallowed without a reload (lib/chunk-reload.ts `preloadQuietly`).
+// and a failure is swallowed without a reload (lib/chunk-reload.ts `preloadQuietly`). The list is the
+// route table's lazy routes plus every `lazyChunk` door (lib/lazy-route.ts).
 
 /** Safari's stand-in for `requestIdleCallback`. */
 export const IDLE_FALLBACK_MS = 2_000;
@@ -93,11 +94,36 @@ export function schedulePreload(loads: readonly ChunkPreload[], host: PreloadHos
   });
 }
 
-async function run(loads: readonly ChunkPreload[]): Promise<void> {
-  for (const load of loads) await preloadQuietly(load);
+// One queue for the run: the route table's chunks, then every `lazyChunk` door (lib/lazy-route.ts), also
+// one first evaluated during the run. A door added after the run ended starts a short run of its own.
+let queue: ChunkPreload[] = [];
+let draining = false;
+
+async function drain(): Promise<void> {
+  if (draining) return;
+  draining = true;
+  try {
+    for (let load = queue.shift(); load !== undefined; load = queue.shift()) await preloadQuietly(load);
+  } finally {
+    draining = false;
+  }
 }
 
-/** Test seam: forget that a run started. */
+function run(loads: readonly ChunkPreload[]): Promise<void> {
+  queue.push(...loads);
+  queue.push(
+    ...drainChunkPreloads((load) => {
+      queue.push(load);
+      void drain();
+    }),
+  );
+  return drain();
+}
+
+/** Test seam: forget that a run started, and every queued chunk. */
 export function __resetPreload(): void {
   started = false;
+  queue = [];
+  draining = false;
+  __resetChunkPreloads();
 }

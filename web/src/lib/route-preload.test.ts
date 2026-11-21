@@ -2,7 +2,7 @@ import type { RouteObject } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { PRELOAD_RELOAD_KEY, setChunkReloader } from "./chunk-reload";
-import { lazyScreen } from "./lazy-route";
+import { lazyChunk, lazyScreen } from "./lazy-route";
 import { __resetPreload, IDLE_FALLBACK_MS, lazyLoadsOf, schedulePreload, type PreloadDocument, type PreloadHost } from "./route-preload";
 
 function Screen() {
@@ -150,5 +150,31 @@ describe("schedulePreload", () => {
     expect(broken).toHaveBeenCalledTimes(1);
     expect(next).toHaveBeenCalledTimes(1);
     expect(reloader).not.toHaveBeenCalled();
+  });
+
+  it("takes a lazyChunk door made before the run, one made during it, and one made after it", async () => {
+    const page = fakeHost({ idle: true });
+    const order: string[] = [];
+    const late = () => {
+      order.push("during");
+      return Promise.resolve();
+    };
+    lazyChunk(() => {
+      order.push("before");
+      return Promise.resolve();
+    });
+    const route = vi.fn(() => {
+      order.push("route");
+      // A door whose module is first evaluated while the preload imports a lazy screen.
+      lazyChunk(late);
+      return Promise.resolve();
+    });
+    const run = schedulePreload([route], page.host);
+    page.idleCallbacks[0]?.();
+    await run;
+    expect(order).toEqual(["route", "before", "during"]);
+    const after = vi.fn(() => Promise.resolve());
+    lazyChunk(after);
+    await vi.waitFor(() => expect(after).toHaveBeenCalledTimes(1));
   });
 });

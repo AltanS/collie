@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { onPreloadError, preloadQuietly, PRELOAD_RELOAD_KEY, setChunkReloader } from "./chunk-reload";
-import { lazyScreen, preloadOf } from "./lazy-route";
+import { __resetChunkPreloads, drainChunkPreloads, lazyChunk, lazyScreen, preloadOf } from "./lazy-route";
 import { __resetReloadGuard } from "./reload-guard";
 
 function Screen() {
@@ -81,5 +81,20 @@ describe("a lazy screen", () => {
   it("knows no preload for a lazy it did not make", () => {
     expect(preloadOf(() => Promise.resolve({}))).toBeNull();
     expect(preloadOf(undefined)).toBeNull();
+  });
+
+  it("imports a chunk that is not a route through the same reload, and hands it to the preload", async () => {
+    __resetChunkPreloads();
+    const missing = new TypeError("Failed to fetch dynamically imported module");
+    const load = vi.fn(() => Promise.reject(missing));
+    const open = lazyChunk(load);
+    await expect(open()).rejects.toBe(missing);
+    expect(reloads).toBe(1);
+    const queued = drainChunkPreloads(() => undefined);
+    expect(queued).toHaveLength(1);
+    await preloadQuietly(queued[0] ?? (() => Promise.resolve()));
+    expect(load).toHaveBeenCalledTimes(2);
+    expect(reloads).toBe(1);
+    __resetChunkPreloads();
   });
 });
