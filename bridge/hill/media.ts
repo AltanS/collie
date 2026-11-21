@@ -66,8 +66,9 @@ import {
 import { dirname, isAbsolute, join, normalize } from "node:path";
 
 import { HILL_ID_RE, HILL_IMAGE_PATH_MAX, HILL_MEDIA_BYTES_MAX, HILL_MEDIA_ID_RE, HILL_MEDIA_MIMES, type HillMedia, type HillMediaMime } from "../../web/src/lib/hill/wire.ts";
-import { isDeniedPath, sniffImageType } from "../files-view.ts";
+import { sniffImageType } from "../files-view.ts";
 import { HOST, isBelow } from "../host.ts";
+import { isDeniedSpelling, spellingsOfSync } from "../read-guard.ts";
 import { headerField } from "../walky/types.ts";
 
 /** The media folder's name inside the hill folder. */
@@ -259,7 +260,19 @@ export function readPostedImage(path: string, denied: readonly string[], allowed
     return bad(path, "the bridge may not read it");
   }
   if (real !== path) return bad(path, "goes through a symlinked folder; name the real path");
-  if (isDeniedPath(real, deniedFor(real, denied, allowed))) return bad(path, "is inside Collie's own folders, a .git folder, or names a Collie secret");
+  // Every spelling of the file (read-guard.ts, `isDeniedSpelling`): `real` is `realpathSync`'s answer,
+  // which keeps an 8.3 name or a `subst` drive on Windows, so a check of it alone let a file in the state
+  // folder through by such a name. `real` itself is checked exactly as before, with the trick's root as
+  // given; each other spelling with the root's spelling it lies below, so a trick's own image is not
+  // refused by its long name, and nothing refused before passes now.
+  const roots = allowed === null ? [] : spellingsOfSync(allowed.root);
+  const deniedOf = (spelling: string): readonly string[] => {
+    if (allowed === null) return denied;
+    if (spelling === real) return deniedFor(real, denied, allowed);
+    const root = roots.find((r) => isBelow(HOST, r, spelling));
+    return root === undefined ? denied : deniedFor(spelling, denied, { root, never: allowed.never });
+  };
+  if (isDeniedSpelling(spellingsOfSync(real), deniedOf)) return bad(path, "is inside Collie's own folders, a .git folder, or names a Collie secret");
   let fd: number;
   try {
     fd = openSync(path, OPEN_FLAGS);

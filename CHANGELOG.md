@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Fixed
+
+- **On Windows, a picture posted to the Hill is refused in Collie's own folders by every spelling of its path.** A picture that an agent posts to the Hill, an experimental feature, is refused when it lies in Collie's own state or config folder, whatever way Windows spells that path. Before, a short (8.3) name such as `C:\Users\NAME~1` or a mapped drive could get past that check. Linux and macOS were not affected. If you use Collie on Windows, update.
+
 ## [1.30.0] - 2026-11-21
 
 ### Added
