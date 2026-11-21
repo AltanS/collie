@@ -12,7 +12,7 @@ import { withHeaderHost } from "@/test/header-host";
 import { SettingsRoute } from "./settings";
 import { SettingsTricksRoute } from "./settings-sections";
 
-// Settings → Tricks and the Hill (ADR 0168): both experiments on one page, always on the index. The switch for tricks
+// Settings → Tricks and the Hill (ADR 0170): both experiments on one page, always on the index. The switch for tricks
 // as a whole stands first and the list of your tricks under it while that switch is on; the Hill's switch ends the
 // page. Each experiment wears the Experimental badge on its own card; there is no notice for the page.
 //

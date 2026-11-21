@@ -2,7 +2,7 @@ import type { MessageKey } from "@/lib/i18n";
 
 import type { SettingDef, Store, StorageKey } from "./types";
 
-// THE ONE DECLARED LIST OF SETTINGS (ADR 0168). Every switch, choice, field, action, link and info line a person
+// THE ONE DECLARED LIST OF SETTINGS (ADR 0170). Every switch, choice, field, action, link and info line a person
 // meets in Settings, in the pane's own sheets and beside the thing it changes, declared once. The Settings pages
 // draw their rows with today's components and mark each with the id it draws (`components/setting-slot.tsx`); the
 // search reads this list; `registry.test.ts` and `settings-marks.test.tsx` keep it complete.

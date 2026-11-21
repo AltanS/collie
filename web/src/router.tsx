@@ -144,7 +144,7 @@ export const router = createBrowserRouter([
             },
             element: <SettingsRoute />,
           },
-          // The eleven pages (ADR 0168), in the index's order. Each draws the registry's page (lib/settings/pages.ts).
+          // The eleven pages (ADR 0170), in the index's order. Each draws the registry's page (lib/settings/pages.ts).
           { path: "look", element: <SettingsLookRoute /> },
           // One level below Look and feel, like Voice's two pages: which character the header draws.
           { path: "look/character", element: <SettingsCharacterRoute /> },

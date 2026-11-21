@@ -6,7 +6,7 @@ import { installApiStub, pinLocale } from "./fixtures/api";
 import { stillMarkState } from "./fixtures/still-mark";
 import { installScreenStubs } from "./screens/setups";
 
-// THE SEARCH OF SETTINGS (ADR 0168, components/settings-search.tsx). One field on top of the phone's index and of the
+// THE SEARCH OF SETTINGS (ADR 0170, components/settings-search.tsx). One field on top of the phone's index and of the
 // large screen's list. A result names its row, its page and its group; Enter or a tap opens the page, scrolls the row
 // into view and marks it for two seconds; a row of a pane's own sheet says where it is and links nowhere; Escape
 // clears the field; `/` puts the cursor in it. A real engine, for the scroll, the focus and the mark.

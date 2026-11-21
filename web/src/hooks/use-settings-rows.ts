@@ -13,7 +13,7 @@ import type { PageDef } from "@/lib/settings/types";
 // list on a large screen (components/settings-shell.tsx). The order and the reasons for it are written here, where the
 // list is; the two drawings own only how a row looks.
 
-// The rows are the registry's pages (lib/settings/pages.ts, ADR 0168), in its order, after Updates and about, which
+// The rows are the registry's pages (lib/settings/pages.ts, ADR 0170), in its order, after Updates and about, which
 // both drawings put first because its line changes without you (a release lands). Every page is always offered, with
 // one exception: Profiles, only while the machine answers the accounts route. Tricks and the Hill is always there now
 // (2026-11-21): the Tricks switch is on that page, so a row that went away with the switch took the switch with it.

@@ -93,7 +93,7 @@ export const SCREENS: readonly Screen[] = [
 
   // ── Settings ─────────────────────────────────────────────────────────────
   { id: "settings", route: "settings", path: "/settings", title: "Settings, the index", wide: "designed", setup: "rich" },
-  // The eleven pages (ADR 0168), in the index's order, and the search with a result.
+  // The eleven pages (ADR 0170), in the index's order, and the search with a result.
   { id: "settings-search", route: "settings", path: "/settings", title: "Settings, the search with results", wide: "designed", state: "a query with results", setup: "settingsSearch" },
   { id: "settings-look", route: "settings/look", path: "/settings/look", title: "Settings, Look and feel", wide: "designed", waive: { "targets@390": PHONE_TARGETS } },
   { id: "settings-character", route: "settings/look/character", path: "/settings/look/character", title: "Settings, the header character", wide: "designed", waive: { "targets@390": PHONE_TARGETS } },
@@ -134,14 +134,14 @@ export const SCREENS: readonly Screen[] = [
 export const NOT_A_SCREEN = {
   "slot/:slot": "a permanent address that replaces itself with that browser tab's last pane (lib/slots.ts); it draws nothing of its own",
   pack: "a redirect to crew (the path was renamed in 1.7.0)",
-  // The Settings pages before ADR 0168 (2026-11-21): each opens the page that holds most of what it held, with the query
+  // The Settings pages before ADR 0170 (2026-11-21): each opens the page that holds most of what it held, with the query
   // and the fragment (routes/settings-sections.tsx `OldSettingsRedirect`); `e2e/settings-redirects.spec.ts` opens each.
-  "settings/appearance": "a redirect to settings/look (Settings became eleven pages, ADR 0168)",
-  "settings/appearance/character": "a redirect to settings/look/character (ADR 0168)",
-  "settings/harnesses": "a redirect to settings/chat, where the status line per agent is now (ADR 0168)",
-  "settings/device": "a redirect to settings/keys; its #changes fragment opens settings/dashboard (ADR 0168)",
-  "settings/alerts": "a redirect to settings/notifications (ADR 0168)",
-  "settings/experiments": "a redirect to settings/tricks, which holds both experiments' switches (ADR 0168)",
-  "settings/system": "a redirect to settings/devices; its #install-count fragment opens settings/privacy (ADR 0168)",
-  "settings/system/install-count": "a redirect to settings/privacy/install-count (ADR 0168)",
+  "settings/appearance": "a redirect to settings/look (Settings became eleven pages, ADR 0170)",
+  "settings/appearance/character": "a redirect to settings/look/character (ADR 0170)",
+  "settings/harnesses": "a redirect to settings/chat, where the status line per agent is now (ADR 0170)",
+  "settings/device": "a redirect to settings/keys; its #changes fragment opens settings/dashboard (ADR 0170)",
+  "settings/alerts": "a redirect to settings/notifications (ADR 0170)",
+  "settings/experiments": "a redirect to settings/tricks, which holds both experiments' switches (ADR 0170)",
+  "settings/system": "a redirect to settings/devices; its #install-count fragment opens settings/privacy (ADR 0170)",
+  "settings/system/install-count": "a redirect to settings/privacy/install-count (ADR 0170)",
 } satisfies Record<string, string>;

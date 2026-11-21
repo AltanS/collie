@@ -14,7 +14,7 @@ import { cn } from "@/lib/utils";
 /** The results and the registry they read: a chunk of their own, loaded on the first word typed. */
 const Results = lazy(() => import("./settings-search-results"));
 
-// THE SEARCH OF SETTINGS (ADR 0168). One field at the top of the phone's index and of the large screen's list. It
+// THE SEARCH OF SETTINGS (ADR 0170). One field at the top of the phone's index and of the large screen's list. It
 // reads the registry, so it finds every declared row, those of a pane's own sheets and of a view too:
 //
 //   - a row on a page opens that page with the row's id as the fragment; the page scrolls to it and marks it

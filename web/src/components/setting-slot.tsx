@@ -4,7 +4,7 @@ import type { RegisteredId } from "@/lib/settings";
 import { cn } from "@/lib/utils";
 
 /**
- * One place on a Settings page that draws registry rows (ADR 0168): today's control, wrapped, and marked with the
+ * One place on a Settings page that draws registry rows (ADR 0170): today's control, wrapped, and marked with the
  * ids it draws. The marks are what the completeness test reads and what a search result scrolls to. A control that
  * renders nothing (Haptics on a phone that cannot vibrate) leaves an empty slot, and `empty:hidden` gives it no
  * height, so the page's `space-y-4` draws no gap for it.

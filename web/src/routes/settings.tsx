@@ -18,7 +18,7 @@ import { BandMain } from "@/components/ui/strip-host";
 
 // ── THE SETTINGS INDEX ──────────────────────────────────────────────────────────────────────────
 //
-// The search, then Updates and about, then the registry's pages in their order (lib/settings/pages.ts, ADR 0168), each
+// The search, then Updates and about, then the registry's pages in their order (lib/settings/pages.ts, ADR 0170), each
 // row with its line of what the page holds.
 //
 // This page used to BE the settings: seventeen cards in one column, over a thousand pixels of

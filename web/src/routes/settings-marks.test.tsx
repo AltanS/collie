@@ -22,7 +22,7 @@ import {
 } from "./settings-sections";
 import { UpdatesRoute } from "./updates";
 
-// EVERY SETTINGS ROW HAS A MARKED PLACE ON A PAGE (ADR 0168). Each page wraps the control that draws a row in a
+// EVERY SETTINGS ROW HAS A MARKED PLACE ON A PAGE (ADR 0170). Each page wraps the control that draws a row in a
 // `SettingSlot` naming its registry ids. This renders every page and reads the marks: an id no row has fails, and a
 // registry row on a Settings page that no page marks fails.
 

@@ -25,7 +25,7 @@ import { Group } from "@/routes/settings-sections";
 // inside that card and never a table beside it, because the thing that blocks the confirm has to be
 // readable without moving your eyes to a second surface. The release line third (M60 spec 01): a
 // standing choice, read less often than the offer it decides. Then "This app" (install, its version, the
-// first screen) and Help (the report), which came from System when Settings became eleven pages (ADR 0168).
+// first screen) and Help (the report), which came from System when Settings became eleven pages (ADR 0170).
 //
 // ── IT IS ON THE POLL LOOP, AND THAT IS THE POINT ────────────────────────────
 // Same reason the crew census is: a run in progress and a peer going quiet are exactly what this

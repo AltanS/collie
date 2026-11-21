@@ -207,7 +207,7 @@ for (const size of WIDTHS) {
 }
 
 // THE PHONE'S INDEX. The header is the one `stage/next` drew at 390x844 before the large-screen layout (measured on
-// a36fd0bc5). Since ADR 0168 the search field stands above the rows, and a page's line may wrap to a second line, so
+// a36fd0bc5). Since ADR 0170 the search field stands above the rows, and a page's line may wrap to a second line, so
 // the rows keep their column (x and width) and their one-line height as the least, and stand under the field.
 const PHONE_HEADER = { x: 0, y: 0, width: 390, height: 61 } as const;
 const ROW_COLUMN = { x: 17, width: 356 } as const;
@@ -238,7 +238,7 @@ test("at 390px Settings is the phone's index: the header unchanged, the search f
   }
 });
 
-// THE INDEX LINES (ADR 0168): on a phone a page's line wraps to two lines at 390px and is never cut; at 360px a third
+// THE INDEX LINES (ADR 0170): on a phone a page's line wraps to two lines at 390px and is never cut; at 360px a third
 // line is reported, not failed (the words are approved, a person decides). On a large screen the list rows have no line.
 test("the index lines take at most two lines at 390px and are never cut; 360px is reported", async ({ browser }, testInfo) => {
   onlyOnce(testInfo);

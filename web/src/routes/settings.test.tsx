@@ -188,7 +188,7 @@ describe("SettingsRoute — the Updates row", () => {
 
 // ── THE INDEX ───────────────────────────────────────────────────────────────────────────────────
 //
-// The index is the registry's eleven pages (ADR 0168), after Updates and about, and nothing else: every page is
+// The index is the registry's eleven pages (ADR 0170), after Updates and about, and nothing else: every page is
 // reachable, Machines is a row of Devices and machines, and no setting is rendered here.
 const PAGE_TITLES = [
   "Look and feel",
@@ -312,7 +312,7 @@ function renderIndex(over: Partial<HomeData>) {
   render(<RouterProvider router={router} />);
 }
 
-// THE TRICKS ROW STAYS (ADR 0168). The switch for tricks as a whole is on Tricks and the Hill, so the row is there
+// THE TRICKS ROW STAYS (ADR 0170). The switch for tricks as a whole is on Tricks and the Hill, so the row is there
 // with tricks off and on, and the list keeps its length.
 describe("SettingsRoute — the Tricks and the Hill row", () => {
   it.each([true, false])("is there with tricks off %s, before Devices and machines", async (tricksOff) => {

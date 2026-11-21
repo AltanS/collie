@@ -16,7 +16,7 @@ import { CONDITION_LINE, searchSettings, settingPath, type Condition, type Setti
 import { cn } from "@/lib/utils";
 import { useZenEnabled } from "@/lib/zen";
 
-// THE RESULTS OF THE SETTINGS SEARCH (ADR 0168), a chunk of its own: they read the registry
+// THE RESULTS OF THE SETTINGS SEARCH (ADR 0170), a chunk of its own: they read the registry
 // (lib/settings/registry.ts), which no page needs to draw itself, so the registry loads on the first word typed and
 // not with the app. components/settings-search.tsx owns the field and draws this in place of the list.
 

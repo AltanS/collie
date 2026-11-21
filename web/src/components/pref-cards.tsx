@@ -14,7 +14,7 @@ import { useMuxUnsupportedKeys } from "@/lib/mux-capability";
 import { PANE_VIEWS, type PaneView } from "@/lib/pane-view";
 import { cn } from "@/lib/utils";
 
-// THE SETTINGS CARDS OF VALUES THAT HAD NO SETTINGS ROW (ADR 0168). Each of these was set only in a pane's own
+// THE SETTINGS CARDS OF VALUES THAT HAD NO SETTINGS ROW (ADR 0170). Each of these was set only in a pane's own
 // Display sheet or in the Keys pad's tray, so a person who looked in Settings did not find it. The card writes the
 // SAME value through the SAME hook the sheet uses, so the two places never disagree; the sheet keeps its rows,
 // because a pane's own sheet is the one second place a value may have.

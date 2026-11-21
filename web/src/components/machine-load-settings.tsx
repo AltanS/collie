@@ -12,7 +12,7 @@ import { machineLoadPath } from "@/lib/nav";
 import { useScope } from "@/lib/session";
 import type { MachineMetric, MachineRow } from "@/lib/types";
 
-// MACHINE LOAD, ON NOTIFICATIONS (ADR 0168). A load alert is a notification, so a person who looks for "tell me
+// MACHINE LOAD, ON NOTIFICATIONS (ADR 0170). A load alert is a notification, so a person who looks for "tell me
 // when the CPU stays high" looks on Notifications. The rules belong to each machine, and the machine's own page
 // keeps its card; this group is one more door to the SAME card (`MachineAlertsControl`, one registry id per rule),
 // never a copy of it.

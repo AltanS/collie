@@ -279,7 +279,7 @@ export function readNewAt(search: string): NewAt {
 }
 
 /**
- * The Settings pages: the eleven of the registry (lib/settings/pages.ts, ADR 0168). Settings is an index of these,
+ * The Settings pages: the eleven of the registry (lib/settings/pages.ts, ADR 0170). Settings is an index of these,
  * not a column of every card it has. A union rather than a bare string, so a row naming a page nobody built is a
  * compile error instead of a page that renders nothing.
  */
@@ -600,7 +600,7 @@ export function ancestorsOf(pathname: string): string[] {
   if (head === "new" && seg.length === 1) return ["/", ANY_SPACE, ANY_PANE];
   // "Add your own" is a level below the New page.
   if (head === "new" && seg.length === 2 && id === "add") return ["/new", "/", ANY_SPACE, ANY_PANE];
-  // Every Settings page, Updates and about included, is a child of the index (ADR 0168).
+  // Every Settings page, Updates and about included, is a child of the index (ADR 0170).
   if (head === "settings" && seg.length === 2) return ["/settings", "/"];
   // Host speech and the Whistle model sit one level below Voice.
   if (head === "settings" && seg.length === 3 && id === "voice" && (leaf === "host" || leaf === "model")) {

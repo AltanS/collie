@@ -35,7 +35,7 @@ export function CrewSettingsCard() {
         </div>
       </button>}
       {/* The census says WHO is in the crew; Machines says how hard each machine is working. Settings has no
-          index row for Machines (ADR 0168): this is its door. */}
+          index row for Machines (ADR 0170): this is its door. */}
       <button
         type="button"
         onClick={() => nav.down(machinesPath(scope))}

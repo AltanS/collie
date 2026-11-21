@@ -1,7 +1,7 @@
 import type { IconKey } from "@/components/icons/keys";
 import type { MessageKey } from "@/lib/i18n";
 
-// THE SHAPE OF ONE DECLARED LIST OF SETTINGS (ADR 0168). Every setting a person can see or set is declared once,
+// THE SHAPE OF ONE DECLARED LIST OF SETTINGS (ADR 0170). Every setting a person can see or set is declared once,
 // in `registry.ts`: a stable dotted id, its words, its kind, who holds its value, where it is drawn and how its
 // value is stored TODAY. The Settings pages, the search, the completeness test and, later, a settings file all
 // read this one list. Nothing here moves a value: a store names the storage the value has always had.

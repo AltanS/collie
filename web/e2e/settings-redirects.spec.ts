@@ -4,7 +4,7 @@ import { en } from "@/lib/i18n/messages/en";
 
 import { installApiStub } from "./fixtures/api";
 
-// THE OLD SETTINGS ADDRESSES (ADR 0168). Settings had Appearance, Harness configurations, Device, Alerts, Experiments
+// THE OLD SETTINGS ADDRESSES (ADR 0170). Settings had Appearance, Harness configurations, Device, Alerts, Experiments
 // and System; a bookmark, a link in a doc or an old QR still names them. Each opens the page that holds most of what it
 // held, keeps the query (the scope, a pairing code) and the fragment, and lets an old fragment pick its row's page.
 // The redirect replaces its entry, so Back never lands on an address that only forwards. A real browser, because the

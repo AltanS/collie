@@ -2,7 +2,7 @@ import type { MessageKey } from "@/lib/i18n";
 
 import type { PageDef, PageId, PlaceId } from "./types";
 
-// THE ELEVEN SETTINGS PAGES, in the order of the index (ADR 0168). They come from the readers' own groups in the
+// THE ELEVEN SETTINGS PAGES, in the order of the index (ADR 0170). They come from the readers' own groups in the
 // card sort of 2026-11-21: all four open readers made Look and feel, Notifications, Keys, Chat and terminal, Voice,
 // a projects page and an app-and-help page. The order is the order of how standing a choice is, as the old index's
 // was: what the app looks like first, what goes wrong last. Updates and about is drawn FIRST on the index all the

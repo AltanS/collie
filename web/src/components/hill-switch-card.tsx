@@ -85,7 +85,7 @@ export function HillSwitchCard({ on, disabled, onToggle, waiting = 0 }: HillSwit
               <ExperimentalBadge />
             </div>
             {/* What the Hill is, then the switch's own sentence word for word, then the Experiments page's notice,
-                which moved onto its rows (ADR 0168). */}
+                which moved onto its rows (ADR 0170). */}
             <p className="text-sm text-muted-foreground">
               {t("settings.hill.what")} {t("settings.hill.hint")}
             </p>

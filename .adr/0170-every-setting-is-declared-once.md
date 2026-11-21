@@ -1,4 +1,4 @@
-# 0168: Every setting is declared once, and Settings is its eleven pages
+# 0170: Every setting is declared once, and Settings is its eleven pages
 
 - **Status:** Proposed (2026-11-21)
 - **Date:** 2026-11-21

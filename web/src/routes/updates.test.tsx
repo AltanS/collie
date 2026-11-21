@@ -14,7 +14,7 @@ import { UpdatesRoute } from "./updates";
 // ── THE UPDATES PAGE ────────────────────────────────────────────────────────────────────────────
 //
 // One route for the whole subject. What is pinned here is the SHAPE the spec fixed: the check
-// control and one card (then the release line, "This app" and Help, which came from System, ADR 0168), the peer lines inside that card rather than in a table beside it, no button
+// control and one card (then the release line, "This app" and Help, which came from System, ADR 0170), the peer lines inside that card rather than in a table beside it, no button
 // on any peer line, and exactly one action button carrying one of three labels.
 
 const GREEN: PreflightReport = {

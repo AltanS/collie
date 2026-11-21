@@ -244,7 +244,7 @@ The rule today: [0147](./0147-a-pane-list-keeps-its-place-and-the-footer-holds-v
 | --- | --- | --- |
 | [0165](./0165-actions-is-one-palette-of-registry-actions.md) | Actions is one palette of registry actions, shown only where each works; the Belt's pill and `prefix+g` open it, and Switch pane keeps the drag. | Accepted |
 | [0167](./0167-a-modal-for-a-blocking-decision.md) | A decision that blocks until it is answered is a modal over a scrim, a task is a sheet; the palette and the draft offers share `ui/modal.tsx`. On a wide window a sheet is drawn in its look, centred (addendum 2026-11-20). | Accepted |
-| [0168](./0168-every-setting-is-declared-once.md) | Every setting is declared once in `web/src/lib/settings/registry.ts`; Settings is its eleven pages and a search, and the old addresses redirect. | Proposed |
+| [0170](./0170-every-setting-is-declared-once.md) | Every setting is declared once in `web/src/lib/settings/registry.ts`; Settings is its eleven pages and a search, and the old addresses redirect. | Proposed |
 | [0147](./0147-a-pane-list-keeps-its-place-and-the-footer-holds-views.md) | No pane list is ordered by status; Activity and Cache order read the clock once; pins lead; the footer holds Crew, Dashboard, Files and the Hill, and Needs you is a switch. | Accepted, amended in scope by 0158 |
 | [0158](./0158-the-large-screen-dashboard-repeats-what-needs-you-in-a-band.md) | On a large screen the dashboard is a grid of 384px Space columns under a band that repeats the sessions that need you; no row leaves its place. | Accepted |
 | [0163](./0163-settings-goes-back-to-the-page-that-opened-it.md) | Settings' parents are every screen that can open it; its arrow steps back onto the page it came from. | Accepted |

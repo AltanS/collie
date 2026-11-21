@@ -4245,7 +4245,7 @@ export const en = {
   "shortcuts.hint.show": "Show shortcuts",
   "shortcuts.hint.close": "Close the keyboard hint",
 
-  // --- settings registry (ADR 0168): the eleven pages, their groups, the search, the words of 2026-11-21 ---
+  // --- settings registry (ADR 0170): the eleven pages, their groups, the search, the words of 2026-11-21 ---
   "settings.page.look.title": "Look and feel",
   "settings.page.look.blurb": "Theme, light or dark, language, fonts, text sizes",
   "settings.page.chat.title": "Chat and terminal",

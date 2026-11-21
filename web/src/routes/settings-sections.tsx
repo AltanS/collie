@@ -69,7 +69,7 @@ import { useScope } from "@/lib/session";
 import { OLD_BELOW, OLD_FRAGMENTS, OLD_PAGES, pageDef } from "@/lib/settings/pages";
 import type { PageId } from "@/lib/settings/types";
 
-// ── THE ELEVEN SETTINGS PAGES (ADR 0168) ────────────────────────────────────────────────────────────────────────
+// ── THE ELEVEN SETTINGS PAGES (ADR 0170) ────────────────────────────────────────────────────────────────────────
 //
 // Each page is the registry's page (lib/settings/pages.ts) drawn with the controls Settings always had: its groups in
 // the registry's order, each under its heading, and each control in a `SettingSlot` that names the registry rows it

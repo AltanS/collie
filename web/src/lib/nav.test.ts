@@ -606,7 +606,7 @@ describe("parentChain: what a cold deep link gets behind it", () => {
     ["/machines", "", ["/", "/settings", "/settings/devices"]],
     ["/machines/lodge", "", ["/", "/settings", "/settings/devices", "/machines"]],
     ["/machines/lodge", "?h=badger", ["/?h=badger", "/settings?h=badger", "/settings/devices?h=badger", "/machines?h=badger"]],
-    // One machine's load alerts sit below Notifications (ADR 0168).
+    // One machine's load alerts sit below Notifications (ADR 0170).
     ["/settings/notifications/load/lodge", "", ["/", "/settings", "/settings/notifications"]],
     // The New page: the screen it names behind it. A pane's worktree gets the pane too.
     ["/new", "", ["/"]],

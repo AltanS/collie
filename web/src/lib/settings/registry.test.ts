@@ -8,7 +8,7 @@ import { groupHeading, isPageId, NOT_SETTINGS, OLD_FRAGMENTS, PAGES, pageDef, se
 import { OLD_FRAGMENT_ROWS } from "./pages";
 import type { Store } from "./types";
 
-// THE REGISTRY IS COMPLETE AND TRUE (ADR 0168). A saved key of the app that no setting stores into and no line of
+// THE REGISTRY IS COMPLETE AND TRUE (ADR 0170). A saved key of the app that no setting stores into and no line of
 // `NOT_SETTINGS` explains fails here, so whoever adds a preference also declares it. The marks on the pages are
 // pinned in `settings-marks.test.tsx`.
 
