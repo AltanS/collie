@@ -1648,23 +1648,13 @@ export class PiTranscriptSource implements TranscriptSource {
     const suffix = `_${id}.jsonl`;
     for (const root of discovery.roots) {
       if (root.realPath === null) continue;
-      for (const folder of discovery.folders) {
-        let names: string[];
-        try {
-          names = await readdir(join(root.path, folder));
-        } catch {
-          continue;
-        }
-        // Newest name first inside the folder, and a refused one is skipped for the next (#840).
-        const hits = names.filter((name) => name.toLowerCase().endsWith(suffix)).toSorted(descendingText);
-        const contained = await firstContained(
-          hits.map((hit) => join(root.path, folder, hit)),
-          root.path,
-        );
-        if (contained === null) continue;
-        this.pathCache.set(id, { path: contained, root: root.path });
-        return { kind: "id", value: id };
-      }
+      // Only the folders this cwd is filed under: a command line names a session of THIS pane's
+      // folder, so an id must not reach a log another folder holds. Inside them, the same order as
+      // `resolve` uses, so both lookups land on the same log for one id.
+      const contained = await newestNamed(root.path, discovery.folders, suffix);
+      if (contained === null) continue;
+      this.pathCache.set(id, { path: contained, root: root.path });
+      return { kind: "id", value: id };
     }
     return null;
   }
@@ -1756,13 +1746,8 @@ export class PiTranscriptSource implements TranscriptSource {
   }
 
   /**
-   * The log whose name ends in `suffix` under one sessions root, contained by that root.
-   *
-   * Every project folder is read, and the matches are tried newest name first across all of them:
-   * pi starts a name with the session's start time (`<ISO-ts>_<uuid>.jsonl`), so the name order is
-   * the time order; a tie on the name goes to the folder that sorts first. A refused match is skipped
-   * for the next one (#840, see {@link firstContained}). It used to take the first match in `readdir`
-   * order, which no file system promises, and to answer its refusal as the root's.
+   * The log whose name ends in `suffix` under one sessions root, contained by that root: every
+   * project folder is read, in the order {@link newestNamed} keeps.
    */
   private async findUnder(root: string, suffix: string): Promise<string | null> {
     let dirs: string[];
@@ -1771,21 +1756,7 @@ export class PiTranscriptSource implements TranscriptSource {
     } catch {
       return null; // no sessions root at all — nothing to serve
     }
-    const hits: { dir: string; name: string }[] = [];
-    for (const dir of dirs) {
-      let names: string[];
-      try {
-        names = await readdir(join(root, dir));
-      } catch {
-        continue;
-      }
-      for (const name of names) if (name.toLowerCase().endsWith(suffix)) hits.push({ dir, name });
-    }
-    hits.sort((a, b) => descendingText(a.name, b.name) || descendingText(b.dir, a.dir));
-    return firstContained(
-      hits.map((hit) => join(root, hit.dir, hit.name)),
-      root,
-    );
+    return newestNamed(root, dirs, suffix);
   }
 
   stat = statFile;
@@ -1879,6 +1850,32 @@ export interface PiSourceOptions {
  * lost to rounding. A log older than this is a previous run's.
  */
 const START_SLACK_MS = 5000;
+
+/**
+ * The log named `<ISO-ts>_<id>.jsonl` (`suffix` is `_<id>.jsonl`) in `folders` of `root` that `root`
+ * contains, or null. ONE order for every lookup by id (`resolve` over all project folders, a command
+ * line's id over the cwd's own), so two lookups of one id cannot land on two logs: newest name first
+ * across the folders, since pi starts a name with the session's start time; a tie on the name goes to
+ * the folder that sorts first. A refused match is skipped for the next (#840, see {@link
+ * firstContained}). An unreadable folder is passed over.
+ */
+async function newestNamed(root: string, folders: readonly string[], suffix: string): Promise<string | null> {
+  const hits: { dir: string; name: string }[] = [];
+  for (const dir of folders) {
+    let names: string[];
+    try {
+      names = await readdir(join(root, dir));
+    } catch {
+      continue;
+    }
+    for (const name of names) if (name.toLowerCase().endsWith(suffix)) hits.push({ dir, name });
+  }
+  hits.sort((a, b) => descendingText(a.name, b.name) || descendingText(b.dir, a.dir));
+  return firstContained(
+    hits.map((hit) => join(root, hit.dir, hit.name)),
+    root,
+  );
+}
 
 /** A sort order on names: the larger first, by code unit, so a time-stamped name sorts newest first. */
 function descendingText(a: string, b: string): number {

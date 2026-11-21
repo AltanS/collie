@@ -58,7 +58,7 @@ import { liftedSpelling } from "../../web/src/lib/harness/claude/paste.ts";
 import {
   containedRealpath,
   exists,
-  existingUnder,
+  existingNewestFirst,
   firstContained,
   head,
   loadTail,
@@ -1373,7 +1373,7 @@ export class ClaudeTranscriptSource implements TranscriptSource {
    * and it is never accepted under a sibling root either (files.ts header); the next project folder
    * of the SAME root that holds the name is asked instead (#839, see {@link firstContained}), so a
    * planted or dangling symlink in one project folder cannot blank the log that sits in another.
-   * The folders are tried in name order, so two readable logs give the same answer on every disk.
+   * The logs are tried newest modified first ({@link existingNewestFirst}): the folder names carry no time.
    */
   private async scanRoot(sessionId: string, root: string): Promise<string | null> {
     const file = `${sessionId}.jsonl`;
@@ -1383,7 +1383,7 @@ export class ClaudeTranscriptSource implements TranscriptSource {
     } catch {
       return null; // this projects dir doesn't exist — a profile that isn't on this machine
     }
-    return firstContained(existingUnder(root, dirs.toSorted(), file), root);
+    return firstContained(await existingNewestFirst(root, dirs, file), root);
   }
 
   /**

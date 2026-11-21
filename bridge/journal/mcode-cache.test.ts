@@ -43,7 +43,7 @@ describe("mcode: a remembered log path", () => {
     const real = join(base, "real-sessions");
     const root = join(base, "sessions");
     await mkdir(real, { recursive: true });
-    await symlink(real, root);
+    await symlink(real, root, "dir");
     const outside = join(base, "outside.jsonl");
     await writeFile(outside, '{"secret":"outside the root"}\n');
     const newest = logOn(real, "08");
@@ -65,7 +65,7 @@ describe("mcode: a remembered log path", () => {
     const real = join(base, "real-sessions");
     const root = join(base, "sessions");
     await mkdir(real, { recursive: true });
-    await symlink(real, root);
+    await symlink(real, root, "dir");
     const log = logOn(real, "08");
     await readable(log);
 

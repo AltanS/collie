@@ -10,7 +10,7 @@
 
 import { readdir } from "node:fs/promises";
 import { basename, dirname } from "node:path";
-import { containedRealpath, existingUnder, firstContained, loadTail, readSinceFile, rootList, statFile } from "./files.ts";
+import { containedRealpath, existingNewestFirst, firstContained, loadTail, readSinceFile, rootList, statFile } from "./files.ts";
 import type { AgentSessionRef, TranscriptSource } from "./types.ts";
 
 // A session ID becomes a path component, so only a plain name is accepted. kiro-cli 2.32.0 names
@@ -66,11 +66,12 @@ export class KiroTranscriptSource implements TranscriptSource {
 }
 
 /**
- * The real path of session `id`'s log in the first bucket under `root`, in name order, that holds
- * one `root` contains. A refused log is skipped for the next bucket (#839, see {@link firstContained}).
+ * The real path of session `id`'s newest log under `root` that `root` contains, the buckets tried
+ * newest log first ({@link existingNewestFirst}). A refused log is skipped for the next bucket (#839,
+ * see {@link firstContained}).
  */
 async function findUnder(root: string, id: string): Promise<string | null> {
   const buckets = await readdir(root).catch(() => null);
   if (buckets === null) return null;
-  return firstContained(existingUnder(root, buckets.toSorted(), id, KIRO_LOG_NAME), root);
+  return firstContained(await existingNewestFirst(root, buckets, id, KIRO_LOG_NAME), root);
 }

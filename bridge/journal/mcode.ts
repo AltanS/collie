@@ -354,8 +354,9 @@ export class McodeTranscriptSource implements TranscriptSource {
     const cached = this.pathCache.get(sessionId);
     if (cached !== undefined) {
       // The cache memoises the scan, not the containment verdict: a file replaced by an outward link
-      // after the first resolve must be refused. A root that left the config serves nothing more.
-      const real = this.roots.includes(cached.root) ? await containedRealpath(cached.path, cached.root) : null;
+      // after the first resolve must be refused. The roots are fixed at construction, so the root
+      // that built the entry is still one of them.
+      const real = await containedRealpath(cached.path, cached.root);
       if (real !== null) return real;
       this.pathCache.delete(sessionId);
     }
@@ -509,7 +510,10 @@ async function* sessionLogsUnder(root: string, suffix: string): AsyncGenerator<s
     for (const month of await descending(join(root, year))) {
       for (const day of await descending(join(root, year, month))) {
         const dir = join(root, year, month, day);
-        for (const hit of (await descending(dir)).filter((n) => n.endsWith(suffix))) {
+        // The whole suffix after a `-` (mcode writes `HH-mm-ss-SSS-session_<base64url>`): base64url
+        // has `_` and letters, so a bare `endsWith` also took another id's folder whose code merely
+        // ends in this one's, `…-Xsession_<code>`.
+        for (const hit of (await descending(dir)).filter((n) => n === suffix || n.endsWith(`-${suffix}`))) {
           yield join(dir, hit, "messages.jsonl");
         }
       }

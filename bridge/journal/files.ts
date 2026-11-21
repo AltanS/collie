@@ -170,16 +170,21 @@ export async function firstContained(
 }
 
 /**
- * `join(root, dir, ...rest)` for each of `dirs`, in the order given, where something exists at it
- * (a symlink counts by its target, so a dangling one is passed over). Lazy, for {@link
- * firstContained}: the walk stops at the first path served, and a folder with no such file costs one
- * `stat` and no refusal.
+ * `join(root, dir, ...rest)` for each of `dirs` where something exists at it, newest modified first,
+ * and on a tie the folder name that sorts first. For {@link firstContained}, where the folder names
+ * carry no time (Claude's project folders, grok's, kiro's buckets): the file decides, so the log being
+ * written wins over an older one for the same id, on every disk. A symlink counts by its target, so a
+ * dangling one is passed over. Costs one `stat` per folder; a lookup that calls it is cached.
  */
-export async function* existingUnder(root: string, dirs: Iterable<string>, ...rest: string[]): AsyncGenerator<string> {
+export async function existingNewestFirst(root: string, dirs: Iterable<string>, ...rest: string[]): Promise<string[]> {
+  const found: { dir: string; path: string; mtimeMs: number }[] = [];
   for (const dir of dirs) {
-    const candidate = join(root, dir, ...rest);
-    if (await exists(candidate)) yield candidate;
+    const path = join(root, dir, ...rest);
+    const st = await stat(path).catch(() => null);
+    if (st !== null) found.push({ dir, path, mtimeMs: st.mtimeMs });
   }
+  found.sort((a, b) => b.mtimeMs - a.mtimeMs || (a.dir < b.dir ? -1 : a.dir > b.dir ? 1 : 0));
+  return found.map((f) => f.path);
 }
 
 /**
