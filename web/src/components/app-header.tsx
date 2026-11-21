@@ -435,7 +435,9 @@ export function AppHeaderHost({ bridge, error, lastSeenAt, children }: AppHeader
               `relative`: the views control is placed in this row (`DashboardViews`). */}
           <div
             data-slot="header-row"
-            className={cn("flex items-center gap-2 pr-2", spanned ? "relative mx-auto min-h-12 w-full py-0.5 pl-[18px]" : "min-h-15 py-1 pl-4")}
+            // A route that owns the spanned row (the large-screen Settings) leads with a 44px control at 4px, so its 20px icon
+            // stands on the 16px ink edge of the list below it.
+            className={cn("flex items-center gap-2 pr-2", spanned ? cn("relative mx-auto min-h-12 w-full py-0.5", claim.override ? "pl-1" : "pl-[18px]") : "min-h-15 py-1 pl-4")}
             style={spanned && claimedPx !== null ? { maxWidth: claimedPx } : undefined}
           >
             {!claim.override && (

@@ -100,3 +100,35 @@ export function InstallControl({ shareSheet = probeShareSheetInstall() }: { shar
     </>
   );
 }
+
+/**
+ * The same offer as one compact row, for the large screen's section list (components/settings-shell.tsx): the icon
+ * and "Install the app", the whole row the button, the description in `title`. Drawn only while the browser holds
+ * the offer, and arriving through `Collapse` like the card. On iOS (an iPad wide enough for the list) there is no
+ * offer to take, so the row is no button: the title and, under it, the share-sheet line, wrapped.
+ */
+export function InstallRow({ className, shareSheet = probeShareSheetInstall() }: { className: string; shareSheet?: boolean }) {
+  useLocale();
+  const offered = useInstallOffer();
+  return (
+    <>
+      <Collapse open={offered}>
+        {offered ? (
+          <button type="button" data-slot="settings-install-row" title={t("settings.install.description")} onClick={() => void promptInstall()} className={className}>
+            <Icon name="install-app" className="size-5 shrink-0 text-muted-foreground" />
+            <span className="min-w-0 flex-1 truncate">{t("settings.install.title")}</span>
+          </button>
+        ) : null}
+      </Collapse>
+      {shareSheet && !offered ? (
+        <div data-slot="settings-install-row" className="flex items-start gap-2.5 px-2 py-2.5 text-sm">
+          <Icon name="share-menu" className="size-5 shrink-0 text-muted-foreground" />
+          <div className="min-w-0">
+            <div className="font-medium">{t("settings.install.title")}</div>
+            <p className="text-xs text-muted-foreground">{t("settings.install.iosHint")}</p>
+          </div>
+        </div>
+      ) : null}
+    </>
+  );
+}
