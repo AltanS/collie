@@ -255,7 +255,7 @@ describe("fixture: the recorded snapshot through the adapter", () => {
     const { adapter } = await rig();
     await adapter.snapshot();
     const program = adapter.program();
-    expect(program?.session).toMatchObject({ version: 1, hostName: "denis-laptop" });
+    expect(program?.session).toMatchObject({ version: 1, hostName: "casey-laptop" });
     expect(program?.snapshot.panes.find((pane) => pane.id === "conv-02")?.turnId).toBe("turn-02-a");
     expect(program?.snapshot.panes.find((pane) => pane.id === "conv-02")?.openAsks).toHaveLength(1);
     expect(program?.snapshot.starters).toEqual([{ id: "notes-new", label: "New note chat" }]);
@@ -644,11 +644,11 @@ describe("starters (WIRE.md sections 7.6 and 7.7)", () => {
 
   test("the program's starters are listed with its machine name, and none while it is unreachable", async () => {
     const { adapter, program, tick } = await rig();
-    expect(await adapter.listStarters()).toEqual({ hostName: "denis-laptop", starters: [{ id: "notes-new", label: "New note chat" }], reachable: true });
+    expect(await adapter.listStarters()).toEqual({ hostName: "casey-laptop", starters: [{ id: "notes-new", label: "New note chat" }], reachable: true });
     await program.close();
     tick();
     // The first failed read is held (WIRE.md section 8.8), so the starters hold with the layout.
-    expect(await adapter.listStarters()).toEqual({ hostName: "denis-laptop", starters: [{ id: "notes-new", label: "New note chat" }], reachable: true });
+    expect(await adapter.listStarters()).toEqual({ hostName: "casey-laptop", starters: [{ id: "notes-new", label: "New note chat" }], reachable: true });
     tick();
     expect(await adapter.listStarters()).toEqual({ hostName: "", starters: [], reachable: false });
   });
