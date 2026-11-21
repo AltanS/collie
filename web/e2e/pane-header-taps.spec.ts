@@ -55,10 +55,10 @@ test("a tap anywhere on the pane's name reaches Pane settings, and the cache rea
   const header = (await page.locator('header[data-slot="app-header"]').boundingBox())!;
   const x = cacheBox.x + cacheBox.width / 2;
 
-  // The lower half of the name line and the air under it, straight above the cache chip: the cache reach used
-  // to run 16px up and cut into it (1.17.0 review).
+  // The lower half of the name line, straight above the cache chip: the cache reach used to run 16px up and cut into
+  // it (1.17.0 review). It reaches 4px up now, the gap between the two lines and no further.
   const settings = en["chat.header.openPaneSettingsAria"].replace("{name}", (await name.textContent()) ?? "");
-  for (const y of [nameBox.y + nameBox.height * 0.6, nameBox.y + nameBox.height - 1, nameBox.y + nameBox.height + 1]) {
+  for (const y of [nameBox.y + nameBox.height * 0.6, nameBox.y + nameBox.height - 1]) {
     expect(await buttonAt(page, x, y), `y=${y}`).toBe(settings);
   }
 
@@ -67,6 +67,7 @@ test("a tap anywhere on the pane's name reaches Pane settings, and the cache rea
   const chipLabel = (await cache.getAttribute("aria-label"))!;
   expect(await buttonAt(page, x, cacheBox.y + cacheBox.height / 2)).toBe(chipLabel);
   expect(await buttonAt(page, x, cacheBox.y + cacheBox.height + 3)).toBe(chipLabel);
+  expect(await buttonAt(page, x, cacheBox.y - 3)).toBe(chipLabel);
   expect(cacheBox.y + cacheBox.height + 4).toBeLessThanOrEqual(header.y + header.height);
   expect(await buttonAt(page, x, header.y + header.height + 2)).not.toBe(chipLabel);
 });
