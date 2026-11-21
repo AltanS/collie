@@ -245,9 +245,10 @@ not `true` or `false` drops that one row, the same way a bad `confirm` does.
 The row sends while the agent is busy, the same as the command palette. The checkmark appears only
 when the pane took the text.
 
-A Switch button sits at the belt's right end and opens the pane switcher. It draws the layers mark
-alone, behind a hairline, and carries no word. A drag up, anywhere on the belt, opens the same
-switcher. A sideways drag scrolls the belt instead.
+An Actions button sits at the belt's right end and opens [Actions](sessions.md#actions). It draws
+its mark alone, behind a hairline, and carries no word. It takes the blue of an open dock while Actions
+is open. A drag up, anywhere on the belt, opens the pane switcher, the Switch pane sheet. A sideways
+drag scrolls the belt instead.
 
 The agents mark left of the Files button counts the pane's running subagents. For omp and Gentle
 Shell it counts their background jobs only while the pane's Chat is open on a phone; the Screen view
@@ -273,12 +274,12 @@ block when it is loaded. After the last Unpin the sheet closes and the mark goes
 on the mark of another column focuses that pane and opens the sheet.
 
 While the text box holds text or an attachment, an X sits at the belt's right end too, left of the
-Switch button. One tap empties the box and its saved draft, and sends nothing to the pane. The X then
+Actions button. One tap empties the box and its saved draft, and sends nothing to the pane. The X then
 becomes Undo, which puts the text and the attachments back. Undo stays until your next act: a
 keystroke, an attachment, a send, a tap on another belt button, or leaving the pane. Scrolling the
 belt keeps it.
 
-A Zoom button, a magnifier with a plus, sits just left of the Switch button. It opens the pane's
+A Zoom button, a magnifier with a plus, sits just left of the Actions button. It opens the pane's
 output alone, over the whole screen. The text keeps updating while the view is open.
 
 Pinch with two fingers to make the text bigger, up to six times. Drag with one finger to move around
