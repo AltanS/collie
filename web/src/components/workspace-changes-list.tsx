@@ -30,10 +30,13 @@ export function WorkspaceChangesList({
   rows,
   counts,
   onOpen,
+  line = false,
 }: {
   rows: readonly WorkspaceChangesRow[];
   counts: ReadonlyMap<string, WorkspaceChangeCount>;
   onOpen: (row: WorkspaceChangesRow, from: HTMLElement) => void;
+  /** The large dashboard: one line a space, its counts at the right. The phone's rows hold the counts under the label. */
+  line?: boolean;
 }) {
   useLocale();
   return (
@@ -54,7 +57,7 @@ export function WorkspaceChangesList({
                 quiet && "opacity-60",
               )}
             >
-              <span className="flex min-w-0 flex-1 flex-col gap-1">
+              <span className={cn("flex min-w-0 flex-1 gap-1", line ? "items-baseline justify-between gap-4" : "flex-col")}>
                 {/* `self-start max-w-full`: the label's box is its text, not the row, so its snapshot
                     has the same shape as the header's label it glides into. */}
                 <span data-glide="label" className="max-w-full self-start truncate text-sm font-medium leading-5">

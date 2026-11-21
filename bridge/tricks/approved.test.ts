@@ -1,9 +1,10 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { chmod, lstat, mkdir, mkdtemp, readdir, readFile, rm, stat, symlink, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, sep } from "node:path";
+import { basename, join, sep } from "node:path";
 
-import { approveFolder, copyListing, fileCounts, forgetLeftovers, GONE_PREFIX, LATER_POWER_KEYS, migrateSwitches, neutralPower, powersHash, powersOf, promoteCopy, pruneCopies, removeTrickCopies, snapshotTrick, sweepGone, syncConfig, verifyCopy } from "./approved.ts";
+import { approveFolder, copyListing, fileCounts, forgetLeftovers, LATER_POWER_KEYS, migrateSwitches, neutralPower, powersHash, powersOf, promoteCopy, pruneCopies, snapshotTrick, syncConfig, verifyCopy } from "./approved.ts";
+import { commitAside, GONE_PREFIX, isGoneName, moveAside, newAsideToken, sweepGone } from "./aside.ts";
 import { asJsonNumber, asJsonObject, asJsonString, parseJson } from "../../web/src/lib/json.ts";
 import { trickCodeHash } from "./code-hash.ts";
 import { createTrickScanner } from "./discover.ts";
@@ -430,15 +431,6 @@ describe("pruning", () => {
     expect(await readdir(join(configDir, TRICKS_DIR, APPROVED_DIR))).toEqual([]);
   });
 
-  test("removeTrickCopies takes both folders of one trick", async () => {
-    const { configDir, dir } = await setup();
-    await snapshotTrick({ src: dir, parent: approvedTrickDir(configDir, "legs") });
-    await snapshotTrick({ src: dir, parent: pendingTrickDir(configDir, "legs") });
-    await removeTrickCopies(configDir, "legs");
-    expect(await Bun.file(join(approvedTrickDir(configDir, "legs"), "x")).exists()).toBe(false);
-    expect(await readdir(join(configDir, TRICKS_DIR, APPROVED_DIR))).toEqual([]);
-    expect(await readdir(join(configDir, TRICKS_DIR, PENDING_DIR))).toEqual([]);
-  });
 });
 
 /** What an earlier trick of `legs` left in its state folder: the person's values and a file its program saved. */
@@ -543,8 +535,10 @@ describe("forgetLeftovers (review J, last read)", () => {
     expect(parseSwitches(await readFile(switchesPath(stateDir), "utf8")).switches.on.has("legs")).toBe(false);
   });
 
-  test("point 1: a `.gone-*` leftover is swept at start, and no scan or prune reads one as a trick", async () => {
+  test("point 1: a committed `.gone-*` leftover is swept at start, and no scan or prune reads one as a trick", async () => {
     const { configDir, stateDir } = await setup();
+    // A batch committed before the crash (aside.ts): its asides are the sweep's to delete.
+    for (const token of ["aaaaaaaaaaaa", "bbbbbbbbbbbb", "cccccccccccc", "dddddddddddd"]) await commitAside(stateDir, "legs", token);
     const leftovers = [join(tricksStateDir(stateDir), `${GONE_PREFIX}legs-aaaaaaaaaaaa`), join(configDir, TRICKS_DIR, APPROVED_DIR, `${GONE_PREFIX}legs-bbbbbbbbbbbb`), join(configDir, TRICKS_DIR, PENDING_DIR, `${GONE_PREFIX}legs-cccccccccccc`)];
     for (const path of leftovers) {
       await mkdir(join(path, "deep"), { recursive: true });
@@ -556,11 +550,35 @@ describe("forgetLeftovers (review J, last read)", () => {
     expect(scan.tricks.map((t) => t.id)).toEqual(["legs"]);
     await pruneCopies(configDir, { on: new Map(), version: 3 }, { now: Date.now() + 10 * 24 * 3600 * 1000 });
     for (const path of leftovers) expect((await stat(path)).isDirectory()).toBe(true);
-    expect(await sweepGone({ stateDir, configDir })).toBe(3);
+    // The fourth is a removed trick's own folder (remove.ts), swept from the tricks folder itself.
+    expect(await sweepGone({ stateDir, configDir })).toEqual({ removed: 4, restored: 0, kept: 0 });
     for (const path of leftovers) expect(await gone(path)).toBe(true);
+    expect(await gone(join(configDir, TRICKS_DIR, `${GONE_PREFIX}legs-dddddddddddd`))).toBe(true);
     // The trick's own folder and the switch file's folder stay.
     expect((await stat(join(configDir, TRICKS_DIR, "legs", "trick.toml"))).isFile()).toBe(true);
-    expect((await stat(join(configDir, TRICKS_DIR, `${GONE_PREFIX}legs-dddddddddddd`))).isDirectory()).toBe(true);
+  });
+
+  test("the sweep takes only the names moveAside makes; a person's `.gone-*` folder in each parent stays", async () => {
+    const { configDir, stateDir } = await setup();
+    const parents = [join(configDir, TRICKS_DIR), tricksStateDir(stateDir), join(configDir, TRICKS_DIR, APPROVED_DIR), join(configDir, TRICKS_DIR, PENDING_DIR)];
+    // What moveAside itself made, once per parent.
+    const made: string[] = [];
+    const token = newAsideToken();
+    await commitAside(stateDir, "doomed", token);
+    for (const parent of parents) {
+      const from = join(parent, "doomed");
+      await mkdir(from, { recursive: true });
+      const to = await moveAside(from, "doomed", token);
+      expect(to).not.toBeNull();
+      expect(isGoneName(basename(to!))).toBe(true);
+      made.push(to!);
+    }
+    // Decoys: a bare prefix, no random part, a short or upper-case random part, a dot in the id, a trailing word.
+    const decoys = [".gone-", ".gone-photos", ".gone-legs-abc", ".gone-legs-AAAAAAAAAAAA", ".gone-a.b-aaaaaaaaaaaa", ".gone-legs-aaaaaaaaaaaa-old", ".gone-legs-aaaaaaaaaaaaa"];
+    for (const parent of parents) for (const name of decoys) await mkdir(join(parent, name), { recursive: true });
+    expect(await sweepGone({ stateDir, configDir })).toEqual({ removed: parents.length, restored: 0, kept: 0 });
+    for (const path of made) expect(await gone(path)).toBe(true);
+    for (const parent of parents) for (const name of decoys) expect((await stat(join(parent, name))).isDirectory()).toBe(true);
   });
 
   test.if(process.platform !== "win32")("point 4: a symbolic link at the state folder or a copy path is removed, never followed", async () => {

@@ -12,8 +12,10 @@ import { SectionLabel } from "@/components/ui/section-label";
 import { Switch } from "@/components/ui/switch";
 import { TokenUseChip, tokenUseWhy, useTokenUseShown } from "@/components/token-use-label";
 import { TrickCodeFolds, type TrickCodeReader } from "@/components/trick-code-folds";
+import { TrickRemoveSection, type RemoveProblem } from "@/components/trick-remove-section";
 import { TrickSettingsGroup } from "@/components/trick-settings-group";
 import { valueSentence } from "@/components/trick-value";
+import { SettingSlot } from "@/components/setting-slot";
 import { useLocale } from "@/hooks/use-locale";
 import { dateOnly, wholeNumber } from "@/lib/format";
 import { isWebLink, linkHost } from "@/lib/hill/reader";
@@ -65,7 +67,7 @@ import { trickTokenUse, type TrickTokenFacts } from "@/lib/tricks/token-use";
 //      the date of the last commit are a second small line INSIDE that row: the row is 44 px with or without
 //      it, so the facts arriving move nothing. A failed read shows nothing.
 //      Then "Version 1.2.0" when the manifest names one;
-//   5. "Updates": the "Take changes without asking" switch with its hint, for a trick that is switched on
+//   5. "Updates": the "Update this trick without asking" switch with its hint, for a trick that is switched on
 //      and only on a bridge that runs tricks (a crew member runs none, so it has nothing to take). It is the
 //      same field `collie trick auto` writes. The switch shows only here, not on the card; the route owns the
 //      write state (`flipAuto`, hooks/use-trick-writes.ts): it flips at once, holds its position until the list
@@ -343,10 +345,10 @@ function UpdatesGroup({ auto, canWrite, onAuto }: { auto: boolean; canWrite: boo
       <ListGroup>
         <div className="flex min-h-11 items-center justify-between gap-4 px-3.5 py-2">
           <div className="min-w-0 flex-1">
-            <div className="text-sm">{t("settings.tricks.about.auto.label")}</div>
+            <div className="text-sm">{t("settings.tricks.about.autoUpdate.label")}</div>
             <p className="text-xs text-muted-foreground">{t("settings.tricks.about.auto.hint")}</p>
           </div>
-          <Switch checked={auto} onCheckedChange={onAuto} disabled={!canWrite} aria-label={t("settings.tricks.about.auto.label")} />
+          <Switch checked={auto} onCheckedChange={onAuto} disabled={!canWrite} aria-label={t("settings.tricks.about.autoUpdate.label")} />
         </div>
       </ListGroup>
     </section>
@@ -480,10 +482,12 @@ export interface TrickDetailProps {
   timeZone?: string;
   /** The reads behind the "Read the code" folds, bound to this trick. Without it the section is not drawn. */
   readCode?: TrickCodeReader;
+  /** Remove the trick from this machine (ADR 0168), with the ask's request id: null when it went, else what to show. Without it no Remove section. */
+  onRemove?: (rid: string) => Promise<RemoveProblem | null>;
 }
 
 /** The details of one trick on a machine: the head, then the sheet's groups in the sheet's order. */
-export function TrickDetail({ trick, runsOn, origin, checked, onFlip, auto, canWrite = true, onAuto, onValue, timeZone, readCode }: TrickDetailProps) {
+export function TrickDetail({ trick, runsOn, origin, checked, onFlip, auto, canWrite = true, onAuto, onValue, timeZone, readCode, onRemove }: TrickDetailProps) {
   useLocale();
   const paragraphs = trick.about === undefined ? [] : aboutParagraphs(trick.about);
   const tokens = useTokenUseShown();
@@ -505,24 +509,54 @@ export function TrickDetail({ trick, runsOn, origin, checked, onFlip, auto, canW
   return (
     <div data-slot="trick-detail" data-detail-trick={trick.id}>
       <DetailHead icon={trick.icon} name={trick.name} origin={origin} tokens={tokens && trickTokenUse(trick) !== null}>
-        {onFlip !== undefined && <HeadSwitch name={trick.name} checked={on} disabled={!canWrite || noYes} onFlip={onFlip} />}
+        {onFlip !== undefined && (
+          <SettingSlot ids={["tricks.list"]}>
+            <HeadSwitch name={trick.name} checked={on} disabled={!canWrite || noYes} onFlip={onFlip} />
+          </SettingSlot>
+        )}
       </DetailHead>
       {/* The author's words: the about text, or the one line that there is none, and the note under them. */}
-      <AboutGroup description={trick.description} paragraphs={paragraphs} note={trick.about !== undefined || trick.description !== undefined} />
+      <SettingSlot ids={["tricks.trick.about"]}>
+        <AboutGroup description={trick.description} paragraphs={paragraphs} note={trick.about !== undefined || trick.description !== undefined} />
+      </SettingSlot>
       {does.length > 0 && <FactGroup slot="does" label={t("settings.tricks.about.does")} rows={does} />}
-      {trick.rules !== undefined && <RulesFold rules={trick.rules} />}
+      {trick.rules !== undefined && (
+        <SettingSlot ids={["tricks.trick.rules"]}>
+          <RulesFold rules={trick.rules} />
+        </SettingSlot>
+      )}
       {trick.rulesUnshown === true && (
         <p data-line="rules-unshown" className="pt-3 text-sm break-words text-muted-foreground">
           {t("settings.tricks.about.rulesUnshown")}
         </p>
       )}
       {/* Contract 3: the settings the person keeps (trick-settings-group.tsx). */}
-      {onValue !== undefined && <TrickSettingsGroup trick={trick} canWrite={canWrite} onLead={runsOn !== undefined} onValue={onValue} />}
-      <FactGroup slot="from" label={t("settings.tricks.about.from")} rows={comes} />
+      {onValue !== undefined && (
+        <SettingSlot ids={["tricks.trick.fields"]}>
+          <TrickSettingsGroup trick={trick} canWrite={canWrite} onLead={runsOn !== undefined} onValue={onValue} />
+        </SettingSlot>
+      )}
+      <SettingSlot ids={["tricks.trick.repo"]}>
+        <FactGroup slot="from" label={t("settings.tricks.about.from")} rows={comes} />
+      </SettingSlot>
       {/* A trick that gives agents instructions never takes changes without asking: no switch to offer. */}
-      {trick.on && runsOn === undefined && onAuto !== undefined && trick.rules === undefined && trick.rulesUnshown !== true && trick.agentView !== true && <UpdatesGroup auto={auto ?? trick.auto === true} canWrite={canWrite} onAuto={onAuto} />}
+      {trick.on && runsOn === undefined && onAuto !== undefined && trick.rules === undefined && trick.rulesUnshown !== true && trick.agentView !== true && (
+        <SettingSlot ids={["tricks.trick.autoUpdate"]}>
+          <UpdatesGroup auto={auto ?? trick.auto === true} canWrite={canWrite} onAuto={onAuto} />
+        </SettingSlot>
+      )}
       {/* The version a read shows moves with the row: the switch (the copy that runs, or the folder) and the hash a switch on approves. */}
-      {readCode !== undefined && <TrickCodeFolds reader={readCode} scope={`${trick.host}/${trick.id}/${String(trick.on)}/${trick.approves ?? ""}`} />}
+      {readCode !== undefined && (
+        <SettingSlot ids={["tricks.trick.code"]}>
+          <TrickCodeFolds reader={readCode} scope={`${trick.host}/${trick.id}/${String(trick.on)}/${trick.approves ?? ""}`} />
+        </SettingSlot>
+      )}
+      {/* The last section: the one place that removes a trick. A trick that is on, also one held on by a flip, cannot go. */}
+      {onRemove !== undefined && (
+        <SettingSlot ids={["tricks.trick.remove"]}>
+          <TrickRemoveSection name={trick.name} on={on || trick.on} canWrite={canWrite} onRemove={onRemove} />
+        </SettingSlot>
+      )}
     </div>
   );
 }
@@ -552,7 +586,9 @@ export function OfficialTrickDetail({ entry, busy, canWrite, onAdd, timeZone }: 
   return (
     <div data-slot="trick-detail" data-detail-official={entry.id}>
       <DetailHead icon={undefined} name={entry.name} origin="official" tokens={tokens && trickTokenUse(entry) !== null} />
-      <AboutGroup description={entry.description} paragraphs={[]} note={false} />
+      <SettingSlot ids={["tricks.trick.about"]}>
+        <AboutGroup description={entry.description} paragraphs={[]} note={false} />
+      </SettingSlot>
       {does.length > 0 && <FactGroup slot="does" label={t("settings.tricks.about.does")} rows={does} />}
       {/* The list pins the rules but does not carry them, and nothing is fetched before Add (review 8 V-N3). */}
       {entry.givesRules === true && (
@@ -560,8 +596,10 @@ export function OfficialTrickDetail({ entry, busy, canWrite, onAdd, timeZone }: 
           {t("settings.tricks.about.rulesAfterAdd")}
         </p>
       )}
-      <FactGroup slot="from" label={t("settings.tricks.about.from")} rows={comes} />
-      <div className="pt-6">
+      <SettingSlot ids={["tricks.trick.repo"]}>
+        <FactGroup slot="from" label={t("settings.tricks.about.from")} rows={comes} />
+      </SettingSlot>
+      <SettingSlot ids={["tricks.official.add"]} className="pt-6">
         <Button type="button" data-slot="official-add" className="h-11 w-full" disabled={!canWrite || busy} aria-busy={busy || undefined} onClick={onAdd}>
           {/* The word and the spinner share one slot, so the button keeps its size while it works. */}
           <OneOf
@@ -573,7 +611,7 @@ export function OfficialTrickDetail({ entry, busy, canWrite, onAdd, timeZone }: 
             ]}
           />
         </Button>
-      </div>
+      </SettingSlot>
     </div>
   );
 }

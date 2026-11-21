@@ -16,14 +16,15 @@ turn.
 
 "Hill" is the view's name, and it stays the same in every language. "Decision" is a plain word.
 
-The Hill is an experiment. It is off until you switch it on in Settings → Experiments, or with
+The Hill is an experiment. It is off until you switch it on in Settings → Tricks and the Hill, or with
 `collie hill on`. Until then no agent or trick can post, and the Hill is not in the bottom bar. See
 [Switch the Hill on or off](#switch-the-hill-on-or-off).
 
 ## What the Hill shows
 
-The Hill is the fourth item of the Dashboard's bottom bar. It opens a page of cards, grouped by how
-soon each one needs you.
+The Hill is the fourth item of the Dashboard's bottom bar. On a large screen the bar is gone, and the
+Hill is a button in the dashboard's header, beside Actions, with the count of Decisions that need you
+on it. It opens a page of cards, grouped by how soon each one needs you.
 
 | Group | Meaning |
 | --- | --- |
@@ -221,7 +222,7 @@ the cause. With the Hill off (`hill_off`), or after exit 4, there is no second l
 
 A session holds at most 20 open Decisions. The agents of one machine hold at most 40 together, and the
 Hill at most 200. With the Hill off, every post is refused with: "the Hill is off on this Collie; your
-person can switch it on in Settings, Experiments, on the phone, or with: collie hill on".
+person can switch it on in Settings, Tricks and the Hill, on the phone, or with: collie hill on".
 
 ### When a card closes by itself
 
@@ -339,7 +340,7 @@ collie hill off
 ```
 
 The Hill is an experiment, and it is off by default. A Collie with no switch file has the Hill off.
-In Settings → Experiments, the card **The Hill** holds the one switch: "Agents and tricks ask you
+In Settings → Tricks and the Hill, the card **The Hill** holds the one switch: "Agents and tricks ask you
 here. Off: they cannot post, and the Hill leaves the bar." If a question waits, the first tap on the
 switch asks you to tap again before it switches off. The commands move the same switch, for every
 phone of this Collie, and the bridge reads it with no restart.
@@ -355,7 +356,7 @@ open Decisions stay stored, and their expiry still runs. They show again when yo
 A crew member with no switch file of its own follows the lead. It does not refuse a post or an image
 on its own: it sends them to the lead, and the lead's switch decides. If the lead has the Hill off,
 the post is refused with: "the Hill is off on the lead of this crew; your person can switch it on in
-Settings, Experiments, on the phone". A member whose own switch says off still refuses on its own
+Settings, Tricks and the Hill, on the phone". A member whose own switch says off still refuses on its own
 machine. See [Decisions from any machine](crew.md#decisions-from-any-machine).
 
 On a crew member, the installed skill follows that machine's own switch, not the lead's. To give the
@@ -373,11 +374,11 @@ With the Hill off:
 Collie's own cards about a trick are not Decisions of an agent or a trick, so they need no Hill. The
 switch does not stop them: a proposed trick, a new version, a trick's changed rights and a carried
 trick still get their card, and your answer still acts and reaches the agent that asked. With the Hill
-off they are under **Waiting for your yes** in Settings → Tricks, and the Dashboard shows "A trick
+off they are under **Waiting for your yes** in Settings → Tricks and the Hill, and the Dashboard shows "A trick
 waits for your yes." with a button to the oldest card. Every limit on proposals still holds.
 
 A post is refused with: "the Hill is off on this Collie; your person can switch it on in Settings,
-Experiments, on the phone, or with: collie hill on".
+Tricks and the Hill, on the phone, or with: collie hill on".
 
 Notifications for Decisions marked `now` are in
 [Voice input and Web Push](voice-and-push.md#web-push-optional).

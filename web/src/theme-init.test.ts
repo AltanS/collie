@@ -7,7 +7,8 @@ import { DESIGN_STORAGE_KEY } from "@/lib/design";
 import type { JsonObject } from "@/lib/json";
 import { THEME_ESCAPE_SOURCE } from "@/lib/theme/escape";
 import { ALL_THEME_TOKENS, COLOUR_MAX, COLOUR_SOURCE, SHIPPED_THEME_IDS, THEME_TOKENS, isColour, parseTheme, type Theme } from "@/lib/theme/schema";
-import { LIBRARY_STORAGE_KEY, applyTheme } from "@/lib/theme/store";
+import { DERIVE_VERSION, DERIVED_TOKENS } from "@/lib/theme/derive";
+import { DERIVED_STORAGE_KEY, LIBRARY_STORAGE_KEY, applyTheme, halvesHash, shippedThemes } from "@/lib/theme/store";
 import {
   ANSI_KEYS,
   VERSION_TWO_PROPERTIES,
@@ -88,8 +89,10 @@ describe("theme-init.js and lib/theme agree", () => {
     // The block, the one call site, and the hand-off line that was not there before. Four more lines
     // since the default theme paints Collie's grain from :root: an imported theme names its own ground
     // or says `flat`, so the budget moved from 60 to 64. Two more since the ground may be an object
-    // of four words (schema version 4): one line reads it, one applies its four small tables.
-    expect(end - start + 1 + 1).toBeLessThan(66);
+    // of four words (schema version 4): one line reads it, one applies its four small tables. Twenty-four
+    // more since the first frame sets the derived colours (ADR 0172): the comment, two lists, the hash
+    // and the step that checks version, id and hash before it sets a stored value.
+    expect(end - start + 1 + 1).toBeLessThan(90);
   });
 });
 
@@ -467,5 +470,103 @@ describe("theme-init.js sets the display face and the palette as the store does"
     ]) {
       expect(initVersionTwo(extra), JSON.stringify(extra)).toEqual([]);
     }
+  });
+});
+
+// ── The derived colours, ADR 0172 ─────────────────────────────────────────────────────────────────
+//
+// applyTheme stores what deriveTokens made; theme-init.js sets it before the first paint only when the
+// derive version, the theme's id and the hash of its halves all match. Nothing is derived in the script.
+
+/** What applyTheme stores for the first frame (lib/theme/store.ts, DERIVED_STORAGE_KEY). */
+interface StoredDerived {
+  v: number;
+  id: string;
+  hash: string;
+  tokens: string[][];
+}
+
+describe("theme-init.js sets the stored derived colours, and only current ones", () => {
+  // `ring` is a base token too, set from the theme before the derived one replaces it: the other eleven are read here,
+  // and the ring's value is compared on its own.
+  const ONLY_DERIVED = DERIVED_TOKENS.filter((t) => t !== "ring");
+  const derivedOf = (seen: { properties: Array<[string, string]> }) => seen.properties.filter(([p]) => ONLY_DERIVED.some((t) => p === `--${t}`));
+  const ringOf = (seen: { properties: Array<[string, string]> }) => seen.properties.find(([p]) => p === "--ring")?.[1];
+  const storeDerived = () => ONLY_DERIVED.map((t): [string, string] => [`--${t}`, document.documentElement.style.getPropertyValue(`--${t}`)]);
+  const storeRing = () => document.documentElement.style.getPropertyValue("--ring");
+  const fresh = () => {
+    localStorage.clear();
+    document.documentElement.removeAttribute("style");
+    document.documentElement.removeAttribute("data-theme");
+  };
+
+  it("spells the same names, version, key and shipped hashes as lib/theme", () => {
+    expect(listOf("DERIVED")).toEqual([...DERIVED_TOKENS]);
+    expect(init).toContain(`var DERIVE_VERSION = ${String(DERIVE_VERSION)},`);
+    expect(init).toContain(`localStorage.getItem("${DERIVED_STORAGE_KEY}")`);
+    const literal = /SHIPPED_HASH = (\{[^}]*\})/u.exec(init)?.[1] ?? "{}";
+    const table = Object.fromEntries([...literal.matchAll(/(\w+): "([0-9a-f]{8})"/gu)].map((m) => [m[1], m[2]]));
+    expect(table).toEqual(Object.fromEntries(shippedThemes().filter((t) => t.id !== "collie").map((t) => [t.id, halvesHash(t)])));
+  });
+
+  it("stored and current, imported: the first frame gets the values the store sets a moment later", () => {
+    fresh();
+    applyTheme(midnightTheme(), "imported");
+    const stored = localStorage.getItem(DERIVED_STORAGE_KEY) ?? "";
+    expect(stored).not.toBe("");
+    const seen = runInit({ "collie:design:v1": JSON.stringify({ theme: "midnight" }), "collie:themes:v1": JSON.stringify(midnight(1)), [DERIVED_STORAGE_KEY]: stored });
+    expect(derivedOf(seen)).toEqual(storeDerived());
+    expect(ringOf(seen)).toBe(storeRing());
+  });
+
+  it("stored and current, shipped: the same", () => {
+    fresh();
+    const nightwatch = shippedThemes().find((t) => t.id === "nightwatch");
+    if (nightwatch === undefined) throw new Error("nightwatch is not shipped");
+    applyTheme(nightwatch, "shipped");
+    const seen = runInit({ "collie:design:v1": JSON.stringify({ theme: "nightwatch" }), [DERIVED_STORAGE_KEY]: localStorage.getItem(DERIVED_STORAGE_KEY) ?? "" });
+    expect(derivedOf(seen)).toEqual(storeDerived());
+    expect(ringOf(seen)).toBe(storeRing());
+  });
+
+  it("stored but stale (another version, another id, another hash, a bad value): ignored", () => {
+    fresh();
+    applyTheme(midnightTheme(), "imported");
+    // SAFETY: applyTheme wrote this entry a line above, in the shape StoredDerived names.
+    const good = JSON.parse(localStorage.getItem(DERIVED_STORAGE_KEY) ?? "{}") as StoredDerived;
+    const library = JSON.stringify(midnight(1));
+    const run = (entry: StoredDerived) => derivedOf(runInit({ "collie:design:v1": JSON.stringify({ theme: "midnight" }), "collie:themes:v1": library, [DERIVED_STORAGE_KEY]: JSON.stringify(entry) }));
+    expect(run({ ...good, v: good.v + 1 })).toEqual([]);
+    expect(run({ ...good, id: "other" })).toEqual([]);
+    expect(run({ ...good, hash: "00000000" })).toEqual([]);
+    const changed = midnight(1);
+    const first = changed.themes[0];
+    if (first !== undefined) first.light.background = "#fefefe";
+    expect(derivedOf(runInit({ "collie:design:v1": JSON.stringify({ theme: "midnight" }), "collie:themes:v1": JSON.stringify(changed), [DERIVED_STORAGE_KEY]: JSON.stringify(good) }))).toEqual([]);
+    const bad = { ...good, tokens: good.tokens.map((e, i) => (i === 0 ? [e[0], "red; color: x", e[2]] : e)) };
+    expect(run(bad).map(([p]) => p)).toEqual(ONLY_DERIVED.slice(1).map((t) => `--${t}`));
+  });
+
+  it("stored but no theme applies it: Collie, a blob-less device, a removed theme: ignored", () => {
+    fresh();
+    applyTheme(midnightTheme(), "imported");
+    const stored = localStorage.getItem(DERIVED_STORAGE_KEY) ?? "";
+    expect(stored).not.toBe("");
+    // The switch back to Collie (reset, Use Collie): the cache stays, and theme-init.js stops before it.
+    const collie = runInit({ "collie:design:v1": JSON.stringify({ theme: "collie" }), "collie:themes:v1": JSON.stringify(midnight(1)), [DERIVED_STORAGE_KEY]: stored });
+    expect(derivedOf(collie)).toEqual([]);
+    expect(ringOf(collie)).toBeUndefined();
+    expect(derivedOf(runInit({ [DERIVED_STORAGE_KEY]: stored }))).toEqual([]);
+    // The theme removed from the library while the design blob still names it.
+    const removed = runInit({ "collie:design:v1": JSON.stringify({ theme: "midnight" }), "collie:themes:v1": JSON.stringify({ version: 1, themes: [] }), [DERIVED_STORAGE_KEY]: stored });
+    expect(derivedOf(removed)).toEqual([]);
+    expect(ringOf(removed)).toBeUndefined();
+  });
+
+  it("none stored: no derived colour", () => {
+    fresh();
+    const seen = runInit({ "collie:design:v1": JSON.stringify({ theme: "midnight" }), "collie:themes:v1": JSON.stringify(midnight(1)) });
+    expect(derivedOf(seen)).toEqual([]);
+    expect(derivedOf(runInit({ "collie:design:v1": JSON.stringify({ theme: "nightwatch" }) }))).toEqual([]);
   });
 });

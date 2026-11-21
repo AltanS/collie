@@ -14,7 +14,7 @@ import { UpdatesRoute } from "./updates";
 // ── THE UPDATES PAGE ────────────────────────────────────────────────────────────────────────────
 //
 // One route for the whole subject. What is pinned here is the SHAPE the spec fixed: the check
-// control and one card, the peer lines inside that card rather than in a table beside it, no button
+// control and one card (then the release line, "This app" and Help, which came from System, ADR 0170), the peer lines inside that card rather than in a table beside it, no button
 // on any peer line, and exactly one action button carrying one of three labels.
 
 const GREEN: PreflightReport = {
@@ -116,13 +116,19 @@ afterEach(() => {
 });
 
 describe("updates page", () => {
-  it("holds the check control and one card, in that order", async () => {
+  it("holds the check control and one card, in that order, then This app and Help", async () => {
     renderUpdates(info());
-    expect(await screen.findByRole("heading", { name: "Updates" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Updates and about" })).toBeInTheDocument();
     // The question…
-    expect(screen.getByRole("button", { name: "Check for updates" })).toBeInTheDocument();
+    const check = screen.getByRole("button", { name: "Check for updates" });
     // …and the answer, which is where every actionable line lives.
-    expect(await screen.findByText("Update Collie")).toBeInTheDocument();
+    const card = await screen.findByText("Update Collie");
+    expect(check.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // Then the groups that came from System: the app, then help.
+    const app = screen.getByText("This app");
+    const help = screen.getByText("Help");
+    expect(card.compareDocumentPosition(app) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(app.compareDocumentPosition(help) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it("leads with a 44px back button that returns to Settings, not home", async () => {
@@ -136,7 +142,7 @@ describe("updates page", () => {
 
   it("mounts exactly one header — the shell's, filled", async () => {
     renderUpdates(info());
-    await screen.findByRole("heading", { name: "Updates" });
+    await screen.findByRole("heading", { name: "Updates and about" });
     expect(document.querySelectorAll("header")).toHaveLength(1);
   });
 

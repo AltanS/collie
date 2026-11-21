@@ -89,6 +89,28 @@ async function dialogShown(page: Page): Promise<void> {
   await page.locator('[role="dialog"]').first().waitFor({ state: "visible", timeout: 8000 });
 }
 
+/** The larger herd of the hitbox census, with the Hill on, and launchers to offer. */
+async function richWorld(page: Page, screen: Screen, folders = false): Promise<void> {
+  await installWorld(page);
+  await page.route("**/api/launchers", (route) => json(route, fixtureLaunchersWithAgents));
+  // After the world, so these answer first (Playwright checks the newest route first).
+  if (folders) await newFolders(page);
+  await visit(page, screen);
+}
+
+/** The folder reads New makes: a home folder to browse, and a worktree plan for a git folder. */
+async function newFolders(page: Page): Promise<void> {
+  const names = ["collie", "docs", "notes", "projects", "scratch", "webapp", "worktrees"];
+  await page.route(
+    (url) => url.pathname === "/api/folders/browse",
+    (route) => json(route, { path: "~", parent: null, folders: names.map((name) => ({ name, git: name !== "notes" && name !== "scratch" })), filter: "", truncated: false }),
+  );
+  await page.route(
+    (url) => url.pathname === "/api/worktree/plan",
+    (route) => json(route, { ok: true, currentBranch: "main", defaultBranch: "main", branchValid: true, defaultTarget: { path: "/home/you/worktrees/webapp-fix", exists: false } }),
+  );
+}
+
 const preferences = (page: Page, prefs: Record<string, string>) =>
   page.addInitScript(
     ([key, value]) => {
@@ -173,12 +195,16 @@ const TRICK_SESSION: AgentView = {
   view: "lodge/ci/run",
 };
 
-async function tricksWorld(page: Page): Promise<void> {
+async function tricksWorld(page: Page, tricks: readonly WireTrickInfo[] = TRICKS): Promise<void> {
   const snapshot: SnapshotResponse = { ...fixtureSnapshot, tricksRev: 1, agents: [...fixtureSnapshot.agents, TRICK_SESSION] };
   await serveSnapshot(page, snapshot);
-  await page.route("**/api/tricks?*", (route) => json(route, { rev: 1, tricks: TRICKS, parts: TRICK_PARTS, present: TRICK_PARTS.map(partKey) }));
-  await page.route("**/api/tricks", (route) => json(route, { rev: 1, tricks: TRICKS, parts: TRICK_PARTS, present: TRICK_PARTS.map(partKey) }));
+  await page.route("**/api/tricks?*", (route) => json(route, { rev: 1, tricks, parts: TRICK_PARTS, present: TRICK_PARTS.map(partKey) }));
+  await page.route("**/api/tricks", (route) => json(route, { rev: 1, tricks, parts: TRICK_PARTS, present: TRICK_PARTS.map(partKey) }));
 }
+
+/** The tricks world with Kettle Watch switched off: its details page offers Remove (ADR 0168). */
+const KETTLE_OFF: WireTrickInfo = { ...KETTLE, on: false, state: "off" };
+const TRICKS_KETTLE_OFF = TRICKS.map((trick) => (trick.id === "kettle" ? KETTLE_OFF : trick));
 
 // ── The accounts world, the durable conversations and the machine pages ──────────────────────────────────────────
 async function accountsWorld(page: Page): Promise<void> {
@@ -264,11 +290,7 @@ async function chatWorld(page: Page): Promise<void> {
 /** Every setup by name. A name is what an entry of `list.ts` holds. */
 export const SETUPS = {
   /** The larger herd of the hitbox census, with the Hill on. */
-  rich: async (page, screen) => {
-    await installWorld(page);
-    await page.route("**/api/launchers", (route) => json(route, fixtureLaunchersWithAgents));
-    await visit(page, screen);
-  },
+  rich: (page, screen) => richWorld(page, screen),
   /** The same herd for a crew: three machines in the roster, the census to match, the four machines of Machines. */
   crew: async (page, screen) => {
     await installWorld(page);
@@ -305,6 +327,19 @@ export const SETUPS = {
     const files = wide ? page.getByRole("tab", { name: en["files.title"] }) : page.getByRole("navigation", { name: en["home.tabs.aria"] }).getByRole("button", { name: en["files.title"] });
     await files.first().click();
     await page.getByRole("heading", { name: "space-01" }).waitFor({ state: "detached", timeout: 8000 });
+  },
+  /** Files with Changes only chosen: the list of changes, not the tree. */
+  changesList: async (page, screen) => {
+    await page.addInitScript((key) => window.localStorage.setItem(key, JSON.stringify({ changesOnly: true })), DASH_PREFS);
+    await visit(page, screen);
+  },
+  /** A changed file open beside the list, its diff side by side by the person's choice. */
+  changesSplit: async (page, screen) => {
+    await page.addInitScript((key) => {
+      window.localStorage.setItem(key, JSON.stringify({ changesOnly: true }));
+      window.localStorage.setItem("collie:diff-layout:v1", "split");
+    }, DASH_PREFS);
+    await visit(page, screen);
   },
   /** Six tricks with an item in the views switch of the Dashboard's header. */
   dashboardTricks: async (page, screen) => {
@@ -390,6 +425,32 @@ export const SETUPS = {
     await page.getByRole("main").getByRole("button", { name: /^New tab in /u }).first().click();
     await dialogShown(page);
   },
+  /** New, the page on a phone and the dialog over the Dashboard on a large screen (`/new` and `/new/add` redirect there). */
+  newOver: async (page, screen) => {
+    await richWorld(page, screen);
+    await page.locator('[role="dialog"], [data-slot="bottom-bar"]').first().waitFor({ state: "visible", timeout: 8000 });
+  },
+  /** New over the pane view, opened from the sidebar's New. */
+  newOverPane: async (page, screen) => {
+    await chatWorld(page);
+    await page.route("**/api/launchers", (route) => json(route, fixtureLaunchersWithAgents));
+    await visit(page, screen);
+    await dialogShown(page);
+  },
+  /** New over the Dashboard with Browse open on the home folder. */
+  newBrowse: async (page, screen) => {
+    await richWorld(page, screen, true);
+    await dialogShown(page);
+    await page.getByRole("dialog").getByRole("button", { name: new RegExp(`^${en["newPage.browse"]}`, "u") }).click();
+    await page.getByRole("dialog").getByText("worktrees", { exact: true }).waitFor();
+  },
+  /** New over the Dashboard with New worktree on. */
+  newWorktree: async (page, screen) => {
+    await richWorld(page, screen, true);
+    await dialogShown(page);
+    await page.getByRole("dialog").getByRole("switch").click();
+    await page.getByRole("dialog").getByTestId("new-page-target").waitFor();
+  },
   /** A dashboard row's own menu, from a right click. */
   rowMenu: async (page, screen) => {
     await visit(page, screen);
@@ -401,6 +462,21 @@ export const SETUPS = {
     await installApiStub(page);
     await tricksWorld(page);
     await visit(page, screen);
+  },
+  /** A trick that is off: its details page scrolled to its last section, Remove (ADR 0168). */
+  trickRemove: async (page, screen) => {
+    await installApiStub(page);
+    await tricksWorld(page, TRICKS_KETTLE_OFF);
+    await visit(page, screen);
+    await page.locator('[data-section="remove"]').scrollIntoViewIfNeeded();
+  },
+  /** The same, with the Remove confirm open. */
+  trickRemoveConfirm: async (page, screen) => {
+    await installApiStub(page);
+    await tricksWorld(page, TRICKS_KETTLE_OFF);
+    await visit(page, screen);
+    await page.locator('[data-section="remove"]').getByRole("button", { name: en["settings.tricks.remove.button"] }).click();
+    await dialogShown(page);
   },
   /** The decision a card of Collie's own asks about. */
   hillCard: async (page, screen) => {
@@ -428,6 +504,18 @@ export const SETUPS = {
     await visit(page, screen);
   },
   /** The four machines of a crew. */
+  /** Notifications with two machines in the census, so the Machine load group draws one row per machine. */
+  settingsMachines: async (page, screen) => {
+    await installCrewWorld(page);
+    await installMachinesWorld(page);
+    await visit(page, screen);
+  },
+  /** The Settings index with a query in its search field, so the results stand where the list was. */
+  settingsSearch: async (page, screen) => {
+    await visit(page, screen);
+    await page.getByRole("textbox", { name: "Search settings" }).fill("dark");
+    await page.locator('[data-slot="settings-search-results"]').first().waitFor({ state: "visible", timeout: 8000 });
+  },
   machines: async (page, screen) => {
     await installApiStub(page);
     await installCrewWorld(page);

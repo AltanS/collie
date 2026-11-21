@@ -9,8 +9,9 @@ import { hillImageMime } from "../hill/media.ts";
 import { CODE_BYTES_MAX, CONFIG_FILE, diskTrickFs, hashCodeEntries, isPictureName, linkRefusal, PICTURE_DIRS, walkFingerprint, walkTrickCode, WRITABLE_TOP_DIRS, type CodeEntry, type TrickFs } from "./code-hash.ts";
 import { readManifestFile, readSmallFile } from "./discover.ts";
 import { ORIGIN_FILE } from "./origin.ts";
-import { APPROVED_DIR, approvedCopyDir, approvedTrickDir, hash16, PENDING_DIR, pendingTrickDir, switchesPath, tricksConfigDir, tricksStateDir, trickStateDir } from "./paths.ts";
-import { MIGRATED, parseSwitches, SWITCHES_VERSION, updateSwitches, withApproval, withSwitch, type SwitchEntry, type Switches } from "./switches.ts";
+import { APPROVED_DIR, approvedCopyDir, approvedTrickDir, hash16, PENDING_DIR, pendingTrickDir, switchesPath, tricksConfigDir, trickStateDir } from "./paths.ts";
+import { MIGRATED, parseSwitches, readSwitchesNow, SWITCHES_VERSION, updateSwitches, updateSwitchesFor, withApproval, withSwitch, withSwitchLock, writeSwitches, type SwitchEntry, type Switches } from "./switches.ts";
+import { commitAside, finishAside, moveAside, newAsideToken, putBack, type Moved } from "./aside.ts";
 
 // THE APPROVED COPY (M94, crew slice 2): a trick runs from a copy of the code a person said yes to, so an
 // edit of its folder never stops it. The folder is where the trick is written; the copy is what runs.
@@ -81,7 +82,8 @@ function message<T>(err: T): string {
 }
 
 /** Remove a tree. Never throws. */
-async function removeTree(dir: string): Promise<void> {
+/** Remove a path and all under it; a link is removed and never followed. Never throws. */
+export async function removeTree(dir: string): Promise<void> {
   await rm(dir, { recursive: true, force: true }).catch(() => {});
 }
 
@@ -445,6 +447,9 @@ export async function fileCounts(base: string | null, next: string, fs: TrickFs 
 
 // ── approving a folder (collie trick on, the phone's switch) ─────────────────
 
+/** What a switch on says when the trick's folder went while it was copied (a remove, ADR 0168). */
+export const FOLDER_GONE_LINE = "The trick's folder is gone, so it was not switched on.";
+
 /** A folder approved, or why not. */
 export type ApproveResult = { ok: true; hash: string; dir: string; powers: string | null; manifest?: TrickManifest } | { ok: false; reason: string };
 
@@ -478,7 +483,9 @@ export async function approveFolder(opts: ApproveOptions): Promise<ApproveResult
   const read = await readManifestFile(fs, snap.dir, opts.id);
   const powers = read.manifest === undefined ? null : powersOf(read.manifest);
   const instructs = read.manifest?.rules !== undefined;
-  await updateSwitches(opts.stateDir, (now) => withApproval(now, opts.id, { at: opts.at, hash: snap.hash, by: opts.by, powers, instructs }));
+  // Inside the lock the folder must still be there: a remove that renamed it meanwhile leaves no switch on behind.
+  const written = await updateSwitchesFor(opts.stateDir, src, (now) => withApproval(now, opts.id, { at: opts.at, hash: snap.hash, by: opts.by, powers, instructs }));
+  if (written === null) return { ok: false, reason: FOLDER_GONE_LINE };
   const out: ApproveResult = { ok: true, hash: snap.hash, dir: snap.dir, powers };
   if (read.manifest !== undefined) out.manifest = read.manifest;
   return out;
@@ -651,13 +658,6 @@ async function pruneChildren(dir: string, keep: ReadonlySet<string> | null, opts
   if ((await names(dir)).length === 0) await rm(dir, { recursive: true, force: true }).catch(() => {});
 }
 
-/** Remove every approved copy and pending snapshot of one trick (`collie trick remove`). */
-export async function removeTrickCopies(configDir: string, id: string): Promise<void> {
-  if (!isTrickId(id)) return;
-  await removeTree(approvedTrickDir(configDir, id));
-  await removeTree(pendingTrickDir(configDir, id));
-}
-
 /**
  * Before a NEW trick is written under `id` (an add from the official list, from a repository, at the terminal,
  * or an agent's proposal): forget what an earlier trick of that name left. A switch entry a removed folder left
@@ -672,69 +672,51 @@ export async function removeTrickCopies(configDir: string, id: string): Promise<
  * Does nothing while a folder of that name is there: that is a trick that exists, not a leftover. The look is
  * made twice, the second inside the switch file's lock: the bridge's approval of a trick of this id takes the
  * same lock, so a folder that appeared while this add waited for it is seen and nothing is removed.
- * Inside the lock the three paths are only RENAMED aside, to `<parent>/.gone-<id>-<random>` (a trick id holds no
- * dot, and the same parent keeps the rename atomic): every other writer waits for the lock at most six seconds
- * (`SWITCH_LOCK_WAIT_MS`) and then fails, so a slow `rm` of a state folder a trick has filled must never hold it, or
- * a phone's approval or a `collie trick on` would fail for it. The renamed paths are removed
- * after the unlock, and the bridge's start sweeps what a crash left ({@link sweepGone}). A dotted name is
- * never a trick id, so no scan, list or prune reads one as a trick. A rename moves a symbolic link itself and
- * never follows it, and `rm` with recursive and force removes a link and never follows it either.
- * Throws only when the switch file cannot be written or a path cannot be renamed (the add stops).
+ * Inside the lock the three paths are only RENAMED aside, to `<parent>/.gone-<id>-<token>` (aside.ts), and the
+ * batch is committed there: every other writer waits for the lock at most six seconds (`SWITCH_LOCK_WAIT_MS`) and
+ * then fails, so a slow `rm` of a state folder a trick has filled must never hold it, or a phone's approval or a
+ * `collie trick on` would fail for it. The renamed paths are removed after the unlock; a failure before the commit
+ * puts them back, and the bridge's start finishes a committed batch and puts an uncommitted one back
+ * (aside.ts `sweepGone`). A dotted name is never a trick id, so no scan, list or prune reads one as a trick. A rename
+ * moves a symbolic link itself and never follows it, and `rm` with recursive and force removes a link and never
+ * follows it either. Throws when the switch file cannot be written or a path cannot be renamed (the add stops).
  */
-export async function forgetLeftovers(opts: { stateDir: string; configDir: string; id: string; at: string; forget?: (id: string) => void | Promise<void> }): Promise<void> {
+export async function forgetLeftovers(opts: { stateDir: string; configDir: string; id: string; at: string; forget?: (id: string) => void | Promise<void>; warn?: (line: string) => void }): Promise<void> {
   if (!isTrickId(opts.id)) return;
-  const folder = join(tricksConfigDir(opts.configDir), opts.id);
+  const { stateDir, id } = opts;
+  const warn = opts.warn ?? ((line: string) => console.warn(`[tricks] ${line}`));
+  const folder = join(tricksConfigDir(opts.configDir), id);
   const there = async (): Promise<boolean> => (await lstat(folder).catch(() => null)) !== null;
   if (await there()) return;
+  const token = newAsideToken();
+  const moved: Moved[] = [];
   let cleared = false;
-  const aside: string[] = [];
-  try {
-    await updateSwitches(opts.stateDir, async (now) => {
-      if (await there()) return now;
-      for (const path of [trickStateDir(opts.stateDir, opts.id), approvedTrickDir(opts.configDir, opts.id), pendingTrickDir(opts.configDir, opts.id)]) {
-        const to = await moveAside(path, opts.id);
-        if (to !== null) aside.push(to);
+  await withSwitchLock(stateDir, async () => {
+    if (await there()) return;
+    const read = await readSwitchesNow(stateDir);
+    try {
+      for (const path of [trickStateDir(stateDir, id), approvedTrickDir(opts.configDir, id), pendingTrickDir(opts.configDir, id)]) {
+        const to = await moveAside(path, id, token);
+        if (to !== null) moved.push({ from: path, to });
       }
-      cleared = true;
-      return now.on.has(opts.id) ? withSwitch(now, opts.id, false, opts.at) : now;
-    });
-    if (cleared) await opts.forget?.(opts.id);
-  } finally {
-    // Outside the lock, and also when the write or `forget` threw: what went aside is not wanted back.
-    for (const path of aside) await removeTree(path);
-  }
-}
-
-/** The prefix of a path set aside for removal. Never a trick id: ids hold no dot. */
-export const GONE_PREFIX = ".gone-";
-
-/** Rename `path` to a dotted sibling `.gone-<id>-<random>`. Its new name, or null when nothing was there. */
-async function moveAside(path: string, id: string): Promise<string | null> {
-  const to = join(dirname(path), `${GONE_PREFIX}${id}-${randomBytes(6).toString("hex")}`);
-  try {
-    await rename(path, to);
-    return to;
-  } catch (err) {
-    if (err instanceof Error && "code" in err && err.code === "ENOENT") return null;
-    throw err;
-  }
-}
-
-/**
- * Remove every `.gone-*` entry that a crash between the rename and the removal of {@link forgetLeftovers} left,
- * in the three folders it renames inside. Run once when the bridge starts. Never throws.
- */
-export async function sweepGone(opts: { stateDir: string; configDir: string }): Promise<number> {
-  const root = tricksConfigDir(opts.configDir);
-  let removed = 0;
-  for (const parent of [tricksStateDir(opts.stateDir), join(root, APPROVED_DIR), join(root, PENDING_DIR)]) {
-    for (const name of await names(parent)) {
-      if (!name.startsWith(GONE_PREFIX)) continue;
-      await removeTree(join(parent, name));
-      removed += 1;
+      // The entry a removed folder left goes off. A file that does not read as switches holds no entry this add
+      // could inherit (every trick reads as off), and it is never rewritten empty here.
+      if (read.problem === null && read.switches.on.has(id)) await writeSwitches(stateDir, withSwitch(read.switches, id, false, opts.at));
+      // The commit: only now may the asides be deleted (aside.ts).
+      if (moved.length > 0) await commitAside(stateDir, id, token);
+    } catch (err) {
+      const back = await putBack(moved, warn);
+      throw back.length === 0 ? err : new Error(`${err instanceof Error ? err.message : String(err)}; ${back.join("; ")}`);
     }
+    cleared = true;
+  });
+  if (!cleared) return;
+  try {
+    await opts.forget?.(id);
+  } finally {
+    // Outside the lock, and also when `forget` threw: the batch is committed, so its asides go.
+    if (moved.length > 0) await finishAside({ stateDir, id, token, paths: moved.map((one) => one.to), warn });
   }
-  return removed;
 }
 
 /** The approved copy a switch entry names, or null when it approves nothing. */

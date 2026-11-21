@@ -26,13 +26,13 @@ export function UsageRowControl() {
         <div className="flex min-w-0 items-start gap-3">
           <Icon name="harness-model" className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
           <div className="min-w-0">
-            <div className="font-medium">{t("settings.usageRow.title")}</div>
-            <p className="text-sm text-muted-foreground">{t("settings.usageRow.description")}</p>
+            <div className="font-medium">{t("settings.contextLimits.title")}</div>
+            <p className="text-sm text-muted-foreground">{t("settings.contextLimits.hint")}</p>
           </div>
         </div>
       </div>
 
-      <div role="radiogroup" aria-label={t("settings.usageRow.title")} className="flex gap-1 border-t border-border p-2">
+      <div role="radiogroup" aria-label={t("settings.contextLimits.title")} className="flex gap-1 border-t border-border p-2">
         {USAGE_ROWS.map((choice) => {
           const selected = choice === prefs.usageRow;
           return (

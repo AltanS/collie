@@ -32,7 +32,7 @@ const ONE_COLOUR = {
 const ribbon = (page: Page) => page.getByRole("region", { name: en["theme.trial.region"] });
 
 async function tryFromPaste(page: Page): Promise<void> {
-  await page.goto("/settings/appearance");
+  await page.goto("/settings/look");
   await page.getByRole("button", { name: en["theme.paste"], exact: true }).click();
   await page.getByRole("textbox", { name: en["theme.paste.label"] }).fill(JSON.stringify(ONE_COLOUR));
   await page.getByRole("button", { name: en["theme.paste.read"], exact: true }).click();
@@ -104,7 +104,7 @@ test("the ribbon stands over Chat in its own colours, and the composer ends abov
 test("a new tab does not see the trial, and Back puts the device's own theme on again", async ({ page, context }) => {
   await tryFromPaste(page);
   const other = await context.newPage();
-  await other.goto("/settings/appearance");
+  await other.goto("/settings/look");
   await expect(other.getByRole("combobox", { name: en["theme.title"] })).toBeVisible();
   await expect(ribbon(other)).toHaveCount(0);
   await other.close();

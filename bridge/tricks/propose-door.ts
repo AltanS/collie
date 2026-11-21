@@ -78,7 +78,7 @@ function answerOf(body: JsonObject, lead: string): ProposeAnswer {
   const hash = asJsonString(body.hash);
   const decision = asJsonString(body.decision);
   const replaced = body.replaced === null || body.replaced === undefined ? null : asJsonString(body.replaced);
-  if (id === undefined || hash === undefined || decision === undefined || replaced === undefined || (kind !== "proposal" && kind !== "version")) return refusal("failed", `The lead (${lead}) answered without the proposal. Look for its card in Settings, Tricks, on the phone.`);
+  if (id === undefined || hash === undefined || decision === undefined || replaced === undefined || (kind !== "proposal" && kind !== "version")) return refusal("failed", `The lead (${lead}) answered without the proposal. Look for its card in Settings, Tricks and the Hill, on the phone.`);
   const where = asJsonObject(body.where);
   const session = asJsonBoolean(where?.session);
   const hill = asJsonBoolean(where?.hill);

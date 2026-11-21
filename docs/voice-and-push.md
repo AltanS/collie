@@ -411,7 +411,7 @@ optional dependency during the build:
 ```bash
 collie push-keys     # 1. generate + write the VAPID keys
 collie restart       # 2. Collie reads them at start
-#                      3. on your phone: Settings → Alerts
+#                      3. on your phone: Settings → Notifications
 ```
 
 The `push-keys` command generates the keypair and writes `COLLIE_VAPID_PUBLIC` and
@@ -463,16 +463,16 @@ message in the body. Selecting the notification navigates directly to that agent
 
 ### Which alerts Collie sends
 
-Six kinds, each with its own switch under **Settings → Alerts → Notify when**.
+Six kinds, each with its own switch under **Settings → Notifications → Notify me when**.
 
 | Alert | Fires when | Default |
 | --- | --- | --- |
 | Needs you | an agent waits on you or stopped on an error | on |
 | Finished | an agent completes its task | off |
-| App updates | a newer Collie release is available | on |
+| A new Collie version | a newer Collie release is available | on |
 | Machine load stays high | a machine's CPU, memory or fullest disk stays above a rule you set for it | on |
 | Cache about to go cold | a pane's prompt cache expires in about five minutes | off |
-| Decisions that need you now | an agent or a trick posts a Decision marked `now` on the Hill | on |
+| A Decision marked Now on the Hill | an agent or a trick posts a Decision marked `now` on the Hill | on |
 
 Finished fires when an agent goes from working to idle, so an agent you interrupt also counts as finished.
 
@@ -493,7 +493,7 @@ most three an hour, and all of them together at most ten. In a crew, the agents 
 most six an hour together ([Decisions from any machine](crew.md#decisions-from-any-machine)). Past
 that the Decision still shows on the Hill, without a notification.
 
-The Hill is an experiment with its own switch in Settings → Experiments, and it is off by default.
+The Hill is an experiment with its own switch in Settings → Tricks and the Hill, and it is off by default.
 Off, agents and tricks cannot post Decisions, nothing about a Decision is sent, and the Hill leaves the bar. Switching
 it off closes the notifications of the open Decisions. Those Decisions stay on the bridge and show
 again when you switch the Hill on. `collie hill off` and `collie hill on` move the same switch.
@@ -530,6 +530,11 @@ includes one a `/model` switch made cold with time still left.
 > second window. A five-minute cache, Codex, OpenCode, pi and omp, warns about two and a half minutes
 > before it goes cold instead.
 
+A push about a session shows that session's project picture as its icon, the small square beside the
+title, when its repository names one. A session with no picture keeps Collie's icon, and so does
+Safari. Chrome on Android and desktop Chrome and Firefox show the picture
+([A project's own picture](configure.md#a-projects-own-picture)).
+
 ### The count on the app icon
 
 The installed app's icon shows how many alerts are waiting on you: every pane blocked on you, and,
@@ -539,7 +544,7 @@ as the pushes, so it counts exactly what notifies you.
 Opening a finished pane in Collie retracts its alert, from the lock screen and from the count. A
 blocked pane's alert stays until you answer it.
 
-To clear everything at once, tap **Clear all** under **Settings → Alerts → Clear notifications**.
+To clear everything at once, tap **Clear all** under **Settings → Notifications → Clear notifications**.
 It does what opening every pane does: every pane counts as opened, the finished alerts are retracted,
 and the dashboard's green dots go. The phone you tapped on closes all its notifications at once.
 Other devices drop theirs when the retraction reaches them, or when Collie is next opened there. A
@@ -577,15 +582,15 @@ bin/collie push forget <substring>   # or: push forget --all
 
 **Why does Settings say "This browser doesn't support push notifications"?** iOS and iPadOS 16.4
 and newer allow Web Push only for a web app that you added to the home screen and opened from its
-icon. In a Safari tab, **Settings → Alerts** shows that line. See
+icon. In a Safari tab, **Settings → Notifications** shows that line. See
 [Put it on your phone](install.md#iphone-and-ipad) for the steps to add Collie.
 
 ![Put Collie on the home screen: iPhone and Android steps.](images/install/pwa-install.svg)
 
 **I added the icon. Do I set up again?** Yes. The home screen app keeps its own storage, separate
-from Safari. Pair it again in the app (`collie pair` on the host, then **Settings → System → Paired
+from Safari. Pair it again in the app (`collie pair` on the host, then **Settings → Devices and machines → Paired
 devices**, see [Pair a device](security.md#pair-a-device--the-write-credential)). Then turn on push in
-**Settings → Alerts** in that app.
+**Settings → Notifications** in that app.
 
 **Why does the switch say "Unavailable over plain HTTP"?** Push needs HTTPS. Over plain HTTP, for
 example with `COLLIE_SERVE_MODE=http` or a Headscale tailnet without certificates, the switch stays

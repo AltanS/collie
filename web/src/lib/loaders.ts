@@ -150,8 +150,8 @@ export interface HomeData {
    */
   hillOff?: boolean;
   /**
-   * Whether tricks are switched off on this bridge: the snapshot carries `tricksOff`. Settings, Experiments
-   * draws the switch from it, the Settings index shows its Tricks row only without it, and Settings, Tricks redirects with it. Optional in the TYPE only, so hand-built fixtures stay valid.
+   * Whether tricks are switched off on this bridge: the snapshot carries `tricksOff`. Settings, Tricks and the Hill
+   * draws the switch from it, the Settings index shows its Tricks row only without it, and Settings, Tricks and the Hill redirects with it. Optional in the TYPE only, so hand-built fixtures stay valid.
    */
   tricksOff?: boolean;
   /**

@@ -4,6 +4,7 @@ import { useParams } from "react-router";
 import { Bars, Foot } from "@/components/accounts-meter";
 import { AgentIcon } from "@/components/agent-icon";
 import { MiddleTruncate } from "@/components/changes-view";
+import { accountsLine } from "@/hooks/use-settings-rows";
 import { SettingsPage } from "@/components/settings-page";
 import { BottomBar } from "@/components/ui/bottom-bar";
 import { Button } from "@/components/ui/button";
@@ -17,6 +18,7 @@ import { Notice } from "@/components/ui/notice";
 import { Segmented } from "@/components/ui/segmented";
 import { Select } from "@/components/ui/select";
 import { BottomSheet } from "@/components/ui/sheet";
+import { SettingSlot } from "@/components/setting-slot";
 import { useLocale } from "@/hooks/use-locale";
 import { useNav } from "@/hooks/use-nav";
 import { useSpaceActions } from "@/hooks/use-spaces";
@@ -147,43 +149,64 @@ export function SettingsAccountsRoute() {
   return (
     <SettingsPage
       title="accounts.title"
+      blurb={accountsLine(addedCount(body))}
       onScroll={(e) => setCollapsed(e.currentTarget.scrollTop > 24)}
       // On a large screen Add stands at the end of the column's title row, in the title-row size of the same button:
       // the floating one is placed against the phone's centred column, which is not where this column is.
-      action={wide && canAdd ? <FabButton size="compact" label={t("accounts.add.label")} onClick={() => nav.down(accountsAddPath(scope))} /> : undefined}
+      action={
+        wide && canAdd ? (
+          <SettingSlot ids={["accounts.add"]}>
+            <FabButton size="compact" label={t("accounts.add.label")} onClick={() => nav.down(accountsAddPath(scope))} />
+          </SettingSlot>
+        ) : undefined
+      }
     >
-      <IntroLines />
+      <SettingSlot ids={["accounts.intro"]}>
+        <IntroLines />
+      </SettingSlot>
       <Unavailable status={accounts.status} />
       {body !== null && (
         // The last row clears the floating button.
         <div className={cn("flex flex-col gap-4", !wide && "pb-20")}>
-          {groupAccounts(body).map((group) => (
-            <section key={group.harness} aria-label={group.label}>
-              <div className="mb-1.5 flex items-center gap-2 px-0.5">
-                <AgentIcon agent={group.harness} className="size-4 rounded-sm" />
-                <span className="text-xs font-medium text-muted-foreground">{group.label}</span>
-              </div>
-              <ListGroup as="ul" className="divide-y divide-border">
-                {group.rows.map((row) => (
-                  <li key={row.id}>
-                    <AccountListRow row={row} sameLogin={sameLoginLine(body.accounts, row)} onOpen={() => nav.down(accountPath(row.id, scope))} />
-                  </li>
-                ))}
-              </ListGroup>
-            </section>
-          ))}
-          {body.found.length > 0 && <FoundBlock body={body} onAdd={setNaming} />}
-          {addedCount(body) > 0 && <Hint>{t("accounts.removeNote")}</Hint>}
+          <SettingSlot ids={["accounts.profiles"]} className="flex flex-col gap-4">
+            {groupAccounts(body).map((group) => (
+              <section key={group.harness} aria-label={group.label}>
+                <div className="mb-1.5 flex items-center gap-2 px-0.5">
+                  <AgentIcon agent={group.harness} className="size-4 rounded-sm" />
+                  <span className="text-xs font-medium text-muted-foreground">{group.label}</span>
+                </div>
+                <ListGroup as="ul" className="divide-y divide-border">
+                  {group.rows.map((row) => (
+                    <li key={row.id}>
+                      <AccountListRow row={row} sameLogin={sameLoginLine(body.accounts, row)} onOpen={() => nav.down(accountPath(row.id, scope))} />
+                    </li>
+                  ))}
+                </ListGroup>
+              </section>
+            ))}
+          </SettingSlot>
+          {body.found.length > 0 && (
+            <SettingSlot ids={["accounts.found", "accounts.found.add"]}>
+              <FoundBlock body={body} onAdd={setNaming} />
+            </SettingSlot>
+          )}
+          {addedCount(body) > 0 && (
+            <SettingSlot ids={["accounts.removeNote"]}>
+              <Hint>{t("accounts.removeNote")}</Hint>
+            </SettingSlot>
+          )}
         </div>
       )}
       {canAdd && !wide && (
-        <Fab
-          label={t("accounts.add.label")}
-          // Nothing sits under the list, so the button stands a gutter above the safe area.
-          bottom="bottom-[calc(env(safe-area-inset-bottom)_+_1rem)]"
-          collapsed={collapsed}
-          onClick={() => nav.down(accountsAddPath(scope))}
-        />
+        <SettingSlot ids={["accounts.add"]}>
+          <Fab
+            label={t("accounts.add.label")}
+            // Nothing sits under the list, so the button stands a gutter above the safe area.
+            bottom="bottom-[calc(env(safe-area-inset-bottom)_+_1rem)]"
+            collapsed={collapsed}
+            onClick={() => nav.down(accountsAddPath(scope))}
+          />
+        </SettingSlot>
       )}
       <NameSheet
         found={naming}
@@ -266,7 +289,7 @@ function FoundBlock({ body, onAdd }: { body: AccountsBody; onAdd: (found: FoundF
               </p>
             </div>
             <Button variant="outline" className="h-11 shrink-0" onClick={() => onAdd(f)}>
-              {t("accounts.add.label")}
+              {t("accounts.found.addLabel")}
             </Button>
           </li>
         ))}
@@ -401,55 +424,63 @@ export function SettingsAccountAddRoute() {
       parent={settingsSectionPath("accounts", scope)}
       foot={
         <BottomBar className="px-4">
-          <Button className="h-11 w-full" disabled={!ready || busy} aria-busy={busy || undefined} onClick={() => void create()}>
-            {t("accounts.add.create")}
-          </Button>
+          <SettingSlot ids={["accounts.add.create"]} className="w-full">
+            <Button className="h-11 w-full" disabled={!ready || busy} aria-busy={busy || undefined} onClick={() => void create()}>
+              {t("accounts.add.create")}
+            </Button>
+          </SettingSlot>
         </BottomBar>
       }
     >
       <Unavailable status={accounts.status} />
       {harness !== undefined && (
         <>
-          <Field label={t("accounts.add.agent")}>
-            <Select
-              value={harness.id}
-              onChange={(e) => {
-                setHarnessPick(e.target.value);
-                setKindPick(null);
-                setFolderText("");
-              }}
-              lead={<AgentIcon agent={harness.id} className="size-4 rounded-sm" />}
-            >
-              {harnesses.map((h) => (
-                <option key={h.id} value={h.id}>
-                  {h.label}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <Field label={t("accounts.add.name")}>
-            <input
-              className={FIELD_INPUT}
-              value={label}
-              maxLength={24}
-              onChange={(e) => setLabel(e.target.value)}
-              placeholder={t("accounts.add.namePlaceholder")}
-              autoCapitalize="words"
-            />
-          </Field>
+          <SettingSlot ids={["accounts.add.harness"]}>
+            <Field label={t("accounts.add.agent")}>
+              <Select
+                value={harness.id}
+                onChange={(e) => {
+                  setHarnessPick(e.target.value);
+                  setKindPick(null);
+                  setFolderText("");
+                }}
+                lead={<AgentIcon agent={harness.id} className="size-4 rounded-sm" />}
+              >
+                {harnesses.map((h) => (
+                  <option key={h.id} value={h.id}>
+                    {h.label}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          </SettingSlot>
+          <SettingSlot ids={["accounts.add.name"]}>
+            <Field label={t("accounts.add.name")}>
+              <input
+                className={FIELD_INPUT}
+                value={label}
+                maxLength={24}
+                onChange={(e) => setLabel(e.target.value)}
+                placeholder={t("accounts.add.namePlaceholder")}
+                autoCapitalize="words"
+              />
+            </Field>
+          </SettingSlot>
           {harness.kinds.length > 1 && (
-            <Segmented
-              label={t("accounts.add.kind")}
-              value={kind}
-              onChange={setKindPick}
-              options={[
-                { value: "shared", label: t("accounts.add.kind.shared") },
-                { value: "own", label: t("accounts.add.kind.own") },
-              ]}
-            />
+            <SettingSlot ids={["accounts.add.kind"]}>
+              <Segmented
+                label={t("accounts.add.kind")}
+                value={kind}
+                onChange={setKindPick}
+                options={[
+                  { value: "shared", label: t("accounts.add.kind.shared") },
+                  { value: "own", label: t("accounts.add.kind.own") },
+                ]}
+              />
+            </SettingSlot>
           )}
           {kind === "own" && (
-            <>
+            <SettingSlot ids={["accounts.add.folder"]} className="space-y-4">
               <Field label={t("accounts.add.folder")}>
                 <input
                   className={cn(FIELD_INPUT, "font-mono")}
@@ -472,7 +503,7 @@ export function SettingsAccountAddRoute() {
                   </div>
                 </div>
               )}
-            </>
+            </SettingSlot>
           )}
           <div className="flex flex-col gap-1">
             <p className="text-xs font-medium text-muted-foreground">{kind === "shared" ? t("accounts.add.makes") : t("accounts.add.uses")}</p>
@@ -578,12 +609,12 @@ export function SettingsAccountRoute() {
         </Notice>
       )}
       {row.hooks === "missing" && select !== undefined && (
-        <div className="flex flex-col gap-2">
+        <SettingSlot ids={["accounts.terminal"]} className="flex flex-col gap-2">
           <Notice tone="caution" variant="box">
             {t("accounts.hooksMissing")}
           </Notice>
           <HooksLine text={`${select}=${row.folder} collie hooks install ${row.harness}`} />
-        </div>
+        </SettingSlot>
       )}
       <Bars windows={row.windows} long />
       <div className="flex flex-col gap-1">
@@ -592,17 +623,17 @@ export function SettingsAccountRoute() {
           {isDefault ? t("accounts.detail.folderDefault", { folder: row.folder }) : row.folder}
         </p>
       </div>
-      <div className="flex flex-col gap-1">
+      <SettingSlot ids={["accounts.terminal"]} className="flex flex-col gap-1">
         <p className="text-xs font-medium text-muted-foreground">{t("accounts.detail.terminal")}</p>
         <HooksLine text={row.startLine} />
         <Hint>{t("accounts.detail.terminalHint")}</Hint>
-      </div>
+      </SettingSlot>
       {startError !== null && (
         <Notice tone="danger" variant="box" announce="alert">
           {t("accounts.signIn.failed", { reason: startError })}
         </Notice>
       )}
-      <div className="flex gap-2">
+      <SettingSlot ids={[offersChangeLogin(row) ? "accounts.changeLogin" : "accounts.signInAgain", ...(isDefault ? [] : ["accounts.remove" as const])]} className="flex gap-2">
         {/* Where the account reads signed in, the action is Change login: its own page says what happens to
             the sessions that run, then starts the same sign-in (routes/settings-change-login.tsx). */}
         {offersChangeLogin(row) ? (
@@ -619,7 +650,7 @@ export function SettingsAccountRoute() {
             {t("accounts.detail.remove")}
           </Button>
         )}
-      </div>
+      </SettingSlot>
       <BottomSheet open={removing} onClose={() => setRemoving(false)} title={t("accounts.remove.title", { label: row.label })}>
         <div className="flex flex-col gap-3">
           <p className="text-sm">{t("accounts.removeNote")}</p>

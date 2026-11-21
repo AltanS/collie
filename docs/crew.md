@@ -156,6 +156,12 @@ join line, because a `join` would be refused while the lead is down. Check `coll
 script can read the token from the first line. A `join` that is refused with "the lead refused the
 token" shortly after an `invite` can also mean the lead is still restarting.
 
+`join` sends the token to the address you typed and nowhere else. If that address answers with a
+redirect, `join` stops and prints the address the redirect pointed to. It does not follow it. If a
+proxy in front of your lead redirects, for example from `http://` to `https://`, join again with the
+address it redirects to. A crew link never follows a redirect either: the lead treats such a member
+as out of reach, and `collie crew status` names the address the redirect pointed to.
+
 Step 3 is a second restart, and `join` says so on the way out. `invite` restarted the lead so it
 could accept the enrollment. `join` then wrote the new member to disk, and the running process does
 not proxy traffic to that member until it is restarted again.
@@ -356,6 +362,19 @@ so the phone can reach the deputy while the lead is gone.
 The deputy keeps the crew's rows too: a read-only copy of the lead's launcher rows, which the New
 screen offers once the deputy takes over.
 
+A slow or broken member does not hold the lead. The lead stops reading a member's answer at a size
+limit, counted after unpacking: 2 MB for its own regular check of each machine, and 32 MB for
+everything else. Past the limit it treats that member as out of reach. A screen, a History or Chat
+page, a changes list or a file view from a member must end within 8 seconds, because the phone waits
+no longer, and then the phone says that the member does not answer. The regular check of each machine
+ends within three times its usual wait, so one silent member does not freeze the view of the others.
+A file or a picture that you download breaks off when no new byte came for 10 seconds, or after 10
+minutes, and the phone shows an error, never a file that is cut short.
+
+The lead reads and cleans only one answer larger than 4 MB at a time, so several phones that ask for
+a long History together cannot fill its memory. The others wait their turn. When you leave a screen,
+the lead stops reading the member's answer at once. The data between your machines stays compressed.
+
 ## Durable agents in a crew
 
 A member's durable agents show on the lead's phone, in the one Durable agents section, and the member's own
@@ -442,7 +461,7 @@ told.
 The Hill is an experiment, off until switched on. A member with no Hill switch file of its own follows
 the lead: it does not refuse the post or the image, it sends them, and the lead's switch decides. A
 lead with the Hill off refuses with "the Hill is off on the lead of this crew; your person can switch
-it on in Settings, Experiments, on the phone". Only a member whose own switch says off refuses on its
+it on in Settings, Tricks and the Hill, on the phone". Only a member whose own switch says off refuses on its
 own machine.
 
 A machine removed from the crew is another matter. After `collie crew remove` on the lead, or
@@ -539,7 +558,7 @@ The deputy trusts what its lead says you approved. It cannot see your yes on the
 starts, the deputy checks that its code is the version the lead names. A trick that does not match does
 not start, and the Hill says so after the takeover, with an OK button. It also checks that the trick
 asks for the rights the lead says you approved. A trick that asks for other rights stays off, and the
-Hill says "The trick `<name>` is off after the takeover". Read its rights in Settings → Tricks before you
+Hill says "The trick `<name>` is off after the takeover". Read its rights in Settings → Tricks and the Hill before you
 switch it on. When the deputy
 already has a trick folder of that name, Collie leaves the folder as it is, runs the approved version,
 and shows the folder's own code as a new version that waits for your yes.
@@ -620,9 +639,9 @@ report them, never `0`, and a member with no `host` is a machine of its own.
 Every Collie measures its own machine, the lead keeps a day of it for each machine in the crew, and
 the Machines pages show it and hold the alert rules.
 
-**Open the list from Settings, Machines.** It is there on a collie that runs on its own too, as one
-machine. On a lead with a crew, Settings, System has a second row for the same page, and a member's
-sheet on the Crew page links to that machine's own page with **Load and alerts**.
+**Open the list from Settings, Devices and machines.** It is there on a collie that runs on its own
+too, as one machine. On a lead with a crew, a member's sheet on the Crew page links to that machine's
+own page with **Load and alerts**.
 
 Only a lead, or a collie on its own, keeps the list. A crew member opened directly says there is no
 machine list on it; open the page on the lead.
@@ -761,7 +780,7 @@ A new rule starts at 90% for 10 minutes. Every change posts the whole set of rul
 changing the CPU threshold never drops the memory or disk rule. The card shows Saving, Saved or Could not save
 in its own status line, and after a failure it shows the rules the bridge last reported.
 
-The push goes to every device subscribed to this Collie. The card links to Settings, Alerts, where you
+The push goes to every device subscribed to this Collie. The card links to Settings, Notifications, where you
 choose which alerts you get.
 
 ## Starting something on a machine
@@ -781,7 +800,7 @@ command and the folder you pick all belong to the machine you picked, and that m
   lead. The folders list, the Recent and Favourite rows, stays each machine's own, and the page
   checks the folder on that machine's disk.
 - **A New worktree is made on the machine you pick.** That machine needs git and a multiplexer
-  that opens a space. Herdr, the Herdr core, tmux, tuios and tern open one; zellij does not. When
+  that opens a space. Herdr, the Herdr core, tmux, tuios, tern and Rex open one; zellij does not. When
   the machine cannot, the switch stays, off, and says why.
 - **A member from before 1.19.0 starts nothing by name.** The page lists its choices, disabled, with
   the reason "this machine runs an older Collie". Update the member to start agents on it

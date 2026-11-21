@@ -212,6 +212,8 @@ interface AgentListProps {
    * measured width (`spaceColumns`). Absent, the list is the phone's column, byte for byte.
    */
   wide?: { columns: number; tail?: ReactNode };
+  /** The large screen's Files view: the space filter is capped at 320px rather than spanning the bar. */
+  narrowFilter?: boolean;
 }
 
 /** What a workspace heading's "+" needs from the route (AgentListProps.newTab). */
@@ -361,6 +363,7 @@ export function AgentList({
   filterHidden = PANE_FILTER.hidden,
   filter: filterOwn,
   wide,
+  narrowFilter = false,
 }: AgentListProps) {
   useLocale();
   // THE FILTER'S QUERY (M97): the module store by default, so it outlives this route (a session opens by
@@ -939,7 +942,7 @@ export function AgentList({
           summary
         )}
         <div className="flex items-center gap-2">
-          {filterSelect("min-w-0 flex-1")}
+          {filterSelect(cn("min-w-0 flex-1", narrowFilter && "max-w-80"))}
           {orderSlot && (
             <div className={cn("shrink-0", renderBody !== undefined && "invisible")} aria-hidden={renderBody !== undefined ? true : undefined}>
               {orderSlot}

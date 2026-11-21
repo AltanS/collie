@@ -3672,6 +3672,22 @@ export async function setTrickValue(host: string, trick: string, body: { rid: st
 }
 
 /**
+ * Remove a trick that is off from the machine (ADR 0168): `POST /api/tricks/<host>/<id>/remove` with `{ rid }`, one
+ * request id per confirm, so a retry of the same confirm removes once. The bridge deletes the trick's folder, its
+ * state folder and its approved copies. A refusal (409 `on`, `running`, `link`; 404; 403 for a device that may not
+ * write) throws with its status and `error`; a body of another shape throws too.
+ */
+export async function removeTrick(host: string, trick: string, rid: string): Promise<{ rid: string; id: string }> {
+  const path = `/api/tricks/${encodeURIComponent(host)}/${encodeURIComponent(trick)}/remove`;
+  const raw = asJsonObject(await req<JsonValue>(path, { method: "POST", body: JSON.stringify({ rid }) }));
+  const id = asJsonString(raw?.id);
+  if (raw?.code !== "removed" || id === undefined) throw new Error(`${path} answered with a body that is not a remove receipt`);
+  // The list loses the trick at the next read; ask for it now.
+  stampTricks();
+  return { rid, id };
+}
+
+/**
  * Go back to the version a trick ran before its last change (crew slice 3): `POST
  * /api/tricks/<host>/<id>/undo` with `{}`. Answers the trick as the list now shows it; a refusal (409 when
  * there is no earlier version or its copy changed, 404, 403) throws with its status.

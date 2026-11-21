@@ -346,7 +346,8 @@ your package manager manages this tree.
 
 ## Name your multiplexer
 
-Collie mirrors one backend: `COLLIE_MUX=herdr` (default), `herdr-core`, `tmux`, or `zellij`.
+Collie mirrors one backend: `COLLIE_MUX=herdr` (default), `herdr-core`, `tmux`, or `zellij`. tuios,
+Tern and Rex (experimental) work too, but `start` never looks for them: name one with `COLLIE_MUX`.
 
 You do not need to set it before the first start. `start` looks for a live Herdr socket, a Herdr
 core socket without a Herdr socket, a running tmux server and zellij sessions, prints what it found, and writes your choice to the config `.env`,
@@ -493,7 +494,7 @@ instead until you complete them.
 ### Android
 
 1. Open the Collie URL in Chrome.
-2. Go to Collie's Settings and tap **Install** on the top card.
+2. Go to Collie's Settings and tap **Install** on the top card. On a large screen the card is on **Updates and about**.
 
 This card appears once Chrome offers the install. If it does not appear, open Chrome's menu (⋮)
 and tap **Add to home screen**, then **Install**. Some Chrome builds label this **Install app**.
@@ -568,7 +569,7 @@ herdr plugin action invoke update-major --plugin herdr.collie   # Herdr plugin
 collie update --major                                           # standalone
 ```
 
-The phone can do the routine update too: Settings → System → Updates, one tap, and on a crew lead one tap
+The phone can do the routine update too: Settings → Updates and about → Updates, one tap, and on a crew lead one tap
 levels every member. For the phone path, the preflight, rollback, crews, and what to do when an
 update sticks, see **[Manage & update](upgrading.md)**.
 

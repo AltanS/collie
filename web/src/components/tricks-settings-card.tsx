@@ -33,7 +33,7 @@ import { useOpenTrickCard } from "@/components/trick-cards";
 import { useTrickCards } from "@/lib/hill/store";
 import type { HillDecision } from "@/lib/hill/wire";
 
-// Settings → Tricks (M94 slice 04). One row per trick on this machine, each with one switch. Collie draws
+// Settings → Tricks and the Hill (M94 slice 04). One row per trick on this machine, each with one switch. Collie draws
 // this page, not the trick: the words are Collie's, the trick's own name is the only text a trick supplies,
 // and the switch works whatever state the trick is in, because it only writes the bridge's switch file
 // (the same one `collie trick on|off` writes).
@@ -68,7 +68,7 @@ import type { HillDecision } from "@/lib/hill/wire";
 // UNDER A TRICK THAT TOOK A CHANGE WITHOUT ASKING (crew slice 3). When the version that runs was taken without
 // asking (`autoAt`, from a bridge since crew slice 3), a quiet line says when, with Undo beside it: one tap
 // arms it ("Undo?"), a second one goes back to the version before (`useArm`, the Hill's Dismiss rule). A
-// bridge that sends no `autoAt` draws no such row. The "Take changes without asking" switch itself is not on
+// bridge that sends no `autoAt` draws no such row. The "Update this trick without asking" switch itself is not on
 // the card: it is a group of the trick's details page, whose write (`flipAuto`, hooks/use-trick-writes.ts) flips at
 // once and holds like the trick's own switch, so a failed post goes back and says so once.
 //
@@ -98,7 +98,7 @@ import type { HillDecision } from "@/lib/hill/wire";
 // it costs the bridge a read of its own folder, never a fetch.
 //
 // THE HILL IS NOT HERE. It had a built-in row above the person's tricks from 2026-11-11 to 2026-11-13; the Hill
-// is an experiment now, and its one switch is on Settings, Experiments (components/hill-switch-card.tsx). A row
+// is an experiment now, and its one switch is on Settings, Tricks and the Hill (components/hill-switch-card.tsx). A row
 // here says only that a trick's own Decisions wait for the Hill (`hillOff`). A card of Collie's own about a
 // trick needs no Hill (M96 spec 14): a row whose new version waits opens that card from its slot line, and the
 // cards about new tricks are a group of their own above this card (components/trick-cards.tsx).
@@ -561,7 +561,7 @@ function TricksList({
       {/* Said once, here, for every disabled control below. */}
       {off && (
         <p data-line="tricks-off" className="border-b border-border px-4 py-3 text-sm text-muted-foreground">
-          {t("settings.tricks.switch.offLine")}
+          {t("settings.tricks.switch.offLineTricks")}
         </p>
       )}
       {/* A crew member, a deputy or a deposed lead schedules no trick: the lead does (bridge/index.ts). */}

@@ -511,7 +511,7 @@ describe("a proposal for a new trick", () => {
     const [first] = openCards(l);
     expect(await tap(l, first!, "later")).toMatchObject({ code: "ok" });
     expect(await listed(l)).toEqual([]);
-    expect(HILL_OFF).toContain("Settings, Experiments");
+    expect(HILL_OFF).toContain("Settings, Tricks and the Hill");
   });
 });
 
@@ -1312,7 +1312,7 @@ describe("package I: the card in the session that proposed it, switched on with 
     expect(await on.proposals.propose(proposal("legs", "console.log(1)\n", { rid: p.requestId }), AGENT)).toMatchObject({ ok: true, where: { session: true, hill: true } });
     const off = await lead({ hillOff: true });
     expect(await off.proposals.propose(proposal("legs"), AGENT)).toMatchObject({ ok: true, where: { session: true, hill: false } });
-    // A terminal has no session: its card is in Settings, Tricks only.
+    // A terminal has no session: its card is in Settings, Tricks and the Hill only.
     const term = await lead({ hillOff: true });
     expect(await term.proposals.propose(proposal("legs"), TERMINAL)).toMatchObject({ ok: true, where: { session: false, hill: false } });
     expect(openCards(term)[0]?.replyTo).toBeNull();

@@ -17,15 +17,16 @@ export const FOCUS_RING = "focus-visible:outline-2 focus-visible:outline-offset-
 export const FOCUS_RING_INSET = "focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring";
 
 /**
- * The house hover for a control with no fill of its own: the `accent` fill, as the ghost button's. A pointer
- * only (Tailwind wraps `hover:` in `(hover: hover)`), so a touch never leaves a stuck fill.
+ * The house hover for a control with no fill of its own: `--state-hover`, the hover of the plane it stands on
+ * (index.css; DESIGN.md §14), as the ghost button's. A pointer only (Tailwind wraps `hover:` in `(hover: hover)`),
+ * so a touch never leaves a stuck fill.
  */
-export const HOVER_FILL = "hover:bg-accent";
+export const HOVER_FILL = "hover:bg-(--state-hover)";
 
 /**
  * "MY MENU IS OPEN", ONE LOOK FOR EVERY TRIGGER. A control that opens a menu, a dock or a dialog beside it
- * and carries `aria-expanded` wears the app's "on" look while that attribute is `true`: the `control-on`
- * fill and ink that the belt gives an open dock (`ON` in `actions-row.tsx`) and the switch gives an on
+ * and carries `aria-expanded` wears the app's "on" look while that attribute is `true`: `--state-open` (the
+ * `control-on` tint, held off the plane it stands on; DESIGN.md §14) and the `control-on` ink that the belt gives an open dock (`ON` in `actions-row.tsx`) and the switch gives an on
  * track. It reads the ATTRIBUTE, not a second prop, so the look and the screen reader's word cannot part.
  *
  * Fill and ink only: no border, no size, no layout (DESIGN.md section 2). Open wins over hover, which is
@@ -34,7 +35,7 @@ export const HOVER_FILL = "hover:bg-accent";
  * is `false` or absent shows nothing, so the constant is safe on every state of one button.
  */
 export const TRIGGER_OPEN =
-  "aria-expanded:bg-control-on aria-expanded:text-control-on-foreground aria-expanded:hover:bg-control-on aria-expanded:hover:text-control-on-foreground";
+  "aria-expanded:bg-(--state-open) aria-expanded:text-control-on-foreground aria-expanded:hover:bg-(--state-open) aria-expanded:hover:text-control-on-foreground";
 
 // Every variant shares ONE box. `border border-transparent` lives in the base string, so a
 // component that flips `default` ↔ `outline` (nav-tray's keypad, the quick-reply dock) no longer
@@ -61,9 +62,9 @@ const buttonVariants = cva(
           "bg-destructive text-destructive-foreground shadow-xs hover:bg-destructive/90",
         // Colour only — the width is already reserved by the base string.
         outline:
-          "border-border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground",
+          "border-border bg-background shadow-xs hover:bg-(--state-hover) hover:text-accent-foreground",
         secondary: "bg-secondary text-secondary-foreground shadow-xs hover:bg-secondary/80",
-        ghost: "hover:bg-accent hover:text-accent-foreground",
+        ghost: "hover:bg-(--state-hover) hover:text-accent-foreground",
         link: "text-primary underline-offset-4 hover:underline",
       },
       size: {

@@ -20,7 +20,7 @@ import { server } from "@/test/setup";
 
 // PACKAGE I: a trick proposal shows in the chat view of the session that proposed it, as ONE card in the chat's
 // own look and the chat's own scroll (2026-11-17): the facts open, the code in a fold, no Hill first line, no
-// Back and Next. "Not now" there closes it in that session only (Settings, Tricks keeps it). Its yes is a hold of
+// Back and Next. "Not now" there closes it in that session only (Settings, Tricks and the Hill keeps it). Its yes is a hold of
 // three seconds, and reading the code is offered, not required (ADR 0156).
 
 const SELF = "lodge/%3#abcd";
@@ -366,7 +366,7 @@ describe("a trick proposal in its session's chat view", () => {
     expect(chat()).toBeEmptyDOMElement();
   });
 
-  it("Not now closes the card in the session, sends nothing, and Settings, Tricks keeps it waiting for a yes", async () => {
+  it("Not now closes the card in the session, sends nothing, and Settings, Tricks and the Hill keeps it waiting for a yes", async () => {
     const answers = recordAnswers();
     await holds([proposalCard()]);
     renderChat(SELF);

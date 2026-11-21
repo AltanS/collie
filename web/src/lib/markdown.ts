@@ -558,7 +558,7 @@ const startsTable = (line: string, next: string | undefined, math: boolean) =>
  * document in reading order; without it every image is its alt text, as the transcript wants.
  *
  * `math` reads LaTeX delimiters as math spans and blocks (`markdown-math.ts`). It is the device's
- * choice (Settings → Appearance), off by default, and off the parse is exactly the one before math
+ * choice (Settings → Look and feel), off by default, and off the parse is exactly the one before math
  * existed: a `$` is a dollar, `\$` is two characters, and a pipe in a code span still splits a cell.
  */
 export function parseMarkdown(source: string, opts: { images?: boolean; math?: boolean } = {}): MdBlock[] {

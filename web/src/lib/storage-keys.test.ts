@@ -68,6 +68,9 @@ const KEYS = new Map<string, KeyFate>([
   ["collie:theme:v1", { area: "local", prefix: false, fate: "kept", why: "preference" }],
   ["collie:design:v1", { area: "local", prefix: false, fate: "kept", why: "preference" }],
   ["collie:themes:v1", { area: "local", prefix: false, fate: "kept", why: "preference, the imported colour themes (M57)" }],
+  // The fate of the theme it was derived from (collie:design:v1 names it, collie:themes:v1 holds it), so the two never
+  // disagree after an unpair. theme-init.js uses it only for the applied theme, matched by id and the hash of its halves.
+  ["collie:derived:v1", { area: "local", prefix: false, fate: "kept", why: "cache, the derived colours of the applied theme (ADR 0172)" }],
   ["collie:key-board:v1", { area: "local", prefix: false, fate: "kept", why: "preference, this phone's key layout" }],
   ["collie:display-prefs:v4", { area: "local", prefix: false, fate: "kept", why: "preference" }],
   ["collie:dash-prefs:v1", { area: "local", prefix: false, fate: "kept", why: "preference" }],
@@ -87,6 +90,7 @@ const KEYS = new Map<string, KeyFate>([
   ["collie:wide-sidebar:v1", { area: "local", prefix: false, fate: "kept", why: "preference" }],
   ["collie:project-pictures:v1", { area: "local", prefix: false, fate: "kept", why: "preference: project pictures on or off on this device (ADR 0160)" }],
   ["collie:enter-sends:v1", { area: "local", prefix: false, fate: "kept", why: "preference: whether Enter from a physical keyboard sends (ADR 0157)" }],
+  ["collie:diff-layout:v1", { area: "local", prefix: false, fate: "kept", why: "preference: a diff in one column or side by side on a large screen (ADR 0158)" }],
   ["collie:wide-layout-mode:v1", { area: "local", prefix: false, fate: "kept", why: "preference: Auto or Off for the large-screen layout (ADR 0120)" }],
   ["collie:enter-sends:v1", { area: "local", prefix: false, fate: "kept", why: "preference: whether Enter sends or adds a line on this device (lib/enter-sends-store.ts)" }],
   ["collie:pin-hint:v1", { area: "local", prefix: false, fate: "kept", why: "a dismissed hint" }],

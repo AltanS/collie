@@ -13,7 +13,7 @@ import { groupDecision, hillDecision, trickDecision } from "@/test/hill-fixtures
 import { server } from "@/test/setup";
 import { tapAtFirstPaint } from "@/test/tap-at-first-paint";
 
-// Settings → Experiments → The Hill (bridge/hill/switch.ts): one row, drawn from the snapshot's `hillOff`
+// Settings → Tricks and the Hill → The Hill (bridge/hill/switch.ts): one row, drawn from the snapshot's `hillOff`
 // in the root data, a tap that writes `POST /api/hill/switch` and reads the snapshot again, and a
 // refusal that puts the switch back and says so.
 
@@ -32,7 +32,11 @@ describe("the Hill's row in Settings", () => {
   it("names the switch and says what off does, in one row", () => {
     render(<HillSwitchCard on disabled={false} onToggle={() => {}} />);
     expect(screen.getByText("The Hill")).toBeInTheDocument();
-    expect(screen.getByText("Agents and tricks ask you here. Off: they cannot post, and the Hill leaves the bar.")).toBeInTheDocument();
+    expect(
+      screen.getByText("The page where agents and tricks ask you to decide. Agents and tricks ask you here. Off: they cannot post, and the Hill leaves the bar."),
+    ).toBeInTheDocument();
+    expect(screen.getByText("An experiment: it may change, lose settings, or be withdrawn in a patch release.")).toBeInTheDocument();
+    expect(document.querySelector('[data-slot="hill-switch"] [data-slot="experimental-badge"]')).not.toBeNull();
     expect(screen.getByRole("switch", { name: "The Hill" })).toBeChecked();
     // Answers to Decisions are typed into sessions: the chip after the label says it costs agent tokens.
     expect(document.querySelector('[data-slot="hill-switch"] [data-slot="token-use"]')?.textContent).toBe("Uses agent tokens");

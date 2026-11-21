@@ -112,7 +112,7 @@ export function FontSettingsControl() {
         </div>
 
         <div className="flex items-center justify-between gap-4 px-4 py-3">
-          <div className="text-sm font-medium">{t("settings.fonts.size")}</div>
+          <div className="text-sm font-medium">{t("settings.textSize.terminal")}</div>
           <div className="flex shrink-0 items-center gap-1">
             <Button
               variant="outline"
@@ -154,7 +154,7 @@ export function FontSettingsControl() {
             is worse than one that says so. */}
         <div className="flex items-start justify-between gap-4 px-4 py-3">
           <div className="min-w-0">
-            <div className="text-sm font-medium">{t("settings.fonts.draftSize")}</div>
+            <div className="text-sm font-medium">{t("settings.textSize.draft")}</div>
             <p className="mt-0.5 text-xs leading-snug text-muted-foreground">
               {t("settings.fonts.draftSize.hint")}
             </p>

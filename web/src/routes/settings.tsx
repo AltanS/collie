@@ -1,3 +1,5 @@
+import { Navigate, useLocation } from "react-router";
+
 import { Icon } from "@/components/icons/icon";
 
 import { RouteHeader } from "@/components/app-header";
@@ -7,18 +9,20 @@ import { Card } from "@/components/ui/card";
 import { SettingsNavRow } from "@/components/settings-nav-row";
 import { InstallControl } from "@/components/install-control";
 import { useUpdatesStatus } from "@/components/updates-settings-card";
-import { ROWS, TRICKS_ROW, useSettingsRows } from "@/hooks/use-settings-rows";
+import { SettingsSearch } from "@/components/settings-search";
+import { STEADY_PAGES, useSettingsRows } from "@/hooks/use-settings-rows";
 import { useLocale } from "@/hooks/use-locale";
 import { useNav } from "@/hooks/use-nav";
 import { t } from "@/lib/i18n";
 import { homePath, updatesPath } from "@/lib/nav";
 import { useScope } from "@/lib/session";
+import { oldIndexTarget } from "@/routes/settings-redirect";
 import { BandMain } from "@/components/ui/strip-host";
 
 // ── THE SETTINGS INDEX ──────────────────────────────────────────────────────────────────────────
 //
-// Updates first, then five rows, each opening a section (routes/settings-sections.tsx, which explains the split), then
-// Machines (a page, not a section) and, while Experiments holds anything, Experiments.
+// The search, then Updates and about, then the registry's pages in their order (lib/settings/pages.ts, ADR 0170), each
+// row with its line of what the page holds.
 //
 // This page used to BE the settings: seventeen cards in one column, over a thousand pixels of
 // scroll on a phone, with no headings to skim by — the file argued for that, on the grounds that
@@ -50,11 +54,12 @@ export { LIST_HOLD_MS } from "@/hooks/use-settings-rows";
  * with nothing to say keeps its slot (DESIGN.md §2). The row that may be added (Accounts)
  * are not counted, so the card grows by it if it arrives late, which is the rare, accepted case.
  */
-function ListHold({ withTricks }: { withTricks: boolean }) {
+function ListHold() {
   return (
     <Card className="gap-0 py-0" data-slot="settings-list-hold" aria-hidden="true">
       <div data-slot="list-group">
-        {[...ROWS.map((row) => row.id), ...(withTricks ? [TRICKS_ROW.id] : []), "updates"].map((id) => (
+        {/* A page line may wrap to a second line; the stand-in keeps one, and the list grows by the difference once. */}
+        {["updates", ...STEADY_PAGES.map((page) => page.id)].map((id) => (
           <div key={id} className="box-content h-11 p-4" />
         ))}
       </div>
@@ -66,8 +71,13 @@ export function SettingsRoute() {
   const nav = useNav();
   const scope = useScope();
   const updates = useUpdatesStatus();
-  const { rows, hold: holdList, withTricks } = useSettingsRows();
+  const { rows, hold: holdList } = useSettingsRows();
+  const { search, hash, state } = useLocation();
   useLocale();
+
+  // An old fragment on the index (`/settings#paired-devices`, `#changes`) opens the page that holds its row now.
+  const old = oldIndexTarget(search, hash);
+  if (old !== null) return <Navigate to={old} replace state={state} />;
 
   return (
     <div className="mx-auto flex min-h-0 w-full max-w-screen-sm flex-1 flex-col">
@@ -95,14 +105,15 @@ export function SettingsRoute() {
       />
 
       <BandMain base={16} className="relative flex min-h-0 flex-1 flex-col space-y-4 overflow-y-auto p-4">
-        <InstallControl />
-
         {/* ONE card holding the rows, not one card per row. They are a single list of siblings, and
             separated cards would say they are unrelated subjects. The rows are a list group (M57 spec
             17): index.css draws the line between two rows, so the last has none, and a theme's
             `rows: cards` makes them cards inside this one card, like every other list. */}
+        <SettingsSearch>
+        <>
+        <InstallControl />
         {holdList ? (
-          <ListHold withTricks={withTricks} />
+          <ListHold />
         ) : (
           <Card className="gap-0 py-0">
             <div data-slot="list-group">
@@ -112,7 +123,7 @@ export function SettingsRoute() {
                   colour. The row is not in `ROWS`, whose captions are fixed strings. */}
               <SettingsNavRow
                 icon="update-available"
-                title={t("updates.entry.title")}
+                title={t("settings.page.updates.title")}
                 caption={
                   <>
                     {updates.available && (
@@ -128,11 +139,13 @@ export function SettingsRoute() {
                 onOpen={() => nav.down(updatesPath(scope))}
               />
               {rows.map((row) => (
-                <SettingsNavRow key={row.id} icon={row.icon} title={row.title} caption={row.caption} onOpen={() => nav.down(row.to)} />
+                <SettingsNavRow key={row.id} icon={row.icon} title={row.title} caption={row.caption} wrap onOpen={() => nav.down(row.to)} />
               ))}
             </div>
           </Card>
         )}
+        </>
+        </SettingsSearch>
 
         {/* Pinned to the bottom with `mt-auto`, exactly where it was before the split. */}
         <div className="mt-auto flex flex-col gap-2 pt-4">

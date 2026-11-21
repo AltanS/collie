@@ -588,9 +588,9 @@ export function SessionStream({
    * which is only true of a pane that should have one by now.
    */
   starting?: boolean;
-  /** Settings → Appearance. Off folds every run, including a lone step, to one summary line. */
+  /** Settings → Look and feel. Off folds every run, including a lone step, to one summary line. */
   showToolCalls: boolean;
-  /** Settings → Appearance. Off draws a compaction as a one-line marker and never builds its recap. */
+  /** Settings → Look and feel. Off draws a compaction as a one-line marker and never builds its recap. */
   showCompactions: boolean;
   /** The stream's own text size in px, from the belt's Display dock (`chatFontSize`). */
   fontSize: number;
@@ -1043,7 +1043,9 @@ export function SessionStream({
       // watching the tail", and it also freezes the mirror text the card dock is built from — so
       // scrolling back through a conversation would stop a permission dialog appearing. Reading
       // older turns is an ordinary act in this body and a rare one in that one.
-      className={look.gutter === "16" ? "px-4 pt-0 pb-[max(0.75rem,var(--tail-room,0px))]" : "px-3 pt-0 pb-[max(0.75rem,var(--tail-room,0px))]"}
+      // `scroll-pt-16` while the prompt pin is shown: PIN_ROOM, the pin's 56px and its 4px off the scrollport's top, so a
+      // control the browser scrolls into view for a keyboard focus lands clear of the pin, not under it.
+      className={cn(look.gutter === "16" ? "px-4 pt-0 pb-[max(0.75rem,var(--tail-room,0px))]" : "px-3 pt-0 pb-[max(0.75rem,var(--tail-room,0px))]", pin !== null && "scroll-pt-16")}
       clearBottom={clearBottom}
       hasNew={hasNew}
       holdRoom={linger?.px ?? 0}

@@ -3,21 +3,23 @@
 # under docs/images/updates/, and a durable agent's surfaces under docs/images/programs/.
 #
 # Source: the design reference (web/src/playground/), served by Vite at
-# http://127.0.0.1:5199/design.html. Uses the `agent-browser` CLI to drive a headless
+# http://127.0.0.1:${DOCS_SCREENS_PORT:-5199}/design.html. Uses the `agent-browser` CLI to drive a headless
 # Chromium, plus `magick` (ImageMagick) to crop full-page shots down to the phone frame or
 # the update band row — `agent-browser screenshot <selector>` was unreliable against these
 # `overflow-hidden` + `transform` elements (came back blank), so every shot here is: full
 # page screenshot, then crop by the element's own bounding box.
 #
-# Four cards on the playground carry every state this script captures:
-#   - "settings — solo collie, nothing paired" → the Install card at the top of Settings.
+# Cards on the playground carry every state this script captures. Each is found by its `data-state`
+# handle (the card's label is prose that gets reworded, so it is never a key):
+#   - `settings-solo-unpaired` → the Install card at the top of Settings (on a phone it stays on the
+#     index, above the search; on a large screen it moves to Updates and about).
 #     The install offer is a one-shot browser event (lib/install.ts), not a fixture, so it's
 #     faked by dispatching a synthetic `beforeinstallprompt` on the page. The iOS share-sheet
 #     hint is faked instead by patching `navigator.maxTouchPoints`/`platform` via an init script
 #     (`agent-browser open --init-script`) — not `set device`, which also shrinks the viewport to
 #     phone size and broke this script's own card lookup at that width.
-#   - "settings — lead of a crew, three devices paired" → the Updates row in Settings.
-#   - "updates — the page the Settings row opens" → the Updates page itself. It reads
+#   - `settings-lead-paired` → the Settings index, whose first row is Updates and about with the update status.
+#   - `updates-page` → the Updates page itself. It reads
 #     GET/POST /api/update/check, so the up-to-date / crew-available / peer-rolled-back
 #     states are reached by stubbing that route with `agent-browser network route`
 #     (the same shape a live bridge would answer with — see the file's own note: "against
@@ -25,9 +27,8 @@
 #     member name here comes from the playground's own fake outbuilding roster (lodge,
 #     workshop, attic, …) — never a real Tailscale hostname; that leaked into this script
 #     once already (`workshop`, on the rolled-back peer, fixed 2026-09-10).
-#   - "update band (a/b/d)" and "update band (c)" → the top band's states. (c)'s toggle is
-#     flipped on to reach the post-run "Tap to reload" state and flipped back off after,
-#     because that toggle drives a page-wide singleton every other band card also reads.
+#   - `update-band-release-offered` → the top band with a release on offer. The band draws no other
+#     state a doc shows: a run in flight is the Updates page's, a bundle to reload is the header mark's.
 #
 # The programs set (docs/durable-agents-on-the-phone.md) comes from the playground's "Programs
 # home" section (web/src/playground/sections/programs.tsx), reached at #programs. Each shot is one
@@ -37,6 +38,8 @@
 # machines, one section") is left out on purpose: its fixture names real machines of the tailnet.
 #
 # Usage: scripts/docs-screens.sh [all|updates|programs]   (default: all)
+# Environment: DOCS_SCREENS_PORT (the design reference's port, default 5199) and DOCS_SCREENS_SESSION
+# (the agent-browser session name, default one per worktree).
 set -euo pipefail
 
 WHICH="${1:-all}"
@@ -51,7 +54,8 @@ esac
 REPO_ROOT="$(git -C "$(dirname "$0")/.." rev-parse --show-toplevel)"
 OUT_DIR="$REPO_ROOT/docs/images/updates"
 PROGRAMS_DIR="$REPO_ROOT/docs/images/programs"
-PLAYGROUND_URL="http://127.0.0.1:5199/design.html"
+PORT="${DOCS_SCREENS_PORT:-5199}"
+PLAYGROUND_URL="http://127.0.0.1:${PORT}/design.html"
 
 if ! command -v agent-browser >/dev/null 2>&1; then
   echo "error: agent-browser is not on PATH. Install: npm i -g agent-browser && agent-browser install" >&2
@@ -64,13 +68,13 @@ if ! command -v magick >/dev/null 2>&1; then
 fi
 
 if ! curl -fsS -o /dev/null "$PLAYGROUND_URL"; then
-  echo "error: the design reference isn't answering on port 5199." >&2
+  echo "error: the design reference isn't answering on port ${PORT}." >&2
   echo "hint: from collie-workspace/, run 'make playground-up' (or 'make playground' in the foreground)." >&2
   exit 1
 fi
 
 
-SESSION="$(agent-browser session id --scope worktree --prefix collie-docs-shots)"
+SESSION="${DOCS_SCREENS_SESSION:-$(agent-browser session id --scope worktree --prefix collie-docs-shots)}"
 AB() { agent-browser --session "$SESSION" "$@"; }
 
 TMP="$(mktemp -d)"
@@ -101,31 +105,44 @@ print(int(d["x"]), int(d["y"]), int(d["width"]), int(d["height"]))
 '
 }
 
-# Tag the phone-frame element inside the card labelled "$1" with data-shot="$2".
+# Hide the build stamp ("v1.29.1-dev · <sha> · <date> UTC", and the dev-only "vp w/h/h" line under it)
+# wherever it is on the page. It names this checkout's version and commit, which no public picture
+# should carry. `visibility: hidden` keeps its box, so nothing around it moves. Matched by its text
+# shape, not by a class, so a restyle of the stamp does not silently stop the mask.
+hide_build_stamp() {
+  cat <<'EOF' | AB eval --stdin
+(function() {
+  const label = /^v\S+ \u00b7 [0-9a-f]+ \u00b7 \d{4}-\d{2}-\d{2} \d{2}:\d{2} UTC$/u;
+  for (const span of document.querySelectorAll('span')) {
+    if (!label.test(span.textContent || '')) continue;
+    const box = span.parentElement;
+    if (box) box.style.visibility = 'hidden';
+  }
+})()
+EOF
+}
+
+# Tag the phone-frame element inside the card whose `data-state` is "$1" with data-shot="$2".
 tag_phone_frame() {
-  local label="$1" id="$2"
+  local state="$1" id="$2"
   cat <<EOF | AB eval --stdin
 (function() {
-  const labels = Array.from(document.querySelectorAll('p.font-mono'));
-  const label = labels.find(l => l.textContent.trim() === ${label@Q});
-  if (!label) throw new Error('card not found: ' + ${label@Q});
-  const cardDiv = label.closest('div.min-w-0');
-  const target = cardDiv.querySelector('[class*="rounded-[1.75rem]"]');
+  const card = document.querySelector('[data-state=' + JSON.stringify(${state@Q}) + ']');
+  if (!card) throw new Error('card not found: ' + ${state@Q});
+  const target = card.querySelector('[class*="rounded-[1.75rem]"]');
   target.setAttribute('data-shot', ${id@Q});
 })()
 EOF
 }
 
-# Tag the Stage element (the update band cards) inside the card labelled "$1" with data-shot="$2".
+# Tag the Stage element (the update band cards) inside the card whose `data-state` is "$1" with data-shot="$2".
 tag_stage() {
-  local label="$1" id="$2"
+  local state="$1" id="$2"
   cat <<EOF | AB eval --stdin
 (function() {
-  const labels = Array.from(document.querySelectorAll('p.font-mono'));
-  const label = labels.find(l => l.textContent.trim() === ${label@Q});
-  if (!label) throw new Error('card not found: ' + ${label@Q});
-  const cardDiv = label.closest('div.min-w-0');
-  const target = cardDiv.querySelector(':scope > div.relative.isolate.overflow-hidden');
+  const card = document.querySelector('[data-state=' + JSON.stringify(${state@Q}) + ']');
+  if (!card) throw new Error('card not found: ' + ${state@Q});
+  const target = card.querySelector('[data-pg-frame]');
   target.setAttribute('data-shot', ${id@Q});
 })()
 EOF
@@ -185,24 +202,17 @@ fi
 
 mkdir -p "$OUT_DIR"
 AB set viewport 1440 1000
-AB open "$PLAYGROUND_URL"
+# The design reference shows one section at a time, named by the hash: the Settings cards are in
+# #settings and the band cards in #dashboard.
+AB open "$PLAYGROUND_URL#settings"
 AB wait --load networkidle
 AB set media light
 sleep 1
 
 echo "== settings-updates-row.png"
-tag_phone_frame "settings — lead of a crew, three devices paired" settings-row
+hide_build_stamp
+tag_phone_frame settings-lead-paired settings-row
 scroll_shot_to_top settings-row
-# Scroll the phone's own inner scroller down to the Updates row.
-cat <<'EOF' | AB eval --stdin
-(function() {
-  const el = document.querySelector('[data-shot=settings-row]');
-  const scroller = el.querySelector('.pg-phone-scroll');
-  const row = Array.from(scroller.querySelectorAll('div')).find((n) => n.textContent.trim() === 'Updates');
-  const container = row.closest('button') || row.parentElement.parentElement;
-  container.scrollIntoView({ block: 'center' });
-})()
-EOF
 AB screenshot "$TMP/full.png"
 read -r x y w h < <(box_of settings-row)
 crop "$TMP/full.png" "$w" "$h" "$x" "$y" "$OUT_DIR/settings-updates-row.png"
@@ -216,7 +226,8 @@ capture_updates_page() {
   AB reload
   AB wait --load networkidle
   sleep 1
-  tag_phone_frame "updates — the page the Settings row opens" updates-page
+  hide_build_stamp
+  tag_phone_frame updates-page updates-page
   scroll_shot_to_top updates-page
   AB screenshot "$TMP/full.png"
   read -r x y w h < <(box_of updates-page)
@@ -248,64 +259,29 @@ EOF
 )" updates-page-peer-rolled-back.png
 
 AB network unroute
-AB reload
+AB open "$PLAYGROUND_URL#dashboard"
 AB wait --load networkidle
+AB set media light
 sleep 1
 
 echo "== band-available.png"
-tag_stage "update band (a) — a release is on offer" band-a
+tag_stage update-band-release-offered band-a
+# The card's stage is two columns wide on this page; the band is drawn at the phone's 390px, ✕ and all.
+cat <<'EOF' | AB eval --stdin
+document.querySelector('[data-shot=band-a]').style.width = '390px';
+EOF
 scroll_shot_to_top band-a
 AB screenshot "$TMP/full.png"
 read -r x y w h < <(box_of band-a)
-crop "$TMP/full.png" 390 32 "$x" "$y" "$OUT_DIR/band-available.png"
-
-echo "== band-updating.png (the Restarting snapshot, third of three)"
-tag_stage "update band (b) — a run in flight, all three words" band-b
-scroll_shot_to_top band-b
-AB screenshot "$TMP/full.png"
-read -r x y w h < <(box_of band-b)
-# Three stacked rows of ~29px each; the third (Restarting) sits at the bottom of the box.
-crop "$TMP/full.png" 390 32 "$x" "$((y + h - 32))" "$OUT_DIR/band-updating.png"
-
-echo "== band-peers.png (the first of two rows: still-moving peer)"
-tag_stage "update band (d) — peers following, and one that did not" band-d
-scroll_shot_to_top band-d
-AB screenshot "$TMP/full.png"
-read -r x y w h < <(box_of band-d)
-crop "$TMP/full.png" 390 32 "$x" "$y" "$OUT_DIR/band-peers.png"
-
-echo "== band-updated-reload.png (stale-bundle toggle ON, first of two rows)"
-cat <<'EOF' | AB eval --stdin
-(function() {
-  const labels = Array.from(document.querySelectorAll('p.font-mono'));
-  const label = labels.find((l) => l.textContent.trim() === 'update band (c) — this bundle is behind the bridge');
-  const cardDiv = label.closest('div.min-w-0');
-  cardDiv.querySelector('button').click();
-})()
-EOF
-sleep 1
-tag_stage "update band (c) — this bundle is behind the bridge" band-c
-scroll_shot_to_top band-c
-AB screenshot "$TMP/full.png"
-read -r x y w h < <(box_of band-c)
-crop "$TMP/full.png" 390 32 "$x" "$y" "$OUT_DIR/band-updated-reload.png"
-
-# Flip the toggle back off — it drives a page-wide singleton every other band card reads.
-cat <<'EOF' | AB eval --stdin
-(function() {
-  const labels = Array.from(document.querySelectorAll('p.font-mono'));
-  const label = labels.find((l) => l.textContent.trim() === 'update band (c) — this bundle is behind the bridge');
-  const cardDiv = label.closest('div.min-w-0');
-  cardDiv.querySelector('button').click();
-})()
-EOF
+crop "$TMP/full.png" "$w" "$h" "$x" "$y" "$OUT_DIR/band-available.png"
 
 # The Install card (lib/install.ts) renders only while the browser holds an install offer, or —
 # on an Apple touch device — its share-sheet hint. Neither is a fixture, so both are faked here
 # rather than reached through a card prop. Back to a clean reload first: the network stubs above
 # are gone (unrouted), but the page itself still reflects the last update-page/band state.
-AB reload
+AB open "$PLAYGROUND_URL#settings"
 AB wait --load networkidle
+AB set media light
 sleep 1
 
 echo "== settings-install-offered.png"
@@ -320,7 +296,8 @@ cat <<'EOF' | AB eval --stdin
 })()
 EOF
 sleep 1
-tag_phone_frame "settings — solo collie, nothing paired" settings-install
+hide_build_stamp
+tag_phone_frame settings-solo-unpaired settings-install
 scroll_shot_to_top settings-install
 AB screenshot "$TMP/full.png"
 read -r x y w h < <(box_of settings-install)
@@ -329,8 +306,9 @@ crop "$TMP/full.png" "$w" "$h" "$x" "$y" "$OUT_DIR/settings-install-offered.png"
 # Fresh reload so the held offer above doesn't leak into the iOS shot below (that offer is a
 # module-level singleton in lib/install.ts, not page state a reload alone would clear otherwise —
 # a fresh document is what actually resets it).
-AB reload
+AB open "$PLAYGROUND_URL#settings"
 AB wait --load networkidle
+AB set media light
 sleep 1
 
 echo "== settings-install-ios-hint.png"
@@ -347,13 +325,14 @@ cat > "$TMP/ios-touch-init.js" <<'JS'
 Object.defineProperty(Navigator.prototype, 'maxTouchPoints', { get: () => 5, configurable: true });
 Object.defineProperty(Navigator.prototype, 'platform', { get: () => 'iPhone', configurable: true });
 JS
-AB open --init-script "$TMP/ios-touch-init.js" "$PLAYGROUND_URL"
+AB open --init-script "$TMP/ios-touch-init.js" "$PLAYGROUND_URL#settings"
 AB wait --load networkidle
 # A fresh `open` drops the emulated colour scheme set at the top of this script, so light mode
 # needs re-asserting here too — otherwise this is the one shot in the set that comes out dark.
 AB set media light
 sleep 1
-tag_phone_frame "settings — solo collie, nothing paired" settings-install-ios
+hide_build_stamp
+tag_phone_frame settings-solo-unpaired settings-install-ios
 scroll_shot_to_top settings-install-ios
 AB screenshot "$TMP/full.png"
 read -r x y w h < <(box_of settings-install-ios)

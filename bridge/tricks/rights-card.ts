@@ -68,7 +68,7 @@ export function rightsCard(subject: TrickRightsSubject): HillPostInput {
   return {
     requestId: rightsRequestId(subject.id, subject.moved),
     title: `${subject.name} changed its rights`,
-    summary: "Collie now reads other rights in this trick than the ones you said yes to, so the trick stopped. Read its rights in Settings → Tricks, and switch it on again if you want it.",
+    summary: "Collie now reads other rights in this trick than the ones you said yes to, so the trick stopped. Read its rights in Settings → Tricks and the Hill, and switch it on again if you want it.",
     options: [{ intent: RIGHTS_OK, label: "OK" }],
     text: "none",
   };

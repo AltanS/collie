@@ -4,7 +4,8 @@ import tailwindcss from "@tailwindcss/vite";
 import { VitePWA } from "vite-plugin-pwa";
 import { execSync } from "node:child_process";
 import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { createRequire } from "node:module";
+import { dirname, resolve } from "node:path";
 import {
   channelFor,
   includeAssetsFor,
@@ -15,6 +16,7 @@ import {
   type Channel,
   type ChannelEvidence,
 } from "./vite-icons";
+import { ineffectiveImportError, isForbiddenIneffectiveImport, mainChunkBudgetPlugin } from "./vite-bundle-guard";
 import { mathEnginesPlugin } from "./vite.math";
 import { glyphSetsPlugin, isGlyphChunkModule } from "./vite-glyphs";
 
@@ -234,6 +236,40 @@ function chunkFolder(ids: readonly string[]): string {
   return "assets";
 }
 
+// THE BUILD TAKES REACT ROUTER'S PRODUCTION FILES. Its package exports map names only
+// `dist/development/` for every condition, so a plain import bundles the development build. The
+// production twin beside it differs by one flag, `ENABLE_DEV_WARNINGS = false`, which lets the minifier
+// drop the console warnings the development build carries. Build only: `vite dev` keeps the warnings.
+// Found through the package's own `package.json` export, so a hoisted install resolves it too.
+//
+// Resolved in `buildStart`, never at module load: loading this file must not need `node_modules`. A real
+// build always has them (cli/build.ts installs both trees first), but `cli/build.test.ts` loads the config
+// from a scratch checkout with stub packages only, to read the build identity it stamps.
+let reactRouterProduction: string | null = null;
+function resolveReactRouterProduction(): string {
+  try {
+    const manifest = createRequire(import.meta.url).resolve("react-router/package.json");
+    return resolve(dirname(manifest), "dist/production/index.mjs");
+  } catch (error) {
+    throw new Error(
+      "The web build needs react-router installed: run `bun install` in web/ first. " +
+        `(${error instanceof Error ? error.message : String(error)})`,
+      { cause: error },
+    );
+  }
+}
+const reactRouterProductionPlugin: Plugin = {
+  name: "collie-react-router-production",
+  apply: "build",
+  enforce: "pre",
+  buildStart() {
+    reactRouterProduction = resolveReactRouterProduction();
+  },
+  resolveId(source) {
+    return source === "react-router" ? reactRouterProduction : null;
+  },
+};
+
 // ADR 0052: ONE BUILD SERVES ANY MOUNT. The shell (index.html) is built ROOT-ABSOLUTE, every
 // reference `/…`, and the bridge resolves it to the mount it was started with when it serves the
 // file (bridge/server.ts, `mountIndexHtml`); at the root it is served as it lies on disk. Inside the
@@ -279,12 +315,14 @@ export default defineConfig({
   },
   define: { __BUILD_INFO__: JSON.stringify(BUILD_INFO) },
   plugins: [
+    reactRouterProductionPlugin,
     react(),
     glyphSetsPlugin(import.meta.dirname),
     tailwindcss(),
     mathEnginesPlugin(),
     buildInfoPlugin,
     channelIconsPlugin,
+    mainChunkBudgetPlugin,
     VitePWA({
       // Build the manifest + service worker. We use `injectManifest` (not the default generateSW)
       // because we hand-write the SW in `src/sw.ts` to add `push` + `notificationclick` handlers a
@@ -367,8 +405,8 @@ export default defineConfig({
         // every install for glyphs most herds never paint. src/sw.ts caches them on first use.
         globPatterns: ["**/*.{js,css,html,svg,png,ico,webmanifest}"],
         // The main chunk must stay in the precache (M46 offline reading), and Workbox refuses to
-        // build past its 2 MiB default. See PRECACHE_MAX_FILE_BYTES in vite-icons.ts for the size
-        // history and for what to do before raising it again.
+        // build past its 2 MiB default. ADR 0169 holds the size
+        // history and what to do before raising it again.
         maximumFileSizeToCacheInBytes: PRECACHE_MAX_FILE_BYTES,
         // A release build's precache must not carry the dev channel's icons, and neither build
         // may carry the playground's — see vite-icons.ts's precacheIgnoresFor. Without this, a
@@ -414,6 +452,12 @@ export default defineConfig({
     // A couple of small chunks beat one big one on a phone over the tailnet.
     chunkSizeWarningLimit: 900,
     rolldownOptions: {
+      // A lazy module that a static import pulled back into another chunk fails the build, except the
+      // listed ones (vite-bundle-guard.ts, ADR 0169). Every other log goes on as before.
+      onLog(level, log, handler) {
+        if (isForbiddenIneffectiveImport(log)) throw new Error(ineffectiveImportError(log));
+        handler(level, log);
+      },
       output: {
         codeSplitting: {
           groups: [{ name: "router", test: /node_modules\/(?:react-router|@remix-run)\// }],

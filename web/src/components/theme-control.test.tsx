@@ -37,7 +37,8 @@ describe("ThemeControl", () => {
       await whenLocaleReady("de");
     });
 
-    const group = screen.getByRole("radiogroup", { name: "Darstellung" });
+    // The new group name has no German catalog entry yet, so it reads in English; the options are translated.
+    const group = screen.getByRole("radiogroup", { name: "Light or dark" });
     const options = within(group).getAllByRole("radio");
     expect(options.map((o) => o.textContent)).toEqual(["System", "Hell", "Dunkel"]);
   });
@@ -46,7 +47,7 @@ describe("ThemeControl", () => {
     const { ThemeControl } = await load("dark");
     render(<ThemeControl />);
 
-    const group = screen.getByRole("radiogroup", { name: "Appearance" });
+    const group = screen.getByRole("radiogroup", { name: "Light or dark" });
     const options = within(group).getAllByRole("radio");
     expect(options.map((o) => o.textContent)).toEqual(["System", "Light", "Dark"]);
     expect(options.map((o) => o.getAttribute("aria-checked"))).toEqual(["false", "false", "true"]);

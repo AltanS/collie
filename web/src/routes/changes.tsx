@@ -136,6 +136,18 @@ import { cn } from "@/lib/utils";
 import { fitPath } from "@/lib/fit-path";
 import { useElementWidth } from "@/hooks/use-element-width";
 import { summarizeChanges, type WorkspaceChangeCount } from "@/lib/workspace-changes";
+import { useWidthClass } from "@/hooks/use-width-class";
+import { diffLayoutFor, setDiffLayout, useDiffLayoutChoice, type DiffLayout } from "@/lib/diff-layout";
+import {
+  DiffLayoutControl,
+  explorerRows,
+  FileSteps,
+  FilesColumns,
+  FilesExplorer,
+  FilesNothingChosen,
+  foldersAbove,
+  useFolderReads,
+} from "@/components/files-wide";
 
 // The Changes view (ADR 0065): what changed under a WORKSPACE's folder since the last commit,
 // read-only. Two routes share it: `/pane/:paneId/changes` (the bridge resolves the pane's workspace)
@@ -390,6 +402,9 @@ function ChangesScreen() {
   // The thumb side of the bottom Back (display pref `hand`, as the pane screen reads it).
   const hand = handOf(useDisplayPrefs().prefs);
   const phone = useMediaQuery(PHONE_QUERY);
+  // Files and Changes on a large screen (ADR 0173): two columns under one header. A phone, a
+  // tablet and Large-screen layout Off keep the one column below.
+  const wide = useWidthClass() === "expanded";
   const layout = prefs.changesLayout;
   const lookup: ChangesLookup = useMemo(
     () => ({ depth: prefs.changesDepth, nested: prefs.changesNested }),
@@ -418,6 +433,31 @@ function ChangesScreen() {
   const open: ChangeRef | null = commitView ? null : fileRef;
   const commitRepo = commitView ? repoParam : null;
   const commitOpen: ChangeRef | null = commitView ? fileRef : null;
+
+  // ── The large screen's left column ───────────────────────────────────────
+  // The list of changes when the address is one of the list's (a list file, the commit view, the root with Changes
+  // chosen), and otherwise the tree, which opens folders in place: a folder's rows open under it with no move of the
+  // address, and only a file is a new entry.
+  const leftList = open !== null || commitView || showList;
+  const explorer = wide && !leftList;
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set([""]));
+  // The folders above what the address names open once when it names it, so a deep link and Back show their row.
+  const addressKey = treeFile !== null ? `file\n${treeFile}` : `dir\n${treeDir ?? ""}`;
+  const [openedFor, setOpenedFor] = useState<string | null>(null);
+  if (explorer && openedFor !== addressKey) {
+    setOpenedFor(addressKey);
+    const above = treeFile !== null ? foldersAbove(treeFile) : treeDir !== null && treeDir !== "" ? [...foldersAbove(treeDir), treeDir] : [];
+    if (above.some((dir) => !expanded.has(dir))) setExpanded(new Set([...expanded, ...above]));
+  }
+  const toggleExpanded = useCallback(
+    (dir: string) =>
+      setExpanded((prev) => {
+        const next = new Set(prev);
+        if (!next.delete(dir)) next.add(dir);
+        return next;
+      }),
+    [],
+  );
 
   const pane =
     target.kind === "pane"
@@ -518,6 +558,19 @@ function ChangesScreen() {
   // list shows, its folder chain is opened in the tree and its group is scrolled into view; a 5 s
   // re-read never moves the list, and a folder the operator closes afterwards stays closed.
   const mainRef = useRef<HTMLElement>(null);
+  // The large screen's two scrollers, the left column's and the right's.
+  const leftRef = useRef<HTMLElement>(null);
+  const rightRef = useRef<HTMLElement>(null);
+  // The right column's width picks a diff's layout until the person chooses one (lib/diff-layout.ts).
+  const [measureRight, rightWidth] = useElementWidth<HTMLElement>(0, "client");
+  const holdRight = useCallback(
+    (el: HTMLElement | null) => {
+      rightRef.current = el;
+      measureRight(el);
+    },
+    [measureRight],
+  );
+  const diffChoice = useDiffLayoutChoice();
   const markedFor = useRef<string | null>(null);
   const paneCwd = pane?.cwd ?? "";
   useEffect(() => {
@@ -534,8 +587,8 @@ function ChangesScreen() {
         return next;
       });
     }
-    mainRef.current?.querySelector("[data-pane-repo]")?.scrollIntoView({ block: "start" });
-  }, [list, showList, target.kind, targetKey, paneCwd]);
+    (wide ? leftRef : mainRef).current?.querySelector("[data-pane-repo]")?.scrollIntoView({ block: "start" });
+  }, [list, showList, target.kind, targetKey, paneCwd, wide]);
 
   // ── The last commit (commit view) ────────────────────────────────────────
   const [commit, setCommit] = useState<CommitState | null>(null);
@@ -659,7 +712,8 @@ function ChangesScreen() {
 
   // One read of the bridge per folder or file, keyed by machine, target and place, so a move to
   // another level starts clean. A deleted file is not on disk, and is not asked for.
-  const filesKey = treeDir !== null ? `dir\n${treeDir}` : treeFile !== null && !treeDeleted ? `file\n${treeFile}` : null;
+  // On the large screen the folders are read for the left column by `useFolderReads` below; this read is the file's.
+  const filesKey = treeDir !== null && !wide ? `dir\n${treeDir}` : treeFile !== null && !treeDeleted ? `file\n${treeFile}` : null;
   const readKey = filesKey === null ? null : `${scope.host ?? ""}\n${scope.session ?? ""}\n${targetKey}\n${filesKey}`;
   const filesPathTo = (to?: FilesAt) => (target.kind === "pane" ? filesPath(paneId, scope, to) : spaceFilesPath(spaceId, scope, to));
   // A `link` row opened as a file that turns out to be a folder: the file read answers `unknown-path`,
@@ -675,9 +729,17 @@ function ChangesScreen() {
     if (folder.outcome === "body" && folder.body.available && !signal.aborted) nav.side(filesPathTo({ dir: treeFile }));
     return folder.outcome === "body" && folder.body.available ? folder : read;
   });
+  // The large screen's folders: every folder the tree has open, each read once.
+  const wideDirs = useMemo(() => [...expanded].toSorted(), [expanded]);
+  const folderReads = useFolderReads(wide && !leftList ? `${scope.host ?? ""}\n${scope.session ?? ""}\n${targetKey}` : null, wideDirs, (dir, signal) =>
+    fetchFilesDir(target, dir, scope, signal),
+  );
   // The root folder as the last Files answer named it, for a header that has no list answer yet.
   const filesRoot = useRef<string | null>(null);
   if (filesState.phase === "ready" && filesState.data.available) filesRoot.current = filesState.data.root;
+  for (const read of folderReads.reads.values()) {
+    if (read.phase === "ready" && read.data.available) filesRoot.current = read.data.root;
+  }
 
   // One folder's rows joined to the change set. A folder the bridge no longer has, that the change
   // set still names deleted files in, lists those files, so their diffs stay one tap away.
@@ -690,12 +752,19 @@ function ChangesScreen() {
     const left = markFolder([], treeDir, changeIndex);
     return left.entries.length > 0 ? left : null;
   }, [treeDir, listing, folderGone, changeIndex]);
-  // The name filter is one folder's: another folder, or a file, starts it blank and closed.
-  const filesFilter = useFilesFilter(treeFile !== null ? `file\n${treeFile}` : `dir\n${treeDir ?? ""}`);
+  // The name filter is one folder's: another folder, or a file, starts it blank and closed. On the large screen it is the
+  // whole tree's, which a file opened beside it does not reset.
+  const filesFilter = useFilesFilter(wide ? "tree" : treeFile !== null ? `file\n${treeFile}` : `dir\n${treeDir ?? ""}`);
   const counted =
     markedFolder === null || markedFolder.entries.length === 0
       ? null
       : folderView(markedFolder.entries, filesFilter.query, prefs.filesShowIgnored);
+  // The tree: every open folder's rows, under the filter.
+  const tree = useMemo(
+    () => explorerRows({ reads: folderReads.reads, expanded, index: changeIndex, query: filesFilter.query, showIgnored: prefs.filesShowIgnored }),
+    [folderReads.reads, expanded, changeIndex, filesFilter.query, prefs.filesShowIgnored],
+  );
+  const wideCounted: { shown: number; total: number } | null = !explorer || tree.pool === 0 ? null : { shown: tree.shown, total: tree.pool };
 
   // ── One file ──────────────────────────────────────────────────────────────
   // Keyed with the screen it belongs to, so a commit's file and the same uncommitted file differ. A
@@ -764,6 +833,12 @@ function ChangesScreen() {
     };
   }, [openKey, readFile]);
 
+  // On the large screen another file opens at its top; the left column keeps its scroll.
+  const rightFor = current !== null ? `${current.repo}\n${current.path}` : (treeFile ?? "");
+  useEffect(() => {
+    if (wide && rightRef.current !== null) rightRef.current.scrollTop = 0;
+  }, [wide, rightFor]);
+
   // ── Re-reading ────────────────────────────────────────────────────────────
   // One pass reads the list, and on the file view the open diff as well: the list is what says the
   // file has left, and what Previous / Next walk, so it must not go stale under an open file.
@@ -779,7 +854,7 @@ function ChangesScreen() {
     if (openKey !== null) reads.push(readFile(openKey, mode));
     // A folder or a file of the tree is read on the refresh button only: it has no timer (ADR 0083).
     // Its own failure shows in its body, so it does not count towards the stale note.
-    const files = mode === "manual" ? reloadFiles() : Promise.resolve();
+    const files = mode === "manual" ? Promise.all([reloadFiles(), folderReads.reload()]) : Promise.resolve();
     const [ok] = await Promise.all([Promise.all(reads).then((all) => all.every(Boolean)), files]);
     if (mode === "manual") setRefreshing(false);
     if (!ok) setFailures((n) => n + 1);
@@ -851,7 +926,24 @@ function ChangesScreen() {
   // turning it on from a folder or a file also goes up to the root, the way back from there does.
   const changeChangesOnly = (on: boolean) => {
     setChangesOnly(on);
+    if (wide) {
+      wideMode(on);
+      return;
+    }
     if (on && treeAt !== null) nav.upExact(filesPathTo());
+  };
+  // On the large screen the control is always there, and the open file stays open across it where the
+  // other body has it: a changed file of the tree opens on its diff in the list, a file of the list opens in the tree.
+  // A replace, a switch within the level.
+  const wideMode = (on: boolean) => {
+    if (on) {
+      if (treeFile !== null && treeChange !== undefined) nav.side(pathTo({ repo: treeChange.repo, path: treeChange.path }));
+      else if (treeAt !== null) nav.side(pathTo());
+      return;
+    }
+    const inTree = open === null ? null : previewPath(open);
+    if (inTree !== null) nav.side(filesPathTo({ path: inTree }));
+    else if (open !== null || commitView) nav.side(pathTo());
   };
   const changesOnlyNow = () => changeChangesOnly(true);
   // Up from the commit to the list: a step back onto it, or a replace when opened cold.
@@ -879,6 +971,27 @@ function ChangesScreen() {
   const backOut = () => {
     if (glidesHome) glideBack("changes", spaceChangesPath(spaceId, scope), () => nav.up(backFallback));
     else nav.up(backFallback);
+  };
+  // The large screen's header arrow leaves the screen for where it was opened from, as Settings' does:
+  // a step back past the files and folders walked through when the trail holds them, else up to the pane or the space.
+  const routeBase = pathOnly(pathTo());
+  const leaveFiles = () => {
+    const idx = historyIdx();
+    if (idx === undefined) {
+      nav.upTo(backFallback);
+      return;
+    }
+    const entries = navTrail.entries();
+    for (let at = idx - 1; at >= 0; at -= 1) {
+      const href = entries.get(at);
+      if (href === undefined) break;
+      const path = pathOnly(href);
+      if (path === routeBase || path.startsWith(`${routeBase}/`)) continue;
+      markInAppBack(path);
+      void navigate(-(idx - at));
+      return;
+    }
+    nav.upTo(backFallback);
   };
   const backAriaKey: MessageKey = backDestination.startsWith("/pane/")
     ? "changes.backAria.pane"
@@ -1194,6 +1307,362 @@ function ChangesScreen() {
     void navigate(dest, { replace: true, state: { from: spacePath(spaceId, scope) } });
   };
 
+  const commentBar = (selectedCodeRows.length > 0 || comments.length > 0) && (
+    <div className="flex items-center justify-between gap-2 border-t border-border bg-chrome px-4 py-2">
+      {selectedCodeRows.length > 0 ? (
+        <>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() =>
+              openKey !== null && setSelection({ fileKey: openKey, diffText: currentDiffText, keys: [] })
+            }
+          >
+            {t("changes.comment.clearSelection", { count: selectedCodeRows.length })}
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            className="flex-1"
+            onClick={openNewCommentSheet}
+          >
+            {t("changes.comment.selectedButton", { count: selectedCodeRows.length })}
+          </Button>
+        </>
+      ) : (
+        <Button
+          type="button"
+          size="sm"
+          className="w-full"
+          onClick={() => setBasketOpen(true)}
+        >
+          {t("changes.comment.pendingBar", { count: comments.length })}
+        </Button>
+      )}
+    </div>
+  );
+  const sheets = (
+    <>
+      {commentSheet !== null && (
+        <BottomSheet
+          open
+          onClose={() => setCommentSheet(null)}
+          className={TALL_SHEET_CLEARANCE}
+          title={t("changes.comment.sheetTitle", {
+            path:
+              commentSheet.mode === "edit"
+                ? baseName(editingComment?.path ?? "")
+                : baseName(commentSheet.path),
+            lines:
+              commentSheet.mode === "edit"
+                ? (editingComment?.lineLabel ?? "")
+                : commentSheet.lineLabel,
+          })}
+        >
+          <div className="flex flex-col gap-3">
+            <pre className="rounded-md border border-border bg-background p-2.5 font-mono text-xs leading-relaxed text-muted-foreground whitespace-pre-wrap">
+              {(commentSheet.mode === "edit"
+                ? (editingComment?.linesText ?? [])
+                : commentSheet.linesText
+              ).join("\n")}
+            </pre>
+            <textarea
+              value={commentText}
+              onChange={(e) => setCommentText(e.target.value)}
+              placeholder={t("changes.comment.placeholder")}
+              rows={4}
+              className="w-full resize-y rounded-md border border-input bg-background p-2.5 text-base leading-relaxed text-foreground focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none"
+            />
+            <div className="flex items-center justify-end gap-2">
+              {commentSheet.mode === "edit" && (
+                <Button type="button" variant="destructive" size="sm" onClick={deleteEditingComment}>
+                  {t("changes.comment.delete")}
+                </Button>
+              )}
+              <Button
+                type="button"
+                size="sm"
+                disabled={commentText.trim() === ""}
+                onClick={saveComment}
+              >
+                {t(commentSheet.mode === "edit" ? "changes.comment.save" : "changes.comment.add")}
+              </Button>
+            </div>
+          </div>
+        </BottomSheet>
+      )}
+      {basketOpen && comments.length > 0 && (
+        <BottomSheet
+          open
+          onClose={() => setBasketOpen(false)}
+          className={TALL_SHEET_CLEARANCE}
+          title={t("changes.comment.basketTitle", { count: comments.length })}
+        >
+          <div className="flex flex-col gap-3">
+            {target.kind === "space" && (spaceAgentPanes.length > 1 || targetPane === undefined) && (
+              <div className="flex flex-col gap-1.5">
+                <span className="text-xs font-medium text-muted-foreground">
+                  {t("changes.comment.pickAgent")}
+                </span>
+                <div className="flex flex-col gap-1.5">
+                  {spaceAgentPanes.map((p) => {
+                    const sub = givenName(p) ?? p.paneId;
+                    const label = p.agent ? `${p.agent} · ${sub}` : sub;
+                    const rowKey = paneRowKey(p);
+                    const active = targetPane !== undefined && rowKey === paneRowKey(targetPane);
+                    return (
+                      <button
+                        key={rowKey}
+                        type="button"
+                        onClick={() => setChosen({ rowKey, paneId: p.paneId })}
+                        className={cn(
+                          "flex items-center justify-between rounded-md border px-3 py-2 text-left text-xs transition-colors",
+                          active
+                            ? "border-primary bg-primary/10 font-medium text-foreground"
+                            : "border-border bg-background text-muted-foreground hover:bg-muted",
+                        )}
+                      >
+                        <span className="truncate">{label}</span>
+                        {active && <span aria-hidden>✓</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            <ul className="flex flex-col gap-2">
+              {comments.map((c) => (
+                <li
+                  key={c.id}
+                  className="flex flex-col gap-1 rounded-md border border-border bg-background p-2.5 text-xs"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="truncate font-mono font-medium text-primary">
+                      {displayDiffPath(c.repo, c.path)} ({c.lineLabel})
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const remaining = comments.filter((item) => item.id !== c.id);
+                        setComments(() => remaining);
+                        if (remaining.length === 0) setBasketOpen(false);
+                      }}
+                      className="text-muted-foreground hover:text-foreground"
+                    >
+                      {t("changes.comment.delete")}
+                    </button>
+                  </div>
+                  <div className="truncate font-mono text-[11px] text-muted-foreground">
+                    {c.linesText[0] ?? ""}
+                  </div>
+                  <div className="text-foreground">{c.note}</div>
+                </li>
+              ))}
+            </ul>
+            <Button
+              type="button"
+              disabled={!targetPane}
+              onClick={bringCommentsToAgent}
+            >
+              {t("changes.comment.bringToDraft", {
+                agent: targetAgentName,
+                count: comments.length,
+              })}
+            </Button>
+          </div>
+        </BottomSheet>
+      )}
+    </>
+  );
+
+  // ── The large screen: two columns under one header (ADR 0173) ──
+  if (wide) {
+    const modeControl = <FilesModeControl compact changesOnly={leftList} count={changedFiles} onChange={changeChangesOnly} className="w-full" />;
+    const diffLayout: WideDiff = { layout: diffLayoutFor(diffChoice, rightWidth), onLayout: setDiffLayout };
+    const listFilterOn = leftList && !(commitView && commitState?.phase !== "ready");
+    const overlays = (
+      <div className="relative">
+        {leftList && (
+          <ChangesFilterOverlay open={filterOpen} onClose={() => setFilterOpen(false)}>
+            <ChangesFilterBar filter={activeFilter} onChange={setActiveFilter} onClear={clearFilter} shown={shown} total={total} focusOnMount />
+          </ChangesFilterOverlay>
+        )}
+        {!leftList && wideCounted !== null && (
+          <ChangesFilterOverlay open={filesFilter.open} onClose={() => filesFilter.setOpen(false)}>
+            <FilesFilterBar
+              query={filesFilter.query}
+              onQuery={filesFilter.setQuery}
+              showIgnored={prefs.filesShowIgnored}
+              onShowIgnored={setFilesShowIgnored}
+              shown={wideCounted.shown}
+              total={wideCounted.total}
+              focusOnMount
+            />
+          </ChangesFilterOverlay>
+        )}
+      </div>
+    );
+    let left: ReactNode;
+    if (commitView) {
+      left = (
+        <CommitBody
+          state={commitState}
+          repos={shownRepos}
+          layout={layout}
+          collapsed={commitCollapsed}
+          onToggle={toggleCommitFolder}
+          onClearFilter={clearFilter}
+          onOpen={openFile}
+          current={commitOpen}
+          uncommitted={commitRepo !== null && list.phase === "ready" && list.data.available && list.data.repos.some((r) => r.relPath === commitRepo)}
+          onLoadNewer={loadNewer}
+          onShowUncommitted={upToList}
+        />
+      );
+    } else if (leftList) {
+      left = (
+        <div className="flex flex-col gap-3 px-1">
+          <ChangesListHead count={headerCount} />
+          <ListBody
+            state={list}
+            arrive={listArrive}
+            repos={shownRepos}
+            paneRepo={target.kind === "pane" && list.phase === "ready" ? list.data.paneRepo : undefined}
+            depth={lookup.depth}
+            onLookDeeper={() => nav.down(changesSettingsPath(scope))}
+            layout={layout}
+            collapsed={collapsed}
+            onToggle={toggleFolder}
+            onClearFilter={clearFilter}
+            onOpen={(ref) => nav.down(pathTo(ref))}
+            onShowCommit={showCommit}
+            current={open}
+          />
+        </div>
+      );
+    } else {
+      left = (
+        <FilesExplorer
+          rows={tree.rows}
+          current={treeFile ?? (treeDir === "" ? null : treeDir)}
+          rootName={rootName}
+          onToggle={toggleExpanded}
+          onOpen={(path, entry) => nav.down(filesPathTo({ path }), entry.kind === "link" ? { viaLink: true } : undefined)}
+        />
+      );
+    }
+    let right: ReactNode;
+    if (current) {
+      right = (
+        <FileScreen
+          path={current.path}
+          oldPath={listedFile ? listedFile.oldPath : shownDiff?.oldPath}
+          status={listedFile?.status ?? shownDiff?.status}
+          gone={gone}
+          onPreview={previewOf === null ? undefined : () => previewInFiles(previewOf)}
+          state={fileState}
+          commenting={commenting}
+          prev={prev}
+          next={next}
+          onStep={stepTo}
+          back={null}
+          hand={hand}
+          wide={diffLayout}
+        />
+      );
+    } else if (treeFile !== null) {
+      right = (
+        <TreeFileScreen
+          path={treeFile}
+          change={treeChange}
+          gone={gone}
+          waiting={list.phase === "loading"}
+          views={treeViews}
+          view={treeView}
+          onView={(view) => setViewChoice({ path: treeFile, view })}
+          diff={fileState}
+          commenting={commenting}
+          read={filesState}
+          links={fileLinks}
+          images={fileImages}
+          line={treeLine}
+          onPair={pair}
+          wide={diffLayout}
+        />
+      );
+    } else {
+      right = <FilesNothingChosen name={treeDir !== null && treeDir !== "" ? baseName(treeDir) : (rootName ?? workspaceLabel)} count={headerCount} />;
+    }
+    return (
+      <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col">
+        <RouteHeader
+          width="full"
+          span
+          override={
+            <>
+              <Button variant="ghost" size="icon" className="size-11 shrink-0" onClick={leaveFiles} aria-label={t(backAriaKey)} title={t(backAriaKey)}>
+                <Icon name="back" className="size-5" />
+              </Button>
+              <div className="flex min-w-0 flex-1 items-baseline gap-2" data-glide-destination={rootScreen ? "changes" : undefined}>
+                <h1 className="shrink-0 text-base font-semibold tracking-tight">{commitView ? t("changes.commit.title") : t("files.title")}</h1>
+                <div className="flex min-w-0 items-baseline gap-1.5 text-xs text-muted-foreground">
+                  <div className={LABEL_LINE}>
+                    <span data-glide={rootScreen ? "label" : undefined} className="max-w-full shrink-0 truncate">
+                      {workspaceLabel}
+                    </span>
+                    {folderLine}
+                  </div>
+                  {rootHead !== null && <BranchLabel head={rootHead} className="max-w-1/2 shrink self-center overflow-hidden leading-tight" />}
+                  {staleNote}
+                </div>
+              </div>
+              <div className="flex shrink-0 items-center">
+                {listFilterOn && (
+                  <>
+                    <ChangesLayoutToggle layout={layout} onChange={setChangesLayout} />
+                    <ChangesFilterButton open={filterOpen} active={filtering} shown={shown} total={total} onClick={() => setFilterOpen((o) => !o)} />
+                  </>
+                )}
+                {!leftList && wideCounted !== null && (
+                  <ChangesFilterButton
+                    open={filesFilter.open}
+                    active={isNameFilterOn(filesFilter.query)}
+                    shown={wideCounted.shown}
+                    total={wideCounted.total}
+                    onClick={() => filesFilter.setOpen(!filesFilter.open)}
+                  />
+                )}
+                <Button variant="ghost" size="icon" className="size-11 shrink-0" onClick={() => void reread("manual")} aria-label={t("changes.refreshAria")} disabled={refreshing}>
+                  <Icon name="refresh" className={cn("size-5", refreshing && "animate-spin")} />
+                </Button>
+              </div>
+            </>
+          }
+        />
+        <FilesColumns
+          leftWidth={WIDE_LEFT_PX}
+          leftRef={leftRef}
+          rightRef={holdRight}
+          leftTop={
+            <>
+              <div className="shrink-0 px-2 pt-2">{modeControl}</div>
+              {overlays}
+            </>
+          }
+          left={left}
+          right={
+            <>
+              {right}
+              {commentBar !== false && <div className="sticky bottom-0 z-10 mt-auto">{commentBar}</div>}
+            </>
+          }
+        />
+        {sheets}
+      </div>
+    );
+  }
+
   return (
     // The pane's own column, like History: this view is one hop from the pane and keeps its edges.
     <div className="mx-auto flex min-h-0 w-full min-w-0 max-w-[100dvw] flex-1 flex-col md:max-w-screen-md lg:max-w-screen-lg xl:max-w-screen-xl 2xl:max-w-[1400px]">
@@ -1411,173 +1880,11 @@ function ChangesScreen() {
           </div>
         )}
       </main>
-      {(selectedCodeRows.length > 0 || comments.length > 0) && (
-        <div className="flex items-center justify-between gap-2 border-t border-border bg-chrome px-4 py-2">
-          {selectedCodeRows.length > 0 ? (
-            <>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() =>
-                  openKey !== null && setSelection({ fileKey: openKey, diffText: currentDiffText, keys: [] })
-                }
-              >
-                {t("changes.comment.clearSelection", { count: selectedCodeRows.length })}
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                className="flex-1"
-                onClick={openNewCommentSheet}
-              >
-                {t("changes.comment.selectedButton", { count: selectedCodeRows.length })}
-              </Button>
-            </>
-          ) : (
-            <Button
-              type="button"
-              size="sm"
-              className="w-full"
-              onClick={() => setBasketOpen(true)}
-            >
-              {t("changes.comment.pendingBar", { count: comments.length })}
-            </Button>
-          )}
-        </div>
-      )}
+      {commentBar}
       {/* A phone's thumb cannot reach the header arrow: the same Back repeats here, under the
           scroller so nothing scrolls behind it. A file's diff carries it in its Previous / Next bar. */}
       {phone && !current && <BackBar back={back} hand={hand} />}
-      {commentSheet !== null && (
-        <BottomSheet
-          open
-          onClose={() => setCommentSheet(null)}
-          className={TALL_SHEET_CLEARANCE}
-          title={t("changes.comment.sheetTitle", {
-            path:
-              commentSheet.mode === "edit"
-                ? baseName(editingComment?.path ?? "")
-                : baseName(commentSheet.path),
-            lines:
-              commentSheet.mode === "edit"
-                ? (editingComment?.lineLabel ?? "")
-                : commentSheet.lineLabel,
-          })}
-        >
-          <div className="flex flex-col gap-3">
-            <pre className="rounded-md border border-border bg-background p-2.5 font-mono text-xs leading-relaxed text-muted-foreground whitespace-pre-wrap">
-              {(commentSheet.mode === "edit"
-                ? (editingComment?.linesText ?? [])
-                : commentSheet.linesText
-              ).join("\n")}
-            </pre>
-            <textarea
-              value={commentText}
-              onChange={(e) => setCommentText(e.target.value)}
-              placeholder={t("changes.comment.placeholder")}
-              rows={4}
-              className="w-full resize-y rounded-md border border-input bg-background p-2.5 text-base leading-relaxed text-foreground focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none"
-            />
-            <div className="flex items-center justify-end gap-2">
-              {commentSheet.mode === "edit" && (
-                <Button type="button" variant="destructive" size="sm" onClick={deleteEditingComment}>
-                  {t("changes.comment.delete")}
-                </Button>
-              )}
-              <Button
-                type="button"
-                size="sm"
-                disabled={commentText.trim() === ""}
-                onClick={saveComment}
-              >
-                {t(commentSheet.mode === "edit" ? "changes.comment.save" : "changes.comment.add")}
-              </Button>
-            </div>
-          </div>
-        </BottomSheet>
-      )}
-      {basketOpen && comments.length > 0 && (
-        <BottomSheet
-          open
-          onClose={() => setBasketOpen(false)}
-          className={TALL_SHEET_CLEARANCE}
-          title={t("changes.comment.basketTitle", { count: comments.length })}
-        >
-          <div className="flex flex-col gap-3">
-            {target.kind === "space" && (spaceAgentPanes.length > 1 || targetPane === undefined) && (
-              <div className="flex flex-col gap-1.5">
-                <span className="text-xs font-medium text-muted-foreground">
-                  {t("changes.comment.pickAgent")}
-                </span>
-                <div className="flex flex-col gap-1.5">
-                  {spaceAgentPanes.map((p) => {
-                    const sub = givenName(p) ?? p.paneId;
-                    const label = p.agent ? `${p.agent} · ${sub}` : sub;
-                    const rowKey = paneRowKey(p);
-                    const active = targetPane !== undefined && rowKey === paneRowKey(targetPane);
-                    return (
-                      <button
-                        key={rowKey}
-                        type="button"
-                        onClick={() => setChosen({ rowKey, paneId: p.paneId })}
-                        className={cn(
-                          "flex items-center justify-between rounded-md border px-3 py-2 text-left text-xs transition-colors",
-                          active
-                            ? "border-primary bg-primary/10 font-medium text-foreground"
-                            : "border-border bg-background text-muted-foreground hover:bg-muted",
-                        )}
-                      >
-                        <span className="truncate">{label}</span>
-                        {active && <span aria-hidden>✓</span>}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-            <ul className="flex flex-col gap-2">
-              {comments.map((c) => (
-                <li
-                  key={c.id}
-                  className="flex flex-col gap-1 rounded-md border border-border bg-background p-2.5 text-xs"
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="truncate font-mono font-medium text-primary">
-                      {displayDiffPath(c.repo, c.path)} ({c.lineLabel})
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const remaining = comments.filter((item) => item.id !== c.id);
-                        setComments(() => remaining);
-                        if (remaining.length === 0) setBasketOpen(false);
-                      }}
-                      className="text-muted-foreground hover:text-foreground"
-                    >
-                      {t("changes.comment.delete")}
-                    </button>
-                  </div>
-                  <div className="truncate font-mono text-[11px] text-muted-foreground">
-                    {c.linesText[0] ?? ""}
-                  </div>
-                  <div className="text-foreground">{c.note}</div>
-                </li>
-              ))}
-            </ul>
-            <Button
-              type="button"
-              disabled={!targetPane}
-              onClick={bringCommentsToAgent}
-            >
-              {t("changes.comment.bringToDraft", {
-                agent: targetAgentName,
-                count: comments.length,
-              })}
-            </Button>
-          </div>
-        </BottomSheet>
-      )}
+      {sheets}
     </div>
   );
 }
@@ -1599,6 +1906,7 @@ function ListBody({
   onClearFilter,
   onOpen,
   onShowCommit,
+  current,
 }: {
   state: ListState;
   /** The first answer after the skeleton: the rows fade in and settle. */
@@ -1618,6 +1926,8 @@ function ListBody({
   onOpen: (ref: ChangeRef) => void;
   /** Open a clean repo's last commit. */
   onShowCommit: (repo: string) => void;
+  /** The file open beside the list on the large screen: drawn chosen, in the tree's flat rows. */
+  current?: ChangeRef | null;
 }) {
   if (state.phase === "loading") return <ChangesListSkeleton label={t("changes.loading")} />;
   if (state.phase === "error") {
@@ -1641,8 +1951,8 @@ function ListBody({
   } else if (repos.length === 0)
     body = <ChangesNoMatch onClear={onClearFilter} />;
   else if (layout === "tree")
-    body = <ChangesTree repos={repos} paneRepo={paneRepo} collapsed={collapsed} onToggle={onToggle} onOpen={onOpen} />;
-  else body = <ChangesList repos={repos} paneRepo={paneRepo} onOpen={onOpen} />;
+    body = <ChangesTree repos={repos} paneRepo={paneRepo} collapsed={collapsed} onToggle={onToggle} onOpen={onOpen} current={current} />;
+  else body = <ChangesList repos={repos} paneRepo={paneRepo} onOpen={onOpen} current={current} />;
   // One quiet note at the end when a bound was hit. A cut list says so first, since it is missing
   // things for sure; otherwise a repo past the depth offers the setting that would reach it.
   let bound: React.ReactNode = null;
@@ -1699,6 +2009,7 @@ function CommitBody({
   uncommitted,
   onLoadNewer,
   onShowUncommitted,
+  current,
 }: {
   state: CommitState | null;
   /** The commit's one repo, after the filter. */
@@ -1712,6 +2023,8 @@ function CommitBody({
   uncommitted: boolean;
   onLoadNewer: () => void;
   onShowUncommitted: () => void;
+  /** The file open beside the list on the large screen: drawn chosen, in the tree's flat rows. */
+  current?: ChangeRef | null;
 }) {
   if (state === null) return <Quiet>{t("changes.commit.unknown")}</Quiet>;
   if (state.phase === "loading") return <Loading label={t("changes.commit.loading")} />;
@@ -1727,8 +2040,8 @@ function CommitBody({
   let body: React.ReactNode;
   if (data.files.length === 0) body = <Quiet>{t("changes.commit.empty")}</Quiet>;
   else if (repos.length === 0) body = <ChangesNoMatch onClear={onClearFilter} />;
-  else if (layout === "tree") body = <ChangesTree repos={repos} collapsed={collapsed} onToggle={onToggle} onOpen={onOpen} />;
-  else body = <ChangesList repos={repos} onOpen={onOpen} />;
+  else if (layout === "tree") body = <ChangesTree repos={repos} collapsed={collapsed} onToggle={onToggle} onOpen={onOpen} current={current} />;
+  else body = <ChangesList repos={repos} onOpen={onOpen} current={current} />;
   return (
     <div className="flex flex-col gap-4">
       <CommitHead
@@ -1757,6 +2070,7 @@ export function FileScreen({
   onStep,
   back,
   hand,
+  wide,
 }: {
   path: string;
   oldPath: string | undefined;
@@ -1773,7 +2087,11 @@ export function FileScreen({
   /** The screen's Back, on a phone only: it joins Previous / Next in their bar, on the thumb side. */
   back: BackControl | null;
   hand: Hand;
+  /** The large screen: the diff's layout control and Previous / Next sit in the file's row, and the foot bar goes. */
+  wide?: WideDiff;
 }) {
+  const oneSide = status === "A" || status === "D" || status === "?";
+  const layout = wide === undefined || oneSide ? "unified" : wide.layout;
   return (
     <>
       {/* Sticky, so the reader always knows which file this is, however far down the diff. */}
@@ -1798,14 +2116,21 @@ export function FileScreen({
             {t("changes.file.preview")}
           </Button>
         )}
+        {wide && (
+          <>
+            <DiffLayoutControl value={layout} onChange={wide.onLayout} disabled={oneSide} />
+            <FileSteps onPrev={prev && (() => onStep(prev))} onNext={next && (() => onStep(next))} />
+          </>
+        )}
       </div>
 
       <div className="flex-1 py-2">
-        <FileBody state={state} commenting={commenting} />
+        <FileBody state={state} commenting={commenting} split={layout === "split"} />
       </div>
 
-      {/* Across what the list shows, repos included: the filtered files, in the layout's order.
-          Disabled rather than hidden at either end, so the pair never moves. */}
+      {wide === undefined && (
+      // Across what the list shows, repos included: the filtered files, in the layout's order.
+      //  Disabled rather than hidden at either end, so the pair never moves.
       <BottomBar
         className={cn("grid gap-2", back === null ? "grid-cols-2" : hand === "left" ? "grid-cols-[auto_1fr_1fr]" : "grid-cols-[1fr_1fr_auto]")}
       >
@@ -1820,11 +2145,21 @@ export function FileScreen({
         </Button>
         {back && hand !== "left" && <BackButton back={back} className="px-3" />}
       </BottomBar>
+      )}
     </>
   );
 }
 
-function FileBody({ state, commenting }: { state: FileState | null; commenting?: DiffViewCommentProps }) {
+/** What the large screen hands a file's screen: the diff's layout and the way to keep a new choice. */
+interface WideDiff {
+  layout: DiffLayout;
+  onLayout: (layout: DiffLayout) => void;
+}
+
+/** The large screen's left column, the tree or the list, in CSS px. */
+const WIDE_LEFT_PX = 360;
+
+function FileBody({ state, commenting, split = false }: { state: FileState | null; commenting?: DiffViewCommentProps; split?: boolean }) {
   if (state === null || state.phase === "loading") return <Loading label={t("changes.loading")} />;
   if (state.phase === "error") {
     return (
@@ -1852,7 +2187,7 @@ function FileBody({ state, commenting }: { state: FileState | null; commenting?:
   if (data.diff.trim() === "" || !data.diff.includes("@@")) return <Quiet>{t("changes.file.noLines")}</Quiet>;
   return (
     <>
-      <DiffView diff={data.diff} path={data.path} commenting={commenting} />
+      <DiffView diff={data.diff} path={data.path} commenting={commenting} split={split} />
       {data.truncated && <p className="px-4 pt-3 text-xs text-muted-foreground">{t("changes.file.truncated")}</p>}
     </>
   );
@@ -1879,6 +2214,7 @@ function TreeFileScreen({
   images,
   line,
   onPair,
+  wide,
 }: {
   path: string;
   change: RootChange | undefined;
@@ -1898,13 +2234,17 @@ function TreeFileScreen({
   /** The line a printed path named, marked in the Source (ADR 0088). */
   line?: number;
   onPair: () => void;
+  /** The large screen: the diff's layout control in the file's row while the Diff view is chosen. */
+  wide?: WideDiff;
 }) {
   useLocale();
   const folder = path.includes("/") ? path.slice(0, path.lastIndexOf("/") + 1) : "";
   const size = read.phase === "ready" && read.data.available && "size" in read.data ? read.data.size : null;
   let body: React.ReactNode;
+  const oneSide = change === undefined || change.status === "A" || change.status === "D" || change.status === "?";
+  const layout = wide === undefined || oneSide ? "unified" : wide.layout;
   if (waiting) body = <FilesLoading />;
-  else if (view === "diff") body = <FileBody state={diff} commenting={commenting} />;
+  else if (view === "diff") body = <FileBody state={diff} commenting={commenting} split={layout === "split"} />;
   else if (read.phase === "loading") body = <FilesLoading />;
   else if (read.phase === "error") {
     body = (
@@ -1955,6 +2295,7 @@ function TreeFileScreen({
               options={views.map((value) => ({ value, label: t(TREE_VIEW_LABEL[value]), icon: TREE_VIEW_ICON[value] }))}
             />
           )}
+          {wide && !waiting && view === "diff" && <DiffLayoutControl value={layout} onChange={wide.onLayout} disabled={oneSide} />}
         </div>
         {folder && <FilePathRow folder={folder} path={path} />}
       </div>

@@ -94,3 +94,8 @@ was opened from (the nav trail), else up to the Dashboard. `/settings` replaces 
 waits, else Appearance. Machines stays a page of its own, and its row leaves Settings. Files:
 `web/src/components/settings-shell.tsx`, `web/src/components/settings-page.tsx`, `web/src/hooks/use-settings-rows.ts`,
 `web/e2e/settings-wide.spec.ts`.
+
+## Addenda moved to ADR 0173
+
+- 2026-11-21, Files and Changes are two columns under one header: moved to [ADR 0173](./0173-files-new-and-the-space-address-take-the-large-screen.md), word for word.
+- 2026-11-21, New is a dialog over the screen, and the space address opens the pane view: moved to [ADR 0173](./0173-files-new-and-the-space-address-take-the-large-screen.md), word for word.

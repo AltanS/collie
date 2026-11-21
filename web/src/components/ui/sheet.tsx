@@ -44,6 +44,8 @@ export function useDialogFocus(open: boolean, panelRef: React.RefObject<HTMLElem
 // fact down, and a sheet may be mounted from any component. Counts `open` only: a peeking panel
 // (`pull > 0`) is a finger still dragging, not an open sheet.
 let openSheets = 0;
+/** The open layers in the order they opened: Escape closes only the last one, never the sheet under it too. */
+const layerStack: object[] = [];
 const sheetListeners = new Set<() => void>();
 function bumpOpenSheets(by: 1 | -1): void {
   openSheets += by;
@@ -225,9 +227,12 @@ interface BottomSheetProps {
    * `viewer`: as wide as its picture, up to `min(92vw, 1200px)` and never narrower than the column, for a
    * sheet whose content is a picture or a document page (`ImageSheet`, `PagerSheet`); its picture caps its
    * height with `SHEET_PICTURE_FIT`, and a content that pages may take the widest body width,
-   * `--sheet-body-width`. A bottom sheet ignores it.
+   * `--sheet-body-width`. `form`: a form with a foot of its own (the New dialog, components/new-over.tsx). The
+   * panel does not scroll and its body has no padding: the content lays out its columns, scrolls them itself and
+   * keeps its foot in view, at most 720px tall. The caller gives its width (`className`, `max-w-*`); it holds a
+   * focus trap, since its foot's buttons are the last stop of the Tab order. A bottom sheet ignores the width.
    */
-  size?: "column" | "viewer";
+  size?: "column" | "viewer" | "form";
   /**
    * `auto` (the default): a centred dialog on a wide window, a bottom sheet elsewhere. `sheet`: a bottom
    * sheet on every width class, for a sheet that is the whole screen on purpose while it is up (the tour,
@@ -337,14 +342,71 @@ function SheetLayer({
     if (open) backdropArmed.current = false;
   }, [open]);
 
+  // Escape closes the top layer only: a sheet opened from a sheet (Start without prompts? over the New dialog)
+  // is closed alone, and the one under it stays.
+  const layer = React.useRef({});
+  React.useEffect(() => {
+    if (!open) return;
+    const me = layer.current;
+    layerStack.push(me);
+    return () => {
+      const at = layerStack.lastIndexOf(me);
+      if (at !== -1) layerStack.splice(at, 1);
+    };
+  }, [open]);
   React.useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape" && layerStack[layerStack.length - 1] === layer.current) onClose();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
+  // A FORM DIALOG'S TOP EDGE STAYS WHERE THE PERSON FIRST MET IT. It opens centred and re-centres while its content
+  // arrives; from the first release of a press, or a key, inside it, the top is held and a change of its height (another variant
+  // of the form) grows or shrinks it downward, so the field under the pointer does not move. `offsetTop`, not the
+  // box: the entrance zoom is a transform. The frame then stacks from its top. Reset on close and on a resize.
+  const [formTop, setFormTop] = React.useState<number | null>(null);
+  const holdFormTop = () => {
+    if (formTop !== null || size !== "form" || !dialog) return;
+    const panel = panelRef.current;
+    const frame = panel?.parentElement;
+    if (panel == null || frame == null) return;
+    setFormTop(Math.max(0, panel.offsetTop - parseFloat(getComputedStyle(frame).paddingTop)));
+  };
+  React.useEffect(() => {
+    if (!open) setFormTop(null);
+    if (!open || formTop === null) return;
+    const release = () => setFormTop(null);
+    window.addEventListener("resize", release);
+    return () => window.removeEventListener("resize", release);
+  }, [open, formTop]);
+  // A form dialog keeps the Tab order inside it: past its last control the focus goes to its first, and back.
+  React.useEffect(() => {
+    if (!open || size !== "form" || !dialog) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Tab" || layerStack[layerStack.length - 1] !== layer.current) return;
+      const panel = panelRef.current;
+      if (panel === null) return;
+      const stops = tabStops(panel);
+      const first = stops[0];
+      const last = stops[stops.length - 1];
+      if (first === undefined || last === undefined) return;
+      const active = document.activeElement;
+      const inside = active instanceof Node && panel.contains(active);
+      if (e.shiftKey && (!inside || active === first || active === panel)) {
+        e.preventDefault();
+        last.focus();
+        return;
+      }
+      if (!e.shiftKey && (!inside || active === last)) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, size, dialog]);
 
   // Drag-to-dismiss: pull the sheet down from the top to close it. The touchmove listener is
   // attached NON-PASSIVE so we can `preventDefault()` the downward pull — that's what suppresses
@@ -447,9 +509,10 @@ function SheetLayer({
   // A dialog's cap stands inline, so no caller's `max-h-*` outgrows it, and it publishes the height its
   // body has left for a picture (`SHEET_PICTURE_FIT`). It never carries a transform.
   const dialogStyle: React.CSSProperties & Partial<Record<"--sheet-body-room" | "--sheet-body-width", string>> = {
-    maxHeight: DIALOG_MAX_H,
+    maxHeight: size === "form" ? `min(720px, ${DIALOG_MAX_H})` : DIALOG_MAX_H,
     "--sheet-body-room": DIALOG_BODY_ROOM,
   };
+  if (formTop !== null) dialogStyle.marginTop = formTop;
   if (size === "viewer") dialogStyle["--sheet-body-width"] = VIEWER_BODY_W;
   // Peeking: no dialog role, no aria-modal, no pointer events on the page underneath. Nothing has
   // opened yet, so nothing about this render should read as a modal to assistive tech or the mouse.
@@ -478,7 +541,7 @@ function SheetLayer({
 
   return (
     <div
-      className={menu ? "fixed inset-0 z-50" : dialog ? cn(MODAL_FRAME, MODAL_CENTER_FRAME) : "fixed inset-x-0 top-0 z-50 flex h-(--app-h) flex-col justify-end"}
+      className={menu ? "fixed inset-0 z-50" : dialog ? cn(MODAL_FRAME, MODAL_CENTER_FRAME, formTop !== null && "justify-start") : "fixed inset-x-0 top-0 z-50 flex h-(--app-h) flex-col justify-end"}
       role={peeking ? undefined : "dialog"}
       aria-modal={peeking ? undefined : true}
       aria-labelledby={!peeking && title ? titleId : undefined}
@@ -519,6 +582,8 @@ function SheetLayer({
         ref={panelRef}
         tabIndex={peeking ? undefined : -1}
         style={panelStyle}
+        onPointerUpCapture={size === "form" ? holdFormTop : undefined}
+        onKeyDownCapture={size === "form" ? holdFormTop : undefined}
         data-presentation={drawing}
         className={menu ? menuPanelClass(className) : dialog ? dialogPanelClass(size, className) : cn(
           // `rounded-t-md` (2px), not `rounded-t-2xl`: 16px was the roundest corner left in the app and it
@@ -598,7 +663,9 @@ function SheetLayer({
           </div>
         </div>
         )}
-        <div data-slot="sheet-body" className="px-4 py-3">{children}</div>
+        <div data-slot="sheet-body" className={dialog && size === "form" ? "flex min-h-0 flex-1 flex-col" : "px-4 py-3"}>
+          {children}
+        </div>
       </div>
     </div>
   );
@@ -718,14 +785,20 @@ function useAnchoredMenu({
  * corners, stands clear of the bottom edge and is as tall as its content. Its height cap is the
  * inline `DIALOG_MAX_H`, above any caller's `max-h-*`.
  */
-function dialogPanelClass(size: "column" | "viewer", className: string | undefined): string {
+function dialogPanelClass(size: "column" | "viewer" | "form", className: string | undefined): string {
   return cn(
-    "relative z-10 overflow-y-auto overscroll-contain outline-none",
+    size === "form" ? "relative z-10 flex flex-col overflow-hidden outline-none" : "relative z-10 overflow-y-auto overscroll-contain outline-none",
     MODAL_PANEL_LOOK,
     MODAL_CENTER_ENTRANCE,
     "motion-reduce:animate-none",
     size === "viewer" ? "w-fit min-w-[min(40rem,100%)] max-w-[min(92vw,1200px)]" : "w-full max-w-screen-sm",
     className,
-    "h-auto rounded-md pb-1",
+    size === "form" ? "h-auto rounded-md" : "h-auto rounded-md pb-1",
   );
+}
+
+/** The controls of a panel the Tab key stops at, in order. */
+function tabStops(panel: HTMLElement): HTMLElement[] {
+  const candidates = panel.querySelectorAll<HTMLElement>("button, a[href], input, select, textarea, [tabindex]");
+  return [...candidates].filter((el) => !el.matches(":disabled, [tabindex='-1'], [aria-hidden='true'] *, [inert] *") && el.getClientRects().length > 0);
 }

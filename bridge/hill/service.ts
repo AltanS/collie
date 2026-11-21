@@ -469,9 +469,9 @@ export interface HillClearAnswer {
 }
 
 /** The sentence a bridge with the Hill switched off answers a post with: what is off, and the way back on. */
-export const HILL_OFF = "the Hill is off on this Collie; your person can switch it on in Settings, Experiments, on the phone, or with: collie hill on";
+export const HILL_OFF = "the Hill is off on this Collie; your person can switch it on in Settings, Tricks and the Hill, on the phone, or with: collie hill on";
 /** What the lead of a crew answers a member's post or image with while its own Hill is off (the lead's switch decides). */
-export const HILL_OFF_ON_LEAD = "the Hill is off on the lead of this crew; your person can switch it on in Settings, Experiments, on the phone";
+export const HILL_OFF_ON_LEAD = "the Hill is off on the lead of this crew; your person can switch it on in Settings, Tricks and the Hill, on the phone";
 /** The sentence a bridge with WalkyTalky off answers a post with. */
 export const HILL_WALKY_OFF = "WalkyTalky is off on this machine (COLLIE_WALKY=off), so no answer could reach you";
 /** The closed reason of a withdrawn decision. */

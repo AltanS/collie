@@ -13,7 +13,7 @@ import { isReadOnly } from "@/lib/types";
 // carries it (`hillOff`, root data), so every place that shows it reads the same thing on every phone.
 // A tap writes `POST /api/hill/switch`, holds the new position until the snapshot agrees, and
 // revalidates so it agrees at once. A refused write puts the switch back and says so on the status line.
-// Settings → Experiments and the Hill's own off state are the two callers.
+// Settings → Tricks and the Hill and the Hill's own off state are the two callers.
 
 export interface HillSwitchState {
   /** Whether the Hill is on, as the bridge says, or as the last tap asked while the snapshot catches up. */

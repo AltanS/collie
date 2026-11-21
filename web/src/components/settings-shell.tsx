@@ -6,12 +6,14 @@ import { BuildStamp } from "@/components/build-stamp";
 import { Icon } from "@/components/icons/icon";
 import type { IconKey } from "@/components/icons/keys";
 import { InstallRow } from "@/components/install-control";
-import { NAV_EDGE } from "@/components/ui/nav-edge";
+import { StatusLive } from "@/components/status-area";
+import { NAV_EDGE, RECESS_ACCENT } from "@/components/ui/nav-edge";
 import { Button, FOCUS_RING, HOVER_FILL } from "@/components/ui/button";
 import { useUpdatesStatus } from "@/components/updates-settings-card";
 import { useLocale } from "@/hooks/use-locale";
 import { useNav } from "@/hooks/use-nav";
-import { ROWS, TRICKS_ROW, useSettingsRows } from "@/hooks/use-settings-rows";
+import { SettingsSearch } from "@/components/settings-search";
+import { STEADY_PAGES, useSettingsRows } from "@/hooks/use-settings-rows";
 import { useWidthClass } from "@/hooks/use-width-class";
 import { t } from "@/lib/i18n";
 import { historyIdx, homePath, pathOnly, readFrom, settingsSectionPath, updatesPath } from "@/lib/nav";
@@ -19,6 +21,7 @@ import { markInAppBack } from "@/lib/nav-entry";
 import { navTrail, type TrailEntries } from "@/lib/nav-trail";
 import { useScope } from "@/lib/session";
 import { cn } from "@/lib/utils";
+import { oldIndexTarget } from "@/routes/settings-redirect";
 
 // ── SETTINGS ON A LARGE SCREEN (ADR 0158, addendum 2026-11-21) ──────────────────────────────────────────────────
 //
@@ -34,7 +37,7 @@ import { cn } from "@/lib/utils";
 //
 // The addresses stay: every one means what it meant. A row opens its section as a push, so the browser's Back returns
 // to the section before; `/settings` itself becomes the first section that is not an action (Updates while a release
-// waits, else Appearance), replacing itself so Back does not land on a page that only forwards.
+// waits, else Look and feel), replacing itself so Back does not land on a page that only forwards.
 
 export interface SettingsShellApi {
   /** The header's host for the path inside the chosen section (a page one level down or more portals it here). */
@@ -83,10 +86,18 @@ export function settingsSectionOf(pathname: string): string | null {
   return pathname.split("/").filter((part) => part !== "")[1] ?? null;
 }
 
-/** The route element of `settings`: only the outlet, except on the large screen. */
+/**
+ * The route element of `settings`: only the outlet, except on the large screen. Beside it on both widths the status
+ * line for a screen reader (`StatusLive`), because no part of Settings draws the status line (ADR 0168).
+ */
 export function SettingsLayout() {
   const wide = useWidthClass() === "expanded";
-  return wide ? <WideSettings /> : <Outlet />;
+  return (
+    <>
+      {wide ? <WideSettings /> : <Outlet />}
+      <StatusLive />
+    </>
+  );
 }
 
 interface ListRow {
@@ -104,12 +115,12 @@ interface ListRow {
 const ROW = "flex min-h-11 w-full min-w-0 items-center gap-2.5 rounded-lg px-2 text-left text-sm font-medium transition-colors";
 
 function WideSettings() {
-  const { pathname, state, key } = useLocation();
+  const { pathname, search, hash, state, key } = useLocation();
   const navigate = useNavigate();
   const nav = useNav();
   const scope = useScope();
   const updates = useUpdatesStatus();
-  const { rows, hold, withTricks } = useSettingsRows();
+  const { rows, hold } = useSettingsRows();
   useLocale();
   const [crumbs, setCrumbs] = useState<HTMLElement | null>(null);
   const focusNext = useRef(false);
@@ -121,7 +132,7 @@ function WideSettings() {
 
   const section = settingsSectionOf(pathname);
   const list: ListRow[] = [
-    { id: "updates", to: updatesPath(scope), icon: "update-available", title: t("updates.entry.title"), caption: updates.line, dot: updates.available },
+    { id: "updates", to: updatesPath(scope), icon: "update-available", title: t("settings.page.updates.title"), caption: updates.line, dot: updates.available },
     ...rows,
   ];
   const chosen = list.find((row) => row.id === section) ?? null;
@@ -133,9 +144,10 @@ function WideSettings() {
   const listRef = useRef<HTMLElement | null>(null);
 
   if (section === null) {
-    // `/settings` itself: the first section that is not an action. A replace, carrying where Settings was opened from.
+    // `/settings` itself: the first section that is not an action, or the page an old fragment names
+    // (`/settings#paired-devices`). A replace, carrying where Settings was opened from.
     const from = readFrom(state);
-    const to = updates.available ? updatesPath(scope) : settingsSectionPath("appearance", scope);
+    const to = oldIndexTarget(search, hash) ?? (updates.available ? updatesPath(scope) : settingsSectionPath("look", scope));
     return <Navigate to={to} replace state={from === undefined ? undefined : { from }} />;
   }
 
@@ -153,11 +165,6 @@ function WideSettings() {
   };
 
   const open = (row: ListRow) => {
-    // Machines is a page of its own, not a section: the row leaves Settings for it, as on the phone.
-    if (row.id === "machines") {
-      nav.down(row.to);
-      return;
-    }
     if (pathOnly(row.to) === pathname) return;
     focusNext.current = true;
     nav.down(row.to);
@@ -199,13 +206,15 @@ function WideSettings() {
             `--accent` is the paper there, so the chosen row and a hovered one stand on the lightest surface. */}
         <aside
           data-slot="settings-list"
-          className={cn("flex shrink-0 flex-col overflow-y-auto border-r bg-surface-recess px-2 py-2 [--accent:var(--surface-paper)]", NAV_EDGE)}
+          className={cn("flex shrink-0 flex-col overflow-y-auto border-r bg-surface-recess px-2 py-2", RECESS_ACCENT, NAV_EDGE)}
           style={{ width: SETTINGS_LIST_PX }}
         >
+          <SettingsSearch compact>
+          <>
           <InstallRow className={cn(ROW, "mb-1", HOVER_FILL, FOCUS_RING)} />
           <nav ref={listRef} aria-label={t("settings.title")} className="flex flex-col gap-0.5">
             {hold
-              ? [...ROWS.map((row) => row.id), ...(withTricks ? [TRICKS_ROW.id] : []), "updates"].map((id) => (
+              ? ["updates", ...STEADY_PAGES.map((page) => page.id)].map((id) => (
                   <div key={id} aria-hidden="true" data-slot="settings-list-hold" className="h-11" />
                 ))
               : list.map((row) => {
@@ -230,6 +239,8 @@ function WideSettings() {
                   );
                 })}
           </nav>
+          </>
+          </SettingsSearch>
           {/* "What am I running", as at the foot of the phone's index. */}
           <div className="mt-auto px-2 pt-4">
             <BuildStamp />

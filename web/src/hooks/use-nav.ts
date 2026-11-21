@@ -16,6 +16,7 @@ import {
   type UpMove,
 } from "@/lib/nav";
 import { fromOutsideTree, navTrail, resolveCrumb } from "@/lib/nav-trail";
+import { isNewAddress, newOverScreen, overOf, withOver, withoutOver } from "@/lib/new-over";
 
 /**
  * The three moves of ADR 0067, for components. Every navigation in the app goes through one of
@@ -99,11 +100,25 @@ export function useNav(): Nav {
       const keep = from !== undefined && isAncestor(from, pathOnly(move.to));
       void navigate(move.to, { replace: true, state: keep ? { from } : undefined });
     };
+    // NEW OVER THE SCREEN (lib/new-over.ts): on a large screen a move to `/new` or `/new/add` stays on this
+    // screen's address and adds `over=`; closing New steps back off it, and a start replaces it.
+    const over = () => newOverScreen() && overOf(href()) !== undefined;
+    const overTo = (to: string) => (newOverScreen() && isNewAddress(to) ? withOver(href(), to) : to);
     const down = (to: string, state?: NavExtras) =>
-      void navigate(to, { state: { ...state, from: href() } });
+      void navigate(overTo(to), { state: { ...state, from: href() } });
     const side = (to: string, state?: NavExtras) => {
       const from = readFrom(here.current.state);
-      void navigate(to, { replace: true, state: from === undefined ? { ...state } : { ...state, from } });
+      void navigate(overTo(to), { replace: true, state: from === undefined ? { ...state } : { ...state, from } });
+    };
+    /** Close New (or go from Add back to New) over the screen: a step back when the entry behind is that place. */
+    const upOver = (parent: string) => {
+      const target = isNewAddress(parent) ? withOver(href(), parent) : withoutOver(href());
+      const from = readFrom(here.current.state);
+      if (from === target && canStepBack()) {
+        void navigate(-1);
+        return;
+      }
+      void navigate(target, { replace: true });
     };
     return {
       down,
@@ -111,8 +126,8 @@ export function useNav(): Nav {
       // From a pane, and from the New page (it is replaced by the pane it started, so Back does not
       // land on a form whose Start has been used).
       open: (to, state) =>
-        here.current.pathname.startsWith("/pane/") || here.current.pathname === "/new" ? side(to, state) : down(to, state),
-      up: (parent) => run(resolveUp(here.current.pathname, readFrom(here.current.state), parent, canStepBack())),
+        here.current.pathname.startsWith("/pane/") || here.current.pathname === "/new" || over() ? side(to, state) : down(to, state),
+      up: (parent) => (over() ? upOver(parent) : run(resolveUp(here.current.pathname, readFrom(here.current.state), parent, canStepBack()))),
       upTo: (parent) => run(resolveUpTo(readFrom(here.current.state), parent, canStepBack())),
       upExact: (parent) => run(resolveUpToExact(readFrom(here.current.state), parent, canStepBack())),
       upTree: (parent) => run(resolveTreeUp(readFrom(here.current.state), parent, canStepBack())),

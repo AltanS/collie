@@ -11,8 +11,8 @@ import { useHostHealth } from "@/components/crew-provider";
 import { StatusDot } from "@/components/status-badge";
 import { TabStrip } from "@/components/tab-strip";
 import { ColumnControls, ColumnHeader, PaneColumnBody, columnFrame } from "@/components/strip-column";
-import { NAV_EDGE } from "@/components/ui/nav-edge";
-import { Button } from "@/components/ui/button";
+import { NAV_EDGE, RECESS_ACCENT } from "@/components/ui/nav-edge";
+import { Button, FOCUS_RING } from "@/components/ui/button";
 import { PaneGlyph } from "@/components/ui/pane-glyph";
 import { BottomSheet } from "@/components/ui/sheet";
 import { CollieWordmark } from "@/components/collie-wordmark";
@@ -48,9 +48,10 @@ import { shortenHome } from "@/lib/shorten-home";
 import { COLUMN_SNAP_CLASSES, STRIP_SNAP_CLASSES, leftmostWholeColumn, shouldFollowFocus } from "@/lib/strip-snap";
 import { pickTabPane } from "@/lib/tab-pane-memory";
 import { shownStatus } from "@/lib/triage";
-import { isReadOnly, statusLabel, type AgentView } from "@/lib/types";
+import { isReadOnly, statusLabel, type AgentView, type WorkspaceView } from "@/lib/types";
 import { shortcutTarget } from "@/lib/shortcuts/target";
 import { cn } from "@/lib/utils";
+import { takeSidebarReveal } from "@/lib/new-over";
 import {
   allowedPresets,
   arrive,
@@ -84,6 +85,8 @@ import {
 } from "@/lib/wide-layout";
 import { enterSidebarFocus, leaveSidebarFocus, moveSidebarFocus, openSidebarFocus, settleSidebarFocus } from "@/lib/shortcuts/sidebar-focus";
 import { useShortcutMode } from "@/lib/shortcuts/state";
+import { SpaceActionsSheet } from "@/components/space-actions-sheet";
+import { useMuxDeclared } from "@/lib/mux-capability";
 import { setSidebarOpen, setSpaceStrip, spaceStrip, useSidebarOpen, useSpaceStrips } from "@/lib/wide-layout-store";
 
 // THE PANE SCREEN ON A LARGE SCREEN (ADR 0120). From 600px wide, and only on `pane/:paneId`, the
@@ -104,7 +107,12 @@ import { setSidebarOpen, setSpaceStrip, spaceStrip, useSidebarOpen, useSpaceStri
 const TAP_SLOP_PX = 10;
 
 /** The sidebar and the rail stand on the recess; see the aside below. */
-const SIDEBAR_PLANE = cn(NAV_EDGE, "bg-surface-recess [--card:var(--surface-recess)] [--accent:var(--surface-paper)]");
+/**
+ * The house focus ring (FOCUS_RING) on the mark's button, which `CollieHome` portals into the sidebar's mark slot: the
+ * slot puts it on the button inside, so the header's own copy of the button keeps the browser's ring (DESIGN.md §14).
+ */
+const MARK_RING = "[&_button]:focus-visible:outline-2 [&_button]:focus-visible:outline-offset-2 [&_button]:focus-visible:outline-ring";
+const SIDEBAR_PLANE = cn(NAV_EDGE, RECESS_ACCENT, "bg-surface-recess [--card:var(--surface-recess)]");
 
 /** On a column: its scrollers pass a sideways overscroll up to the strip (important, to win over the
  *  transcript list's own `overscroll-contain`). Vertical overscroll is untouched. */
@@ -150,6 +158,19 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
   const open = useSidebarOpen();
   const stored = useSpaceStrips();
   const reduced = useMediaQuery("(prefers-reduced-motion: reduce)");
+  // ARRIVED FROM THE SPACE ADDRESS (routes/space.tsx): the sidebar brings the landed row near its top once, with
+  // its Space's heading above it. Any other arrival moves nothing in the sidebar.
+  useEffect(() => {
+    if (!takeSidebarReveal(paneId)) return;
+    const frame = requestAnimationFrame(() => {
+      const row = document.querySelector<HTMLElement>('[data-slot="wide-layout"] aside [aria-current="page"]');
+      let scroller = row?.parentElement ?? null;
+      while (scroller !== null && !/(auto|scroll)/u.test(getComputedStyle(scroller).overflowY)) scroller = scroller.parentElement;
+      if (row === null || scroller === null) return;
+      scroller.scrollTop += row.getBoundingClientRect().top - scroller.getBoundingClientRect().top - 48;
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [paneId]);
 
   const places = useMemo<Places>(() => ({ scope, servers: root.servers, sessions: root.sessions }), [scope, root.servers, root.sessions]);
   const herd = useMemo(() => [...root.agents, ...root.shellPanes], [root.agents, root.shellPanes]);
@@ -492,6 +513,19 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
   });
   const machine = isMultiHost(root.servers) && agent ? hostName(root.servers, agent.host) : undefined;
 
+  // ── Rename space, from the Actions palette (ADR 0165) ──────────────────────────────────────
+  // The space in view, renamed with the phone space strip's own sheet, on its rename view. Offered where the
+  // multiplexer declares `renameSpace` (a durable program that takes renames) and the device may write. On a
+  // large screen `/space/:id` opens this view (routes/space.tsx), so this is where the space strip's command lives.
+  const [renamingSpace, setRenamingSpace] = useState<WorkspaceView | null>(null);
+  const canRenameSpace = useMuxDeclared("renameSpace", scope);
+  const openWorkspace =
+    agent === undefined ? undefined : root.workspaces.find((w) => w.workspaceId === agent.workspaceId && (w.host ?? undefined) === (agent.host ?? undefined));
+  useShortcutHandler(
+    "rename_space",
+    canRenameSpace && openWorkspace !== undefined && !readOnly && !root.error ? () => setRenamingSpace(openWorkspace) : undefined,
+  );
+
   // ── The add column's sheet: the space's other panes, to move here, and a new agent ──────────
   const [adding, setAdding] = useState(false);
   const inView = new Set(shown.map((c) => c.key));
@@ -570,16 +604,19 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
           // The row keeps its 48px and the status bar's inset goes on top of it, in the row's own
           // ground, beside the sidebar's (the aside above says why). With no inset it is 48px as before.
           className={cn(
-            // On the recess with the sidebar: the step down to the page (the open tab) and up to the paper
-            // (the focused column) is the cut, so the edge under it is only the faint `NAV_EDGE`.
-            NAV_EDGE,
-            "flex h-[calc(3rem+env(safe-area-inset-top))] shrink-0 touch-none items-center gap-1 border-b bg-surface-recess pt-[env(safe-area-inset-top)] [--band-ground:var(--surface-recess)] [--chrome:var(--surface-recess)]",
+            // THE BAR STANDS ON A FIRM EDGE (strip-head round, 2026-11-21): `--edge-firm`, 3:1 or more against the
+            // recess above it and the page band below it in every bundled theme. The faint `NAV_EDGE` it had
+            // measured 1.0:1 where a theme's recess clamps to its page (Nightwatch, Harbour), and the open tab
+            // stands on this line in both looks (tab-strip.tsx). It meets the sidebar's own rule at 48px.
+            "flex h-[calc(3rem+env(safe-area-inset-top))] shrink-0 touch-none items-center gap-1 border-b border-edge-firm bg-surface-recess pt-[env(safe-area-inset-top)] [--band-ground:var(--surface-recess)] [--chrome:var(--surface-recess)]",
             bookPair ? "pr-1" : "pl-4 pr-1",
           )}
         >
           {/* Folded with two columns, the header is cut at the fold like the strip under it: the name
-              over the left column, the buttons over the right one, nothing on the hinge. */}
-          <div className={cn("flex min-w-0 items-center", bookPair ? "fold-left-col pl-4" : "flex-1")}>
+              over the left column, the buttons over the right one, nothing on the hinge.
+              `self-stretch`: the block is the bar's whole height, so the tab row inside it can stand on the
+              bar's lower edge exactly (it sat a pixel above it while this block was only as tall as the row). */}
+          <div className={cn("flex min-w-0 items-center self-stretch", bookPair ? "fold-left-col pl-4" : "flex-1")}>
             <SpaceTitle label={space?.label ?? ""} machine={machine} widthClass={widthClass} besideTabs={agent !== undefined} />
             {agent !== undefined ? (
               <TabStrip
@@ -600,24 +637,29 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
                 savedCopy={root.error}
                 onRenamed={revalidate}
                 onClosed={closedTab}
-                // Under the folder look the row sits on the bar's bottom edge, one pixel over the
-                // bar's own rule, so the open tab covers that rule and joins the page below the bar
-                // (tab-strip.tsx). Plain: centred in the bar, as it always was.
-                className={cn("min-w-0 flex-1 bg-transparent", tabLook === "folder" && "self-end -mb-px")}
+                bar
+                // The row stands on the bar's lower edge in both looks. Under the folder look it reaches over the
+                // edge, by the theme's border width (Nightwatch draws 2px), so the open tab covers it and opens into the page band under the bar; plain
+                // ends on the edge, so the open tab's mark of ink stands on it (tab-strip.tsx).
+                className={cn("min-w-0 flex-1 self-end bg-transparent", tabLook === "folder" && "mb-[calc(var(--surface-border-width)*-1)]")}
               />
             ) : (
               <span className="flex-1" />
             )}
-            {/* "space 1 of 2" only where the row has room for it. At the medium tier the chevrons beside
-                it still step through the spaces and the sidebar lists them all. */}
-            {spaceAt >= 0 && widthClass !== "medium" && (
-              <span data-slot="space-position" className="shrink-0 px-2 text-xs tabular-nums text-muted-foreground">
-                {t("wide.space.position", { index: spaceAt + 1, total: spaces.length })}
-              </span>
-            )}
           </div>
           {bookPair && <span aria-hidden className="fold-gutter shrink-0" />}
           {bookPair && <span aria-hidden className="flex-1" />}
+          {/* THE BAR'S THIRD GROUP: where you are among the spaces and the two ways through them, and the Actions
+              palette, behind one hairline (`--border`), the same one that sets a column's controls apart from
+              its name (strip-column.tsx). So the bar reads as three groups: the title, the tabs, the controls. */}
+          <div data-slot="space-controls" className="flex shrink-0 items-center gap-1 self-center border-l border-border pl-1">
+          {/* "space 1 of 2" only where the row has room for it. At the medium tier the chevrons beside
+              it still step through the spaces and the sidebar lists them all. */}
+          {spaceAt >= 0 && widthClass !== "medium" && (
+            <span data-slot="space-position" className="shrink-0 px-2 text-xs tabular-nums text-muted-foreground">
+              {t("wide.space.position", { index: spaceAt + 1, total: spaces.length })}
+            </span>
+          )}
           {/* The Actions palette (ADR 0165), the header's door to it; the focused pane's belt pins the same button. */}
           <ActionsButton />
           <Button variant="ghost" size="lg" className="size-11 px-0" aria-label={t("wide.space.previous")} {...shortcutTarget("previous_space")} disabled={spaceAt <= 0} onClick={() => moveSpace(-1)}>
@@ -634,7 +676,13 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
           >
             <Icon name="space-next" className="size-5" />
           </Button>
+          </div>
         </div>
+        {/* THE PAGE BAND: 6px of the page colour under the bar's edge, across the whole strip. The folder tab is
+            cut from it (tab-strip.tsx), so the open tab opens into the work area whichever column has the focus.
+            It is the bar's height, not the columns': a column header is 6px lower on the large screen in return
+            (app-header.tsx, strip-column.tsx), so the transcript keeps its top, its height and its first line. */}
+        <div aria-hidden data-slot="space-band" className="h-1.5 shrink-0 bg-background" />
 
         {/* The strip and its position line share a box, so the line can float over the strip's top edge
             instead of taking a row of its own under it. */}
@@ -834,6 +882,16 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
           />
         </div>
       </BottomSheet>
+      <SpaceActionsSheet
+        open={renamingSpace !== null}
+        onClose={() => setRenamingSpace(null)}
+        space={renamingSpace}
+        scope={scope}
+        readOnly={readOnly}
+        savedCopy={root.error}
+        onRenamed={revalidate}
+        openInRename
+      />
     </div>
   );
 }
@@ -862,7 +920,7 @@ function SidebarTop({ open, setMark, toggle: hasToggle }: { open: boolean; setMa
   if (!open) {
     return (
       <div className="flex shrink-0 flex-col items-center">
-        <div ref={setMark} data-slot="sidebar-mark" className="flex h-12 items-center justify-center" />
+        <div ref={setMark} data-slot="sidebar-mark" className={cn("flex h-12 items-center justify-center", MARK_RING)} />
         <div className="flex h-12 items-center justify-center border-b border-rule">{toggle}</div>
       </div>
     );
@@ -873,7 +931,7 @@ function SidebarTop({ open, setMark, toggle: hasToggle }: { open: boolean; setMa
     // box and the gap: 6px of air + 4px gap = 10px from the drawing.
     // `wordmark-lockup`: the row is the pointer target that lights the name's suffix (index.css).
     <div data-slot="sidebar-top" className="wordmark-lockup flex h-12 shrink-0 items-center gap-1 border-b border-rule pl-2.5 pr-1">
-      <div ref={setMark} data-slot="sidebar-mark" className="flex size-11 shrink-0 items-center justify-center" />
+      <div ref={setMark} data-slot="sidebar-mark" className={cn("flex size-11 shrink-0 items-center justify-center", MARK_RING)} />
       {/* The product's name outside (components/collie-wordmark.tsx, the brand's outlines): Collie in the text colour, PWA in the
           herd's three colours under a pointer. Not translated. */}
       {/* The word is part of the mark's button: a tap on it is the mark's tap (home, up a level,
@@ -884,7 +942,7 @@ function SidebarTop({ open, setMark, toggle: hasToggle }: { open: boolean; setMa
         aria-hidden
         data-slot="sidebar-word"
         onClick={(e) => e.currentTarget.parentElement?.querySelector<HTMLButtonElement>('[data-slot="sidebar-mark"] button')?.click()}
-        className="flex h-11 min-w-0 flex-1 items-center truncate text-left text-lg text-foreground"
+        className={cn("flex h-11 min-w-0 flex-1 items-center truncate text-left text-lg text-foreground", FOCUS_RING)}
       >
         <CollieWordmark />
       </button>

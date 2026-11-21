@@ -45,8 +45,10 @@ import {
   parseTheme,
   setsOptionalToken,
   toSrgbHex,
+  type FilledHalves,
   type Theme,
 } from "./schema";
+import { DERIVE_VERSION, DERIVED_TOKENS, deriveTokens, type DerivedHalf } from "./derive";
 import { isThemeEscape, withoutThemeEscape } from "./escape";
 import { readOrigin, type ThemeOrigin } from "./origin";
 import { sameTheme } from "./registry-match";
@@ -54,6 +56,29 @@ import { VERSION_TWO_PROPERTIES, omittedGroundDeclarations, resolveSurface, vers
 
 /** The library's storage key. `public/theme-init.js` reads the same string; `theme-init.test.ts` holds them equal. */
 export const LIBRARY_STORAGE_KEY = "collie:themes:v1";
+
+/**
+ * The derived colours of the applied theme, for the first frame: `public/theme-init.js` sets them before React, so a
+ * theme does not paint unfloored planes and then jump. Stored as `{ v, id, hash, tokens }`: DERIVE_VERSION, the
+ * theme's id, `halvesHash` of its two halves, and `[token, light, dark]` in DERIVED_TOKENS order. theme-init.js uses
+ * the values only when all three keys match the theme it applies; a changed theme or a changed derive is ignored.
+ */
+export const DERIVED_STORAGE_KEY = "collie:derived:v1";
+
+/**
+ * FNV-1a (32 bits) of a theme's two halves, read in the closed token order (`ALL_THEME_TOKENS`, a missing value as
+ * empty). `public/theme-init.js` spells the same function and the same order; `theme-init.test.ts` holds them equal.
+ */
+export function halvesHash(theme: Pick<Theme, "light" | "dark">): string {
+  let text = "";
+  for (const token of ALL_THEME_TOKENS) text += `${token}=${theme.light?.[token] ?? ""},${theme.dark?.[token] ?? ""};`;
+  let h = 0x81_1c_9d_c5;
+  for (let i = 0; i < text.length; i += 1) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 0x01_00_01_93) >>> 0;
+  }
+  return h.toString(16).padStart(8, "0");
+}
 
 /** Imported themes per device. */
 export const LIBRARY_MAX = 8;
@@ -523,7 +548,10 @@ export function applyTheme(theme: Theme, source: ThemeSource): void {
   if (source === "shipped") {
     const id = SHIPPED_THEME_IDS.find((shipped) => shipped === checked.id);
     if (id === undefined || id === DEFAULT_THEME_ID) delete root.dataset.theme;
-    else root.dataset.theme = id;
+    else {
+      root.dataset.theme = id;
+      setDerived(root, fillHalves(checked, defaultTheme()), checked);
+    }
     setMetaColours(id === undefined || id === DEFAULT_THEME_ID ? undefined : metaOf(checked));
     return;
   }
@@ -540,7 +568,36 @@ export function applyTheme(theme: Theme, source: ThemeSource): void {
   for (const [property, value] of versionTwoDeclarations(checked)) root.style.setProperty(property, value);
   // index.css paints Collie's grain on :root, so a theme that names no ground says `flat` itself.
   for (const [property, value] of omittedGroundDeclarations(checked.surface)) root.style.setProperty(property, value);
+  setDerived(root, filled, checked);
   setMetaColours(metaOf(checked));
+}
+
+/**
+ * The colours made from the theme's own tokens (`derive.ts`): the planes, each plane's hover, selected and open fill,
+ * and the ring, one `light-dark()` each, set after the base tokens so a theme's own `ring` or plane is the start the
+ * floor works from. Collie never comes here: its stylesheet holds the same relations, and the reference test holds
+ * the two together.
+ */
+function setDerived(root: HTMLElement, filled: FilledHalves, theme: Theme): void {
+  let light: DerivedHalf;
+  let dark: DerivedHalf;
+  // A theme never breaks the start: a derivation that throws leaves the derived tokens unset, so the stylesheet's
+  // relations hold, and the rest of the theme (its metas included) is applied as usual.
+  try {
+    light = deriveTokens(filled.light, "light");
+    dark = deriveTokens(filled.dark, "dark");
+  } catch (error) {
+    console.warn(`[theme] the derived colours are not set: ${error instanceof Error ? error.message : String(error)}`);
+    return;
+  }
+  for (const token of DERIVED_TOKENS) root.style.setProperty(`--${token}`, `light-dark(${light[token]}, ${dark[token]})`);
+  // Stored for the first frame of the next load. A write that fails (private mode, a full store) costs one frame then.
+  const stored = { v: DERIVE_VERSION, id: theme.id, hash: halvesHash(theme), tokens: DERIVED_TOKENS.map((token) => [token, light[token], dark[token]]) };
+  try {
+    localStorage.setItem(DERIVED_STORAGE_KEY, JSON.stringify(stored));
+  } catch {
+    // The page still has the colours; only the next first frame goes without them.
+  }
 }
 
 /** `collie` on the page: the attribute and every inline token gone, the default metas back. */
@@ -553,6 +610,7 @@ function reset(): void {
 
 function clearInline(root: HTMLElement): void {
   for (const token of ALL_THEME_TOKENS) root.style.removeProperty(`--${token}`);
+  for (const token of DERIVED_TOKENS) root.style.removeProperty(`--${token}`);
   for (const property of VERSION_TWO_PROPERTIES) root.style.removeProperty(property);
 }
 

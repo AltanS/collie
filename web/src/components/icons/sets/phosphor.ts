@@ -333,6 +333,8 @@ export const PHOSPHOR = {
   "user-turn": "user", // a turn or message by the person · lucide User
   "view-chat": "chats", // switch to the chat view · lucide MessagesSquare
   "view-diff": "git-diff", // show the diff view · lucide GitCompareArrows
+  "diff-split": "columns", // a diff side by side · lucide Columns2
+  "diff-unified": "rows", // a diff in one column · lucide Rows2
   "view-preview": "eye", // show the preview view · lucide Eye
   "view-source": "code", // show file source · lucide Code
   "view-terminal": "terminal-window", // switch to the terminal view · lucide SquareTerminal

@@ -437,7 +437,7 @@ describe("the Hill off by default, on a crew", () => {
       const { lead, member, link } = pair(leadReading, "unset");
       const answer = await member.hill.postFields(SENDER, fields());
       expect(answer).toEqual({ ok: false, code: "hill_off", error: HILL_OFF_ON_LEAD });
-      expect(HILL_OFF_ON_LEAD).toBe("the Hill is off on the lead of this crew; your person can switch it on in Settings, Experiments, on the phone");
+      expect(HILL_OFF_ON_LEAD).toBe("the Hill is off on the lead of this crew; your person can switch it on in Settings, Tricks and the Hill, on the phone");
       expect(link.calls).toEqual([CREW_HILL_POST_ROUTE]);
       expect(lead.store.all()).toEqual([]);
     }

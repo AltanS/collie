@@ -1,3 +1,4 @@
+import { FOCUS_RING_INSET } from "@/components/ui/button";
 import { Icon } from "@/components/icons/icon";
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, ReactNode } from "react";
@@ -386,7 +387,10 @@ export function StreamBlock({ n, item, pinned, onActions, className, children, h
           className={cn(
             // At rest: in the DOM for Tab, but clear and deaf to the pointer. Shown on the reveal, on a mouse's hover
             // and on a keyboard focus. Opacity only, so showing it repaints and lays nothing out (DESIGN.md §2).
-            "pointer-events-none absolute top-3 right-0.5 z-[2] grid size-5 place-items-center rounded-sm border border-border bg-chrome text-muted-foreground opacity-0 transition-opacity before:absolute before:-inset-3 before:content-[''] hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-ring group-hover/block:pointer-events-auto group-hover/block:opacity-100",
+            "pointer-events-none absolute top-3 right-0.5 z-[2] grid size-5 place-items-center rounded-sm border border-border bg-chrome text-muted-foreground opacity-0 transition-opacity before:absolute before:-inset-3 before:content-[''] hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover/block:pointer-events-auto group-hover/block:opacity-100",
+            // The ring inside the box: the button stands 2px from the stream's edge, and the stream clips its overflow,
+            // so a ring drawn outside was cut there (e2e/themes, R5 `ring-clipped`).
+            FOCUS_RING_INSET,
             revealed && "pointer-events-auto opacity-100",
           )}
         >

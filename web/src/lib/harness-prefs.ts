@@ -29,7 +29,7 @@ import { asJsonBoolean, asJsonObject, parseJson } from "./json";
 
 const STORAGE_KEY = "collie:harness-prefs:v1";
 
-interface HarnessPref {
+export interface HarnessPref {
   statusLine: boolean;
 }
 

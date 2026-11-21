@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { MetaColours } from "@/hooks/use-theme";
 import { parseJsonObject } from "@/lib/json";
 
+import { DERIVED_TOKENS } from "./derive";
 import { THEME_TOKENS, contrastReport, fillHalves, isOptionalThemeToken, parseTheme, toSrgbHex, type Theme } from "./schema";
 import { ANSI_PROPERTIES, VERSION_TWO_PROPERTIES, SURFACE_PROPERTIES, wordDeclarations } from "./surface";
 
@@ -72,12 +73,41 @@ async function boot(opts: { design?: string; library?: string } = {}) {
 
 const root = () => document.documentElement;
 const inline = () => THEME_TOKENS.filter((t) => root().style.getPropertyValue(`--${t}`) !== "");
+/** The base tokens set inline: the theme's own, without the ring, which derive.ts sets for every applied theme. */
+const inlineBase = () => inline().filter((t) => t !== "ring");
+const inlineDerived = () => DERIVED_TOKENS.filter((t) => root().style.getPropertyValue(`--${t}`) !== "");
 const metas = () =>
   [...document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]')].map((m) => m.content);
 const storedDesign = () => parseJsonObject(localStorage.getItem(DESIGN_KEY) ?? "{}") ?? {};
 
 beforeEach(() => {
   vi.restoreAllMocks();
+});
+
+describe("a derivation that fails", () => {
+  it("leaves the derived tokens unset, warns once, and applies the rest of the theme, metas included", async () => {
+    vi.doMock("./derive", async (original) => ({
+      ...(await original<typeof import("./derive")>()),
+      deriveTokens: () => {
+        throw new Error("derive: a test failure");
+      },
+    }));
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    try {
+      const { store, theme } = await boot();
+      expect(store.addImported(midnight())).toEqual({ ok: true });
+      // A sentinel in the metas: only a run that reaches the meta step writes the theme's colours over it.
+      for (const meta of document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]')) meta.content = "#010203";
+      store.setActiveTheme("midnight");
+      expect(inlineDerived().filter((t) => t !== "ring")).toEqual([]);
+      expect(inlineBase().length).toBeGreaterThan(0);
+      expect(metas()).toEqual([theme.metaColours().light, theme.metaColours().dark]);
+      expect(metas()).not.toContain("#010203");
+      expect(warn.mock.calls.filter(([m]) => String(m).includes("derived colours are not set"))).toHaveLength(1);
+    } finally {
+      vi.doUnmock("./derive");
+    }
+  });
 });
 
 describe("the default theme", () => {
@@ -179,12 +209,13 @@ describe("an imported theme", () => {
 });
 
 describe("a shipped theme", () => {
-  it("sets the attribute and no inline property, with the id from the shipped list", async () => {
+  it("sets the attribute and only the derived colours inline, with the id from the shipped list", async () => {
     const { store } = await boot();
     const night: Theme = { ...collie(), id: "nightwatch", name: "Nightwatch" };
     store.applyTheme(night, "shipped");
     expect(root().dataset.theme).toBe("nightwatch");
-    expect(inline()).toEqual([]);
+    expect(inlineBase()).toEqual([]);
+    expect(inlineDerived()).toEqual([...DERIVED_TOKENS]);
   });
 
   it("removes inline properties an imported theme left", async () => {
@@ -193,7 +224,8 @@ describe("a shipped theme", () => {
     store.setActiveTheme("midnight");
     store.applyTheme({ ...collie(), id: "daylight", name: "Daylight" }, "shipped");
     expect(root().dataset.theme).toBe("daylight");
-    expect(inline()).toEqual([]);
+    expect(inlineBase()).toEqual([]);
+    expect(inlineDerived()).toEqual([...DERIVED_TOKENS]);
   });
 
   it("is refused when the id is not a shipped id", async () => {
@@ -560,7 +592,8 @@ describe("applyTheme checks the theme again", () => {
     store.addImported(theme);
     store.setActiveTheme("markup");
     expect(inline()).toHaveLength(43);
-    expect(root().style.length).toBe(44); // the 43 colour tokens and the flat ground
+    // The 43 colour tokens, the 11 derived ones that are not among them (the ring is), and the flat ground.
+    expect(root().style.length).toBe(56);
     for (let i = 0; i < root().style.length; i += 1) {
       const name = root().style.item(i);
       // The flat ground the theme says for itself is the one non-colour property, from a closed table.
@@ -568,7 +601,7 @@ describe("applyTheme checks the theme again", () => {
         expect(root().style.getPropertyValue(name)).toBe("none");
         continue;
       }
-      expect(THEME_TOKENS.map((t) => `--${t}`)).toContain(name);
+      expect([...THEME_TOKENS, ...DERIVED_TOKENS].map((t) => `--${t}`)).toContain(name);
       expect(root().style.getPropertyValue(name)).toMatch(/^light-dark\([#a-z0-9 ./()%-]+, [#a-z0-9 ./()%-]+\)$/);
     }
     expect(root().outerHTML).not.toContain("onerror");

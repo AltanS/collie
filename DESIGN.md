@@ -72,7 +72,7 @@ afterwards. A copy-paste gives you six places to remember instead.
 | `ui/section-label.tsx` | The small word that names a section, as typed under the default `labels: sentence` and in capitals under `caps`. Type only, it renders a `<span>` and owns no structure. |
 | `ui/select.tsx` | A form select: a NATIVE `<select>` in a 44px box with our own chevron (`appearance-none`), a full `--border` edge and the house corner, so a phone draws its own picker and no sheet is needed. `lead` puts an inert glyph before the text; the caller's `className` sizes the box (`flex-1 min-w-0` for the flexible one, `shrink-0` for the compact one). The New page's machine, agent and command selects (`routes/new.tsx`), and the dashboard's order select (`dash-selects.tsx`). The dashboard's workspace filter there draws the same box as a button, because it chooses several workspaces in a sheet of checks (issue #527). The four Settings selects (language, typeface, terminal font, theme) carry the same construction by hand and have not been moved onto it. `valueChip` draws the box as a value (`muted` ground, medium weight), for a trick's settings. |
 | `ui/sheet.tsx` | `BottomSheet`. The floating layer that holds a task. On a phone and a small tablet it comes up from the bottom edge with a grab handle and a pull down to close; on the `expanded` width class with the screen flat, and with an expanded room for its own fixed layer (a phone frame in a page, the website's or the design reference's, keeps the bottom sheet), it stands as a centred dialog in the modal's look (four round corners, a uniform `--border` edge, the soft shadow, no handle, no pull, as tall as its content and at most 82% of the window), the same sheet drawn for a wide window. A sheet opened by a tap on its button (`anchor`: the pane's ⋮, a tab, a space) is drawn there as a menu beside that button instead, no dimming, no entrance, no title row (`lib/menu-place.ts`). `presentation="sheet"` keeps a full-screen sheet a bottom sheet on every width (the tour, its one caller) ([ADR 0167](./.adr/0167-a-modal-for-a-blocking-decision.md), addendum 2026-11-20). Its `size="viewer"` opens a picture or a document page as wide as the picture, up to `min(92vw, 1200px)`. A decision that blocks until it is answered, and the Actions palette, float in `ui/modal.tsx` instead (below). One exception for a control: the dashboard's floating New button (`ui/fab.tsx`, below). The pane navigation overlay floats too, but takes no touch (below). The terminal draft notice and the held-send card float too, over the mirror's bottom edge, and hold no space. The one-time keyboard hint (`components/keyboard-hint-card.tsx`) floats too, at the top right under the header's bottom edge (measured), at `z-25` under the strip band, and holds no space. There is no popover and no tooltip, and no dialog beside the modal. It also exports `useAnySheetOpen`, the count of open sheets that button hides itself on, and `SHEET_BODY_STICKY`, where a block in the body sticks: under the head, across the panel (the switcher's filter field). Its optional `action` slot holds one control at the title row's trailing end, before the close button; the slot adds no height, so a control in it is no taller than the 32px close button. |
-| `ui/modal.tsx` | `Modal`. A panel over a dimmed scrim for a DECISION that blocks until it is answered, and for the Actions palette ([ADR 0167](./.adr/0167-a-modal-for-a-blocking-decision.md)); a task is a sheet. It owns the shell only: `role="dialog"` and `aria-modal`, the scrim (a tap that went down and up on it closes), Escape, the focus in on open (the caller's `initialFocus`, else the panel) and back on close, the portal to `<body>` at `z-50`, and the room above the soft keyboard (`--modal-room`, the visible height, beside `--app-h`). The panel: `--card` with the house 2px radius, a uniform `--border` edge on all four sides and `shadow-2xl`, never an accent edge. `placement="top"` hangs it from the top (the palette: the keyboard owns the bottom half and its field keeps it up); `"center"` centres it in the room, and moves the focus to the panel, so a soft keyboard goes down. The caller gives the panel's size and owns every word. The palette and the Send Protocol's draft offers (`send-offer-modal.tsx`). It exports its frame, look, entrance, scrim and room (`useModalRoom`), which `BottomSheet` wears when it is drawn as a centred dialog. |
+| `ui/modal.tsx` | `Modal`. A panel over a dimmed scrim for a DECISION that blocks until it is answered, and for the Actions palette ([ADR 0167](./.adr/0167-a-modal-for-a-blocking-decision.md)); a task is a sheet. It owns the shell only: `role="dialog"` and `aria-modal`, the scrim (a tap that went down and up on it closes), Escape, the focus in on open (the caller's `initialFocus`, else the panel) and back on close, the portal to `<body>` at `z-50`, and the room above the soft keyboard (`--modal-room`, the visible height, beside `--app-h`). The panel: `--card` with the house 2px radius, a uniform `--border` edge on all four sides and `shadow-2xl`, never an accent edge. `placement="top"` hangs it from the top (the palette: the keyboard owns the bottom half and its field keeps it up); `"center"` centres it in the room, and moves the focus to the panel, so a soft keyboard goes down. The caller gives the panel's size and owns every word. The palette, the Send Protocol's draft offers (`send-offer-modal.tsx`) and the confirm of a trick's Remove (`trick-remove-section.tsx`, ADR 0168). It exports its frame, look, entrance, scrim and room (`useModalRoom`), which `BottomSheet` wears when it is drawn as a centred dialog. |
 | `ui/spark-line.tsx` | A trend as one small line, scaled to its own numbers, the last point marked, no axes and no grid; the ink is the caller's through `currentColor`, the screen reader hears the caller's `label`. A trick's and a Decision view's `spark` (2026-11-10). The machine card's `machine-spark.tsx` is the other spark, on a fixed 0 to 100% scale. |
 | `ui/strip-host.tsx` | The ribbon band, an overlay hung from the header bar's bottom edge. Renders ONE `StripSlot` at a time, the highest priority, and keeps the two permanent `sr-only` live regions. It reserves no space: a zero-height anchor sits right after the header, and the band floats from it at `z-30` over the top of the route, on the page colour with a `shadow-md`. Domain-blind: a bigger number wins, and it does not know what a connection is. `flow` paints it in flow instead, for a playground stage with no route under it; the app never sets it. |
 | `ui/switch.tsx` | A boolean toggle, `role="switch"`. No Radix. |
@@ -384,12 +384,19 @@ was not really a line: `border-border/60` measures **1.09:1** against the page i
 dropping it also closes a seam on the pane screen and removes the worst ground a status chip
 ever landed on. **Do not put `--muted` back behind chrome.**
 
-### Two line tokens, and which is which
+### Three line tokens, and which is which
 
 | token | light | dark | job |
 | --- | --- | --- | --- |
 | `--border` | 1.16:1 | 1.26:1 | one component's own edge — a card, a control, a hairline inside a region |
 | `--rule` | **1.34:1** | **2.06:1** | the cut between two REGIONS — the header's bottom edge, a strip separator, a group frame |
+| `--edge-firm` | **4.86:1** | **6.12:1** | the edge something STANDS ON — the large screen's tab bar (the open tab sits on it in both tab looks) and a column's pane header, against the recess and the page |
+
+`--edge-firm` is **derived, never a theme token**: `color-mix(in oklch, var(--foreground) 58%,
+var(--background))` in `index.css`, so every theme, imported ones too, gets it from its own ink and
+page. Nothing else may write that mix; tune it there. Measured from the painted pixels (Collie
+light and dark above; ADR 0171): Harbour light 3.59:1 against its recess, the lowest, Nightwatch dark
+3.73. Use it only where a region ends on a line a person reads as a floor; a region cut stays `--rule`.
 
 `--rule` is deliberately the stronger of the two, which decides the split inside
 `ui/list-group.tsx` — and it is not the obvious one: the **frame** takes `border-rule`, the
@@ -1096,7 +1103,7 @@ come from `light-dark()`.
 
 `pane-active` (1.24.0) is the frame of the pane you are working in on a large screen, and nothing else. It is outside the 43 but a theme can set it: from schema version 3 it is an optional token in either half. A theme that leaves it out keeps the `:root` pair in index.css, so every file written before version 3 reads and exports unchanged; a file that sets it must say version 3. The contrast report holds it to 3:1 on `background` in a half that sets it. Nightwatch sets its own, a warm sky for its amber palette.
 
-`tab-active` is the second optional token, and it marks the open tab and the open pane for a theme whose surface word `tabs` is `folder` (`lib/tab-look.ts`): the 2px top edge of the open folder tab and the 1px ring of the open pane. It has the same rules as `pane-active` (version 3, a `:root` pair that is the foreground ink of each half, 3:1 on `background` in a half that sets it). Under the word `plain` (the word a theme gets when it names none; the Collie theme names `folder`) the tab row and the pane row are drawn exactly as they were, and `tab-active` is read by nothing. `composer` is the third word that sets no CSS (`field` or `box`); `lib/composer-layout.ts` reads it.
+`tab-active` is the second optional token, and it marks the open tab and the open pane for a theme whose surface word `tabs` is `folder` (`lib/tab-look.ts`): the 2px top edge of the open folder tab and the 1px ring of the open pane. It has the same rules as `pane-active` (version 3, a `:root` pair that is the foreground ink of each half, 3:1 on `background` in a half that sets it). Under the word `plain` (the word a theme gets when it names none; the Collie theme names `folder`) the tab row and the pane row are drawn exactly as they were, and `tab-active` is read by nothing. On the large screen both words are drawn in the space bar on the same parts (ADR 0171): the bar ends on `--edge-firm` with a 6px page band under it. `folder` cuts the open tab from that band, the page colour with the firm edge on its top and sides (`tab-active` is not read there); `plain` draws no card and puts a 2px bar of the theme's ink (`--foreground`) under the open tab, as wide as the tab, square ends. In both the open tab is full ink and semibold and every other tab regular weight in `muted-foreground`, and the resting status rings are drawn at full stroke. The column frame's colour is never used in the bar or a header. `composer` is the third word that sets no CSS (`field` or `box`); `lib/composer-layout.ts` reads it.
 
 `find` is the third optional token (1.29.0), the ground of a found or matched piece of text: `ui/match-text.tsx`'s `<mark>`, Find in Chat's hit in the transcript and in the Markdown reader. Its value carries alpha, because it is laid over whatever the text sits on and the ink stays the caller's own. Its `:root` pair is the amber the app drew as a literal before the token existed, Tailwind 4.3.1's `amber-300` at 70% in the light half and `amber-500` at 40% in the dark half, so the default themes look as they did. It follows the rules of `tab-active` (version 3, a `:root` pair, filled from `collie` when a theme sets one half); the contrast report measures `foreground` on the token laid over `background` at 4.5:1, in a half that sets it. The three shipped themes other than `collie` leave it out and inherit the amber.
 
@@ -1154,3 +1161,56 @@ ground and a `band` are measured too, at the far end of the ground and on `secon
 list only with a new schema version, and in the same change: `index.css`, every shipped theme
 file, the validator, the word table in `surface.ts` and the lists spelled in `public/theme-init.js`.
 The coupling test (§9) and `bun scripts/build-themes.ts --check` fail when they drift. Until then, reuse the nearest token; do not paint a literal.
+
+## 14. State layers and derived tokens
+
+A theme names its base colours. Hover, selection, the open look, the focus ring and the large screen's planes are
+not among them: the app makes them from the base colours. Each one must stay visible on any theme, not only on
+the four shipped ones ([ADR 0172](./.adr/0172-derived-state-colours-are-measured-and-collie-is-held.md)).
+
+**One function makes them.** `deriveTokens(base, half)` in `web/src/lib/theme/derive.ts` takes one half of a
+theme and returns the recess, the paper, a hover, a selected and an open fill for each plane, the ring and the firm
+edge. Each
+value is made in two steps.
+
+1. Collie's relation: the same expression Collie's stylesheet uses today.
+2. A floor: when the value is too close to its ground, its lightness moves on in the same direction until it meets
+   the floor. When that direction runs out of range, it goes the other way. Hue and chroma stay.
+
+`applyTheme` (`lib/theme/store.ts`) runs it for every theme it applies, the three other shipped themes included,
+and sets the result inline beside the base tokens. Collie applies no theme. Its stylesheet holds the same
+relations in `index.css`.
+
+**The reference test.** `derive.test.ts` puts Collie's own base tokens through the function. It reads them from
+`src/themes/collie.json`, which `themes.test.ts` holds equal to `index.css`; the relations are held to `index.css`'s
+own lines. The result must be Collie as painted, within 0.005 in OKLab, in both halves. The worst value today is 0.0021, the dark recess. This
+test keeps Altan's approved look and the function from drifting apart. The themes set also holds the 241 state
+colours Collie painted on 2026-11-21 (`web/e2e/themes/collie-states.json`), within 0.02.
+
+| Derived token | Collie's relation | Floor |
+| --- | --- | --- |
+| `--surface-recess` | the page 0.05 darker | the muted ink and the foreground keep 4.5:1 on it (or what they have on the page, when the theme gives less), on the page's side of the ink; 0.025 off the page, either way |
+| `--surface-paper` | light: the card 0.05 lighter, at most white; dark: halfway between the page and the card 0.05 lighter | the same inks; 0.025 off the page and the recess, only in its own direction, so a white page keeps a white paper |
+| `--state-hover-<plane>` | the accent on the page and the paper; the paper on the recess | 0.04 off its ground; the foreground and the muted ink as readable as on the page |
+| `--state-on-<plane>` | the same as the hover | 0.06 off its ground; the same inks |
+| `--state-open-<plane>` | `--control-on` | 0.06 off its ground; the on-colour's ink as readable as on the tint |
+| `--ring` | the theme's own ring | 3:1 on the page, the card, the recess, the paper, the band, the muted fill and each plane's hover and selected fill |
+| `--edge-firm` | the ink 58% into the page (`color-mix` in oklch) | 3:1 on the recess, the page and the paper |
+
+Where floors fight, the function takes the best value it can reach; `deriveReport` names each floor not met. A
+theme's own `ring` and planes are a start that a floor may move. The state variables (`--state-hover-<plane>` and
+the rest) are internal names and no contract for a theme file.
+
+A pushed value lands 0.006 past a distance floor and 0.1 past a ratio floor, because the screen rounds it to 8 bits.
+A fill on the page that has to move is also kept off the recess, because a strip of the recess with no plane class
+(the space header) shows the page's fills. The ring has no floor against a filled primary button. It stands 2px off
+the box, so a ground is on both its sides, and Collie's dark ring is 1.9:1 against its white primary.
+
+**The classes read variables.** A hover reads `--state-hover`, a selected item `--state-on`, an open trigger
+`--state-open`. Each plane class points the three at its plane: `RECESS_ACCENT` (ui/nav-edge.ts), `PAPER_PLANE` and
+`PAGE_PLANE` (strip-column.tsx). The root holds the page's. A plane also points `--accent` at its `--state-on`, so a
+`bg-accent` that is not swept yet gets the floor too. `HOVER_FILL`, `TRIGGER_OPEN`, the ghost and outline buttons and
+the pane row read the variables. Never write a new `hover:bg-muted/60` or `bg-accent` for a state.
+
+**A floor on a theme's own text is not built.** A theme whose own text is under 4.5:1 is the schema question. When it
+is decided, it is one more step in `STEPS`, before the planes.

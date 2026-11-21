@@ -1,0 +1,145 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`the golden values of the bundled looks > collie 1`] = `
+{
+  "dark": {
+    "edge-firm": "oklch(0.6427 0.0013 80.0002)",
+    "ring": "oklch(0.76 0 0)",
+    "state-hover-page": "oklch(0.32 0.003 80)",
+    "state-hover-paper": "oklch(0.32 0.003 80)",
+    "state-hover-recess": "oklch(0.2275 0.003 80.0001)",
+    "state-on-page": "oklch(0.32 0.003 80)",
+    "state-on-paper": "oklch(0.32 0.003 80)",
+    "state-on-recess": "oklch(0.2275 0.003 80.0001)",
+    "state-open-page": "oklch(0.34 0.06 240)",
+    "state-open-paper": "oklch(0.34 0.06 240)",
+    "state-open-recess": "oklch(0.34 0.06 240)",
+    "surface-paper": "oklch(0.2275 0.003 80)",
+    "surface-recess": "oklch(0.12 0.003 80)",
+  },
+  "light": {
+    "edge-firm": "oklch(0.4823 0.0013 80.0001)",
+    "ring": "oklch(0.5 0 0)",
+    "state-hover-page": "oklch(0.885 0.004 80.0001)",
+    "state-hover-paper": "oklch(0.885 0.004 80.0001)",
+    "state-hover-recess": "oklch(1 0 0)",
+    "state-on-page": "oklch(0.885 0.004 80.0001)",
+    "state-on-paper": "oklch(0.885 0.004 80.0001)",
+    "state-on-recess": "oklch(1 0 0)",
+    "state-open-page": "oklch(0.88 0.06 235)",
+    "state-open-paper": "oklch(0.88 0.06 235)",
+    "state-open-recess": "oklch(0.88 0.06 235)",
+    "surface-paper": "oklch(1 0 0)",
+    "surface-recess": "oklch(0.905 0.003 80.0001)",
+  },
+  "version": 3,
+}
+`;
+
+exports[`the golden values of the bundled looks > daylight 1`] = `
+{
+  "dark": {
+    "edge-firm": "oklch(0.613 0 0)",
+    "ring": "oklch(0.75 0.13 250)",
+    "state-hover-page": "oklch(0.29 0 0)",
+    "state-hover-paper": "oklch(0.29 0 0)",
+    "state-hover-recess": "oklch(0.185 0 0)",
+    "state-on-page": "oklch(0.29 0 0)",
+    "state-on-paper": "oklch(0.29 0 0)",
+    "state-on-recess": "oklch(0.185 0 0)",
+    "state-open-page": "oklch(0.34 0.07 245)",
+    "state-open-paper": "oklch(0.34 0.07 245)",
+    "state-open-recess": "oklch(0.34 0.07 245)",
+    "surface-paper": "oklch(0.185 0 0)",
+    "surface-recess": "oklch(0.07 0 0)",
+  },
+  "light": {
+    "edge-firm": "oklch(0.4891 0 0)",
+    "ring": "oklch(0.4804 0.1797 258.2297)",
+    "state-hover-page": "oklch(0.9 0 0)",
+    "state-hover-paper": "oklch(0.9 0 0)",
+    "state-hover-recess": "oklch(1 0 0)",
+    "state-on-page": "oklch(0.9 0 0)",
+    "state-on-paper": "oklch(0.9 0 0)",
+    "state-on-recess": "oklch(1 0 0)",
+    "state-open-page": "oklch(0.87 0.07 235)",
+    "state-open-paper": "oklch(0.87 0.07 235)",
+    "state-open-recess": "oklch(0.87 0.07 235)",
+    "surface-paper": "oklch(1 0 0)",
+    "surface-recess": "oklch(0.935 0 0)",
+  },
+  "version": 3,
+}
+`;
+
+exports[`the golden values of the bundled looks > harbour 1`] = `
+{
+  "dark": {
+    "edge-firm": "oklch(0.6276 0.0145 244.2)",
+    "ring": "oklch(0.7 0.07 195)",
+    "state-hover-page": "oklch(0.31 0.024 252)",
+    "state-hover-paper": "oklch(0.31 0.024 252)",
+    "state-hover-recess": "oklch(0.2575 0.019 251)",
+    "state-on-page": "oklch(0.31 0.024 252)",
+    "state-on-paper": "oklch(0.325 0.024 252)",
+    "state-on-recess": "oklch(0.2575 0.019 251)",
+    "state-open-page": "oklch(0.34 0.045 220)",
+    "state-open-paper": "oklch(0.34 0.045 220)",
+    "state-open-recess": "oklch(0.34 0.045 220)",
+    "surface-paper": "oklch(0.2575 0.019 251)",
+    "surface-recess": "oklch(0.16 0.018 250)",
+  },
+  "light": {
+    "edge-firm": "oklch(0.5498 0.0187 243.7)",
+    "ring": "oklch(0.56 0.08 195)",
+    "state-hover-page": "oklch(0.89 0.015 239.9999)",
+    "state-hover-paper": "oklch(0.89 0.015 239.9999)",
+    "state-hover-recess": "oklch(0.9982 0.0025 197.1156)",
+    "state-on-page": "oklch(0.89 0.015 239.9999)",
+    "state-on-paper": "oklch(0.89 0.015 239.9999)",
+    "state-on-recess": "oklch(0.9982 0.0025 197.1156)",
+    "state-open-page": "oklch(0.885 0.045 215)",
+    "state-open-paper": "oklch(0.885 0.045 215)",
+    "state-open-recess": "oklch(0.8425 0.045 215)",
+    "surface-paper": "oklch(0.9982 0.0025 197.1164)",
+    "surface-recess": "oklch(0.9 0.01 234.9999)",
+  },
+  "version": 3,
+}
+`;
+
+exports[`the golden values of the bundled looks > nightwatch 1`] = `
+{
+  "dark": {
+    "edge-firm": "oklch(0.522 0.007 80)",
+    "ring": "oklch(0.68 0.09 70)",
+    "state-hover-page": "oklch(0.26 0.01 70)",
+    "state-hover-paper": "oklch(0.26 0.01 70)",
+    "state-hover-recess": "oklch(0.105 0.003 70.0001)",
+    "state-on-page": "oklch(0.26 0.01 70)",
+    "state-on-paper": "oklch(0.26 0.01 70)",
+    "state-on-recess": "oklch(0.105 0.003 70.0001)",
+    "state-open-page": "oklch(0.27 0.04 68)",
+    "state-open-paper": "oklch(0.27 0.04 68)",
+    "state-open-recess": "oklch(0.27 0.04 68)",
+    "surface-paper": "oklch(0.105 0.003 70)",
+    "surface-recess": "oklch(0.0325 0 0)",
+  },
+  "light": {
+    "edge-firm": "oklch(0.5129 0.0166 61.3)",
+    "ring": "oklch(0.56 0.1 62)",
+    "state-hover-page": "oklch(0.89 0.016 70)",
+    "state-hover-paper": "oklch(0.89 0.016 70)",
+    "state-hover-recess": "oklch(0.9974 0.0068 101.7459)",
+    "state-on-page": "oklch(0.8775 0.016 70)",
+    "state-on-paper": "oklch(0.89 0.016 70)",
+    "state-on-recess": "oklch(0.9974 0.0068 101.7459)",
+    "state-open-page": "oklch(0.84 0.05 75)",
+    "state-open-paper": "oklch(0.9 0.05 75)",
+    "state-open-recess": "oklch(0.9522 0.0467 82.33)",
+    "surface-paper": "oklch(0.9974 0.0068 101.7459)",
+    "surface-recess": "oklch(0.895 0.012 70.0001)",
+  },
+  "version": 3,
+}
+`;

@@ -203,7 +203,7 @@ describe("@oracle:requirement @req:SLOT-6 pages that are not a pane page", () =>
     ["/", ""],
     ["/", "?h=peer"],
     ["/settings", ""],
-    ["/settings/system", ""],
+    ["/settings/devices", ""],
     ["/space/w1", ""],
     ["/new", ""],
     ["/crew", ""],

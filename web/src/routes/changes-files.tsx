@@ -147,9 +147,12 @@ export function TreeFolderBody({
   onOpen,
   onPair,
   onChangesOnly,
+  current,
 }: {
   state: FilesReadState<TreeRead>;
   folder: MarkedFolder | null;
+  /** The row open beside the folder, on a large screen. */
+  current?: string;
   truncated: boolean;
   /** The Changes list answered for this root, so a folder Files cannot open still has its changes. */
   listAvailable: boolean;
@@ -173,6 +176,7 @@ export function TreeFolderBody({
         onShowIgnored={onShowIgnored}
         onClearQuery={onClearQuery}
         onOpen={onOpen}
+        current={current}
       />
     );
   }

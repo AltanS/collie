@@ -3184,7 +3184,7 @@ describe("reservedAuthPlaceholder — what /auth/ says when no proxy answers", (
     const body = await reservedAuthPlaceholder().text();
     expect(body).toContain("<code>collie pair</code>");
     expect(body).toContain("enter the code in Settings");
-    expect(body).toContain('<a href="/settings/system">Open Settings</a>');
+    expect(body).toContain('<a href="/settings/devices">Open Settings</a>');
     expect(body).toContain('<a href="/">Back to Collie</a>');
     // The operator paragraph is still there, after the pairing one.
     expect(body.indexOf("collie pair")).toBeLessThan(body.indexOf("If you are the operator"));
@@ -3193,7 +3193,7 @@ describe("reservedAuthPlaceholder — what /auth/ says when no proxy answers", (
   test("under a mount both links carry it (ADR 0052)", async () => {
     const body = await reservedAuthPlaceholder("/collie/").text();
     expect(body).toContain('<a href="/collie/">Back to Collie</a>');
-    expect(body).toContain('<a href="/collie/settings/system">Open Settings</a>');
+    expect(body).toContain('<a href="/collie/settings/devices">Open Settings</a>');
   });
 
   test("the mount is escaped, since the page is open to anyone", async () => {

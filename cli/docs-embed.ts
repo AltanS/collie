@@ -170,7 +170,7 @@ export const DOC_PAGES: readonly DocPage[] = [
   },
   {
     name: "multiplexers",
-    purpose: "Pointing Collie at Herdr, tern, tmux, zellij, tuios or rex, and what each terminal can answer",
+    purpose: "Pointing Collie at Herdr, the Herdr core, tern, tmux, zellij, tuios or rex, and what each terminal can answer",
     text: multiplexers,
   },
   {

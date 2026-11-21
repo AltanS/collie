@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { lstat, mkdir, readdir, rename, rm, rmdir, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, join, posix } from "node:path";
 
 import { CODE_DIRS_MAX, CODE_FILES_MAX, codeHashOfFiles, diskTrickFs, skippedName, trickCodeHash, walkTrickCode, type EntryKind } from "./code-hash.ts";
 import { ORIGIN_FILE, renderProposalOrigin, type ProposalOrigin } from "./origin.ts";
@@ -98,6 +98,25 @@ async function renameOrRaced(stage: string, target: string, id: string): Promise
   } catch (err) {
     if (err instanceof Error && "code" in err && (err.code === "ENOTEMPTY" || err.code === "EEXIST")) throw new AppearedMeanwhile(`a trick named ${id} appeared meanwhile`);
     throw err;
+  }
+}
+
+/**
+ * Make the folders of `relDir` inside `target`, one level at a time, and never `target` itself: a trick folder that a
+ * remove renamed aside meanwhile is never made again (ADR 0168, B4). Throws ENOENT when `target` is gone, so the write
+ * stops and nothing lands.
+ */
+export async function makeFoldersUnder(target: string, relDir: string): Promise<void> {
+  if (relDir === "" || relDir === ".") return;
+  let at = target;
+  for (const part of relDir.split("/")) {
+    at = join(at, part);
+    try {
+      await mkdir(at, { mode: 0o700 });
+    } catch (err) {
+      if (err instanceof Error && "code" in err && err.code === "EEXIST") continue;
+      throw err;
+    }
   }
 }
 
@@ -296,7 +315,7 @@ export async function replaceCode(root: string, id: string, files: readonly Prop
       // A folder of old code only, where the new version puts a file: its code is gone, so it is empty.
       if (entries.get(file.rel)?.kind === "dir") await rm(path, { recursive: true, force: true });
       const fileDir = dirname(path);
-      await mkdir(fileDir, { recursive: true, mode: 0o700 });
+      await makeFoldersUnder(target, posix.dirname(file.rel));
       // A dot name beside the file: the code hash never reads it, so a crash leaves no code behind.
       const tmp = join(fileDir, `.collie-new-${randomBytes(6).toString("hex")}`);
       await writeFile(tmp, file.bytes, { flag: "wx", mode: file.executable ? 0o755 : 0o644 });

@@ -7,7 +7,7 @@ import { powersOfDir, snapshotTrick } from "../tricks/approved.ts";
 import { ORIGIN_FILE, parseOrigin, parseProposalOrigin } from "../tricks/origin.ts";
 import { readManifestFile } from "../tricks/discover.ts";
 import { approvedCopyDir, approvedTrickDir, switchesPath, tricksConfigDir, trickStateDir, tricksStateDir } from "../tricks/paths.ts";
-import { parseSwitches, updateSwitches, withApproval, withEntry } from "../tricks/switches.ts";
+import { parseSwitches, updateSwitchesFor, withApproval, withEntry, withSwitchLock } from "../tricks/switches.ts";
 import { strictBase64 } from "../tricks/propose-wire.ts";
 import type { CarriedReady, StandbyTricksStore } from "./standby-tricks.ts";
 
@@ -156,7 +156,8 @@ async function adoptOne(opts: AdoptTricksOptions, ready: CarriedReady, at: strin
     const snap = await snapshotTrick({ src, parent: approvedTrickDir(opts.configDir, id), expect: hash, platform: opts.platform });
     if (!snap.ok) return { ok: false, reason: "its copy on this machine does not match the version you approved" };
     // The folder goes into place only where there was none; a folder that appeared meanwhile is kept.
-    if (!keptFolder && !(await exists(target))) await rename(src, target);
+    // Under the switch file's lock, as every write that renames a folder into `<id>` (ADR 0168, B4).
+    if (!keptFolder) await withSwitchLock(opts.stateDir, async () => (!(await exists(target)) ? await rename(src, target) : undefined));
     const powers = await powersOfDir(snap.dir, id);
     // The lead's `auto` is the person's yes to later versions OF THE LEAD'S FOLDER. A kept folder here
     // holding other code would be such a "later version", taken by auto with no tap on this machine.
@@ -166,7 +167,8 @@ async function adoptOne(opts: AdoptTricksOptions, ready: CarriedReady, at: strin
     // between that check and the rename is someone else's code, and `auto` must not come along for it.
     const folder = await trickCodeHash(target);
     const same = folder.ok && folder.hash === hash;
-    await updateSwitches(opts.stateDir, (now) => {
+    // The folder must still be there inside the lock: a remove that renamed it meanwhile leaves no switch on.
+    const written = await updateSwitchesFor(opts.stateDir, target, (now) => {
       const declined = now.on.get(id)?.declined;
       const approved = withApproval(now, id, { at, hash, by: opts.by, powers });
       const entry = approved.on.get(id);
@@ -174,6 +176,7 @@ async function adoptOne(opts: AdoptTricksOptions, ready: CarriedReady, at: strin
       const kept = !same && folder.ok && declined === folder.hash ? { declined } : {};
       return withEntry(approved, id, { ...entry, ...kept, auto: same ? ready.trick.auto : false, from: opts.lead });
     });
+    if (written === null) return { ok: false, reason: "its folder on this machine is gone" };
     const state = trickStateDir(opts.stateDir, id);
     if (ready.heldState !== null && !(await exists(state)) && (await exists(join(ready.heldState, "state")))) {
       await mkdir(tricksStateDir(opts.stateDir), { recursive: true, mode: 0o700 });
