@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 
-import { Button } from "@/components/ui/button";
+import { Button, TRIGGER_OPEN } from "@/components/ui/button";
 import { Collapse } from "@/components/ui/collapse";
 import {
   DurableBar,
@@ -476,6 +476,10 @@ export interface ActionsRowProps {
     label: string;
     /** The mark. Absent is the Actions mark; the pane list's own mark when the palette is off (Settings). */
     icon?: "pane-switcher";
+    /** The thing the button opens is open now (the Actions palette, or the pane list with the palette off): the pill says
+     *  `aria-expanded` and wears the shared open look (ui/button.tsx `TRIGGER_OPEN`). Fill and ink only, so the box
+     *  and the pinned block's measured width do not move. */
+    open?: boolean;
     /** Another pane needs you: a red dot on the mark's corner. The label says so in words. */
     alert?: boolean;
   };
@@ -1149,6 +1153,7 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, durable, sto
                 size="sm"
                 aria-label={handle.label}
                 aria-haspopup="dialog"
+                aria-expanded={handle.open === true}
                 onClick={handle.onClick}
                 // No padding and no border: what is left of the pill is `STRIP_ROW_PILL`'s own box,
                 // narrowed on this one pill alone. `w-8 min-w-8` drops `min-w-11`'s 44px floor — the
@@ -1161,10 +1166,10 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, durable, sto
                 // square with the pill's own scaled height, 37px at the default scale. Its hit box
                 // reaches 3px left (half the 6px gap to a pill beside it, 7px when it stands alone)
                 // and 7px right (into `pr-3`), 47px across.
-                className={cn(`${STRIP_ROW_PILL} ${PINNED_PILL}`, pinnedReach(!agents && !jobs && !pins && !clear && !changes && !zoom, true, hand))}
+                className={cn(`${STRIP_ROW_PILL} ${PINNED_PILL}`, pinnedReach(!agents && !jobs && !pins && !clear && !changes && !zoom, true, hand), TRIGGER_OPEN)}
               >
-                {/* The Actions mark since ADR 0165: this pill opens the Actions palette, not the pane list. */}
-                <Icon name={handle.icon ?? "open-actions"} className={cn(BELT_ICON, "text-primary")} />
+                {/* The Actions mark since ADR 0165: this pill opens the Actions palette, not the pane list. Its ink follows the open fill. */}
+                <Icon name={handle.icon ?? "open-actions"} className={cn(BELT_ICON, handle.open === true ? "text-control-on-foreground" : "text-primary")} />
                 {/* The needs-you mark (the triangle), on the mark's top-right corner, absolutely placed
                     so it never moves the belt. The chrome-coloured disc and ring cut it out of the
                     glyph it overlaps. 10px since 2026-10-14: at 12px the triangle read as heavy as the

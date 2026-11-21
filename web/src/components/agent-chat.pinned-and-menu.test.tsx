@@ -26,7 +26,7 @@ vi.mock("@/lib/liveness", async (importOriginal) => ({
   useLive: () => liveness.live,
 }));
 
-import { __resetActionsPalette, isActionsPaletteOpen } from "@/lib/actions-palette/state";
+import { __resetActionsPalette, isActionsPaletteOpen, openActionsPalette } from "@/lib/actions-palette/state";
 import { __resetActionsPaletteStore, setActionsPaletteOn } from "@/lib/actions-palette-store";
 import { __resetBeltIntents } from "@/lib/belt-intent";
 import { __resetHarnessPrefs } from "@/lib/harness-prefs";
@@ -130,6 +130,36 @@ describe("AgentChat — the Actions palette switched off in Settings", () => {
     act(() => setActionsPaletteOn(true));
     expect(within(container).getByRole("button", { name: "Actions" })).toBeInTheDocument();
     expect(within(container).queryByRole("button", { name: "Switch pane" })).toBeNull();
+  });
+});
+
+describe("AgentChat — the pinned Actions button says it is open", () => {
+  const pinned = (container: HTMLElement, name: string) => within(container.querySelector<HTMLElement>('[data-slot="composer-actions"]')!).getByRole("button", { name });
+
+  it("is aria-expanded while the Actions palette is open, wears the shared open look, and keeps its box", () => {
+    const { container } = renderChat();
+    const button = pinned(container, "Actions");
+    expect(button).toHaveAttribute("aria-expanded", "false");
+    expect(button.className).toContain("aria-expanded:bg-control-on");
+    expect(button.querySelector("svg")!.getAttribute("class")).toContain("text-primary");
+    act(() => openActionsPalette());
+    expect(pinned(container, "Actions")).toHaveAttribute("aria-expanded", "true");
+    // Fill and ink only: the open look names no size, border or padding, and the icon takes the open ink.
+    expect(button.className).not.toMatch(/aria-expanded:(?:size|w-|h-|p[xy]?-|border|min-)/);
+    expect(button.querySelector("svg")!.getAttribute("class")).toContain("text-control-on-foreground");
+  });
+
+  it("with the palette off, the Switch pane button is aria-expanded while the pane list is open", async () => {
+    setActionsPaletteOn(false);
+    const user = userEvent.setup();
+    const { container } = renderChat();
+    expect(pinned(container, "Switch pane")).toHaveAttribute("aria-expanded", "false");
+    await user.click(pinned(container, "Switch pane"));
+    expect(await screen.findByRole("dialog", { name: "Switch pane" })).toBeInTheDocument();
+    expect(pinned(container, "Switch pane")).toHaveAttribute("aria-expanded", "true");
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(pinned(container, "Switch pane")).toHaveAttribute("aria-expanded", "false");
   });
 });
 
