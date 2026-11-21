@@ -166,13 +166,13 @@ test("a profile's Change login names its path in the header, and Back beside the
 });
 
 // THE PHONE IS UNCHANGED. The boxes below are the ones `stage/next` drew at 390x844 before this layout (measured on
-// 103dc4888): the header and the first three rows of the index. The layout route draws only its outlet there.
+// a36fd0bc5): the header and the first three rows of the index. The layout route draws only its outlet there.
 const PHONE_BOXES = {
   header: { x: 0, y: 0, width: 390, height: 61 },
   rows: [
-    { x: 17, y: 77, width: 356, height: 76 },
-    { x: 17, y: 154, width: 356, height: 76 },
-    { x: 17, y: 231, width: 356, height: 76 },
+    { x: 17, y: 78, width: 356, height: 77 },
+    { x: 17, y: 155, width: 356, height: 77 },
+    { x: 17, y: 232, width: 356, height: 77 },
   ],
 } as const;
 

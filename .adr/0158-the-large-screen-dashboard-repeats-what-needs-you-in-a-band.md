@@ -76,3 +76,21 @@ position. This record states the exception exactly, so it does not grow into a s
 ## Addendum — 2026-11-21: no tab bar at the foot, and one command row
 
 The operator's pick in the `wide-home` round amends rule 2. On a large screen the dashboard has no tab bar and no floating New button. The views (Crew, Dashboard, Files) are the compact segmented control in a header that spans the window on the recess at the pane view's 48px. The tricks' items go last in that control, and the Hill is an icon button beside Actions. The command row (the summary, the filter, the order, the switch, the magnifier and New) is sticky under the header. Every empty state (not paired, no Space, no answer, waiting) is one column centred both ways, with no Spaces section beside it. Files and Crew stay the phone's centred column. Files: `web/src/components/dashboard-views.tsx`, `web/src/components/ui/nav-edge.ts`, `web/e2e/dashboard-wide-head.spec.ts`.
+
+## Addendum — 2026-11-21: Settings is one page of two columns
+
+On a large screen (`expanded`, Large-screen layout not Off) Settings is the section list beside the chosen section. One
+layout route, `settings`, wraps every Settings address (`components/settings-shell.tsx`): below the large screen it
+draws only its outlet, so the phone's pages are the same DOM; on the large screen it draws the dashboard's spanned
+header (48px, the recess, `NAV_EDGE`) filled with Back, the word Settings and the path, the 280px list at the
+window's left edge on the recess (rows 44px, icon and title, the phone's second line in `title`, the chosen row on
+the paper), and the section in a column of at most 720px, left-aligned beside the list, on the page plane. The block
+spans the window rather than sitting in a centred container, because the list then stands where the pane view's
+sidebar stands, on the same plane, and the two read as one app. The section pages do not fork: each draws through
+`SettingsPage` (Updates moved onto it), which inside the layout leaves the header to it and draws a plain `h1`, with
+Back one level up beside it on a deeper page, and portals its path into the header. A row is a push, so the browser's
+Back returns to the section before; the header's Back steps back past the sections walked through to where Settings
+was opened from (the nav trail), else up to the Dashboard. `/settings` replaces itself with Updates while a release
+waits, else Appearance. Machines stays a page of its own, and its row leaves Settings. Files:
+`web/src/components/settings-shell.tsx`, `web/src/components/settings-page.tsx`, `web/src/hooks/use-settings-rows.ts`,
+`web/e2e/settings-wide.spec.ts`.
