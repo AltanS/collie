@@ -1676,7 +1676,7 @@ export class TricksService implements TricksSurface {
   }
 
   /**
-   * Take changes without asking, or ask again (crew slice 3; `collie trick auto` writes the same field).
+   * Update this trick without asking, or ask again (crew slice 3; `collie trick auto` writes the same field).
    * Only for a trick that is on. A version already waiting is not taken by this: the next one is.
    */
   async setAuto(id: string, on: boolean): Promise<VersionAnswer> {

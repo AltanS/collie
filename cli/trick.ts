@@ -238,7 +238,7 @@ export type TrickListRow = {
   skill: boolean;
   /** Where `collie trick add` took it from, short (`owner/repo/legs@abc1234`), or null for a folder made here. */
   origin: string | null;
-  /** "Take changes without asking" (`collie trick auto`). */
+  /** "Update this trick without asking" (`collie trick auto`). */
   auto: boolean;
   /** On, and the folder no longer hashes to the version approved: a new version waits for a yes. */
   pending: boolean;

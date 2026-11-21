@@ -68,7 +68,7 @@ import type { HillDecision } from "@/lib/hill/wire";
 // UNDER A TRICK THAT TOOK A CHANGE WITHOUT ASKING (crew slice 3). When the version that runs was taken without
 // asking (`autoAt`, from a bridge since crew slice 3), a quiet line says when, with Undo beside it: one tap
 // arms it ("Undo?"), a second one goes back to the version before (`useArm`, the Hill's Dismiss rule). A
-// bridge that sends no `autoAt` draws no such row. The "Take changes without asking" switch itself is not on
+// bridge that sends no `autoAt` draws no such row. The "Update this trick without asking" switch itself is not on
 // the card: it is a group of the trick's details page, whose write (`flipAuto`, hooks/use-trick-writes.ts) flips at
 // once and holds like the trick's own switch, so a failed post goes back and says so once.
 //

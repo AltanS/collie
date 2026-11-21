@@ -3378,7 +3378,6 @@ export const ru: Dictionary = {
   "settings.tricks.about.proposedUnconfirmed": "Предложено с {host}. Сессия не подтверждена.",
   "settings.tricks.about.authorNote": "Написано автором трюка. Collie его не проверял.",
   "settings.tricks.about.updates": "Обновления",
-  "settings.tricks.about.auto.label": "Принимать изменения без вопросов",
   "settings.tricks.about.auto.hint": "Изменение, которое просит новые права или делает что-то новое, например обращается к сети, все равно спросит.",
   "settings.tricks.about.settings": "Настройки",
   "settings.tricks.fields.required": "Обязательно",

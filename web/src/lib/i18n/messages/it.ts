@@ -3243,7 +3243,6 @@ export const it: Dictionary = {
   "settings.tricks.about.proposedUnconfirmed": "Proposto da {host}. La sessione non è confermata.",
   "settings.tricks.about.authorNote": "Scritto dall'autore del trick. Collie non l'ha controllato.",
   "settings.tricks.about.updates": "Aggiornamenti",
-  "settings.tricks.about.auto.label": "Accetta le modifiche senza chiedere",
   "settings.tricks.about.auto.hint": "Una modifica che chiede nuovi permessi, o fa qualcosa di nuovo come accedere alla rete, chiede comunque.",
   "settings.tricks.about.settings": "Impostazioni",
   "settings.tricks.fields.required": "Obbligatorio",

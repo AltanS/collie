@@ -3240,7 +3240,6 @@ export const fr: Dictionary = {
   "settings.tricks.about.proposedUnconfirmed": "Proposé depuis {host}. La session n'est pas confirmée.",
   "settings.tricks.about.authorNote": "Écrit par l'auteur du trick. Collie ne l'a pas vérifié.",
   "settings.tricks.about.updates": "Mises à jour",
-  "settings.tricks.about.auto.label": "Accepter les changements sans demander",
   "settings.tricks.about.auto.hint": "Un changement qui demande de nouveaux droits, ou qui fait quelque chose de nouveau comme accéder au réseau, demande toujours.",
   "settings.tricks.about.settings": "Paramètres",
   "settings.tricks.fields.required": "Obligatoire",

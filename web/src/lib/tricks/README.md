@@ -67,7 +67,7 @@ trick. The bridge copies the new code to `.collie-pending/` and the row says "A 
 yes."; switching the trick on again approves it, and so does the card on the Hill (see "The new version
 card" below). A new version whose `env` and `places` are unchanged, and in which the text search finds no warning
 kind the approved copy did not have (network, spawn, write, model, import), is taken without asking when the
-trick has `collie trick auto <id> on`, or the switch "Take changes without asking" in Settings → Tricks. So a program must not write
+trick has `collie trick auto <id> on`, or the switch "Update this trick without asking" in Settings → Tricks. So a program must not write
 into its own code folder: the copy's code files are read-only (not on Windows, where the hash check
 alone catches it), and a change there stops the trick with "The approved copy changed on disk". It keeps its notes in `trick.state`, the
 state folder, which is never copied. `media/` and `captures/` are seeded into the copy once (at most
@@ -216,7 +216,7 @@ shape changes moves to the next number. `AGENT_VIEW_CONTRACT` in `contract.ts` h
   (`powersOf` adds `rules` only when the manifest names it, so every other trick's powers hash is the
   same as before), so a change of the rules is a change of rights. A trick with rules never takes a
   version without asking: `collie trick auto <id> on` and the card's "always" refuse, the About sheet
-  draws no "Take changes without asking", and the version card shows the rules' change whole, with the
+  draws no "Update this trick without asking", and the version card shows the rules' change whole, with the
   chip "new agent instructions", on a card group when it does not fit one card.
 - The rights words are fixed: `AGENT_VIEW_WORDS`, `AGENT_VIEW_TAP_WORDS` and `RULES_WORDS`. The About
   sheet holds the rules behind "Read the instructions", the file's text whole, monospace, wrapped, never

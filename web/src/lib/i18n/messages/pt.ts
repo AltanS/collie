@@ -3237,7 +3237,6 @@ export const pt: Dictionary = {
   "settings.tricks.about.proposedUnconfirmed": "Proposto de {host}. A sessão não está confirmada.",
   "settings.tricks.about.authorNote": "Escrito pelo autor do truque. O Collie não o verificou.",
   "settings.tricks.about.updates": "Atualizações",
-  "settings.tricks.about.auto.label": "Aceitar alterações sem perguntar",
   "settings.tricks.about.auto.hint": "Uma alteração que pede novos direitos, ou faz algo novo, como acessar a rede, ainda pergunta.",
   "settings.tricks.about.settings": "Configurações",
   "settings.tricks.fields.required": "Obrigatório",

@@ -3377,7 +3377,6 @@ export const zh: Dictionary = {
   "settings.tricks.about.proposedUnconfirmed": "由 {host} 提议。该会话未经确认。",
   "settings.tricks.about.authorNote": "由 Trick 的作者编写。Collie 没有检查过它。",
   "settings.tricks.about.updates": "更新",
-  "settings.tricks.about.auto.label": "无需询问即接受更改",
   "settings.tricks.about.auto.hint": "如果更改要求新的权限，或会做新的事（例如访问网络），仍会询问。",
   "settings.tricks.about.settings": "设置",
   "settings.tricks.fields.required": "必填",

@@ -3371,7 +3371,6 @@ export const zhTW: Dictionary = {
   "settings.tricks.about.proposedUnconfirmed": "由 {host} 提議。工作階段未經確認。",
   "settings.tricks.about.authorNote": "由 Trick 的作者撰寫。Collie 沒有檢查過。",
   "settings.tricks.about.updates": "更新",
-  "settings.tricks.about.auto.label": "不經詢問就接受變更",
   "settings.tricks.about.auto.hint": "變更若要求新的權限，或做了新的事（例如連上網路），仍會詢問。",
   "settings.tricks.about.settings": "設定",
   "settings.tricks.fields.required": "必填",

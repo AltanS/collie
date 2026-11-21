@@ -3397,7 +3397,6 @@ export const ja: Dictionary = {
   "settings.tricks.about.proposedUnconfirmed": "{host} から提案されました。セッションは確認されていません。",
   "settings.tricks.about.authorNote": "トリックの作者が書いたものです。Collie は確認していません。",
   "settings.tricks.about.updates": "更新",
-  "settings.tricks.about.auto.label": "確認なしで変更を取り込む",
   "settings.tricks.about.auto.hint": "新しい権限を求める変更や、ネットワーク接続など新しいことを行う変更は、引き続き確認します。",
   "settings.tricks.about.settings": "設定",
   "settings.tricks.fields.required": "必須",

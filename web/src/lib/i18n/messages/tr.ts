@@ -3237,7 +3237,6 @@ export const tr: Dictionary = {
   "settings.tricks.about.proposedUnconfirmed": "{host} üzerinden önerildi. Oturum doğrulanmadı.",
   "settings.tricks.about.authorNote": "Trick'in yazarı yazdı. Collie denetlemedi.",
   "settings.tricks.about.updates": "Güncellemeler",
-  "settings.tricks.about.auto.label": "Değişiklikleri sormadan al",
   "settings.tricks.about.auto.hint": "Yeni yetki isteyen veya ağa erişmek gibi yeni bir şey yapan değişiklik yine de sorar.",
   "settings.tricks.about.settings": "Ayarlar",
   "settings.tricks.fields.required": "Gerekli",

@@ -500,7 +500,7 @@ and any new power the version asks for. You have three options:
 
 - **Hold to use** approves the code on the card, and the trick runs it. Keep a finger on it for three
   seconds; with a keyboard, press it twice.
-- **Hold to use and stop asking** does the same, and switches on "Take changes without asking". It is
+- **Hold to use and stop asking** does the same, and switches on "Update this trick without asking". It is
   offered only when the version asks for no new power.
 - **Keep the old version** declines it. Collie does not offer that version again.
 
@@ -513,7 +513,7 @@ Collie sees it, within a few seconds while a phone is open. A run that is going 
 its output is dropped. Two runs of one trick never overlap. A version that waits for your yes changes
 nothing: the old approved copy keeps running.
 
-"Take changes without asking" is a switch on the trick's details page, under Updates. The command is
+"Update this trick without asking" is a switch on the trick's details page, under Updates. The command is
 `collie trick auto <id> on`. With it on, a new version is taken without a card only when its powers
 did not change and a text search of its code finds no new kind of warning. A trick with rules never
 takes one this way. A trick that took a change shows when, with Undo, which brings back the version
@@ -570,7 +570,7 @@ to where you came from.
   `[[field]]` ([Settings a trick asks you for](tricks-authoring.md#settings-a-trick-asks-you-for)).
   A change saves at once and runs the trick once. It asks for no new yes. While a required setting is
   empty, the trick's row says "Needs setup".
-- **Updates** holds the "Take changes without asking" switch, for a trick that is on.
+- **Updates** holds the "Update this trick without asking" switch, for a trick that is on.
 
 The description and the longer text are the author's own words, and nothing checks them against the
 code. Read the rows under "What it does" first.

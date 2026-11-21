@@ -3428,7 +3428,6 @@ export const de: Dictionary = {
   "settings.tricks.about.proposedUnconfirmed": "Von {host} vorgeschlagen. Die Sitzung ist nicht bestätigt.",
   "settings.tricks.about.authorNote": "Vom Autor des Tricks geschrieben. Collie hat ihn nicht geprüft.",
   "settings.tricks.about.updates": "Updates",
-  "settings.tricks.about.auto.label": "Änderungen ohne Rückfrage übernehmen",
   "settings.tricks.about.auto.hint": "Eine Änderung, die neue Rechte verlangt oder etwas Neues tut, etwa auf das Netzwerk zuzugreifen, fragt weiterhin.",
   "settings.tricks.about.settings": "Einstellungen",
   "settings.tricks.fields.required": "Erforderlich",

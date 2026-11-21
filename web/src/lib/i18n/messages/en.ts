@@ -3670,7 +3670,7 @@ export const en = {
   // The same row with the Hill off (2026-11-13): the new version's card is a Decision on the Hill.
   // Fault B: the trick stopped because its code asks for a right the person's yes did not hold.
   "settings.tricks.rightsMoved": "Its rights changed. Switch it on again.",
-  // Take changes without asking, and the undo of an automatic change (crew slice 3).
+  // Update this trick without asking, and the undo of an automatic change (crew slice 3).
   "settings.tricks.auto.failed": "Could not change {name}. Try again.",
   "settings.tricks.autoAt": "Updated {ago}, automatically.",
   "settings.tricks.undo": "Undo",
@@ -3706,7 +3706,7 @@ export const en = {
   "settings.tricks.about.proposedUnconfirmed": "Proposed from {host}. The session is not confirmed.",
   "settings.tricks.about.authorNote": "Written by the trick's author. Collie did not check it.",
   "settings.tricks.about.updates": "Updates",
-  "settings.tricks.about.auto.label": "Take changes without asking",
+  "settings.tricks.about.autoUpdate.label": "Update this trick without asking",
   "settings.tricks.about.auto.hint": "A change that asks for new rights, or does something new such as reaching the network, still asks.",
   // A trick's settings (contract 3, `[[field]]`): components/trick-settings-group.tsx.
   "settings.tricks.about.settings": "Settings",
@@ -4443,6 +4443,7 @@ export const PENDING_TRANSLATION = [
   "composer.protocol.draftSheet.replaceHint",
   "composer.protocol.draftSheet.cancelHint",
   "settings.nav.close",
+  "settings.tricks.about.autoUpdate.label",
 ] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */

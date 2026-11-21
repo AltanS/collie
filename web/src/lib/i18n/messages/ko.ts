@@ -3390,7 +3390,6 @@ export const ko: Dictionary = {
   "settings.tricks.about.proposedUnconfirmed": "{host}에서 제안됨. 세션은 확인되지 않았습니다.",
   "settings.tricks.about.authorNote": "트릭 작성자가 만들었습니다. Collie는 확인하지 않았습니다.",
   "settings.tricks.about.updates": "업데이트",
-  "settings.tricks.about.auto.label": "묻지 않고 변경 적용",
   "settings.tricks.about.auto.hint": "새 권한을 요청하거나 네트워크 접속처럼 새로운 일을 하는 변경은 계속 묻습니다.",
   "settings.tricks.about.settings": "설정",
   "settings.tricks.fields.required": "필수",

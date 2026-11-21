@@ -672,7 +672,7 @@ const TRICKS_FEATURE_ROUTE = "/api/tricks/switch";
 // is the handler's check, so the route table keeps one shape of segment.
 const PAIR_REQUEST_ROUTE = /^\/api\/pair\/request\/([^/]+)$/;
 const PAIR_APPROVE_ROUTE = /^\/api\/pair\/approve\/([^/]+)$/;
-// Take changes without asking, and go back one version (crew slice 3): write-gated like the switch.
+// Update this trick without asking, and go back one version (crew slice 3): write-gated like the switch.
 const TRICKS_AUTO_ROUTE = /^\/api\/tricks\/([^/]+)\/([^/]+)\/auto$/;
 const TRICKS_UNDO_ROUTE = /^\/api\/tricks\/([^/]+)\/([^/]+)\/undo$/;
 // A trick's settings (contract 3): one field's value, write-gated like the switch.
