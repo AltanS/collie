@@ -74,3 +74,6 @@ bundled half needed the floor.
   frame, never the frame's own colour.
 - The column's content starts a pixel higher (the frame is 1px where it was 2px).
 - A theme's own `pane-active` is mixed 70% (light) or 60% (dark) into the page, where it used to be mixed 65%.
+- The first frame never draws a theme's raw `pane-active`: `themes.css` (a shipped theme) and `theme-init.js` (an
+  imported one) write it mixed into the page (`paneFrameMix`), with no floor, until the app sets the derived value.
+- An export writes the theme's own start colour, never the derived frame, so an import mixes it once.

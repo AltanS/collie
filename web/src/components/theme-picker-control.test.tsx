@@ -444,6 +444,29 @@ describe("ThemePickerControl", () => {
       expect(again.ok && again.theme).toEqual(parsed.theme);
     });
 
+    it("exports a theme's own pane-active, never the derived frame, so a round trip draws the same frame (ADR 0174)", async () => {
+      const { themeFileText } = await load();
+      const { deriveTokens } = await import("@/lib/theme/derive");
+      const { fillHalves } = await import("@/lib/theme/schema");
+      const file = (id: string) => {
+        const parsed = parseTheme(readFileSync(resolve(web, `src/themes/${id}.json`), "utf8"), { maxBytes: 64 * 1024, allowReservedId: true });
+        if (!parsed.ok) throw new Error(id);
+        return parsed.theme;
+      };
+      const base = file("collie");
+      const nightwatch = file("nightwatch");
+      const again = parseTheme(themeFileText(nightwatch), { maxBytes: 64 * 1024, allowReservedId: true });
+      if (!again.ok) throw new Error("the export does not parse");
+      // The file carries the start colour the theme set, not the mix the app draws: imported, it is mixed once.
+      expect(again.theme.dark?.["pane-active"]).toBe(nightwatch.dark?.["pane-active"]);
+      for (const half of ["light", "dark"] as const) {
+        expect(deriveTokens(fillHalves(again.theme, base)[half], half)["pane-active"]).toBe(deriveTokens(fillHalves(nightwatch, base)[half], half)["pane-active"]);
+      }
+      // A theme that set none exports none, and keeps taking the relation.
+      const harbour = parseTheme(themeFileText(file("harbour")), { maxBytes: 64 * 1024, allowReservedId: true });
+      expect(harbour.ok && harbour.theme.light?.["pane-active"]).toBeUndefined();
+    });
+
     it("draws a version 1 file at the default shape", async () => {
       const { ThemePickerControl } = await load();
       const { container } = render(<ThemePickerControl />);

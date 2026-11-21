@@ -48,6 +48,7 @@ export const PLANE_GAP = 0.025;
  * a relation): the first frame (`public/theme-init.js`) then ignores the values an older version stored. The golden
  * values in `derive.golden.test.ts` show such a change as a diff.
  */
+// 4 was an unreleased step (2026-11-21: a theme's own pane-active drawn as it is); 5 mixes it into the page too.
 export const DERIVE_VERSION = 5;
 
 /** The planes a state fill is made for. */

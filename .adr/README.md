@@ -280,6 +280,7 @@ The rule today: [0148](./0148-a-theme-names-words-never-drawings-and-the-device-
 | [0138](./0138-an-app-left-alone-draws-no-frame.md) | The mark moves while the page is visible (title and first rules reversed by amendments). | Superseded by 0148 |
 | [0171](./0171-the-tab-bar-stands-on-a-firm-edge-in-both-tab-looks.md) | The large screen's tab bar stands on `--edge-firm`, a derived line, with a 6px page band; `folder` cuts the open tab from the band, `plain` marks it with a 2px bar of ink; one type for both, and the phone's tab and pane rows are 44px. | Accepted |
 | [0172](./0172-derived-state-colours-are-measured-and-collie-is-held.md) | One function, `deriveTokens`, makes a theme's planes, hover, selected and open fills and ring from its base tokens: Collie's relation, then a floor; Collie is its reference within 0.02, and `applyTheme` runs it for every theme applied. | Accepted |
+| [0174](./0174-the-pane-you-are-in-wears-a-coloured-hairline.md) | The pane you are in on a large screen wears a 1px hairline in `--pane-active`, a derived token: the theme's own colour or `control-on-foreground` mixed into the page (70% light, 60% dark), then 3:1 on the recess, the page and the paper. | Accepted |
 
 ### Launch, worktrees, files and changes
 

@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { DESIGN_STORAGE_KEY } from "@/lib/design";
 import type { JsonObject } from "@/lib/json";
 import { THEME_ESCAPE_SOURCE } from "@/lib/theme/escape";
-import { ALL_THEME_TOKENS, COLOUR_MAX, COLOUR_SOURCE, SHIPPED_THEME_IDS, THEME_TOKENS, isColour, parseTheme, type Theme } from "@/lib/theme/schema";
+import { ALL_THEME_TOKENS, COLOUR_MAX, COLOUR_SOURCE, DERIVED_THEME_TOKENS, SHIPPED_THEME_IDS, THEME_TOKENS, isColour, paneFrameMix, parseTheme, type Theme } from "@/lib/theme/schema";
 import { DERIVE_VERSION, DERIVED_TOKENS } from "@/lib/theme/derive";
 import { DERIVED_STORAGE_KEY, LIBRARY_STORAGE_KEY, applyTheme, halvesHash, shippedThemes } from "@/lib/theme/store";
 import {
@@ -507,6 +507,23 @@ describe("theme-init.js sets the stored derived colours, and only current ones",
     const literal = /SHIPPED_HASH = (\{[^}]*\})/u.exec(init)?.[1] ?? "{}";
     const table = Object.fromEntries([...literal.matchAll(/(\w+): "([0-9a-f]{8})"/gu)].map((m) => [m[1], m[2]]));
     expect(table).toEqual(Object.fromEntries(shippedThemes().filter((t) => t.id !== "collie").map((t) => [t.id, halvesHash(t)])));
+  });
+
+  it("lists every derived theme token among the derived names it sets", () => {
+    for (const token of Object.keys(DERIVED_THEME_TOKENS)) {
+      expect(listOf("DERIVED"), token).toContain(token);
+      expect(DERIVED_TOKENS.some((t) => t === token), token).toBe(true);
+    }
+  });
+
+  it("no stored copy: an imported theme's own pane-active is drawn mixed into the page, never raw (ADR 0174)", () => {
+    const lib = midnight(1);
+    const own = { light: "oklch(0.56 0.1 62)", dark: "oklch(0.88 0.06 75)" };
+    lib.themes[0]!.light["pane-active"] = own.light;
+    lib.themes[0]!.dark["pane-active"] = own.dark;
+    const seen = runInit({ "collie:design:v1": JSON.stringify({ theme: "midnight" }), "collie:themes:v1": JSON.stringify(lib) });
+    const frame = seen.properties.find(([p]) => p === "--pane-active")?.[1];
+    expect(frame).toBe(`light-dark(${paneFrameMix(own.light, "light")}, ${paneFrameMix(own.dark, "dark")})`);
   });
 
   it("stored and current, imported: the first frame gets the values the store sets a moment later", () => {

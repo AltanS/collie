@@ -172,6 +172,15 @@ export function derivedRootValue(token: DerivedThemeToken): string {
 
 export type DerivedThemeToken = keyof typeof DERIVED_THEME_TOKENS;
 
+/**
+ * A theme's own `pane-active` as the stylesheet draws it before `deriveTokens` has run: the same mix into the page as
+ * Collie's relation, with the theme's colour in place of `--control-on-foreground` (ADR 0174). `themes.css` writes it
+ * for a shipped theme, `theme-init.js` for an imported one, so the first frame never shows the raw start colour.
+ */
+export function paneFrameMix(value: string, half: "light" | "dark"): string {
+  return DERIVED_THEME_TOKENS["pane-active"][half].replace("var(--control-on-foreground)", value);
+}
+
 export function isDerivedThemeToken(token: string): token is DerivedThemeToken {
   return Object.hasOwn(DERIVED_THEME_TOKENS, token);
 }
