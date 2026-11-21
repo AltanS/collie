@@ -34,6 +34,13 @@ export const TEXT_FLOOR = 4.5;
  */
 export const PLANE_GAP = 0.025;
 
+/**
+ * The version of this function's output. Bump it whenever a change here moves a derived value (a floor, MARGIN, STEP,
+ * a relation): the first frame (`public/theme-init.js`) then ignores the values an older version stored. The golden
+ * values in `derive.golden.test.ts` show such a change as a diff.
+ */
+export const DERIVE_VERSION = 1;
+
 /** The planes a state fill is made for. */
 export const PLANES = ["page", "recess", "paper"] as const;
 export type Plane = (typeof PLANES)[number];
