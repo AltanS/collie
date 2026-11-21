@@ -7,7 +7,7 @@ import { Notice } from "@/components/ui/notice";
 import { useLocale } from "@/hooks/use-locale";
 import { useNav } from "@/hooks/use-nav";
 import { useOfficialList, useTrickWrites, type TrickWriteCalls } from "@/hooks/use-trick-writes";
-import { apiErrorFields, fetchTrickCodeFile, fetchTrickCodeIndex, removeTrick } from "@/lib/api";
+import { apiErrorFields, apiErrorStatus, fetchTrickCodeFile, fetchTrickCodeIndex, removeTrick } from "@/lib/api";
 import { t } from "@/lib/i18n";
 import { readTrickDetailKey, settingsSectionPath, type TrickDetailAddress } from "@/lib/nav";
 import { usePairing } from "@/lib/pairing";
@@ -19,7 +19,6 @@ import type { OfficialTricksReply } from "@/lib/tricks/schema";
 import { tricksStore, useTricksState, type TricksStore } from "@/lib/tricks/store";
 import { setStatus } from "@/lib/status";
 import { isReadOnly } from "@/lib/types";
-import { mintRequestId } from "@/lib/worktree-name";
 
 // SETTINGS → TRICKS → ONE TRICK (2026-11-21): a trick's details on a page of its own, one level below the list, in
 // place of the bottom sheet the list opened before ("it's a lot of info and deserving of an own page", Altan). The
@@ -49,6 +48,12 @@ export interface SettingsTrickRouteProps extends TrickWriteCalls {
 }
 
 /** The words a failed remove shows in its row: the bridge's three refusals in the phone's words, else one line. */
+/** Whether no answer came to a remove: no HTTP status (a network error, a timeout), or the bridge's own failure (5xx). */
+export function answerLost<TThrown>(thrown: TThrown): boolean {
+  const status = apiErrorStatus(thrown);
+  return status === undefined || status >= 500;
+}
+
 export function removeFailureLine<TThrown>(thrown: TThrown, name: string): string {
   const code = apiErrorFields(thrown)?.error;
   if (code === "on") return t("settings.tricks.remove.onLine");
@@ -136,12 +141,13 @@ function TrickPage({ store = tricksStore, onOfficialList, readOnly, timeZone, on
           onValue={async (field, value) => await writes.saveValue(trick, field, value)}
           readCode={{ index: () => fetchTrickCodeIndex(trick.host, trick.id), file: (file) => fetchTrickCodeFile(trick.host, trick.id, file) }}
           timeZone={timeZone}
-          onRemove={async () => {
-            // One request id per confirm: the bridge removes once for it, also when the answer is lost and it is sent again.
+          onRemove={async (rid) => {
+            // The request id is the ask's (trick-remove-section.tsx): the bridge removes once for it, and a lost answer
+            // sends it again, so the bridge answers what it did.
             try {
-              await onRemove(trick.host, trick.id, mintRequestId());
+              await onRemove(trick.host, trick.id, rid);
             } catch (thrown) {
-              return removeFailureLine(thrown, trick.name);
+              return { line: removeFailureLine(thrown, trick.name), lost: answerLost(thrown) };
             }
             // Up to the list, so Back never returns to the page of a trick that is gone; the list says what happened.
             nav.up(list);

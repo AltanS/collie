@@ -135,6 +135,32 @@ describe("the Remove section", () => {
     expect(rids[0]).not.toBe(rids[1]);
   });
 
+  it("a lost answer keeps the request id: the next confirm sends the same rid, so the bridge replays what it did", async () => {
+    const user = userEvent.setup();
+    const rids: string[] = [];
+    const answers = [() => HttpResponse.error(), () => new HttpResponse("down", { status: 503 }), () => HttpResponse.json({ error: "running" }, { status: 409 })];
+    server.use(
+      http.post("/api/tricks/lodge/legs/remove", async ({ request }) => {
+        // SAFETY: the body the app posts is JSON by construction (lib/api.ts `removeTrick` sends `JSON.stringify`).
+        rids.push(asJsonString(asJsonObject((await request.json()) as JsonValue)?.rid) ?? "");
+        return (answers[rids.length - 1] ?? answers[2]!)();
+      }),
+    );
+    renderTricksPages({ store: await storeWith([LEGS]), page: { onOfficialList: noOfficial }, entries: [PAGE] });
+    await screen.findByRole("heading", { name: "Browser leg" });
+    // Three asks: no answer, the bridge's failure, then a definite refusal; then a fourth.
+    for (let ask = 0; ask < 4; ask += 1) {
+      await user.click(within(section()!).getByRole("button", { name: "Remove trick" }));
+      await user.click(within(await screen.findByRole("dialog", { name: "Remove Browser leg?" })).getByRole("button", { name: "Remove trick" }));
+      await vi.waitFor(() => expect(rids).toHaveLength(ask + 1));
+      await vi.waitFor(() => expect(confirmPanel()).toBeNull());
+    }
+    expect(rids[1]).toBe(rids[0]);
+    expect(rids[2]).toBe(rids[0]);
+    // After the definite answer the next ask has its own id.
+    expect(rids[3]).not.toBe(rids[0]);
+  });
+
   it("a refusal stays on the page and says the reason in the row, through the real route call", async () => {
     const user = userEvent.setup();
     const cases: [{ error: string; message?: string } | null, number, string][] = [

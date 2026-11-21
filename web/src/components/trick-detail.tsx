@@ -12,7 +12,7 @@ import { SectionLabel } from "@/components/ui/section-label";
 import { Switch } from "@/components/ui/switch";
 import { TokenUseChip, tokenUseWhy, useTokenUseShown } from "@/components/token-use-label";
 import { TrickCodeFolds, type TrickCodeReader } from "@/components/trick-code-folds";
-import { TrickRemoveSection } from "@/components/trick-remove-section";
+import { TrickRemoveSection, type RemoveProblem } from "@/components/trick-remove-section";
 import { TrickSettingsGroup } from "@/components/trick-settings-group";
 import { valueSentence } from "@/components/trick-value";
 import { useLocale } from "@/hooks/use-locale";
@@ -481,8 +481,8 @@ export interface TrickDetailProps {
   timeZone?: string;
   /** The reads behind the "Read the code" folds, bound to this trick. Without it the section is not drawn. */
   readCode?: TrickCodeReader;
-  /** Remove the trick from this machine (ADR 0168): null when it went, else the words to show. Without it no Remove section. */
-  onRemove?: () => Promise<string | null>;
+  /** Remove the trick from this machine (ADR 0168), with the ask's request id: null when it went, else what to show. Without it no Remove section. */
+  onRemove?: (rid: string) => Promise<RemoveProblem | null>;
 }
 
 /** The details of one trick on a machine: the head, then the sheet's groups in the sheet's order. */
