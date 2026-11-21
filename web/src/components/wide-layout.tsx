@@ -48,9 +48,10 @@ import { shortenHome } from "@/lib/shorten-home";
 import { COLUMN_SNAP_CLASSES, STRIP_SNAP_CLASSES, leftmostWholeColumn, shouldFollowFocus } from "@/lib/strip-snap";
 import { pickTabPane } from "@/lib/tab-pane-memory";
 import { shownStatus } from "@/lib/triage";
-import { isReadOnly, statusLabel, type AgentView } from "@/lib/types";
+import { isReadOnly, statusLabel, type AgentView, type WorkspaceView } from "@/lib/types";
 import { shortcutTarget } from "@/lib/shortcuts/target";
 import { cn } from "@/lib/utils";
+import { takeSidebarReveal } from "@/lib/new-over";
 import {
   allowedPresets,
   arrive,
@@ -84,6 +85,8 @@ import {
 } from "@/lib/wide-layout";
 import { enterSidebarFocus, leaveSidebarFocus, moveSidebarFocus, openSidebarFocus, settleSidebarFocus } from "@/lib/shortcuts/sidebar-focus";
 import { useShortcutMode } from "@/lib/shortcuts/state";
+import { SpaceActionsSheet } from "@/components/space-actions-sheet";
+import { useMuxDeclared } from "@/lib/mux-capability";
 import { setSidebarOpen, setSpaceStrip, spaceStrip, useSidebarOpen, useSpaceStrips } from "@/lib/wide-layout-store";
 
 // THE PANE SCREEN ON A LARGE SCREEN (ADR 0120). From 600px wide, and only on `pane/:paneId`, the
@@ -150,6 +153,19 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
   const open = useSidebarOpen();
   const stored = useSpaceStrips();
   const reduced = useMediaQuery("(prefers-reduced-motion: reduce)");
+  // ARRIVED FROM THE SPACE ADDRESS (routes/space.tsx): the sidebar brings the landed row near its top once, with
+  // its Space's heading above it. Any other arrival moves nothing in the sidebar.
+  useEffect(() => {
+    if (!takeSidebarReveal(paneId)) return;
+    const frame = requestAnimationFrame(() => {
+      const row = document.querySelector<HTMLElement>('[data-slot="wide-layout"] aside [aria-current="page"]');
+      let scroller = row?.parentElement ?? null;
+      while (scroller !== null && !/(auto|scroll)/u.test(getComputedStyle(scroller).overflowY)) scroller = scroller.parentElement;
+      if (row === null || scroller === null) return;
+      scroller.scrollTop += row.getBoundingClientRect().top - scroller.getBoundingClientRect().top - 48;
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [paneId]);
 
   const places = useMemo<Places>(() => ({ scope, servers: root.servers, sessions: root.sessions }), [scope, root.servers, root.sessions]);
   const herd = useMemo(() => [...root.agents, ...root.shellPanes], [root.agents, root.shellPanes]);
@@ -491,6 +507,19 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
     if (by !== null) moveSpace(by);
   });
   const machine = isMultiHost(root.servers) && agent ? hostName(root.servers, agent.host) : undefined;
+
+  // ── Rename space, from the Actions palette (ADR 0165) ──────────────────────────────────────
+  // The space in view, renamed with the phone space strip's own sheet, on its rename view. Offered where the
+  // multiplexer declares `renameSpace` (a durable program that takes renames) and the device may write. On a
+  // large screen `/space/:id` opens this view (routes/space.tsx), so this is where the space strip's command lives.
+  const [renamingSpace, setRenamingSpace] = useState<WorkspaceView | null>(null);
+  const canRenameSpace = useMuxDeclared("renameSpace", scope);
+  const openWorkspace =
+    agent === undefined ? undefined : root.workspaces.find((w) => w.workspaceId === agent.workspaceId && (w.host ?? undefined) === (agent.host ?? undefined));
+  useShortcutHandler(
+    "rename_space",
+    canRenameSpace && openWorkspace !== undefined && !readOnly && !root.error ? () => setRenamingSpace(openWorkspace) : undefined,
+  );
 
   // ── The add column's sheet: the space's other panes, to move here, and a new agent ──────────
   const [adding, setAdding] = useState(false);
@@ -848,6 +877,16 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
           />
         </div>
       </BottomSheet>
+      <SpaceActionsSheet
+        open={renamingSpace !== null}
+        onClose={() => setRenamingSpace(null)}
+        space={renamingSpace}
+        scope={scope}
+        readOnly={readOnly}
+        savedCopy={root.error}
+        onRenamed={revalidate}
+        openInRename
+      />
     </div>
   );
 }

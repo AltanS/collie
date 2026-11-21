@@ -1,6 +1,6 @@
 import { Icon } from "@/components/icons/icon";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
-import { useLocation } from "react-router";
+import { Navigate, useLocation } from "react-router";
 
 import { PickCaption } from "@/components/accounts-meter";
 import { AgentIcon } from "@/components/agent-icon";
@@ -13,6 +13,7 @@ import { NoPromptsBadge } from "@/components/no-prompts-badge";
 import { StatusArea } from "@/components/status-area";
 import { Button } from "@/components/ui/button";
 import { BottomBar } from "@/components/ui/bottom-bar";
+import { BottomSheet } from "@/components/ui/sheet";
 import { Collapse } from "@/components/ui/collapse";
 import { ListGroup } from "@/components/ui/list-group";
 import { Notice } from "@/components/ui/notice";
@@ -24,6 +25,8 @@ import { Switch } from "@/components/ui/switch";
 import { ToastViewport } from "@/components/ui/toast-viewport";
 import { useLocale } from "@/hooks/use-locale";
 import { useNav } from "@/hooks/use-nav";
+import { useWidthClass } from "@/hooks/use-width-class";
+import { withOver } from "@/lib/new-over";
 import { useNoPromptsGuard } from "@/hooks/use-no-prompts-guard";
 import { useSpaceActions } from "@/hooks/use-spaces";
 import { checkRun, clearRecentRuns, planWorktree, removeRecentRun, type StartWhat } from "@/lib/api";
@@ -112,10 +115,23 @@ export function NewRoute() {
   const { search } = useLocation();
   useLocale();
   useHoldReload("new-page", true);
+  // On a large screen `/new` is New over the Dashboard (lib/new-over.ts): the address is kept, the page is not drawn.
+  const overDashboard = useWidthClass() === "expanded";
+  if (overDashboard) {
+    const at = readNewAt(search);
+    return <Navigate replace to={withOver(homePath({ host: at.machine, session: at.session }), `/new${search}`)} />;
+  }
   return <NewPage key={search} search={search} />;
 }
 
-function NewPage({ search }: { search: string }) {
+/**
+ * How the form is framed: `page`, the screen at `/new` (the phone, the tablet, Large-screen layout Off), or
+ * `dialog`, drawn over the screen it was called from on a large screen (components/new-over.tsx, ADR 0158
+ * addendum 2026-11-21). The fields, their words, order and behaviour are the same in both.
+ */
+export type NewFrame = "page" | "dialog";
+
+export function NewPage({ search, frame = "page", onClose }: { search: string; frame?: NewFrame; onClose?: () => void }) {
   useLocale();
   const nav = useNav();
   const data = useRootData();
@@ -574,31 +590,10 @@ function NewPage({ search }: { search: string }) {
   }
   const backLabel = t("newPage.back");
 
-  return (
-    <div className="mx-auto flex min-h-0 w-full max-w-screen-sm flex-1 flex-col">
-      <RouteHeader
-        width="column"
-        override={
-          <>
-            <Button
-              variant="ghost"
-              size="icon"
-              // 44px, the tap floor every control in this row shares. size="icon" alone is 36px.
-              className="size-11"
-              onClick={() => nav.up(homePath({ host: at.machine, session: at.session }))}
-              aria-label={backLabel}
-            >
-              <Icon name="back" className="size-5" />
-            </Button>
-            <h1 className="min-w-0 truncate text-lg font-semibold tracking-tight">
-              {offer.startersOnly ? t("newPage.starters.title") : besidePane !== undefined ? t("newPage.title.inSpace") : t("home.new.label")}
-            </h1>
-          </>
-        }
-      />
-      {/* `relative` for the reason SettingsPage gives: an `sr-only` deep in the page would escape the
-          scroller and grow the document's own scrollbar. */}
-      <BandMain base={16} className="relative flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4">
+  // THE FORM'S PARTS, laid out by either frame (`NewFrame`): the page stacks them in one column, the large
+  // screen's dialog puts what and the worktree at the left, the folder at the right, the foot under both.
+  const whatPart = (
+    <>
         {multiHost && from === undefined && besidePane === undefined && (
           <MachineSelect
             chosen={chosen}
@@ -773,6 +768,10 @@ function NewPage({ search }: { search: string }) {
           )}
         </div>
 
+    </>
+  );
+  const wherePart = (
+    <>
         {showWhere ? (
           <div className="flex flex-col gap-2">
             <label className="flex flex-col gap-1">
@@ -795,6 +794,10 @@ function NewPage({ search }: { search: string }) {
           <p className="text-xs text-muted-foreground">{t("newPage.where.pinned", { folder: shortenHome(pinned, home) })}</p>
         ) : null}
 
+    </>
+  );
+  const branchPart = (
+    <>
         <Collapse open={branchShown}>
           {branchShown ? (
             <BranchBlock
@@ -818,11 +821,10 @@ function NewPage({ search }: { search: string }) {
             />
           ) : null}
         </Collapse>
-      </BandMain>
-
-      {/* The foot: what Start will do, in one line, then Start. A sibling UNDER the scroller, so it
-          stays above the keyboard (the viewport resizes with it) and clear of the home indicator. */}
-      <BottomBar className="flex flex-col gap-2 px-4">
+    </>
+  );
+  const summaryPart = (
+    <>
         {/* One reserved cell holds the summary and, when a Start was refused, the refusal in its
             place, in the same box, so neither moves anything (DESIGN.md §2). Two summary lines are
             reserved, so a longer sentence moves nothing either. */}
@@ -856,6 +858,10 @@ function NewPage({ search }: { search: string }) {
             </p>
           ) : null}
         </Collapse>
+    </>
+  );
+  const startPart = (
+    <>
         <Button ref={startButton} onClick={startNow} disabled={blocked || busy} aria-busy={busy || undefined} className="h-11">
           {/* All three words share one reserved box, so the button keeps its width (DESIGN.md §2). */}
           <OneOf
@@ -868,8 +874,10 @@ function NewPage({ search }: { search: string }) {
             ]}
           />
         </Button>
-      </BottomBar>
-
+    </>
+  );
+  const tailPart = (
+    <>
       {/* The status line, for what this page publishes itself (a folder star that failed, a worktree
           whose agent did not start). Every other route with writes mounts one; this one did not, so
           its statuses were published to nothing and showed up on the next screen. Lifted above the
@@ -880,6 +888,75 @@ function NewPage({ search }: { search: string }) {
 
       {/* "Start without prompts?", the one question before a launcher that skips permission prompts. */}
       {noPromptsSheet}
+    </>
+  );
+  const title = offer.startersOnly ? t("newPage.starters.title") : besidePane !== undefined ? t("newPage.title.inSpace") : t("home.new.label");
+
+  if (frame === "dialog") {
+    return (
+      <>
+        <BottomSheet open onClose={onClose ?? (() => nav.up(homePath({ host: at.machine, session: at.session })))} title={title} size="form" className="max-w-[880px]">
+          {/* At the left, what to start and the worktree it may start in; at the right, the folder. The foot spans
+              both: what Start will do, then Start. Each column scrolls on its own, the foot stays in view. */}
+          <div data-slot="new-dialog" className="flex min-h-0 flex-1 flex-col">
+            <div className="flex min-h-0 flex-1">
+              <div data-slot="new-dialog-what" className="relative flex w-[340px] shrink-0 flex-col gap-4 overflow-y-auto overscroll-contain border-r border-rule p-4">
+                {whatPart}
+                {branchPart}
+              </div>
+              <div data-slot="new-dialog-where" className="relative flex min-w-0 flex-1 flex-col gap-4 overflow-y-auto overscroll-contain p-4">
+                {wherePart}
+              </div>
+            </div>
+            <div data-slot="new-dialog-foot" className="flex shrink-0 items-center gap-4 border-t border-band-rule bg-band-ground px-4 py-3">
+              <div className="flex min-w-0 flex-1 flex-col gap-1">{summaryPart}</div>
+              <div className="flex w-[200px] shrink-0 flex-col [&>button]:w-full">{startPart}</div>
+            </div>
+          </div>
+        </BottomSheet>
+        {tailPart}
+      </>
+    );
+  }
+
+  return (
+    <div className="mx-auto flex min-h-0 w-full max-w-screen-sm flex-1 flex-col">
+      <RouteHeader
+        width="column"
+        override={
+          <>
+            <Button
+              variant="ghost"
+              size="icon"
+              // 44px, the tap floor every control in this row shares. size="icon" alone is 36px.
+              className="size-11"
+              onClick={() => nav.up(homePath({ host: at.machine, session: at.session }))}
+              aria-label={backLabel}
+            >
+              <Icon name="back" className="size-5" />
+            </Button>
+            <h1 className="min-w-0 truncate text-lg font-semibold tracking-tight">
+              {title}
+            </h1>
+          </>
+        }
+      />
+      {/* `relative` for the reason SettingsPage gives: an `sr-only` deep in the page would escape the
+          scroller and grow the document's own scrollbar. */}
+      <BandMain base={16} className="relative flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4">
+        {whatPart}
+        {wherePart}
+        {branchPart}
+      </BandMain>
+
+      {/* The foot: what Start will do, in one line, then Start. A sibling UNDER the scroller, so it
+          stays above the keyboard (the viewport resizes with it) and clear of the home indicator. */}
+      <BottomBar className="flex flex-col gap-2 px-4">
+        {summaryPart}
+        {startPart}
+      </BottomBar>
+
+      {tailPart}
     </div>
   );
 }

@@ -89,6 +89,28 @@ async function dialogShown(page: Page): Promise<void> {
   await page.locator('[role="dialog"]').first().waitFor({ state: "visible", timeout: 8000 });
 }
 
+/** The larger herd of the hitbox census, with the Hill on, and launchers to offer. */
+async function richWorld(page: Page, screen: Screen, folders = false): Promise<void> {
+  await installWorld(page);
+  await page.route("**/api/launchers", (route) => json(route, fixtureLaunchersWithAgents));
+  // After the world, so these answer first (Playwright checks the newest route first).
+  if (folders) await newFolders(page);
+  await visit(page, screen);
+}
+
+/** The folder reads New makes: a home folder to browse, and a worktree plan for a git folder. */
+async function newFolders(page: Page): Promise<void> {
+  const names = ["collie", "docs", "notes", "projects", "scratch", "webapp", "worktrees"];
+  await page.route(
+    (url) => url.pathname === "/api/folders/browse",
+    (route) => json(route, { path: "~", parent: null, folders: names.map((name) => ({ name, git: name !== "notes" && name !== "scratch" })), filter: "", truncated: false }),
+  );
+  await page.route(
+    (url) => url.pathname === "/api/worktree/plan",
+    (route) => json(route, { ok: true, currentBranch: "main", defaultBranch: "main", branchValid: true, defaultTarget: { path: "/home/you/worktrees/webapp-fix", exists: false } }),
+  );
+}
+
 const preferences = (page: Page, prefs: Record<string, string>) =>
   page.addInitScript(
     ([key, value]) => {
@@ -268,11 +290,7 @@ async function chatWorld(page: Page): Promise<void> {
 /** Every setup by name. A name is what an entry of `list.ts` holds. */
 export const SETUPS = {
   /** The larger herd of the hitbox census, with the Hill on. */
-  rich: async (page, screen) => {
-    await installWorld(page);
-    await page.route("**/api/launchers", (route) => json(route, fixtureLaunchersWithAgents));
-    await visit(page, screen);
-  },
+  rich: (page, screen) => richWorld(page, screen),
   /** The same herd for a crew: three machines in the roster, the census to match, the four machines of Machines. */
   crew: async (page, screen) => {
     await installWorld(page);
@@ -406,6 +424,32 @@ export const SETUPS = {
     await visit(page, screen);
     await page.getByRole("main").getByRole("button", { name: /^New tab in /u }).first().click();
     await dialogShown(page);
+  },
+  /** New, the page on a phone and the dialog over the Dashboard on a large screen (`/new` and `/new/add` redirect there). */
+  newOver: async (page, screen) => {
+    await richWorld(page, screen);
+    await page.locator('[role="dialog"], [data-slot="bottom-bar"]').first().waitFor({ state: "visible", timeout: 8000 });
+  },
+  /** New over the pane view, opened from the sidebar's New. */
+  newOverPane: async (page, screen) => {
+    await chatWorld(page);
+    await page.route("**/api/launchers", (route) => json(route, fixtureLaunchersWithAgents));
+    await visit(page, screen);
+    await dialogShown(page);
+  },
+  /** New over the Dashboard with Browse open on the home folder. */
+  newBrowse: async (page, screen) => {
+    await richWorld(page, screen, true);
+    await dialogShown(page);
+    await page.getByRole("dialog").getByRole("button", { name: new RegExp(`^${en["newPage.browse"]}`, "u") }).click();
+    await page.getByRole("dialog").getByText("worktrees", { exact: true }).waitFor();
+  },
+  /** New over the Dashboard with New worktree on. */
+  newWorktree: async (page, screen) => {
+    await richWorld(page, screen, true);
+    await dialogShown(page);
+    await page.getByRole("dialog").getByRole("switch").click();
+    await page.getByRole("dialog").getByTestId("new-page-target").waitFor();
   },
   /** A dashboard row's own menu, from a right click. */
   rowMenu: async (page, screen) => {
