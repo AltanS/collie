@@ -79,10 +79,12 @@ export const SCREENS: readonly Screen[] = [
   { id: "pane-tabs-long-names", route: "pane/:paneId", path: "/pane/w1%3Ap1?h=lodge", title: "Tab strip with long names", wide: "designed", state: "long Space and host names, five tabs", setup: "longTabs", widths: [1440, 1100, 390], note: "the tab strip defect: a tab drawn over the Space's name when the names are long" , waive: { "nothing-covers-a-label@390": "by design: the icon in the pane identity row is drawn over the middle of the name button, and nothing is hidden (checked on the shot)", "targets@390": PHONE_TARGETS } },
   { id: "pane-history", route: "pane/:paneId/history", path: "/pane/w1%3Ap1/history", title: "A session's History", wide: "column", setup: "chat" , waive: { "targets@390": PHONE_TARGETS } },
   { id: "pane-zoom", route: "pane/:paneId/zoom", path: "/pane/w1%3Ap1/zoom", title: "Zoomed output", wide: "same", state: "output zoomed", setup: "terminal", note: "a full-window reading surface: the output takes the whole window at any width, so one layout serves both" },
-  { id: "pane-changes", route: "pane/:paneId/changes/*", path: "/pane/w1%3Ap1/changes", title: "Changes of a session", wide: "designed", state: "Changes only, the list", setup: "changesList" },
-  { id: "pane-files", route: "pane/:paneId/changes/*", path: "/pane/w1%3Ap1/changes/files", title: "Files of a session", wide: "designed", state: "the folder tree" },
+  // The lazy-screens spec opens each route at its LAST entry here, offline: the tree's root, which draws no diff (a
+  // diff asks for the highlighter, an older door whose shared chunks that spec does not list).
   { id: "pane-files-file", route: "pane/:paneId/changes/*", path: "/pane/w1%3Ap1/changes/files?path=src%2Fcart.ts", title: "A file open in the tree", wide: "designed", state: "a file open" },
   { id: "pane-changes-split", route: "pane/:paneId/changes/*", path: "/pane/w1%3Ap1/changes?repo=.&path=src%2Froutes%2Fcheckout.tsx", title: "A changed file side by side", wide: "designed", state: "the diff side by side", setup: "changesSplit", widths: [1440], note: "side by side exists only in the large-screen layout; the phone's diff is pane-changes' own" },
+  { id: "pane-changes", route: "pane/:paneId/changes/*", path: "/pane/w1%3Ap1/changes", title: "Changes of a session", wide: "designed", state: "Changes only, the list", setup: "changesList" },
+  { id: "pane-files", route: "pane/:paneId/changes/*", path: "/pane/w1%3Ap1/changes/files", title: "Files of a session", wide: "designed", state: "the folder tree" },
   { id: "trick-session", route: "trick/:paneId", path: "/trick/trick%3Alodge%3Aci%3Arun", title: "A trick's own session", wide: "column", setup: "tricks" },
 
   // ── The Hill ─────────────────────────────────────────────────────────────
