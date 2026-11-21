@@ -160,11 +160,23 @@ export function BandMain({
   base,
   className,
   style,
+  scrollRef,
   ...props
-}: HTMLAttributes<HTMLElement> & { base: number }) {
+}: HTMLAttributes<HTMLElement> & {
+  base: number;
+  /** Also points at the `<main>`, for a page that keeps its scroll (SettingsPage `keepScroll`). */
+  scrollRef?: RefObject<HTMLElement | null>;
+}) {
   const ref = useRef<HTMLElement>(null);
   const inset = useBandInset(ref, base);
-  return <main ref={ref} className={cn(inset && BAND_INSET_CLASS, className)} style={{ ...style, ...inset }} {...props} />;
+  const setRef = useCallback(
+    (el: HTMLElement | null) => {
+      ref.current = el;
+      if (scrollRef !== undefined) scrollRef.current = el;
+    },
+    [scrollRef],
+  );
+  return <main ref={setRef} className={cn(inset && BAND_INSET_CLASS, className)} style={{ ...style, ...inset }} {...props} />;
 }
 
 /** How long a replacement takes to dissolve. The app's "tap" speed — see COLLAPSE_MS on the tokens. */

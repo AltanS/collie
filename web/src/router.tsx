@@ -33,6 +33,7 @@ import {
   SettingsInstallCountRoute,
 } from "@/routes/settings-sections";
 import { SettingsAccountAddRoute, SettingsAccountRoute, SettingsAccountsRoute } from "@/routes/settings-accounts";
+import { SettingsTrickRoute } from "@/routes/settings-trick";
 import { SettingsChangeLoginRoute } from "@/routes/settings-change-login";
 import { CrewRoute } from "@/routes/crew";
 import { MachineRoute } from "@/routes/machine";
@@ -156,6 +157,9 @@ export const router = createBrowserRouter([
       { path: "settings/experiments", element: <SettingsExperimentsRoute /> },
       // Tricks (M94): routable always; the index offers its row only while the phone holds a tricks reply.
       { path: "settings/tricks", element: <SettingsTricksRoute /> },
+      // One trick's details (2026-11-21, a bottom sheet before): `<host>:<id>`, or an official entry's bare id
+      // (lib/nav.ts `trickDetailPath`). No loader: it reads the tricks store and the official list, as the list does.
+      { path: "settings/tricks/:key", element: <SettingsTrickRoute /> },
       // The System section carries the paired-device registry, so it gets the loader Settings used
       // to hold — a revoke or a pair is then the app's standard mutation shape (api call →
       // revalidate), with no second data path.

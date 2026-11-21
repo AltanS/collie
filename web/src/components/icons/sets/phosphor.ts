@@ -314,6 +314,12 @@ export const PHOSPHOR = {
   "tool-search": "magnifying-glass", // a search tool call · lucide Search
   "tool-task": "robot", // a task or subagent tool call · lucide Bot
   "tour": "compass", // the guided tour · lucide Compass
+  "trick-fact-adds": "plus-square", // what a trick adds to the app, on its details page · lucide SquarePlus
+  "trick-fact-reads": "eye", // what a trick may read or do, on its details page · lucide Eye
+  "trick-fact-runs": "timer", // when a trick runs, on its details page · lucide Timer
+  "trick-fact-shows": "layout", // where a trick shows, on its details page · lucide PanelsTopLeft
+  "trick-fact-starts": "terminal-window", // what starts a trick's program, on its details page · lucide SquareTerminal
+  "trick-fact-tokens": "coins", // why a trick uses agent tokens, on its details page · lucide Coins
   "tricks": "puzzle-piece", // Collie tricks, the small add-ons a person switches on · lucide Puzzle
   "type-into-terminal": "terminal", // type into the terminal · lucide Terminal
   "typeface": "text-aa", // the typeface setting · lucide CaseSensitive

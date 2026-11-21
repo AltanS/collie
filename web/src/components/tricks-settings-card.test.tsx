@@ -1,4 +1,4 @@
-import { act, fireEvent, render, renderHook, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, renderHook, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider } from "react-router";
@@ -18,6 +18,7 @@ import { readTrick, readTrickText } from "@/lib/tricks/wire";
 import type { JsonObject } from "@/lib/json";
 import { clearStatus, currentStatus } from "@/lib/status";
 import { server } from "@/test/setup";
+import { renderTricksPages } from "@/test/tricks-pages";
 
 // The Tricks card (M94 slice 04): absent without a tricks reply, one row per trick in a fixed shape of
 // three lines, one switch per row, and a switch that flips at once and goes back when the bridge says no.
@@ -70,6 +71,13 @@ const rowOf = (id: string) => {
   if (!(row instanceof HTMLElement)) throw new Error(`no row for ${id}`);
   return row;
 };
+
+/** The details page that is drawn (routes/settings-trick.tsx). */
+function detailPage(): HTMLElement {
+  const el = document.querySelector<HTMLElement>('[data-slot="trick-detail"]');
+  if (el === null) throw new Error("no details page");
+  return el;
+}
 
 /** A row once the card drew its rows: they wait for the official list's first answer. */
 async function findRow(id: string): Promise<HTMLElement> {
@@ -275,13 +283,13 @@ describe("TricksSettingsCard: Uses agent tokens (2026-11-12)", () => {
     // A program trick whose last run listed Decisions but declares no reply, and a plain one: no chip.
     expect(chip("tracker")).toBeNull();
     expect(chip("legs")).toBeNull();
-    // The name, then the labels as one group that wraps under the name rather than cut it; the open button
+    // The name, then the labels as one group that wraps under the name rather than cut it; the open link
     // keeps the name it always had.
     const button = rowOf("inbox").querySelector('[data-slot="trick-about"]');
     expect(button?.className).toContain("flex-wrap");
     expect([...(button?.children ?? [])].map((el) => el.getAttribute("data-slot"))).toEqual(["row-name", "row-labels"]);
     expect([...(button?.lastElementChild?.children ?? [])].map((el) => el.getAttribute("data-slot"))).toEqual(["trick-origin", "token-use"]);
-    expect(within(rowOf("inbox")).getByRole("button", { name: "About PR Inbox" })).toBe(button);
+    expect(within(rowOf("inbox")).getByRole("link", { name: "About PR Inbox" })).toBe(button);
   });
 });
 
@@ -314,8 +322,9 @@ describe("TricksSettingsCard: the warnings before the switch (review 15)", () =>
     expect(onSwitch).toHaveBeenCalledTimes(1);
     expect(onSwitch).toHaveBeenCalledWith("lodge", "tracker", true);
     expect(screen.getByRole("switch", { name: "Tracker" })).toBeChecked();
-    // The buttons on the card are the names, which open an About sheet, and the last row's "Add from a repository". The Hill has no row here any more.
-    expect(screen.getAllByRole("button").map((b) => b.getAttribute("data-slot"))).toEqual(["trick-about", "repo-add-open"]);
+    // The one button on the card is the last row's "Add from a repository"; the name is a link to the details page. The Hill has no row here any more.
+    expect(screen.getAllByRole("button").map((b) => b.getAttribute("data-slot"))).toEqual(["repo-add-open"]);
+    expect(screen.getAllByRole("link").map((b) => b.getAttribute("data-slot"))).toEqual(["trick-about"]);
   });
 
   it("shows them for a changed trick that is on, and the bridge's own words for a kind it does not know", async () => {
@@ -634,7 +643,8 @@ describe("a new version waits", () => {
     await screen.findByText("Browser leg");
     expect(rowOf("legs").querySelector('[data-line="slot"]')).toHaveTextContent("A new version waits for your yes.");
     expect(rowOf("tracker").querySelector('[data-line="slot"]')).not.toHaveTextContent("A new version waits");
-    expect(within(rowOf("legs")).getAllByRole("button").map((b) => b.getAttribute("data-slot"))).toEqual(["trick-about"]);
+    expect(within(rowOf("legs")).queryAllByRole("button")).toEqual([]);
+    expect(within(rowOf("legs")).getAllByRole("link").map((b) => b.getAttribute("data-slot"))).toEqual(["trick-about"]);
   });
 
   // The slot line is a button when the phone holds the version's card. It once carried `truncate` (overflow:
@@ -695,7 +705,7 @@ describe("take changes without asking, and undo an automatic change (crew slice 
     return render(<RouterProvider router={router} />);
   }
 
-  it("draws no auto switch and no hint on the card, for a trick that is on or off: the switch lives in the About sheet", async () => {
+  it("draws no auto switch and no hint on the card, for a trick that is on or off: the switch lives on the details page", async () => {
     renderWith(await storeWith([{ ...LEGS, auto: false }, TRACKER]), {});
     await screen.findByText("Browser leg");
     expect(screen.queryByText("Take changes without asking")).toBeNull();
@@ -706,12 +716,12 @@ describe("take changes without asking, and undo an automatic change (crew slice 
     expect(rowOf("legs").querySelector('[data-line="auto-at"]')).toBeNull();
   });
 
-  it("posts the new position from the sheet, flips at once, and goes back with a status line when the bridge refuses", async () => {
+  it("posts the new position from the details page, flips at once, and goes back with a status line when the bridge refuses", async () => {
     const user = userEvent.setup();
     const onAuto = vi.fn(async (_host: string, _id: string, on: boolean) => ({ ...LEGS, auto: on }));
-    renderWith(await storeWith([LEGS]), { onAuto });
-    await user.click(await screen.findByRole("button", { name: "About Browser leg" }));
-    const sw = () => within(screen.getByRole("dialog")).getByRole("switch", { name: "Take changes without asking" });
+    renderTricksPages({ store: await storeWith([LEGS]), card: { now: NOW, onOfficialList: NO_OFFICIAL }, page: { onAuto, onOfficialList: NO_OFFICIAL } });
+    await user.click(await screen.findByRole("link", { name: "About Browser leg" }));
+    const sw = () => within(detailPage()).getByRole("switch", { name: "Take changes without asking" });
     await user.click(sw());
     expect(onAuto).toHaveBeenCalledWith("lodge", "legs", true);
     expect(sw()).toBeChecked();
@@ -817,7 +827,7 @@ describe("the auto and undo calls (crew slice 3)", () => {
   });
 });
 
-describe("TricksSettingsCard: a trick's About sheet", () => {
+describe("TricksSettingsCard: a trick's details page (its About sheet until 2026-11-21)", () => {
   const TOLD: WireTrickInfo = { ...LEGS, description: "Shows the browser leg.", about: "First paragraph.\n\nSecond paragraph." };
 
   it("draws the description under the name, and no line for a trick without one", async () => {
@@ -827,9 +837,9 @@ describe("TricksSettingsCard: a trick's About sheet", () => {
     expect(rowOf("tracker").querySelector('[data-line="description"]')).toBeNull();
   });
 
-  it("gives the name a muted chevron inside the button, hidden from assistive tech, and the description the places line's muted style", async () => {
+  it("gives the name a muted chevron inside the link, hidden from assistive tech, and the description the places line's muted style", async () => {
     renderCard(await storeWith([TOLD]));
-    const button = await screen.findByRole("button", { name: "About Browser leg" });
+    const button = await screen.findByRole("link", { name: "About Browser leg" });
     const glyph = button.querySelector("svg");
     expect(glyph).not.toBeNull();
     expect(glyph?.getAttribute("aria-hidden")).toBe("true");
@@ -843,30 +853,34 @@ describe("TricksSettingsCard: a trick's About sheet", () => {
     expect(rowOf("legs").querySelector('[data-line="places"]')?.className).toContain("text-muted-foreground");
   });
 
-  it("opens the sheet from the name, and the switch stays its own tap target", async () => {
+  it("opens the details page from the name, and the switch stays its own tap target; Back comes up to the list", async () => {
     const user = userEvent.setup();
     const onSwitch = vi.fn(async (_host: string, _id: string, on: boolean) => ({ ...TOLD, on, state: "ok" as const }));
-    renderCard(await storeWith([TOLD]), onSwitch);
+    const router = renderTricksPages({ store: await storeWith([TOLD]), card: { now: NOW, onOfficialList: NO_OFFICIAL, onSwitch }, page: { onOfficialList: NO_OFFICIAL } });
     await user.click(await screen.findByRole("switch", { name: "Browser leg" }));
     expect(onSwitch).toHaveBeenCalledTimes(1);
-    expect(screen.queryByRole("dialog")).toBeNull();
-    await user.click(screen.getByRole("button", { name: "About Browser leg" }));
-    const dialog = screen.getByRole("dialog", { name: "Browser leg" });
-    expect(within(dialog).getByText("First paragraph.")).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe("/settings/tricks");
+    const link = screen.getByRole("link", { name: "About Browser leg" });
+    expect(link.getAttribute("href")).toBe("/settings/tricks/lodge%3Alegs");
+    await user.click(link);
+    expect(router.state.location.pathname).toBe("/settings/tricks/lodge%3Alegs");
+    expect(within(detailPage()).getByText("First paragraph.")).toBeInTheDocument();
     expect(onSwitch).toHaveBeenCalledTimes(1);
-    await user.click(within(dialog).getByRole("button", { name: "Close" }));
-    expect(screen.queryByRole("dialog")).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Back" }));
+    await vi.waitFor(() => expect(router.state.location.pathname).toBe("/settings/tricks"));
+    expect(document.querySelector('[data-slot="trick-detail"]')).toBeNull();
   });
 
   // The whole row opens the sheet (2026-11-12). jsdom lays nothing out, so a tap on a line cannot be
   // aimed here: this holds the structure the real engine needs, and e2e/tricks-row-taps.spec.ts aims the
   // taps (elementFromPoint) in Chromium.
-  it("makes the whole row the About button's reach: one button, a stretched layer, and the switch above it as a sibling", async () => {
+  it("makes the whole row the About link's reach: one link, a stretched layer, and the switch above it as a sibling", async () => {
     renderCard(await storeWith([TOLD]));
     const row = await findRow("legs");
-    const button = within(row).getByRole("button", { name: "About Browser leg" });
+    const button = within(row).getByRole("link", { name: "About Browser leg" });
     // One open action, with the name it always had, and no control inside another.
-    expect(within(row).getAllByRole("button").map((b) => b.getAttribute("data-slot"))).toEqual(["trick-about"]);
+    expect(within(row).getAllByRole("link").map((b) => b.getAttribute("data-slot"))).toEqual(["trick-about"]);
+    expect(within(row).queryAllByRole("button")).toEqual([]);
     expect(button.querySelector("button, [role='switch']")).toBeNull();
     const toggle = within(row).getByRole("switch", { name: "Browser leg" });
     expect(button.contains(toggle)).toBe(false);
@@ -880,11 +894,11 @@ describe("TricksSettingsCard: a trick's About sheet", () => {
     for (const line of ["description", "places", "slot"]) {
       const el = row.querySelector(`[data-line="${line}"]`);
       expect(el, line).not.toBeNull();
-      expect(el?.closest("button"), line).toBeNull();
+      expect(el?.closest("button, a"), line).toBeNull();
     }
   });
 
-  it("toggles on a tap on the switch and opens no sheet; the name opens it", async () => {
+  it("toggles on a tap on the switch and opens no page; the name opens it", async () => {
     const user = userEvent.setup();
     const onSwitch = vi.fn(async (_host: string, _id: string, on: boolean) => ({ ...TOLD, on, state: "ok" as const }));
     renderCard(await storeWith([{ ...TOLD, on: false, state: "off" }]), onSwitch);
@@ -893,11 +907,15 @@ describe("TricksSettingsCard: a trick's About sheet", () => {
     expect(onSwitch).toHaveBeenCalledTimes(1);
     expect(onSwitch.mock.calls[0]?.[2]).toBe(true);
     expect(toggle).toBeChecked();
-    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(document.querySelector('[data-slot="trick-detail"]')).toBeNull();
   });
 
-  describe("the Updates switch in the sheet", () => {
-    const sheetSwitch = () => within(screen.getByRole("dialog")).getByRole("switch", { name: "Take changes without asking" });
+  describe("the Updates switch on the details page", () => {
+    const sheetSwitch = () => within(detailPage()).getByRole("switch", { name: "Take changes without asking" });
+    const openPage = async (trick: WireTrickInfo) => {
+      renderTricksPages({ store: await storeWith([trick]), card: { now: NOW, onOfficialList: NO_OFFICIAL }, page: { onOfficialList: NO_OFFICIAL } });
+      await userEvent.setup().click(await screen.findByRole("link", { name: "About Browser leg" }));
+    };
 
     it("holds the position the sheet's switch was flipped to, while the write is in flight and after", async () => {
       const user = userEvent.setup();
@@ -910,8 +928,10 @@ describe("TricksSettingsCard: a trick's About sheet", () => {
         }),
       );
       renderCard(await storeWith([TOLD]));
-      await user.click(await screen.findByRole("button", { name: "About Browser leg" }));
+      await screen.findByRole("link", { name: "About Browser leg" });
       expect(within(rowOf("legs")).queryByText("Take changes without asking")).toBeNull();
+      cleanup();
+      await openPage(TOLD);
       expect(sheetSwitch()).not.toBeChecked();
       await user.click(sheetSwitch());
       await vi.waitFor(() => expect(onAutoPost).toHaveBeenCalledWith(true));
@@ -921,20 +941,18 @@ describe("TricksSettingsCard: a trick's About sheet", () => {
     it("goes back and says it in the status line when the write fails, as the trick's own switch does", async () => {
       const user = userEvent.setup();
       server.use(http.post("/api/tricks/:host/:id/auto", () => HttpResponse.json({ error: "no" }, { status: 500 })));
-      renderCard(await storeWith([TOLD]));
-      await user.click(await screen.findByRole("button", { name: "About Browser leg" }));
+      await openPage(TOLD);
       await user.click(sheetSwitch());
       await vi.waitFor(() => expect(currentStatus()?.text).toBe("Could not change Browser leg. Try again."));
       expect(sheetSwitch()).not.toBeChecked();
     });
 
-    it("is not in the sheet of a trick that is off", async () => {
-      const user = userEvent.setup();
-      renderCard(await storeWith([{ ...TOLD, on: false, state: "off" }]));
-      await user.click(await screen.findByRole("button", { name: "About Browser leg" }));
-      const dialog = screen.getByRole("dialog");
+    it("is not on the page of a trick that is off", async () => {
+      await openPage({ ...TOLD, on: false, state: "off" });
+      const dialog = detailPage();
       expect(within(dialog).queryByText("Updates")).toBeNull();
-      expect(within(dialog).queryByRole("switch")).toBeNull();
+      // The trick's own switch in the head is the only one.
+      expect(within(dialog).getAllByRole("switch").map((sw) => sw.getAttribute("aria-label"))).toEqual(["Browser leg"]);
     });
   });
 
@@ -1151,13 +1169,17 @@ describe("tricks switched off as a whole", () => {
     expect(screen.getByRole("switch", { name: "Browser leg" })).toBeDisabled();
   });
 
-  it("the About sheet still opens, and its take-changes switch is disabled", async () => {
-    const store = await storeWith([AUTO]);
-    renderOff(store, undefined, true);
+  it("the details page still opens, and its take-changes switch and the trick's own switch are disabled", async () => {
+    // The reply's off: the snapshot's own `tricksOff` sends both pages to Settings, Experiments (settings-trick.test.tsx).
+    const reply: TricksReply = { rev: 5, tricks: [AUTO], parts: [], present: [], off: true };
+    const store = createTricksStore({ fetchTricks: async () => reply, tapTrick: async () => Promise.reject(new Error("no tap")), mintRequestId: () => "r" });
+    await store.syncTricks(5);
+    renderTricksPages({ store, card: { now: NOW, onOfficialList: NO_OFFICIAL }, page: { onOfficialList: NO_OFFICIAL } });
     const row = await findRow("legs");
-    await userEvent.click(within(row).getByRole("button", { name: /Browser leg/ }));
+    await userEvent.click(within(row).getByRole("link", { name: /Browser leg/ }));
     const auto = await screen.findByRole("switch", { name: "Take changes without asking" });
     expect(auto).toBeDisabled();
+    expect(within(detailPage()).getByRole("switch", { name: "Browser leg" })).toBeDisabled();
   });
 
   it("Add is disabled on an official entry", async () => {
@@ -1182,11 +1204,9 @@ describe("TricksSettingsCard: one request id per settings edit (review G, point 
       return WITH_FIELDS;
     });
     const store = await storeWith([WITH_FIELDS]);
-    const router = createMemoryRouter([{ id: ROOT_ROUTE_ID, path: "/", element: <TricksSettingsCard store={store} now={NOW} onOfficialList={NO_OFFICIAL} onSetValue={onSetValue} /> }], { initialEntries: ["/"] });
-    render(<RouterProvider router={router} />);
-    await user.click(await screen.findByRole("button", { name: "About Browser leg" }));
-    const dialog = screen.getByRole("dialog", { name: "Browser leg" });
-    const box = within(dialog).getByLabelText(/Repository/);
+    renderTricksPages({ store, card: { now: NOW, onOfficialList: NO_OFFICIAL }, page: { onOfficialList: NO_OFFICIAL, onSetValue } });
+    await user.click(await screen.findByRole("link", { name: "About Browser leg" }));
+    const box = within(detailPage()).getByLabelText(/Repository/);
     // The write fails and the box goes back to the saved text: the same value typed again is a retry of the same edit.
     await user.type(box, "lodge/workshop");
     await user.tab();
@@ -1214,10 +1234,9 @@ describe("TricksSettingsCard: one request id per settings edit (review G, point 
         return WITH_FIELDS;
       });
       const store = await storeWith([WITH_FIELDS]);
-      const router = createMemoryRouter([{ id: ROOT_ROUTE_ID, path: "/", element: <TricksSettingsCard store={store} now={NOW} onOfficialList={NO_OFFICIAL} onSetValue={onSetValue} /> }], { initialEntries: ["/"] });
-      render(<RouterProvider router={router} />);
-      await user.click(await screen.findByRole("button", { name: "About Browser leg" }));
-      await user.type(within(screen.getByRole("dialog", { name: "Browser leg" })).getByLabelText(/Repository/), "lodge/workshop");
+      renderTricksPages({ store, card: { now: NOW, onOfficialList: NO_OFFICIAL }, page: { onOfficialList: NO_OFFICIAL, onSetValue } });
+      await user.click(await screen.findByRole("link", { name: "About Browser leg" }));
+      await user.type(within(detailPage()).getByLabelText(/Repository/), "lodge/workshop");
       await user.tab();
       expect(rids).toHaveLength(1);
       expect(rids[0]).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u);

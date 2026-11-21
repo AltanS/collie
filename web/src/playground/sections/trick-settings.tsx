@@ -13,7 +13,7 @@ import { SettingsPage } from "@/components/settings-page";
 import { StatusArea } from "@/components/status-area";
 import { TrickCardsLineView, TrickCardsWaitingList } from "@/components/trick-cards";
 import { HILL_IDLE } from "@/hooks/use-hill-answer";
-import { OfficialTrickAboutSheet, TrickAboutSheet } from "@/components/trick-about-sheet";
+import { OfficialTrickDetail, TrickDetail } from "@/components/trick-detail";
 import { RepoAddSheet } from "@/components/tricks-repo-sheet";
 import { TricksSettingsCard } from "@/components/tricks-settings-card";
 import { HillSwitchCard } from "@/components/hill-switch-card";
@@ -150,8 +150,8 @@ function ListCard({ n, state, label, tricks, readOnly, hillOff, tricksOff, gate 
   );
 }
 
-// A trick's About sheet. The sheet is a fixed overlay, so each case sits in a 390 by 844 box (a phone) that is its own
-// containing block (`transform`) and its own viewport height (`--app-h`): the sheet opens inside the box.
+// A trick's details page (its About sheet until 2026-11-21). Each case sits in a 390 by 844 box (a phone) that
+// scrolls, as the page's column does.
 
 const ABOUT_TWO_PARAGRAPHS = [
   "Release Gates shows which release checks are green for the release branch you are on, one line for each check.",
@@ -190,7 +190,7 @@ function valueStandIn(tricks: WireTrickInfo[]) {
   };
 }
 
-/** The About sheet's settings write in the playground: takes after a moment. */
+/** The details page's settings write in the playground: takes after a moment. */
 async function valueSaver(): Promise<string | null> {
   await new Promise((resolve) => setTimeout(resolve, 400));
   return null;
@@ -209,18 +209,16 @@ const FIELDS_TRICK: WireTrickInfo = trick("gates", "Release Gates", {
   needsSetup: true,
 });
 
+/** A trick's details page in a phone box: the page's column, scrolling, with its own switch and Updates switch held here. */
 function SheetBox({ n, state, label, trick: info, updates = false, values = false, readCode }: { n: number; state: string; label: string; trick: WireTrickInfo; updates?: boolean; values?: boolean; readCode?: TrickCodeReader }) {
-  const [open, setOpen] = useState(true);
-  // The Updates switch of a trick that is on: flips at once, as the card holds it.
+  // The trick's switch and the Updates switch: each flips at once, as the route holds them.
+  const [on, setOn] = useState(info.on);
   const [auto, setAuto] = useState(info.auto === true);
-  const style: CSSProperties & { "--app-h"?: string } = { width: 390, height: 844, transform: "translate(0)", "--app-h": "844px" };
+  const style: CSSProperties = { width: 390, height: 844 };
   return (
     <Card state={state} label={`${n} · ${label}`}>
-      <div data-pg-frame="" className="relative isolate overflow-hidden rounded-xl border border-border bg-background" style={style}>
-        <button type="button" className="m-4 min-h-11 text-sm underline" onClick={() => setOpen(true)}>
-          About {info.name}
-        </button>
-        <TrickAboutSheet trick={info} open={open} onClose={() => setOpen(false)} auto={auto} onAuto={updates ? setAuto : undefined} onValue={values ? valueSaver : undefined} readCode={readCode} />
+      <div data-pg-frame="" className="max-w-full overflow-y-auto rounded-xl border border-border bg-background p-4" style={style}>
+        <TrickDetail trick={info} checked={on} onFlip={setOn} auto={auto} onAuto={updates ? setAuto : undefined} onValue={values ? valueSaver : undefined} readCode={readCode} />
       </div>
     </Card>
   );
@@ -354,16 +352,13 @@ function OfficialCard({ n, state, label, tricks, entries, answer = "lands" }: { 
   );
 }
 
+/** An official entry's details page before Add, in a phone box. */
 function OfficialSheetBox({ n, state, label, entry }: { n: number; state: string; label: string; entry: WireOfficialTrick }) {
-  const [open, setOpen] = useState(true);
-  const style: CSSProperties & { "--app-h"?: string } = { width: 390, height: 844, transform: "translate(0)", "--app-h": "844px" };
+  const style: CSSProperties = { width: 390, height: 844 };
   return (
     <Card state={state} label={`${n} · ${label}`}>
-      <div data-pg-frame="" className="relative isolate overflow-hidden rounded-xl border border-border bg-background" style={style}>
-        <button type="button" className="m-4 min-h-11 text-sm underline" onClick={() => setOpen(true)}>
-          About {entry.name}
-        </button>
-        <OfficialTrickAboutSheet entry={entry} open={open} onClose={() => setOpen(false)} busy={false} canWrite onAdd={() => setOpen(false)} />
+      <div data-pg-frame="" className="max-w-full overflow-y-auto rounded-xl border border-border bg-background p-4" style={style}>
+        <OfficialTrickDetail entry={entry} busy={false} canWrite onAdd={() => {}} />
       </div>
     </Card>
   );
@@ -553,7 +548,7 @@ export function TrickSettingsSection(): ReactNode {
           ]}
         />
       </Group>
-      <Group title="The About sheet">
+      <Group title="The details page">
         <ListCard
           n={12}
           state="trick-settings-about-card"

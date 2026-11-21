@@ -1,4 +1,4 @@
-// THE WORDS OF A TRICK'S SCHEDULE AND OF A MARK IN ITS CODE, for the About sheet (components/trick-about-sheet.tsx,
+// THE WORDS OF A TRICK'S SCHEDULE AND OF A MARK IN ITS CODE, for the details page (components/trick-detail.tsx,
 // components/trick-code-folds.tsx). Pure: the phone's own words and the numbers the bridge sends.
 
 import { t, type MessageKey } from "@/lib/i18n";

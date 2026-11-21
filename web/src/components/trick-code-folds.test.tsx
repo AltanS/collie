@@ -2,7 +2,7 @@ import { cleanup, render, screen, waitFor, within } from "@testing-library/react
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { TrickAboutSheet } from "@/components/trick-about-sheet";
+import { TrickDetail } from "@/components/trick-detail";
 import { CodeFailure, type TrickCodeReader } from "@/components/trick-code-folds";
 import { readCodeFile, readCodeIndex, type WireCodeFile, type WireCodeIndex } from "@/lib/tricks/code-wire";
 import { markWord, spanWords, timerLine } from "@/lib/tricks/code-words";
@@ -10,7 +10,7 @@ import { WATCH_WINDOW_MS } from "@/lib/tricks/limits";
 import { TRICK_WARNING_KINDS, type WireTrickInfo } from "@/lib/tricks/schema";
 import { readTrick } from "@/lib/tricks/wire";
 
-// "Read the code" in a trick's About sheet: one fold for each file, one tap to open, the code wrapped and never
+// "Read the code" on a trick's details page: one fold for each file, one tap to open, the code wrapped and never
 // sideways, a mark with a word on each flagged line, and the run line and the timer in plain words.
 
 afterEach(cleanup);
@@ -56,7 +56,7 @@ function reader(over: Partial<TrickCodeReader> = {}) {
 }
 
 function open(trick: WireTrickInfo, r: TrickCodeReader | undefined) {
-  return render(<TrickAboutSheet trick={trick} open onClose={vi.fn()} readCode={r} />);
+  return render(<TrickDetail trick={trick} readCode={r} />);
 }
 
 const toggleOf = (name: string) => screen.getByRole("button", { name: new RegExp(`^${name.replace(".", "\\.")}`, "u") });
@@ -64,7 +64,7 @@ const toggleOf = (name: string) => screen.getByRole("button", { name: new RegExp
 describe("the folds", () => {
   it("draws no section without a reader, and one fold row for each text file with a reader", async () => {
     const { unmount } = open(TRICK, undefined);
-    expect(screen.getByRole("dialog").querySelector('[data-section="code"]')).toBeNull();
+    expect(document.querySelector<HTMLElement>('[data-slot="trick-detail"]')!.querySelector('[data-section="code"]')).toBeNull();
     unmount();
     const r = reader();
     open(TRICK, r.reader);
@@ -121,7 +121,7 @@ describe("the folds", () => {
     await screen.findByRole("list", { name: "Read the code" });
     await user.click(toggleOf("legs.sh"));
     await screen.findByText("#!/bin/sh");
-    const block = screen.getByRole("dialog").querySelector('[data-slot="trick-code-lines"]');
+    const block = document.querySelector<HTMLElement>('[data-slot="trick-detail"]')!.querySelector('[data-slot="trick-code-lines"]');
     expect(block?.className).toContain("font-mono");
     expect(block?.outerHTML).not.toContain("overflow-x-auto");
     expect(block?.outerHTML).not.toContain("whitespace-pre ");
@@ -139,7 +139,7 @@ describe("the folds", () => {
     await screen.findByRole("list", { name: "Read the code" });
     await user.click(toggleOf("legs.sh"));
     await screen.findByText("#!/bin/sh");
-    const dialog = screen.getByRole("dialog");
+    const dialog = document.querySelector<HTMLElement>('[data-slot="trick-detail"]')!;
     const flagged = dialog.querySelectorAll("[data-code-line][data-flagged]");
     expect([...flagged].map((li) => li.getAttribute("data-code-line"))).toEqual(["2"]);
     const marks = flagged[0]?.querySelector("[data-code-marks]");
@@ -157,7 +157,7 @@ describe("the folds", () => {
   it("says once that the marks are a text search and that code can hide more", async () => {
     open(TRICK, reader().reader);
     await screen.findByRole("list", { name: "Read the code" });
-    const notes = screen.getByRole("dialog").querySelectorAll('[data-line="code-note"]');
+    const notes = document.querySelector<HTMLElement>('[data-slot="trick-detail"]')!.querySelectorAll('[data-line="code-note"]');
     expect(notes.length).toBe(1);
     expect(notes[0]).toHaveTextContent("The marks come from a text search. It is not a proof: code can hide more than a search finds. Docs, data and tests are not searched.");
   });
@@ -166,7 +166,7 @@ describe("the folds", () => {
     const r = reader();
     open(TRICK, r.reader);
     await screen.findByRole("list", { name: "Read the code" });
-    const row = screen.getByRole("dialog").querySelector('li[data-code-file="tool.bin"]');
+    const row = document.querySelector<HTMLElement>('[data-slot="trick-detail"]')!.querySelector('li[data-code-file="tool.bin"]');
     expect(row?.hasAttribute("data-binary")).toBe(true);
     expect(row?.querySelector("button")).toBeNull();
     expect(row).toHaveTextContent("51 KB");
@@ -185,26 +185,26 @@ describe("the folds", () => {
     expect(screen.getByText("Masked lines: 3. A key or a hidden character shows as dots or ?.")).toBeInTheDocument();
   });
 
-  it("says a failed read in a muted line, for the index and for a file, and the rest of the sheet stays", async () => {
+  it("says a failed read in a muted line, for the index and for a file, and the rest of the page stays", async () => {
     const user = userEvent.setup();
     const { unmount } = open(TRICK, reader({ index: async () => Promise.reject(new CodeFailure("otherMachine")) }).reader);
     expect(await screen.findByText("This trick is on another machine. Its code is not shown here.")).toBeInTheDocument();
     expect(screen.getByRole("list", { name: "What it does" })).toBeInTheDocument();
     unmount();
     open(TRICK, reader({ index: async () => Promise.reject(new Error("boom")) }).reader);
-    expect(await screen.findByText("The code could not be read. Close this sheet and open it again.")).toBeInTheDocument();
+    expect(await screen.findByText("The code could not be read. Go back and open this page again.")).toBeInTheDocument();
     cleanup();
     open(TRICK, reader({ file: async () => Promise.reject(new CodeFailure("moved")) }).reader);
     await screen.findByRole("list", { name: "Read the code" });
     await user.click(toggleOf("legs.sh"));
-    expect(await screen.findByText("The code changed while it was read. Close this sheet and open it again.")).toBeInTheDocument();
+    expect(await screen.findByText("The code changed while it was read. Go back and open this page again.")).toBeInTheDocument();
   });
 
   it("asks for the index again when the row moves under an open sheet", async () => {
     const r = reader();
     const { rerender } = open(TRICK, r.reader);
     await screen.findByRole("list", { name: "Read the code" });
-    rerender(<TrickAboutSheet trick={{ ...TRICK, on: false, state: "off" }} open onClose={vi.fn()} readCode={r.reader} />);
+    rerender(<TrickDetail trick={{ ...TRICK, on: false, state: "off" }} readCode={r.reader} />);
     await waitFor(() => expect(r.index).toHaveBeenCalledTimes(2));
   });
 });
@@ -231,11 +231,11 @@ describe("the run line and the timer", () => {
 
   it("says a trick with no timer runs once and on a tap, and a trick with no program has neither row", () => {
     const { unmount } = open({ ...TRICK, everyMs: undefined }, undefined);
-    expect(screen.getByRole("dialog").querySelector('[data-line="timer"]')).toHaveTextContent("Runs once when it starts, and when you tap it. It has no timer.");
+    expect(document.querySelector<HTMLElement>('[data-slot="trick-detail"]')!.querySelector('[data-line="timer"]')).toHaveTextContent("Runs once when it starts, and when you tap it. It has no timer.");
     unmount();
     open({ ...TRICK, run: undefined, everyMs: undefined }, undefined);
-    expect(screen.getByRole("dialog").querySelector('[data-line="run"]')).toBeNull();
-    expect(screen.getByRole("dialog").querySelector('[data-line="timer"]')).toBeNull();
+    expect(document.querySelector<HTMLElement>('[data-slot="trick-detail"]')!.querySelector('[data-line="run"]')).toBeNull();
+    expect(document.querySelector<HTMLElement>('[data-slot="trick-detail"]')!.querySelector('[data-line="timer"]')).toBeNull();
   });
 
   it("names the spans in the unit a person reads, and the watch window is the bridge's number", () => {
