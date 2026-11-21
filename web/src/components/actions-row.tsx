@@ -321,6 +321,9 @@ const PINNED_MARK_BADGE = "pointer-events-none absolute top-0.5 right-0.5 rounde
  *  trailing spacer. Altan, from his phone, 2026-09-23: "add a wider margin right to the belt content". */
 const BELT_END_AIR = 16;
 
+/** The lead-in of the pinned block that fades the pills out before the hairline: its `pl-16` and its mask's `4rem`. */
+const PINNED_FADE = "4rem";
+
 /**
  * The pinned Switch block's own width, read off its DOM node — the trailing spacer's width must
  * equal this exactly, or the last pill either stops short of the hairline (spacer too wide) or
@@ -775,8 +778,12 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, durable, sto
         wheel
         drag
         arrows={{
-          left: pinned && left ? switchInset : 0,
-          right: pinned && !left ? switchInset : 0,
+          // The pinned block's own width runs under its fade (`pl-16`, 4rem: the lead-in that fades the pills out),
+          // and the scroller's visible edge is where that fade ends, at the hairline. The arrow stands there, so its
+          // side touches the edge and the fade lies under it; measured from the block's outer edge it floated 4rem
+          // (and 4px) inside the strip.
+          left: pinned && left ? `calc(${switchInset}px - ${PINNED_FADE})` : "0px",
+          right: pinned && !left ? `calc(${switchInset}px - ${PINNED_FADE})` : "0px",
           leftLabel: translate("belt.scroll.left"),
           rightLabel: translate("belt.scroll.right"),
         }}
@@ -937,6 +944,11 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, durable, sto
               left
                 ? "[mask-image:linear-gradient(to_left,transparent,black_4rem)]"
                 : "[mask-image:linear-gradient(to_right,transparent,black_4rem)]",
+              // While a mouse's arrow stands on this end the fade is done by the arrow's far side (2.5rem), so the
+              // pills under the arrow are fully hidden and a label is never cut by its round edge.
+              left
+                ? "[[data-slot=composer-actions]:has([data-slot=scroll-arrow][data-side=left])_&]:[mask-image:linear-gradient(to_left,transparent,black_2.5rem)]"
+                : "[[data-slot=composer-actions]:has([data-slot=scroll-arrow][data-side=right])_&]:[mask-image:linear-gradient(to_right,transparent,black_2.5rem)]",
             )}
           >
             <span className="absolute inset-0 bg-chrome" />

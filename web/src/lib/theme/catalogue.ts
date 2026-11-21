@@ -292,7 +292,7 @@ const TOKEN_WORDS = {
   "pane-active": { group: "Optional", what: "The frame of the active pane column on a large screen. A half that leaves it out takes the ink of the theme Collie." },
   "tab-active": { group: "Optional", what: "The top edge of the open tab and the ring of the open pane, when the theme sets `tabs` to `folder`. A half that leaves it out takes its own text colour." },
   "surface-recess": { group: "Optional", what: "On a large screen, the ground of the sidebar and the tab strip: one step below the page. A half that leaves it out takes the page, 0.05 darker." },
-  "surface-paper": { group: "Optional", what: "On a large screen, the ground of the pane you are working in: the lightest surface on the screen. A half that leaves it out takes the card, 0.05 lighter." },
+  "surface-paper": { group: "Optional", what: "On a large screen, the ground of the pane you are working in: the lightest surface on the screen. A half that leaves it out takes, in light, the card 0.05 lighter, and in dark, the point halfway between the page and the card 0.05 lighter." },
   find: { group: "Optional", what: "The ground under a found or matched piece of text: a hit of Find in Chat, and the marked letters of the session filter. Give it an alpha, because it lies over the surface under the text and the text keeps its own colour. A half that leaves it out takes the amber of the theme Collie." },
 } as const satisfies { readonly [K in AnyThemeToken]: { readonly group: TokenGroup; readonly what: string } };
 
@@ -302,8 +302,8 @@ export const TOKENS: readonly TokenEntry[] = ALL_THEME_TOKENS.map((token) => ({
   group: TOKEN_WORDS[token].group,
   optional: OPTIONAL_THEME_TOKENS.some((name) => name === token),
   what: TOKEN_WORDS[token].what,
-  light: isDerivedThemeToken(token) ? DERIVED_THEME_TOKENS[token] : collieFile.light[token],
-  dark: isDerivedThemeToken(token) ? DERIVED_THEME_TOKENS[token] : collieFile.dark[token],
+  light: isDerivedThemeToken(token) ? DERIVED_THEME_TOKENS[token].light : collieFile.light[token],
+  dark: isDerivedThemeToken(token) ? DERIVED_THEME_TOKENS[token].dark : collieFile.dark[token],
 }));
 
 // ── Shape words ──────────────────────────────────────────────────────────────────────────────

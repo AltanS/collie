@@ -308,16 +308,19 @@ export function PaneColumnBody({
  * Each plane re-points the grounds its children already read, so the pane's own header (`bg-band-ground`),
  * its bottom block (`bg-chrome`) and the status marks backed with those grounds follow the plane, and the
  * phone, which never draws a column frame, keeps its own. On the paper the inert fill (`--muted`) is the
- * page: a run of tool steps, a code block and the reply box are set into the paper in the page's tone.
+ * page: a run of tool steps, a code block and the reply box are set into the paper in the page's tone. On
+ * the page, in dark, it is the paper (light keeps the theme's own), so those fills lean toward the focused column and never outshine it: in dark
+ * the paper is only a small lift over the page (index.css), and a theme's own `--muted` stood above it on a
+ * black page (Nightwatch), so a column without focus drew a Belt and a reply box lighter than the focus.
  *
  * Inside both planes: the Belt takes ONE tint, `--muted` at 20% over its ground, which sits between the
- * ground and the reply box (`--muted` at 40%) and so is never lighter than the paper; its brand wash is a
+ * ground and the reply box (`--muted` at 40%), both short of the other plane, so never lighter than the paper; its brand wash is a
  * phone look and is dropped here. The reading area's top rule is not drawn: the header above already
  * closes that seam (§4, "A boundary is drawn once"), 4px higher.
  */
 export const PAPER_PLANE =
   "bg-surface-paper [--band-ground:var(--surface-paper)] [--chrome:var(--surface-paper)] [--muted:var(--background)]";
-export const PAGE_PLANE = "bg-background [--band-ground:var(--background)] [--chrome:var(--background)]";
+export const PAGE_PLANE = "bg-background [--band-ground:var(--background)] [--chrome:var(--background)] dark:[--muted:var(--surface-paper)]";
 const IN_EITHER_PLANE =
   "[&_[data-slot=composer-actions]]:bg-muted/20 [&_[data-slot=belt-track]]:bg-transparent [&_[data-slot=pane-reading]]:border-t-transparent";
 
