@@ -430,12 +430,14 @@
      one (optional, schema version 3) and need not.
        recess: the page's own lightness minus 0.05. A page that is already black clamps at the page; then
                the paper and the focus frame carry the order alone.
-       paper:  the card, 0.05 lighter, at most white. The card alone (L 0.235 on a 0.17 page in dark) was
-               too faint a lift to read as a different surface; in light the card is white already.
+       paper:  in light, the card 0.05 lighter, at most white (the card is white already). In dark,
+               halfway between the page and the card 0.05 lighter (L 0.23 on a 0.17 page on Collie): the
+               full step (0.29) read as too bright a sheet on a desktop (2026-11-21), and the focus frame,
+               not the lift, is what marks the focus.
      Relative colour, not color-mix: no token is darker than the page in dark, so no mix can reach the
      recess. */
   --surface-recess: oklch(from var(--background) calc(l - 0.05) c h);
-  --surface-paper: oklch(from var(--card) min(1, calc(l + 0.05)) c h);
+  --surface-paper: light-dark(oklch(from var(--card) min(1, calc(l + 0.05)) c h), color-mix(in oklch, var(--background), oklch(from var(--card) calc(l + 0.05) c h)));
   /* Light is darkened off stock shadcn (0.708 → 0.62): at 0.708 the focus ring measures 2.58:1 on
      white, under the 3:1 WCAG 1.4.11 floor for a non-text indicator — and components draw it at
      `ring-ring/50`, which halves that again. On an app whose buttons type into a live shell, a focus

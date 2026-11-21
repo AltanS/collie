@@ -499,13 +499,16 @@ On a large screen the order of the surfaces says where to look. Three planes, tw
 | --- | --- | --- |
 | recess | `--surface-recess`, the page 0.05 darker | the sidebar and the rail, the tab strip of the space, the strip's own ground around the add column |
 | page | `--background` | a column without focus: its header, transcript and bottom block |
-| paper | `--surface-paper`, the card 0.05 lighter, at most white | the focused column, whole: its header, transcript, Belt and reply box; and the selected row in the sidebar |
+| paper | `--surface-paper`: in light the card 0.05 lighter, at most white; in dark halfway between the page and that | the focused column, whole: its header, transcript, Belt and reply box; and the selected row in the sidebar |
 
 **The focused pane is the lightest surface on the screen, in both halves.** Measured on Collie: recess 0.12,
-page 0.17, paper 0.29 in dark; 0.91, 0.96, 1.00 in light (OKLCH L). A column takes its plane by re-pointing
+page 0.17, paper 0.23 in dark; 0.91, 0.96, 1.00 in light (OKLCH L). The dark paper is half the step it
+could take: the full one (0.29) read as too bright a sheet on a desktop (2026-11-21). A small lift is
+enough, because the frame marks the focus. A column takes its plane by re-pointing
 the grounds its children read (`strip-column.tsx`, `columnFrame`), so the pane's own header and bottom block
 follow, and the phone, which never draws a column, keeps its look. On the paper the inert fill is the page:
-a run of tool steps, a code block and the reply box are set into the paper, never lifted off it. The Belt
+a run of tool steps, a code block and the reply box are set into the paper, never lifted off it. On the page,
+in dark, the inert fill is the paper, so a column without focus never draws a fill lighter than the focus. The Belt
 takes one tint, `--muted` at 20% over its ground, between the ground and the reply box, so it is never the
 lightest fill.
 
@@ -518,7 +521,7 @@ between two columns is a `--border`, not a `--rule`, and the rule under a pane h
 with one column in the strip too. It carries the focus where the paper cannot: the Terminal view, whose
 mirror stays dark, and a theme whose page is black, where the recess clamps to the page. The frame is
 reserved on every column, so a focus change recolours and moves nothing (§2). `e2e/wide-planes.spec.ts`
-holds the order, the frame and the still boxes in five themes.
+holds the order, the frame and the still boxes in six theme halves.
 
 ### One left edge per route
 
@@ -1096,7 +1099,7 @@ come from `light-dark()`.
 
 `find` is the third optional token (1.29.0), the ground of a found or matched piece of text: `ui/match-text.tsx`'s `<mark>`, Find in Chat's hit in the transcript and in the Markdown reader. Its value carries alpha, because it is laid over whatever the text sits on and the ink stays the caller's own. Its `:root` pair is the amber the app drew as a literal before the token existed, Tailwind 4.3.1's `amber-300` at 70% in the light half and `amber-500` at 40% in the dark half, so the default themes look as they did. It follows the rules of `tab-active` (version 3, a `:root` pair, filled from `collie` when a theme sets one half); the contrast report measures `foreground` on the token laid over `background` at 4.5:1, in a half that sets it. The three shipped themes other than `collie` leave it out and inherit the amber.
 
-`surface-recess` and `surface-paper` are the fourth and fifth optional tokens, the large screen's recess and paper (§4). Their default is not a `:root` pair but one expression derived from the theme's own `background` and `card`, so a theme gets both without naming them; the file for `collie` holds no value for them, and a theme that sets one half gets the expression in the other. A theme may set either one (version 3); the contrast report then measures `foreground` and `muted-foreground` on it at 4.5:1, in a half that sets it.
+`surface-recess` and `surface-paper` are the fourth and fifth optional tokens, the large screen's recess and paper (§4). Their default is not a `:root` pair of colours but an expression per half derived from the theme's own `background` and `card` (§4 has the steps), so a theme gets both without naming them; the file for `collie` holds no value for them, and a theme that sets one half gets the expression in the other. A theme may set either one (version 3); the contrast report then measures `foreground` and `muted-foreground` on it at 4.5:1, in a half that sets it.
 
 The name "ColliePWA" in the large screen's sidebar draws "PWA" in the muted ink at rest and in the three status tokens under a pointer or keyboard focus on the logo row: P `status-done`, W `status-working`, A `status-blocked`. The name is the brand's own drawing, the letter shapes of Aldrich as outlines (`components/collie-wordmark.tsx`, generated in collie-brand, the same file the website draws), so the face the device chose never reaches it. It is not a token of its own, and no application state may ever drive those inks.
 
