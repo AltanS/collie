@@ -9,13 +9,16 @@ The shortcuts are for a desktop browser, or a tablet with a hardware keyboard. A
 keyboard never needs them. Nothing changes for you until a key press reaches the page.
 
 The first time a key that only a hardware keyboard makes reaches the page, a small card at the top
-right says "You have a keyboard" and names the prefix. Such a key is a letter, `Ctrl`, `Alt`, `Cmd`,
-`Esc` or an F key, pressed while the on-screen keyboard is down. A phone's on-screen keyboard never
-counts. The card is gone for good once you close it, open the
-[shortcut list](terminology.md#shortcut-list) from it, or press the prefix.
+right, under the header, says "You have a keyboard". It says that Collie takes Herdr's keys, and it
+names the key for the shortcut list, the prefix and then `?`. Such a key is a letter, `Ctrl`, `Alt`,
+`Cmd`, `Esc` or an F key, pressed while the on-screen keyboard is down. A phone's on-screen keyboard
+never counts. The card has a **Show shortcuts** button and a close button. It waits while a sheet,
+the idle lock or the shortcut bar is up, and it is gone for good once you close it, open the
+[shortcut list](terminology.md#shortcut-list) from it, or press the prefix. If you unbind `help`,
+the card leaves out the sentence about the key for the list.
 
-Open the shortcut list with the prefix, then `?`. On a wide window you can also open it from
-**Settings → Device → Keyboard shortcuts**. That row shows once the device has seen such a key press.
+Open the shortcut list with the prefix, then `?`. You can also open it from
+**Settings → Keys and touch → Keyboard shortcuts**. That row shows once the device has seen such a key press.
 
 The bar and the list follow the screen you are on. On the dashboard the bar names no tab or pane
 key. The list opened with `?` shows what works here first, and ends with a section called "Not on
@@ -48,7 +51,8 @@ next. It follows the keys you set. `Esc` cancels it.
 
 While the prefix waits, each control shows its key. A small key cap sits on the corner of the Actions
 button, the Settings gear, the new-tab "+", each numbered tab, the three dots of the pane menu, the space
-arrows, the sidebar's fold button and the others that a key presses. On a control that is a bare icon in
+arrows, the New space button at the head of the dashboard's Spaces list, the sidebar's fold button
+and the others that a key presses. On a control that is a bare icon in
 a larger box, the cap stands beside the icon and touches it, never over the icon or a word. The cap shows the key you set, and nothing for an action
 with no key. A key with Shift shows as one cap, `⇧N`. It shows only on a control that you can see, and
 only where the key works on this screen. In a row of panes it shows on the focused pane. A sheet or the
@@ -56,8 +60,10 @@ Actions list that is open covers the page, and then only the controls inside it 
 
 ## Navigate mode and Resize mode
 
-A mode stays on until you press `Esc`. In Resize mode `Enter` leaves too. The bar shows its name and
-its keys.
+A mode stays on until you press `Esc`. In Resize mode `Enter` leaves too, and in Navigate mode
+`Enter` opens the row and leaves. The bar shows its name and its keys. A mode also stays on while the
+screen changes under it, and it ends when the window loses focus, or when the new screen has no key
+of the mode that can act.
 
 | Mode | Open with | Keys inside |
 | --- | --- | --- |
@@ -99,7 +105,7 @@ is written `prefix+<key>`. A key inside a mode is a bare key.
 | `open_dashboard` | `prefix+q` | Navigation | Goes to the dashboard. | - |
 | `new_space` | `prefix+shift+n` | Navigation | Opens the New page, to start a new space. | [Space](terminology.md#space) |
 | `new_agent` | - | Navigation | Opens the New page, as the New button does. | - |
-| `rename_space` | - | Navigation | Renames the space you are in, on its page, where its multiplexer takes a rename. | [Space](terminology.md#space) |
+| `rename_space` | - | Navigation | Renames the space you are in, on its page or, on a large screen, in the session view, where its multiplexer takes a rename. | [Space](terminology.md#space) |
 | `previous_space` | `prefix+k` | Navigation | Goes to the space before this one. | [Space](terminology.md#space) |
 | `next_space` | `prefix+j` | Navigation | Goes to the space after this one. | [Space](terminology.md#space) |
 | `navigate_mode` | `prefix+w` | Navigation | Opens Navigate mode. | [Navigate mode](terminology.md#navigate-mode) |
@@ -194,9 +200,10 @@ out of the composer, so it is refused. Put it behind the prefix instead, as `pre
 ## Keys the browser keeps
 
 The browser owns a few chords, and a page cannot take them: `ctrl+w`, `ctrl+t`, `ctrl+n`,
-`ctrl+tab`, `ctrl+shift+tab`, `ctrl+shift+n`, `ctrl+shift+t`, `ctrl+shift+w` and `ctrl+l`, with
-`cmd` in place of `ctrl` on a Mac. A direct binding on one of them is refused and named in the
-shortcut list. Behind the prefix they are free: `prefix+ctrl+w` works.
+`ctrl+tab`, `ctrl+shift+tab`, `ctrl+shift+n`, `ctrl+shift+t`, `ctrl+shift+w` and `ctrl+l`. On a Mac
+that is also `cmd+w`, `cmd+t`, `cmd+n`, `cmd+l`, `cmd+shift+n`, `cmd+shift+t` and `cmd+shift+w`. A
+direct binding on one of them is refused and named in the shortcut list. Behind the prefix they are
+free: `prefix+ctrl+w` works.
 
 ## Herdr names
 
@@ -231,7 +238,12 @@ which Collie name to write, or that Collie has no such action.
 
 A shortcut is a second way to reach something. It is never the only way. Each action above has a
 button, a mark or a menu entry that does the same, so you can do everything with no keyboard.
-`help` has its row in **Settings → Device**, and `shortcuts.toml` reloads by itself, so it needs
+`help` has its row in **Settings → Keys and touch**, and `shortcuts.toml` reloads by itself, so it needs
 no reload action. The actions with no default key are rows of [Actions](terminology.md#actions).
+
+One key sits outside the table. In Settings, `/` puts the cursor in the search field while no text
+field has the focus, so a person can find a setting without the pointer. It is not an action, you
+cannot rebind it, and it never fires inside a text field or a dialog. `prefix+/` stays the `find` action
+of the terminal view.
 
 See also [Configure](configure.md#keyboard-shortcuts) for `shortcuts.toml` beside the other files.

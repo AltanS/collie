@@ -163,7 +163,7 @@ function WalkyPlace() {
   );
 }
 
-/** The Hill's switch on Settings, Experiments. */
+/** The Hill's switch on Settings, Tricks and the Hill. */
 function HillPlace() {
   const [on, setOn] = useState(true);
   return <HillSwitchCard on={on} disabled={false} onToggle={setOn} />;

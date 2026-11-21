@@ -384,12 +384,19 @@ was not really a line: `border-border/60` measures **1.09:1** against the page i
 dropping it also closes a seam on the pane screen and removes the worst ground a status chip
 ever landed on. **Do not put `--muted` back behind chrome.**
 
-### Two line tokens, and which is which
+### Three line tokens, and which is which
 
 | token | light | dark | job |
 | --- | --- | --- | --- |
 | `--border` | 1.16:1 | 1.26:1 | one component's own edge — a card, a control, a hairline inside a region |
 | `--rule` | **1.34:1** | **2.06:1** | the cut between two REGIONS — the header's bottom edge, a strip separator, a group frame |
+| `--edge-firm` | **4.86:1** | **6.12:1** | the edge something STANDS ON — the large screen's tab bar (the open tab sits on it in both tab looks) and a column's pane header, against the recess and the page |
+
+`--edge-firm` is **derived, never a theme token**: `color-mix(in oklch, var(--foreground) 58%,
+var(--background))` in `index.css`, so every theme, imported ones too, gets it from its own ink and
+page. Nothing else may write that mix; tune it there. Measured from the painted pixels (Collie
+light and dark above; ADR 0171): Harbour light 3.59:1 against its recess, the lowest, Nightwatch dark
+3.73. Use it only where a region ends on a line a person reads as a floor; a region cut stays `--rule`.
 
 `--rule` is deliberately the stronger of the two, which decides the split inside
 `ui/list-group.tsx` — and it is not the obvious one: the **frame** takes `border-rule`, the
@@ -1096,7 +1103,7 @@ come from `light-dark()`.
 
 `pane-active` (1.24.0) is the frame of the pane you are working in on a large screen, and nothing else. It is outside the 43 but a theme can set it: from schema version 3 it is an optional token in either half. A theme that leaves it out keeps the `:root` pair in index.css, so every file written before version 3 reads and exports unchanged; a file that sets it must say version 3. The contrast report holds it to 3:1 on `background` in a half that sets it. Nightwatch sets its own, a warm sky for its amber palette.
 
-`tab-active` is the second optional token, and it marks the open tab and the open pane for a theme whose surface word `tabs` is `folder` (`lib/tab-look.ts`): the 2px top edge of the open folder tab and the 1px ring of the open pane. It has the same rules as `pane-active` (version 3, a `:root` pair that is the foreground ink of each half, 3:1 on `background` in a half that sets it). Under the word `plain` (the word a theme gets when it names none; the Collie theme names `folder`) the tab row and the pane row are drawn exactly as they were, and `tab-active` is read by nothing. `composer` is the third word that sets no CSS (`field` or `box`); `lib/composer-layout.ts` reads it.
+`tab-active` is the second optional token, and it marks the open tab and the open pane for a theme whose surface word `tabs` is `folder` (`lib/tab-look.ts`): the 2px top edge of the open folder tab and the 1px ring of the open pane. It has the same rules as `pane-active` (version 3, a `:root` pair that is the foreground ink of each half, 3:1 on `background` in a half that sets it). Under the word `plain` (the word a theme gets when it names none; the Collie theme names `folder`) the tab row and the pane row are drawn exactly as they were, and `tab-active` is read by nothing. On the large screen both words are drawn in the space bar on the same parts (ADR 0171): the bar ends on `--edge-firm` with a 6px page band under it. `folder` cuts the open tab from that band, the page colour with the firm edge on its top and sides (`tab-active` is not read there); `plain` draws no card and puts a 2px bar of the theme's ink (`--foreground`) under the open tab, as wide as the tab, square ends. In both the open tab is full ink and semibold and every other tab regular weight in `muted-foreground`, and the resting status rings are drawn at full stroke. The column frame's colour is never used in the bar or a header. `composer` is the third word that sets no CSS (`field` or `box`); `lib/composer-layout.ts` reads it.
 
 `find` is the third optional token (1.29.0), the ground of a found or matched piece of text: `ui/match-text.tsx`'s `<mark>`, Find in Chat's hit in the transcript and in the Markdown reader. Its value carries alpha, because it is laid over whatever the text sits on and the ink stays the caller's own. Its `:root` pair is the amber the app drew as a literal before the token existed, Tailwind 4.3.1's `amber-300` at 70% in the light half and `amber-500` at 40% in the dark half, so the default themes look as they did. It follows the rules of `tab-active` (version 3, a `:root` pair, filled from `collie` when a theme sets one half); the contrast report measures `foreground` on the token laid over `background` at 4.5:1, in a half that sets it. The three shipped themes other than `collie` leave it out and inherit the amber.
 
@@ -1154,3 +1161,49 @@ ground and a `band` are measured too, at the far end of the ground and on `secon
 list only with a new schema version, and in the same change: `index.css`, every shipped theme
 file, the validator, the word table in `surface.ts` and the lists spelled in `public/theme-init.js`.
 The coupling test (§9) and `bun scripts/build-themes.ts --check` fail when they drift. Until then, reuse the nearest token; do not paint a literal.
+
+## 14. State layers and derived tokens
+
+A theme names its base colours. Hover, selection, the open look, the focus ring and the large screen's planes are
+not among them: the app makes them from the base colours. Each one must stay visible on any theme, not only on
+the four shipped ones ([ADR 0172](./.adr/0172-derived-state-colours-are-measured-and-collie-is-held.md)).
+
+**One function makes them.** `deriveTokens(base, half)` in `web/src/lib/theme/derive.ts` takes one half of a
+theme and returns the recess, the paper, a hover, a selected and an open fill for each plane, and the ring. Each
+value is made in two steps.
+
+1. Collie's relation: the same expression Collie's stylesheet uses today.
+2. A floor: when the value is too close to its ground, its lightness moves on in the same direction until it meets
+   the floor. When that direction runs out of range, it goes the other way. Hue and chroma stay.
+
+`applyTheme` (`lib/theme/store.ts`) runs it for every theme it applies, the three other shipped themes included,
+and sets the result inline beside the base tokens. Collie applies no theme. Its stylesheet holds the same
+relations in `index.css`.
+
+**The reference test.** `derive.test.ts` puts Collie's own base tokens through the function. The result must be
+Collie as painted, within 0.02 in OKLab, in both halves. The worst value today is 0.0021, the dark recess. This
+test keeps Altan's approved look and the function from drifting apart. The themes set also holds the 241 state
+colours Collie painted on 2026-11-21 (`web/e2e/themes/collie-states.json`), within 0.02.
+
+| Derived token | Collie's relation | Floor |
+| --- | --- | --- |
+| `--surface-recess` | the page 0.05 darker | the muted ink and the foreground keep 4.5:1 on it (or what they have on the page, when the theme gives less), on the page's side of the ink; 0.025 off the page, either way |
+| `--surface-paper` | light: the card 0.05 lighter, at most white; dark: halfway between the page and the card 0.05 lighter | the same inks; 0.025 off the page and the recess, only in its own direction, so a white page keeps a white paper |
+| `--state-hover-<plane>` | the accent on the page and the paper; the paper on the recess | 0.04 off its ground; the foreground and the muted ink as readable as on the page |
+| `--state-on-<plane>` | the same as the hover | 0.06 off its ground; the same inks |
+| `--state-open-<plane>` | `--control-on` | 0.06 off its ground; the on-colour's ink as readable as on the tint |
+| `--ring` | the theme's own ring | 3:1 on the page, the card, the recess, the paper, the band, the muted fill and each plane's hover and selected fill |
+
+A pushed value lands 0.006 past a distance floor and 0.1 past a ratio floor, because the screen rounds it to 8 bits.
+A fill on the page that has to move is also kept off the recess, because a strip of the recess with no plane class
+(the space header) shows the page's fills. The ring has no floor against a filled primary button. It stands 2px off
+the box, so a ground is on both its sides, and Collie's dark ring is 1.9:1 against its white primary.
+
+**The classes read variables.** A hover reads `--state-hover`, a selected item `--state-on`, an open trigger
+`--state-open`. Each plane class points the three at its plane: `RECESS_ACCENT` (ui/nav-edge.ts), `PAPER_PLANE` and
+`PAGE_PLANE` (strip-column.tsx). The root holds the page's. A plane also points `--accent` at its `--state-on`, so a
+`bg-accent` that is not swept yet gets the floor too. `HOVER_FILL`, `TRIGGER_OPEN`, the ghost and outline buttons and
+the pane row read the variables. Never write a new `hover:bg-muted/60` or `bg-accent` for a state.
+
+**A floor on a theme's own text is not built.** A theme whose own text is under 4.5:1 is the schema question. When it
+is decided, it is one more step in `STEPS`, before the planes.

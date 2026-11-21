@@ -1,7 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
-/* Math (Settings → Appearance; lib/math/). Each engine's own stylesheet ships in its lazy chunk,
+/* Math (Settings → Look and feel; lib/math/). Each engine's own stylesheet ships in its lazy chunk,
    never here, so a device on Off downloads none of it. These two rules are the engine-neutral box.
    Each formula pans within the reading column, including a long inline formula. */
 .math-inline {
@@ -422,6 +422,15 @@
      rgb(214) on rgb(245) light; white 24% over rgb(10) = rgb(69) dark. At 3x DPR on a phone that
      is a crisp 1px cut, which is the mark's own vocabulary — a cut, not a wash. */
   --rule: light-dark(oklch(0.72 0.004 80), oklch(0.52 0.003 80));
+  /* THE FIRM EDGE (DESIGN.md §4, "Three line tokens"): the cut a person must SEE between the large screen's
+     tab bar and the work, and under a pane's header. --rule is a region's cut at 1.3:1 to 2:1, which is right
+     for a list and too faint for the line the selected tab stands on: on a theme whose page is black or
+     near-white the recess clamps to the page and --rule was the only thing left, at 1.0 to 1.3:1. This one is
+     the theme's own ink mixed into its own page, so it holds 3:1 or more against the recess, the page and the
+     paper in both halves of every bundled theme (e2e/strip-head.spec.ts measures the painted pixels).
+     DERIVED ONLY, never a theme token: a theme reaches it through `foreground` and `background`. The share
+     lives here and nowhere else; nothing may restate the mix. */
+  --edge-firm: color-mix(in oklch, var(--foreground) 58%, var(--background));
   /* THE WIDE LAYOUT'S THREE PLANES (DESIGN.md §4, "The large screen's three planes"). On a large screen
      the navigation (the sidebar, the tab strip of the space, the strip's own ground) stands on the RECESS,
      a column without focus on the page (--background), and the focused column, whole, on the PAPER: the
@@ -444,6 +453,24 @@
      ring you can't locate is a real problem. Still worth an on-device look: even at 0.62 the /50
      variant is marginal. */
   --ring: light-dark(oklch(0.5 0 0), oklch(0.76 0 0));
+  /* THE STATE FILLS, per plane (DESIGN.md §14, ADR 0172). A hover, a selected item and an open trigger read
+     `--state-hover`, `--state-on` and `--state-open`; each plane class points the three at its own triple
+     (`RECESS_ACCENT`, `PAPER_PLANE`, `PAGE_PLANE`), and here they hold the page's. These are Collie's relations,
+     the colours Altan approved on 2026-11-21: the accent on the page and the paper, the paper on the recess, the
+     on-colour for an open trigger. A theme that is applied gets the same relations with a floor under each
+     (lib/theme/derive.ts, set inline by applyTheme); derive.test.ts holds the two together within 0.02. */
+  --state-hover-page: var(--accent);
+  --state-hover-recess: var(--surface-paper);
+  --state-hover-paper: var(--accent);
+  --state-on-page: var(--accent);
+  --state-on-recess: var(--surface-paper);
+  --state-on-paper: var(--accent);
+  --state-open-page: var(--control-on);
+  --state-open-recess: var(--control-on);
+  --state-open-paper: var(--control-on);
+  --state-hover: var(--state-hover-page);
+  --state-on: var(--state-on-page);
+  --state-open: var(--state-open-page);
 
   /* Agent lifecycle status palette — the app's primary at-a-glance signal, so both halves are
      tuned against their own ground rather than one set being reused. The dark values glow on
@@ -723,6 +750,7 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-rule: var(--rule);
+  --color-edge-firm: var(--edge-firm);
   --color-surface-recess: var(--surface-recess);
   --color-surface-paper: var(--surface-paper);
   --color-ring: var(--ring);

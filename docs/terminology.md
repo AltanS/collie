@@ -16,14 +16,14 @@ In a crew, the instances of one host show as one machine
 One run of an agent, with its own history. A pane shows it, and Chat reads it from the harness
 ([Sessions](sessions.md)). In the app and in these docs, "session" alone means this and nothing else.
 
-Herdr, tmux and zellij call their own top-level group a session too. Collie shows that group as a
+Herdr, tmux, zellij and Rex call their own top-level group a session too. Collie shows that group as a
 [space](#space), and older versions of the app said "session" for it. A trick's own screen is a
 [page](#page), never a session.
 
 ## Space
 
 A group of tabs, with a folder. It is the top level on the phone. A Herdr workspace is a space, a
-tmux session is a space, a zellij session is a space, and a [durable agent](#durable-agent) is a space.
+tmux session is a space, a zellij session is a space, a Rex session is a space, and a [durable agent](#durable-agent) is a space.
 The switcher in the header says **Spaces** and **All spaces**. A space is not a [session](#session).
 
 ## Tab
@@ -77,6 +77,12 @@ The list of every keyboard action with its keys, opened with the [prefix key](#p
 `?`. It also names each line of `shortcuts.toml` that Collie dropped, and why
 ([Keyboard shortcuts](keyboard-shortcuts.md#the-actions)).
 
+## Key cap
+
+The small label that shows a key on a control while the [prefix key](#prefix-key) waits, for example
+`g` on the Actions button. It shows the key you set in `shortcuts.toml`, and only on a control you
+can see ([Keyboard shortcuts](keyboard-shortcuts.md#the-prefix)).
+
 ## Actions
 
 The searchable list of everything Collie can do on this screen, and of the panes to go to. An action
@@ -99,7 +105,7 @@ pane narrower or wider in the [row of panes](#row-of-panes)
 
 ## Terminal (mux)
 
-Herdr, the Herdr core (`herdr-core`), tmux, zellij, tuios or Tern, the program that holds your
+Herdr, the Herdr core (`herdr-core`), tmux, zellij, tuios, Tern or Rex, the program that holds your
 shells and agents. Other tools call it a multiplexer, or a mux. You choose it with `COLLIE_MUX`
 ([Terminals](multiplexers.md#pointing-collie-at-a-multiplexer)).
 
@@ -119,6 +125,19 @@ The API and the code still call the channel `program`.
 
 The agent that runs in a pane: Claude Code, Codex, pi, OmO, or a durable agent
 ([Claude Code on your phone](claude-code-on-your-phone.md)).
+
+## Settings pages
+
+Settings has eleven pages, each with one line on the index that says what it holds: **Look and feel**
+(theme, light or dark, language, fonts, text sizes), **Chat and terminal** (what a pane shows),
+**Keys and touch** (Enter sends, the Keys pad, shortcuts, gestures, haptics, zen), **Notifications**,
+**Voice**, **Dashboard and projects** (pane order, repo search, worktree folder), **Profiles**,
+**Tricks and the Hill** (the Tricks switch, your tricks, the Hill), **Devices and machines** (pairing,
+paired devices, your machines, the connection), **Privacy and data** (saved chat copies, telemetry)
+and **Updates and about**. The search at the top of Settings finds a setting by its name, and says
+where a setting is when it lives in a pane's own sheet. The pages used to be Appearance, Harness
+configurations, Device, Alerts, Experiments and System; an old link opens the page that holds its
+settings now.
 
 ## Profile
 
@@ -205,8 +224,8 @@ exists only when `COLLIE_STANDBY_PORT` is set on the lead and on the deputy
 
 The kind of release a machine takes. **Stable** is the default and takes final releases only, for
 example `1.23.0`. **Edge** also takes Edge builds, such as `1.23.0-edge.2`, which are GitHub
-pre-releases cut a few days before the final release. You set the line in **Settings → Updates →
-Release line**, and the switch installs nothing. A crew follows its lead's line
+pre-releases cut a few days before the final release. You set the line in **Settings → Updates and
+about → Release line**, and the switch installs nothing. A crew follows its lead's line
 ([Release lines](upgrading.md#release-lines)).
 
 ## Urgent line
@@ -395,9 +414,9 @@ different thing, a panel of that app
 
 ## Tricks switch
 
-The one switch for tricks as a whole on a machine, in Settings → Experiments and in
+The one switch for tricks as a whole on a machine, in Settings → Tricks and the Hill and in
 `collie tricks on|off|status`. Tricks are an experiment, so it is off until you switch it on. While it
-is on, Settings shows a Tricks row for the list. While it is off no trick runs or draws, and each
+is on, that page shows the list of tricks under it. While it is off no trick runs or draws, and each
 trick keeps its own switch for when you switch it on
 ([Switch tricks on or off](tricks.md#switch-tricks-on-or-off)).
 
@@ -424,7 +443,7 @@ shows it whole, and a change to it always asks you again
 ## Official tricks
 
 The tricks in Collie's own repository. Each release names the exact version of each one, and Add, in
-Settings → Tricks or with `collie trick add <name>`, fetches that version and nothing else. They
+Settings → Tricks and the Hill or with `collie trick add <name>`, fetches that version and nothing else. They
 arrive off, like every trick ([Official and community tricks](tricks.md#official-and-community-tricks)).
 
 ## Community tricks
@@ -437,7 +456,7 @@ you add one by its address, and its row says "ColliePWA did not check this code.
 
 A spot on the phone where a trick can show (a surface). A program trick draws in seven: `belt`,
 `session` (shown as Page), `dashboard`, `status`, `tabbar`, `menu` (rows in a session's settings) and
-`float` (a small moving picture over the app, a "floating thing" in Settings).
+`float` (a small moving picture over the app, "Moving pictures from tricks" in Settings → Look and feel).
 An agent view is the eighth, `agent-view`. The Hill is built in, and a trick posts there without
 naming it. A place is not a [space](#space). Each place is
 described in [Places](tricks-reference.md#places).
@@ -496,7 +515,7 @@ which still answers the routes that return a session's text. Collie does not sto
 
 ## Details page
 
-The page that opens when you tap a trick's name in Settings → Tricks, or the info button in the header of
+The page that opens when you tap a trick's name in Settings → Tricks and the Hill, or the info button in the header of
 the trick's own page. It used to be a sheet, the About sheet. It shows the trick's description
 and its own text, then the facts Collie knows: where it draws, what it reads, which environment names it
 asks for, what a text search of its code found, and where it came from
@@ -531,7 +550,8 @@ and the code is replaced only on your yes ([A trick an agent proposes](hill.md#a
 ## Hill
 
 The page of Decisions that wait for you, grouped Now, Today and Later, with the answered ones below.
-It is the fourth item of the Dashboard's bottom bar. One crew has one Hill, on the lead. "Hill" is the
+It is the fourth item of the Dashboard's bottom bar, and on a large screen a button beside Actions in
+the dashboard's header. One crew has one Hill, on the lead. "Hill" is the
 view's name and stays the same in every language ([The Hill](hill.md)).
 
 ## Event
@@ -565,5 +585,5 @@ session's folder wins ([A project's own picture](configure.md#a-projects-own-pic
 
 The picture a [project file](#project-file) names with `[project] icon`. It takes the agent logo's
 place wherever Collie draws the logo of that project's sessions, with the agent logo small in its
-corner. The Collie mark is never replaced. **Project pictures** in Settings, Appearance,
+corner. The Collie mark is never replaced. **Project pictures** in Settings, Look and feel,
 turns it off on one device ([A project's own picture](configure.md#a-projects-own-picture)).

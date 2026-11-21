@@ -17,7 +17,7 @@
 // the header's way home, New, the tab bar's "+", the strip's width presets, zen mode, the sidebar
 // toggle, the Chat/Terminal choice, the composer, the find bar) except two. `reload_config` is left
 // out: nothing in the app re-reads a file by hand, and `shortcuts.toml` reloads live. `help` stays: its
-// control is the Keyboard shortcuts row in Settings, Device (components/shortcut-settings-row.tsx).
+// control is the Keyboard shortcuts row in Settings, Keys and touch (components/shortcut-settings-row.tsx).
 //
 // This file imports nothing but a type, so the core stays free of React and of the DOM.
 

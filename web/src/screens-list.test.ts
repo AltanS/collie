@@ -9,11 +9,13 @@ import { NOT_A_SCREEN, SCREENS } from "../e2e/screens/list";
 // numbers that may only go down, the way `scripts/test-file-size.test.ts` holds the size of a test file.
 
 /** Entries that are still the phone's column on a large screen (`wide: "column"`). Lower it when a screen gets its large-screen layout. */
-const COLUMN_CEILING = 17;
+const COLUMN_CEILING = 10;
 /** Waivers of a layout rule on an entry. Lower it when a defect is fixed and its waiver goes. */
 // 27 since ADR 0168 (2026-11-21): the Remove section of a trick's details page carries the page's own phone-target
 // waiver (the trick switch, 44x24, an open item of e2e/hitbox/known.json); its confirm, a modal, needs none.
-const WAIVER_CEILING = 27;
+// 25 since ADR 0171 (2026-11-21): the phone's tab row is 44px with its "+" and its fold, so One Space and the Tab
+// strip with long names break no tap target at 390 and their waivers went.
+const WAIVER_CEILING = 25;
 
 /** Every path the router can match, as `router.tsx` spells them: no leading slash, "/" for the index. */
 function routePaths(routes: readonly RouteObject[], parent = ""): string[] {

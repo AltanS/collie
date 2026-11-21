@@ -7,7 +7,7 @@ import { MAX_MATH_CHARS } from "@/lib/markdown-math";
 import type { MathEngineModule, MathMarkup } from "./engine-contract";
 import { mathEngineFiles } from "./engine-files";
 
-// THE MATH ENGINES, loaded on demand. A device chooses Off, KaTeX or MathJax (Settings → Appearance,
+// THE MATH ENGINES, loaded on demand. A device chooses Off, KaTeX or MathJax (Settings → Look and feel,
 // `DesignPrefs.math`). Off is the default and loads nothing. A chosen engine is loaded once, the first
 // time something asks for it, and kept for the life of the page.
 //

@@ -80,7 +80,7 @@ function PercentTag({ usage }: { usage: Usage }) {
   return <RealTag usage={usage} mode="percent" />;
 }
 
-/** The real tag drawing one mode, whatever the device chose (the setting is Settings, Appearance, Usage row). */
+/** The real tag drawing one mode, whatever the device chose (the setting is Settings, Chat and terminal, Context and limits). */
 function RealTag({ usage, mode }: { usage: Usage; mode: UsageRow }) {
   const named = usage.model === undefined ? undefined : MODEL_IDS.get(usage.model);
   const limits = [
@@ -170,7 +170,7 @@ function ModeCard({ state, mode, title, line }: { state: string; mode: UsageRow;
   const [first, ...rest] = STATES;
   const Tag = mode === "percent" ? PercentTag : DotsTag;
   return (
-    <Card state={state} label={title} reach="Settings, Appearance, Usage row. Percent is the default." note={line}>
+    <Card state={state} label={title} reach="Settings, Chat and terminal, Context and limits. Percent is the default." note={line}>
       <CardControls className="flex items-center gap-3">
         <p className="text-sm font-semibold text-foreground">{title}</p>
       </CardControls>
@@ -214,7 +214,7 @@ export function UsageRowSection() {
           state="usage-row-dots"
           mode="dots"
           title="Dots"
-          line="The same share as five dots, one per full fifth, red from 80%. Chosen in Settings, Appearance, Usage row."
+          line="The same share as five dots, one per full fifth, red from 80%. Chosen in Settings, Chat and terminal, Context and limits."
         />
       </Group>
     </Section>

@@ -152,7 +152,7 @@ export function trickGuide(): string[] {
     `It brings the pictures of media/ and captures/ (PNG, JPEG or WebP, at most ${String(PROPOSE_PICTURES.bytes / (1024 * 1024))} MB each, ${String(PROPOSE_PICTURES.files)} in all), and the card names each one.`,
     "Dot files, node_modules, logs, inputs/, config.toml and any other file in media/ or captures/ stay behind.",
     "A proposal cannot carry a config.toml: the program reads it, so your person writes it.",
-    "The person sees a card with your code in this session on the phone, and in Settings, Tricks (on the Hill too, while it is on). One tap on its Switch it on approves the code and switches the trick on. Nothing runs before their yes. Nothing is added to this machine's tricks before it.",
+    "The person sees a card with your code in this session on the phone, and in Settings, Tricks and the Hill (on the Hill too, while it is on). One tap on its Switch it on approves the code and switches the trick on. Nothing runs before their yes. Nothing is added to this machine's tricks before it.",
     `Code that does not fit one card shows on a group of up to ${String(GROUP_CODE_CARDS + 1)} cards, every line of it.`,
     `Card 1 holds the facts. ${String(GROUP_CODE_CARDS)} cards hold the code, about ${String(GROUP_CARD_CODE_BYTES / 1024)} KB each (${String(GROUP_CODE_BYTES / 1024)} KB in all).`,
     "The yes waits until the person opened every card. collie trick check says how many.",

@@ -1,5 +1,5 @@
 // The Report a problem sheet (ADR 0123). One sheet, four doors: the card after failed sends, the pane
-// menu's "Report a problem", Settings, System, and the unread-dialog card (amendment 2026-10-28). It
+// menu's "Report a problem", Settings, Updates and about, and the unread-dialog card (amendment 2026-10-28). It
 // shows every word the issue will hold before anything leaves, and it leaves only by the person's
 // taps: Open on GitHub (a plain link into their own browser and their own GitHub login, where GitHub's
 // form is the last check) or Copy report. Collie holds no GitHub token, the phone never calls GitHub,

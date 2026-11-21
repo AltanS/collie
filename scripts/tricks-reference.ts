@@ -466,7 +466,7 @@ export function renderReference(): string {
     "",
     "This page lists every place, part, manifest key, limit and command of a ColliePWA trick, and it is complete. It is generated from the code, so it cannot drift. It is the one list: other pages link here and do not repeat its tables.",
     "",
-    "Tricks are experimental. They may change, lose settings, or be withdrawn in a patch release. They are off until you switch them on at the top of Settings → Tricks, or with `collie tricks on`.",
+    "Tricks are experimental. They may change, lose settings, or be withdrawn in a patch release. They are off until you switch them on at the top of Settings → Tricks and the Hill, or with `collie tricks on`.",
     "",
     ...placesSection(),
     "",

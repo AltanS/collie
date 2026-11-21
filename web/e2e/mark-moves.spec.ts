@@ -100,7 +100,7 @@ test("a theme that says still holds the mark, and a touched switch beats it", as
   await page.goto("/");
   const mark = header(page);
   await expect(mark).toHaveAttribute("data-still", "");
-  await page.goto("/settings/appearance/character");
+  await page.goto("/settings/look/character");
   const moves = page.getByRole("switch", { name: en["settings.character.moves"] });
   await expect(moves).toHaveAttribute("aria-checked", "false");
   // The page's own preview draws the worn character at rest: held under the theme, drifting after the tap.

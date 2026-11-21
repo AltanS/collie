@@ -61,7 +61,7 @@ import { usePairing } from "@/lib/pairing";
 import { usePins } from "@/lib/pins";
 import { programScope, programSessions, programsAbove, waitingPrograms } from "@/lib/session-cards";
 import { cn } from "@/lib/utils";
-import { contentWidth, SPACE_WIDTH, spaceColumns, WIDE_GUTTER } from "@/lib/wide-dashboard";
+import { contentWidth, gridWidth, SPACE_WIDTH, spaceColumns, WIDE_GUTTER } from "@/lib/wide-dashboard";
 import { isReadOnly, type AgentView, type ServerSummary, type SessionSummary } from "@/lib/types";
 import { useRootData } from "@/lib/route-data";
 import { Button } from "@/components/ui/button";
@@ -76,18 +76,24 @@ const NO_TRICK_SESSIONS: readonly AgentView[] = [];
  * refresh starts when the tab opens and stops when the operator leaves it. One row per workspace the
  * strip leaves shown, each asked on the machine and session its panes live on.
  */
+/** The large screen's Files view: its column's widest, in CSS px. */
+const FILES_VIEW_MAX = 720;
+
 function ChangesTabBody({
   groups,
   scope,
   servers,
   sessions,
   lookup,
+  line,
 }: {
   groups: readonly WorkspaceGroup[];
   scope: Scope;
   servers: readonly ServerSummary[] | undefined;
   sessions: readonly SessionSummary[] | undefined;
   lookup: ChangesLookup;
+  /** The large screen: one line a space, its counts at the right. */
+  line: boolean;
 }) {
   const nav = useNav();
   const rows = useMemo<WorkspaceChangesRow[]>(
@@ -117,6 +123,7 @@ function ChangesTabBody({
     <WorkspaceChangesList
       rows={rows}
       counts={counts}
+      line={line}
       onOpen={(row, from) => {
         const to = spaceChangesPath(row.workspaceId, row.scope);
         glideForward("changes", to, () => nav.down(to), from);
@@ -373,7 +380,22 @@ export function HomeRoute() {
   // Tricks Space) stand in one Space's width after the last Space.
   const gridList = wide && view === "dashboard" && !screenless;
   const inColumn = (node: ReactNode) => (wide ? <WideColumn width={columnWidth}>{node}</WideColumn> : node);
-  const narrowed = (node: ReactNode) => (wide && !gridList ? <div className="mx-auto max-w-screen-sm">{node}</div> : node);
+  // The Files view on a large screen (ADR 0158, addendum 2026-11-21): one line a space, in a column of at most
+  // FILES_VIEW_MAX px that starts at the grid's left edge, under the mark, and scrolls with the page.
+  const filesWide = wide && view === "changes";
+  const filesWidth = Math.min(gridWidth(columns), FILES_VIEW_MAX);
+  const narrowed = (node: ReactNode) =>
+    wide && !gridList ? (
+      filesWide ? (
+        <div style={{ width: filesWidth }}>
+          <PhoneParts on>{node}</PhoneParts>
+        </div>
+      ) : (
+        <div className="mx-auto max-w-screen-sm">{node}</div>
+      )
+    ) : (
+      node
+    );
   const underGrid = (node: ReactNode) =>
     gridList ? (
       <div className={cn(emptyHome && "mx-auto")} style={{ width: SPACE_WIDTH }}>
@@ -569,6 +591,7 @@ export function HomeRoute() {
               reveal={reveal}
               needsYouOnly={needsYouOnly}
               onNeedsYouOnlyChange={setNeedsYouOnly}
+              narrowFilter={filesWide}
               renderBody={
                 view === "changes"
                   ? (shown) => (
@@ -578,6 +601,7 @@ export function HomeRoute() {
                         servers={data.servers}
                         sessions={data.sessions}
                         lookup={lookup}
+                        line={filesWide}
                       />
                     )
                   : undefined
@@ -636,7 +660,7 @@ export function HomeRoute() {
           <WideColumn width={columnWidth}>
             {/* Under the grid the foot lines stand in the first Space's column; under a centred column (Files, Crew,
                 the durable home, an empty dashboard) they centre with it. */}
-            <div className={cn((emptyHome || !gridList) && "mx-auto")} style={{ width: SPACE_WIDTH }}>
+            <div className={cn((emptyHome || !gridList) && !filesWide && "mx-auto")} style={{ width: SPACE_WIDTH }}>
               <PhoneParts on>{footer}</PhoneParts>
             </div>
           </WideColumn>

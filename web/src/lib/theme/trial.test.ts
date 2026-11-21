@@ -69,13 +69,13 @@ describe("a theme trial", () => {
     const { store, trial } = await page();
     store.installTheme({ ...sample("mine", "Mine"), dark: { background: "#1a2b3c" } });
     trial.startTrial(sample());
-    history.replaceState(null, "", "/settings/appearance?x=1#theme=collie");
+    history.replaceState(null, "", "/settings/look?x=1#theme=collie");
     const again = await page();
     expect(again.store.activeThemeId()).toBe("collie");
     expect(again.trial.currentTrial()).toBeNull();
     expect(sessionStorage.getItem(TRIAL_KEY)).toBeNull();
     expect(background()).toBe("");
-    expect(`${location.pathname}${location.search}${location.hash}`).toBe("/settings/appearance?x=1");
+    expect(`${location.pathname}${location.search}${location.hash}`).toBe("/settings/look?x=1");
     // The library is untouched: the escape changes what is worn, never what is kept.
     expect(again.store.library().map((theme) => theme.id)).toEqual(["mine"]);
     history.replaceState(null, "", "/");

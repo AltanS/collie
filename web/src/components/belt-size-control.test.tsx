@@ -11,7 +11,7 @@ const stored = () => JSON.parse(localStorage.getItem("collie:dash-prefs:v1") ?? 
 describe("BeltSizeControl", () => {
   it("starts on Default and stores the scale of the choice", async () => {
     render(<BeltSizeControl />);
-    expect(screen.getByRole("radiogroup", { name: "Action belt size" })).toBeInTheDocument();
+    expect(screen.getByRole("radiogroup", { name: "Belt size" })).toBeInTheDocument();
     expect(screen.getByRole("radio", { name: "Default" })).toHaveAttribute("aria-checked", "true");
     await userEvent.click(screen.getByRole("radio", { name: "Larger" }));
     expect(stored().beltScale).toBe(1.5);

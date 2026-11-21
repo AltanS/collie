@@ -48,16 +48,16 @@ describe("NotifyPrefsControl", () => {
     render(<NotifyPrefsControl />);
     const needs = await screen.findByRole("switch", { name: /needs you/i });
     const finished = await screen.findByRole("switch", { name: /finished/i });
-    const updates = await screen.findByRole("switch", { name: /app updates/i });
+    const updates = await screen.findByRole("switch", { name: /a new collie version/i });
     expect(needs).toBeChecked(); // blocked default on
     expect(finished).not.toBeChecked(); // done default off
     expect(updates).toBeChecked(); // updates default on
   });
 
-  test("toggling App updates POSTs the single-key partial update", async () => {
+  test("toggling A new Collie version POSTs the single-key partial update", async () => {
     const user = userEvent.setup();
     render(<NotifyPrefsControl />);
-    const updates = await screen.findByRole("switch", { name: /app updates/i });
+    const updates = await screen.findByRole("switch", { name: /a new collie version/i });
 
     await user.click(updates); // on → off
 
@@ -129,7 +129,7 @@ describe("NotifyPrefsControl — the fourth switch and the panes it watches", ()
     expect(await screen.findByRole("switch", { name: /needs you/i })).toBeInTheDocument();
     expect(screen.getByRole("switch", { name: /finished/i })).toBeInTheDocument();
     expect(screen.getByRole("switch", { name: /one notification per agent/i })).toBeInTheDocument();
-    expect(screen.getByRole("switch", { name: /app updates/i })).toBeInTheDocument();
+    expect(screen.getByRole("switch", { name: /a new collie version/i })).toBeInTheDocument();
     expect(screen.getByRole("switch", { name: /machine load stays high/i })).toBeInTheDocument();
     expect(screen.getByRole("switch", { name: /cache about to go cold/i })).toBeInTheDocument();
     expect(screen.getAllByRole("switch").at(-1)).toHaveAccessibleName(/cache about to go cold/i);
@@ -152,7 +152,7 @@ describe("NotifyPrefsControl — the fourth switch and the panes it watches", ()
   test("the Decisions switch is on by default, sits above the cache switch, and POSTs {decisions: false}", async () => {
     const user = userEvent.setup();
     render(<NotifyPrefsControl />);
-    const decisions = await screen.findByRole("switch", { name: /decisions that need you now/i });
+    const decisions = await screen.findByRole("switch", { name: /a decision marked now on the hill/i });
     await waitFor(() => expect(decisions).toBeChecked());
     const switches = screen.getAllByRole("switch");
     expect(switches.indexOf(decisions)).toBe(switches.length - 2);

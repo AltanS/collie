@@ -4,25 +4,26 @@ import { useNav } from "@/hooks/use-nav";
 import { useCrew } from "@/components/crew-provider";
 import { useLocale } from "@/hooks/use-locale";
 import { t } from "@/lib/i18n";
+import { cn } from "@/lib/utils";
 import { crewPath, machinesPath } from "@/lib/nav";
 import { useScope } from "@/lib/session";
 import { Icon } from "@/components/icons/icon";
 
 /**
- * The Settings entry point. Gated on `multi` like every other piece of host chrome — a solo install
- * grows no row at all, which is the milestone's rule and the reason this lives behind `useCrew()`
- * rather than behind a check on the loader's answer (Settings has no crew loader to check).
+ * The machines in Settings, Devices and machines: the Machines page on every install (a solo collie is one
+ * machine with a load worth watching), and the crew's census above it only on a crew. The crew row is gated
+ * on `multi` like every other piece of host chrome, behind `useCrew()` rather than a check on a loader's
+ * answer (Settings has no crew loader to check).
  */
 export function CrewSettingsCard() {
   const nav = useNav();
   const scope = useScope();
   useLocale();
   const { multi } = useCrew();
-  if (!multi) return null;
 
   return (
     <Card className="gap-0 py-0">
-      <button
+      {multi && <button
         type="button"
         onClick={() => nav.down(crewPath(scope))}
         className="flex w-full items-center gap-3 p-4 text-left active:bg-muted/60"
@@ -32,14 +33,13 @@ export function CrewSettingsCard() {
           <div className="font-medium">{t("crew.entry.title")}</div>
           <p className="text-sm text-muted-foreground">{t("crew.entry.description")}</p>
         </div>
-      </button>
-      {/* The machines list is one more way into the same crew: the census says WHO is in it, this says
-          how hard each machine is working. Its Settings index row is always there; this one is the
-          crew's own door to it. */}
+      </button>}
+      {/* The census says WHO is in the crew; Machines says how hard each machine is working. Settings has no
+          index row for Machines (ADR 0170): this is its door. */}
       <button
         type="button"
         onClick={() => nav.down(machinesPath(scope))}
-        className="flex w-full items-center gap-3 border-t border-border p-4 text-left active:bg-muted/60"
+        className={cn("flex w-full items-center gap-3 p-4 text-left active:bg-muted/60", multi && "border-t border-border")}
       >
         <Icon name="machine-activity" className="size-5 shrink-0 text-muted-foreground" />
         <div className="min-w-0">

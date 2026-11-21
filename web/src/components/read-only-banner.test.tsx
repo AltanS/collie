@@ -79,7 +79,7 @@ describe("ReadOnlyBanner — the two write gates, one notice", () => {
     markNotPaired();
     const { container } = render(<ReadOnlyBanner device={REFUSED} />);
     const link = screen.getByRole("link", { name: /Not paired/ });
-    expect(link).toHaveAttribute("href", "/settings/system#paired-devices");
+    expect(link).toHaveAttribute("href", "/settings/devices#paired-devices");
     // The band, not a word inside it: the anchor IS the strip's parent, so every pixel of the 33px
     // full-bleed row is tappable.
     expect(link.firstElementChild).toHaveClass("min-h-[33px]");
@@ -92,7 +92,7 @@ describe("ReadOnlyBanner — the two write gates, one notice", () => {
     markExpired();
     render(<ReadOnlyBanner device={REFUSED} />);
     const link = screen.getByRole("link", { name: /Pairing expired/ });
-    expect(link).toHaveAttribute("href", "/settings/system#paired-devices");
+    expect(link).toHaveAttribute("href", "/settings/devices#paired-devices");
     expect(screen.queryByText(/Not paired/)).toBeNull();
   });
 

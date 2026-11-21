@@ -35,7 +35,7 @@ import { SectionLabel } from "@/components/ui/section-label";
 import type { BridgeStatus } from "@/lib/types";
 import type { Scope } from "@/lib/scope";
 import { Icon } from "@/components/icons/icon";
-import { NAV_EDGE } from "@/components/ui/nav-edge";
+import { NAV_EDGE, RECESS_ACCENT } from "@/components/ui/nav-edge";
 
 /** What a route claims about the SHAPE of the shared row, as opposed to the content it portals into
  *  it. These are the three things the shell itself has to draw differently, and every one of them is
@@ -383,8 +383,10 @@ export function AppHeaderHost({ bridge, error, lastSeenAt, children }: AppHeader
           // reserved in the base string above. While a route has the row hidden (zen) there are no
           // two regions left to cut apart, so the edge goes transparent; nothing moves by a pixel
           // when it comes back.
-          claim.hidden ? "border-transparent" : spanned ? NAV_EDGE : "border-band-rule",
-          spanned && "w-full bg-surface-recess [--accent:var(--surface-paper)] [--band-ground:var(--surface-recess)] [--chrome:var(--surface-recess)]",
+          // Docked in a large screen's column the header closes on the firm edge (`--edge-firm`), 3:1 or more against
+          // the header and the transcript in every bundled theme: its own band, not a faint rule (2026-11-21).
+          claim.hidden ? "border-transparent" : spanned ? NAV_EDGE : dockedRow !== null ? "border-edge-firm" : "border-band-rule",
+          spanned && ["w-full bg-surface-recess [--band-ground:var(--surface-recess)] [--chrome:var(--surface-recess)]", RECESS_ACCENT],
           dockedRow === null && claim.width === "column" && "mx-auto w-full max-w-screen-sm",
           dockedRow === null && claimedPx !== null && !spanned && "mx-auto w-full",
           dockedRow === null &&
@@ -437,7 +439,9 @@ export function AppHeaderHost({ bridge, error, lastSeenAt, children }: AppHeader
             data-slot="header-row"
             // A route that owns the spanned row (the large-screen Settings) leads with a 44px control at 4px, so its 20px icon
             // stands on the 16px ink edge of the list below it.
-            className={cn("flex items-center gap-2 pr-2", spanned ? cn("relative mx-auto min-h-12 w-full py-0.5", claim.override ? "pl-1" : "pl-[18px]") : "min-h-15 py-1 pl-4")}
+            // Docked in a large screen's column the floor is 54px, not 60: the space bar's page band takes the other
+            // 6px, so the transcript under the header keeps its top and its height (wide-layout.tsx).
+            className={cn("flex items-center gap-2 pr-2", spanned ? cn("relative mx-auto min-h-12 w-full py-0.5", claim.override ? "pl-1" : "pl-[18px]") : cn(dockedRow !== null ? "min-h-13.5" : "min-h-15", "py-1 pl-4"))}
             style={spanned && claimedPx !== null ? { maxWidth: claimedPx } : undefined}
           >
             {!claim.override && (

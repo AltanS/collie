@@ -7,7 +7,7 @@ import { __resetShortcutRegistry, runShortcutAction } from "@/lib/shortcuts/regi
 import { server } from "@/test/setup";
 import { cn } from "@/lib/utils";
 import { TabStrip } from "./tab-strip";
-import { STRIP_TAP_TARGET, TAB_ROW_ADD_TAP_TARGET } from "./ui/labelled-strip";
+import { STRIP_TAP_TARGET } from "./ui/labelled-strip";
 import type { AgentStatus, AgentView, MuxCapability, TabView } from "@/lib/types";
 import type { WidthClass } from "@/lib/wide-layout";
 
@@ -110,7 +110,7 @@ describe("TabStrip", () => {
   // (`before:inset-y-0`), none carries a z-index or a reach below, and the scroller has no bottom
   // padding or negative bottom margin to extend a clip box under the row. The same goes for the
   // square "+" (`TAB_ROW_SQUARE_TAP_TARGET`).
-  it("keeps every hit box inside the 30px row, never over the content below", () => {
+  it("keeps every hit box inside the 44px row, never over the content below", () => {
     const { container } = render(
       <TabStrip
         workspaceId="w1"
@@ -132,12 +132,12 @@ describe("TabStrip", () => {
     }
     const tab = screen.getByRole("button", { name: "tab 2" });
     expect(tab.className).toMatch(/(?:^|\s)before:inset-y-0(?=\s|$)/);
-    expect(tab.className).toMatch(/(?:^|\s)h-7\.5(?=\s|$)/);
-    // The bare "+" is a 24px box centred in the 30px row, with no border: its edges are 3px inside, so `-3px` ends on them.
+    expect(tab.className).toMatch(/(?:^|\s)h-11(?=\s|$)/);
+    // The phone's "+" is drawn at the floor, a 44px square, the row's whole height (ADR 0171): no border, no reach.
     const plus = screen.getByRole("button", { name: "New tab" });
-    expect(plus.className).toMatch(/(?:^|\s)size-6(?=\s|$)/);
+    expect(plus.className).toMatch(/(?:^|\s)size-11(?=\s|$)/);
     expect(plus.className).not.toMatch(/(?:^|\s)border(?=\s|$)/);
-    expect(plus.className).toMatch(/(?:^|\s)before:-inset-y-\[3px\](?=\s|$)/);
+    expect(plus.className).not.toMatch(/before:-inset/);
   });
 
   // INK AND WEIGHT ARE THE ONLY MARK (option 3 of the 2026-09-23 top-bar deck): the open tab is
@@ -164,7 +164,8 @@ describe("TabStrip", () => {
 
     const inactive = screen.getByRole("button", { name: "tab 2" });
     expect(inactive.className).toContain("text-muted-foreground");
-    expect(inactive.className).toContain("font-medium");
+    // The clear type on the phone (ADR 0171): regular weight off the open tab.
+    expect(inactive.className).toContain("font-normal");
     const inactiveBox = boxClasses(inactive);
     // No border and no radius at all: there is no box to reserve.
     expect(inactiveBox.filter((c) => /^(rounded|border)/.test(c))).toEqual([]);
@@ -272,10 +273,19 @@ describe("TabStrip — a tab with no name of its own", () => {
     );
 
   it("draws its position, in the lighter ink, as the button's own spoken name", () => {
-    strip("1");
+    widthClass.now = "medium";
+    const wide = strip("1");
     const tab = screen.getByRole("button", { name: "tab 1" });
     expect(visibleText(tab)).toBe("tab 1");
     expect(visibleText(tab.querySelector('[class*="text-muted-foreground"]')!)).toBe("tab 1");
+    wide.unmount();
+    // On the phone (the clear type, ADR 0171) the position takes the tab's own muted ink, the lightest ink that
+    // holds 4.5:1 there; the regular weight already sets it apart from the open tab.
+    widthClass.now = "compact";
+    strip("1");
+    const phone = screen.getByRole("button", { name: "tab 1" });
+    expect(phone.className).toMatch(/(?:^|\s)text-muted-foreground(?=\s|$)/);
+    expect(phone.querySelector('[class*="text-muted-foreground/70"]')).toBeNull();
     expect(tab.querySelector(".sr-only")).toBeNull();
   });
 
@@ -340,7 +350,7 @@ describe("TabStrip — long-press actions", () => {
     const other = screen.getByRole("button", { name: "tab 1" });
     expect(open).toHaveAttribute("aria-haspopup", "dialog");
     expect(open).toHaveAttribute("aria-expanded", "false");
-    expect(open.className).toContain("aria-expanded:bg-control-on");
+    expect(open.className).toContain("aria-expanded:bg-(--state-open)");
     expect(other).not.toHaveAttribute("aria-expanded");
     await user.click(open);
     expect(screen.getByRole("button", { name: "Rename" })).toBeInTheDocument();
@@ -925,12 +935,15 @@ describe("TabStrip under the folder look", () => {
     expect(cls).not.toMatch(/bg-background|shadow-|border-x-rule/);
   });
 
-  it("keeps the 30px tab, its hit box and the stable label", () => {
+  it("keeps the phone's folder tab 38px under its 6px of ground, its hit box the row's whole 44px, and the stable label", () => {
     themeTabs.word = "folder";
     renderStrip();
+    expect(open().parentElement!.className).toMatch(/(?:^|\s)pt-1\.5(?=\s|$)/);
+    expect(screen.getByRole("navigation", { name: "Tabs" }).className).not.toMatch(/(?:^|\s)pt-1\.5(?=\s|$)/);
     for (const tab of [open(), other()]) {
-      expect(tab.className).toMatch(/(?:^|\s)h-7\.5(?=\s|$)/);
+      expect(tab.className).toMatch(/(?:^|\s)h-9\.5(?=\s|$)/);
       expect(tab.className).toMatch(/(?:^|\s)before:inset-y-0(?=\s|$)/);
+      expect(tab.className).toMatch(/(?:^|\s)before:-top-1\.5(?=\s|$)/);
       expect(tab.querySelector('[aria-hidden="true"].invisible.font-semibold')).not.toBeNull();
     }
   });
@@ -949,11 +962,80 @@ describe("TabStrip under the folder look", () => {
     for (const word of ["plain", undefined] as const) {
       themeTabs.word = word;
       const { unmount } = renderStrip();
-      expect(open().className).not.toMatch(/border-x|shadow-|bg-background|rounded-t/);
+      // The one mark plain adds on the phone is the open tab's 2px bar of ink (ADR 0171), never a card.
+      expect(open().className).toMatch(/shadow-\[inset_0_-2px_0_0_var\(--foreground\)\]/);
+      expect(open().className.replace("shadow-[inset_0_-2px_0_0_var(--foreground)]", "")).not.toMatch(/border-x|shadow-|bg-background|rounded-t/);
       expect(other().className).not.toMatch(/border-x|shadow-/);
       expect(screen.getByRole("navigation", { name: "Tabs" }).className).not.toMatch(/shadow-/);
       unmount();
     }
+  });
+});
+
+// THE LARGE SCREEN'S BAR (ADR 0171): both theme looks seated on the bar's firm edge (`--edge-firm`). The theme's
+// word still picks the look; `bar` only seats it. Pixels and contrast: e2e/strip-head.spec.ts.
+describe("TabStrip in the large screen's bar", () => {
+  function renderBar() {
+    return render(
+      <TabStrip
+        workspaceId="w1"
+        tabs={[
+          { ...tabs[0]!, label: "Alpha" },
+          { ...tabs[1]!, label: "Beta" },
+        ]}
+        agents={[]}
+        selected="w1:t1"
+        onSelect={vi.fn()}
+        onNewTab={vi.fn()}
+        allowAll={false}
+        bar
+      />,
+    );
+  }
+  const open = () => screen.getByRole("button", { name: "Alpha" });
+  const other = () => screen.getByRole("button", { name: "Beta" });
+
+  it("folder: the open tab is the page colour inside the firm edge, top and sides, and the row stands on it", () => {
+    themeTabs.word = "folder";
+    renderBar();
+    const cls = open().className;
+    expect(cls).toMatch(/(?:^|\s)bg-background(?=\s|$)/);
+    expect(cls).toMatch(/(?:^|\s)border-x-edge-firm(?=\s|$)/);
+    expect(cls).toMatch(/shadow-\[inset_0_2px_0_0_var\(--edge-firm\)\]/);
+    expect(cls).not.toMatch(/border-x-rule|--tab-active/);
+    expect(screen.getByRole("navigation", { name: "Tabs" }).className).toMatch(/shadow-\[inset_0_calc\(var\(--surface-border-width\)\*-1\)_0_0_var\(--edge-firm\)\]/);
+  });
+
+  it("plain: no card, a 2px bar of the theme's ink under the open tab, square ends", () => {
+    themeTabs.word = "plain";
+    renderBar();
+    const cls = open().className;
+    expect(cls).toMatch(/shadow-\[inset_0_-2px_0_0_var\(--foreground\)\]/);
+    expect(cls).not.toMatch(/bg-background|border-x-edge-firm|rounded-md|rounded-t/);
+    expect(other().className).not.toMatch(/shadow-\[inset/);
+    expect(screen.getByRole("navigation", { name: "Tabs" }).className).not.toMatch(/shadow-/);
+  });
+
+  for (const word of ["folder", "plain"] as const) {
+    it(`${word}: the open tab is full ink and semibold, every other tab regular in the muted ink with a hover layer`, () => {
+      themeTabs.word = word;
+      renderBar();
+      expect(open().className).toMatch(/(?:^|\s)font-semibold(?=\s|$)/);
+      expect(open().className).toMatch(/(?:^|\s)text-foreground(?=\s|$)/);
+      const cls = other().className;
+      expect(cls).toMatch(/(?:^|\s)font-normal(?=\s|$)/);
+      expect(cls).toMatch(/(?:^|\s)text-muted-foreground(?=\s|$)/);
+      expect(cls).toMatch(/(?:^|\s)hover:bg-foreground\/10(?=\s|$)/);
+      expect(cls).not.toMatch(/font-medium/);
+    });
+  }
+
+  it("leaves the row outside the bar and off the phone as it was: medium weight, no firm edge", () => {
+    themeTabs.word = "folder";
+    widthClass.now = "medium";
+    render(<TabStrip workspaceId="w1" tabs={[{ ...tabs[0]!, label: "Alpha" }, { ...tabs[1]!, label: "Beta" }]} agents={[]} selected="w1:t1" onSelect={vi.fn()} onNewTab={vi.fn()} allowAll={false} />);
+    expect(other().className).toMatch(/(?:^|\s)font-medium(?=\s|$)/);
+    expect(open().className).not.toMatch(/edge-firm/);
   });
 });
 
@@ -981,7 +1063,7 @@ describe("TabStrip at each width class", () => {
     expect(el.className).toMatch(new RegExp(`(?:^|\\s)${cls.replace(/[.[\]]/g, "\\$&")}(?=\\s|$)`));
 
   it.each([
-    ["compact", "h-7.5", "text-[11px]", "min-w-11", "px-1.5", "size-6"],
+    ["compact", "h-11", "text-[12px]", "min-w-11", "px-2", "size-11"],
     ["medium", "h-9", "text-[12px]", "min-w-13", "px-2", "size-7"],
     ["expanded", "h-10", "text-[13px]", "min-w-14", "px-2.5", "size-8"],
   ] as const)("draws the %s step: a %s cell of %s type", (step, height, text, minWidth, px, plus) => {
@@ -997,20 +1079,20 @@ describe("TabStrip at each width class", () => {
     has(screen.getByRole("button", { name: "New tab" }), plus);
   });
 
-  it("keeps the phone's row exactly as it was at compact, class for class", () => {
+  it("draws the phone's 44px row, class for class (ADR 0171)", () => {
     widthClass.now = "compact";
     renderStrip();
-    // Today's cell, spelled out as it stood before the row learned to step.
-    const before =
-      "relative flex h-7.5 min-w-11 shrink-0 select-none items-center justify-center gap-1.5 [-webkit-touch-callout:none] whitespace-nowrap px-1.5 text-[11px] transition-colors before:inset-y-0 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring";
-    const open = cn(STRIP_TAP_TARGET, before, "font-semibold text-foreground");
-    const other = cn(STRIP_TAP_TARGET, before, "font-medium text-muted-foreground hover:text-foreground");
+    const cell =
+      "relative flex h-11 min-w-11 shrink-0 select-none items-center justify-center gap-1.5 [-webkit-touch-callout:none] whitespace-nowrap px-2 text-[12px] transition-colors before:inset-y-0 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring";
+    // The ring 4 to 6px inside (`-outline-offset-6`), clear of the bar of ink (ADR 0171 rule 7).
+    const open = cn(STRIP_TAP_TARGET, cell, "font-semibold text-foreground", "shadow-[inset_0_-2px_0_0_var(--foreground)]", "focus-visible:-outline-offset-6");
+    const other = cn(STRIP_TAP_TARGET, cell, "font-normal text-muted-foreground hover:bg-foreground/10 hover:text-foreground", "focus-visible:-outline-offset-6");
     expect(classesOf(screen.getByRole("button", { name: "Alpha" }))).toEqual(open.split(" ").toSorted());
     expect(classesOf(screen.getByRole("button", { name: "Beta" }))).toEqual(other.split(" ").toSorted());
     const plus = screen.getByRole("button", { name: "New tab" });
-    has(plus, "size-6");
-    for (const cls of TAB_ROW_ADD_TAP_TARGET.split(" ")) has(plus, cls);
-    expect(screen.getByRole("button", { name: "Alpha" }).parentElement!.className).toMatch(/(?:^|\s)-mx-1\.5(?=\s|$)/);
+    has(plus, "size-11");
+    has(plus, "rounded-md");
+    expect(screen.getByRole("button", { name: "Alpha" }).parentElement!.className).toMatch(/(?:^|\s)-mx-2(?=\s|$)/);
   });
 
   it("grows the folder look's padding and its group margin one step with the row", () => {

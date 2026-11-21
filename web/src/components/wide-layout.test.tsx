@@ -256,7 +256,7 @@ describe("the sidebar", () => {
     // The phone's switcher list inside it stands on a card and marks its row with the accent: here both
     // are re-pointed, so the list takes the recess and the selected row the paper.
     expect(aside.className).toContain("[--card:var(--surface-recess)]");
-    expect(aside.className).toContain("[--accent:var(--surface-paper)]");
+    expect(aside.className).toContain("[--accent:var(--state-on-recess)]");
     expect(aside.className).toContain(NAV_EDGE);
     expect(aside.className).not.toContain("border-rule");
     expect(aside.style.width).toBe("320px");
@@ -350,12 +350,12 @@ describe("the sidebar", () => {
     const { container } = await mount("w1:p1", 1200);
     const toggle = q(container, '[data-slot="sidebar-toggle"]')!;
     expect(toggle.getAttribute("aria-expanded")).toBe("true");
-    expect(toggle.className).not.toContain("aria-expanded:bg-control-on");
+    expect(toggle.className).not.toContain("aria-expanded:bg-(--state-open)");
     expect(toggle.className).toContain("focus-visible:outline-2");
-    expect(toggle.className).toContain("hover:bg-accent");
+    expect(toggle.className).toContain("hover:bg-(--state-hover)");
     fireEvent.click(toggle);
     await waitFor(() => expect(q(container, '[data-slot="sidebar-toggle"]')?.getAttribute("aria-expanded")).toBe("false"));
-    expect(q(container, '[data-slot="sidebar-toggle"]')?.className).not.toContain("aria-expanded:bg-control-on");
+    expect(q(container, '[data-slot="sidebar-toggle"]')?.className).not.toContain("aria-expanded:bg-(--state-open)");
   });
 
   it("closes to a rail of icons with status marks, remembered on this device", async () => {
@@ -450,12 +450,20 @@ describe("the strip", () => {
     expect(other!.className).not.toContain("bg-surface-paper");
   });
 
-  it("puts the navigation on the recess: the tab strip and the strip's own ground, with only the faint edge under the tab strip", async () => {
+  it("puts the navigation on the recess: the tab strip and the strip's own ground, the tab bar on the firm edge and a page band", async () => {
     const { container } = await mount("w1:p1", 1200);
     const header = q(container, '[data-slot="space-header"]')!;
     expect(header.className).toContain("bg-surface-recess");
-    expect(header.className).toContain(NAV_EDGE);
+    // The open tab stands on this line in both looks, so it is the firm edge (ADR 0171), not the faint `NAV_EDGE`
+    // that measured 1.0:1 where a theme's recess clamps to its page.
+    expect(header.className).toContain("border-edge-firm");
+    expect(header.className).not.toContain(NAV_EDGE);
     expect(header.className).not.toContain("border-rule");
+    // The 6px page band under the bar, the bar's height and not the columns'.
+    const band = header.nextElementSibling!;
+    expect(band).toHaveAttribute("data-slot", "space-band");
+    expect(band.className).toContain("h-1.5");
+    expect(band.className).toContain("bg-background");
     expect(header.className).not.toContain("bg-band-ground");
     expect(q(container, '[data-slot="strip"]')!.className).toContain("bg-surface-recess");
     // The seam between two columns is a component edge, quieter than a region's rule.

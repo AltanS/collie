@@ -330,7 +330,7 @@ export function TrickMenuGroups(props: TrickMenuGroupsProps) {
       ))}
       {frozen.leftOut > 0 && (
         <p data-slot="trick-menu-more" className="px-3 text-xs text-muted-foreground">
-          {tn("tricks.menu.more", frozen.leftOut, { count: frozen.leftOut })}
+          {tn("tricks.menu.moreSee", frozen.leftOut, { count: frozen.leftOut })}
         </p>
       )}
     </div>

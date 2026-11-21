@@ -1061,7 +1061,7 @@ describe("collie trick on, off and list", () => {
     expect(d.out[1]).toContain("taken: its files were edited, update it with collie trick update");
     expect(d.out[2]).toContain("taken: another trick has this id");
     expect(d.out[3]).toContain("taken: from the repository, not from the official list");
-    expect(d.out.at(-1)).toBe("From AltanS/collie-tricks, at the commits this Collie release names. Add one on the phone: Settings, Tricks, Official tricks.");
+    expect(d.out.at(-1)).toBe("From AltanS/collie-tricks, at the commits this Collie release names. Add one on the phone: Settings, Tricks and the Hill, Official tricks.");
     // The only request is the local bridge's own tricks list, for the crew line: nothing reaches GitHub.
     expect(d.asked).toEqual(["http://127.0.0.1:18999/api/tricks"]);
     d.out.length = 0;
@@ -1365,7 +1365,7 @@ describe("approving from inside an agent's pane, auto, and a version waiting", (
     await cmdTrickList(d, []);
     expect(d.out[0]).toContain("VERSION");
     expect(d.out[1]).toMatch(/ NEW +on, not seen by the bridge/);
-    expect(d.out).toContain("NEW: a new version waits for your yes. Approve it in Settings, Tricks, on the phone, or with collie trick on <id>.");
+    expect(d.out).toContain("NEW: a new version waits for your yes. Approve it in Settings, Tricks and the Hill, on the phone, or with collie trick on <id>.");
     d.out.length = 0;
     await cmdTrickList(d, ["--json"]);
     // SAFETY: `list --json` prints one document, checked by value below.

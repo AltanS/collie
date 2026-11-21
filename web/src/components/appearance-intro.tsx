@@ -6,7 +6,7 @@ import { t } from "@/lib/i18n";
 export const APPEARANCE_DOCS_URL = "https://colliepwa.dev/docs/themes#make-collie-your-own";
 
 /**
- * The opening of Settings → Appearance: one heading, one sentence and a link to the docs. Not a
+ * The opening of Settings → Look and feel: one heading, one sentence and a link to the docs. Not a
  * card, because it sets nothing: it names what the two cards under it are for (Theme, and
  * System/Light/Dark) and points at the page that explains them. Plain text on the page
  * background, so it reads as the page's own lead and never as a third control.

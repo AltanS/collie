@@ -42,7 +42,7 @@ function group(trick: Partial<WireTrickInfo> = {}, extra: { canWrite?: boolean; 
 describe("TrickSettingsGroup", () => {
   it("draws one row per field, each with a 44 px floor, its label and its control by kind", () => {
     const { section } = group();
-    expect(within(section).getByText("Settings")).toBeInTheDocument();
+    expect(within(section).getByText("This trick's settings")).toBeInTheDocument();
     const rows = [...section.querySelectorAll("[data-field]")];
     expect(rows.map((row) => [row.getAttribute("data-field"), row.getAttribute("data-kind")])).toEqual([
       ["repo", "text"],

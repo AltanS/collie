@@ -81,14 +81,20 @@ export function ColumnControls({
 }) {
   useLocale();
   return (
-    <>
+    // ONE GROUP BEHIND A HAIRLINE (strip-head round, 2026-11-21): the width and Remove from view, and in the focused
+    // column the pane menu before them, read as the column's controls, apart from its name; the bar's own
+    // controls carry the same hairline (wide-layout.tsx).
+    <div data-slot="column-controls" className="flex shrink-0 items-center self-center border-l border-border pl-1">
       {preset !== null && (
         <Button
-          variant="outline"
+          variant="ghost"
           size="lg"
           data-slot="column-width"
-          // A stated width, so 1/2, 4/5 and Full are one box and a cycle moves nothing (DESIGN.md §2).
-          className="w-14 shrink-0 px-0 text-xs tabular-nums"
+          // A stated width, so 1/2, 4/5 and Full are one box and a cycle moves nothing (DESIGN.md §2). A WORD, not
+          // a box: the bordered box was the heaviest thing in the header (2026-11-21), so it keeps the box's ink and
+          // weight and loses only the border, with the ghost button's hover. Not the muted ink: on a column's paper in
+          // a generated mid-grey theme that fell under 4.5:1 (e2e/themes, R5), where the full ink holds.
+          className="w-14 shrink-0 px-0 text-xs font-medium tabular-nums text-foreground"
           aria-label={t("wide.width.aria", { width: presetWord(preset) })}
           onClick={own(onCycle)}
         >
@@ -109,7 +115,7 @@ export function ColumnControls({
       >
         <Icon name="remove-from-view" className="size-5" />
       </Button>
-    </>
+    </div>
   );
 }
 
@@ -122,7 +128,9 @@ export function ColumnHeader({ pane, controls, onFocus }: { pane: AgentView; con
   useLocale();
   const head = paneGitHead(pane);
   return (
-    <div data-slot="column-header" className="flex min-h-15 shrink-0 items-center gap-1 border-b border-band-rule bg-band-ground py-1 pl-4 pr-2">
+    // 54px and the firm edge, like the focused column's docked header (app-header.tsx): the space bar's page band
+    // takes the other 6px, so every column's body starts where it did.
+    <div data-slot="column-header" className="flex min-h-13.5 shrink-0 items-center gap-1 border-b border-edge-firm bg-band-ground py-1 pl-4 pr-2">
       <PaneGlyph pane={pane} className="size-8" markOn="bg-band-ground" named />
       {/* The name is the column's way in for a keyboard: Enter on it gives the column the focus. */}
       <button type="button" onClick={own(onFocus)} className="min-h-11 min-w-0 flex-1 pl-2 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
@@ -133,7 +141,7 @@ export function ColumnHeader({ pane, controls, onFocus }: { pane: AgentView; con
         </div>
         {/* No space name: the space header above the strip is the one bar that names it. What is the
             column's own stays: its branch, its machine, its state. */}
-        <div data-slot="column-header-line" className="flex min-w-0 items-baseline gap-2 text-[11px] leading-4 text-muted-foreground">
+        <div data-slot="column-header-line" className="flex min-w-0 items-baseline gap-2 text-xs leading-4 text-muted-foreground">
           {head !== null && <BranchLabel head={head} className="min-w-0 shrink truncate" />}
           <span className="shrink-0">{statusLabel(shownStatus(pane))}</span>
           <HostChip host={pane.host} variant="glyph" className="ml-auto self-center" />
@@ -319,8 +327,9 @@ export function PaneColumnBody({
  * closes that seam (§4, "A boundary is drawn once"), 4px higher.
  */
 export const PAPER_PLANE =
-  "bg-surface-paper [--band-ground:var(--surface-paper)] [--chrome:var(--surface-paper)] [--muted:var(--background)]";
-export const PAGE_PLANE = "bg-background [--band-ground:var(--background)] [--chrome:var(--background)] dark:[--muted:var(--surface-paper)]";
+  "bg-surface-paper [--band-ground:var(--surface-paper)] [--chrome:var(--surface-paper)] [--muted:var(--background)] [--accent:var(--state-on-paper)] [--state-hover:var(--state-hover-paper)] [--state-on:var(--state-on-paper)] [--state-open:var(--state-open-paper)]";
+export const PAGE_PLANE =
+  "bg-background [--band-ground:var(--background)] [--chrome:var(--background)] dark:[--muted:var(--surface-paper)] [--accent:var(--state-on-page)] [--state-hover:var(--state-hover-page)] [--state-on:var(--state-on-page)] [--state-open:var(--state-open-page)]";
 const IN_EITHER_PLANE =
   "[&_[data-slot=composer-actions]]:bg-muted/20 [&_[data-slot=belt-track]]:bg-transparent [&_[data-slot=pane-reading]]:border-t-transparent";
 

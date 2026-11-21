@@ -45,7 +45,8 @@ export const STRIP_TAP_TARGET_SQUARE = `${STRIP_TAP_TARGET} before:-inset-x-[7px
  * The hit box of a 28px square control in the pane screen's 30px tab row: the fold chevron
  * (`agent-chat.tsx`, pinned to the row by `tab-strip.tsx`). The row's "+" was the second one; it draws
  * 24px now and has its own numbers, {@link TAB_ROW_ADD_TAP_TARGET}. It ends on the row's own bottom
- * edge.
+ * edge. On the phone (ADR 0171) the row is 44px and the fold is drawn at that size with no reach; this one
+ * is the fold's at the wider steps.
  *
  * THE REACH MAY NOT HANG BELOW THE ROW. It used to (`-bottom-4`, 44px tall, `z-[1]`), and the
  * 14px that lay over the content under the strip took the tap off a file-path link, or any other
@@ -79,7 +80,9 @@ export const TAB_ROW_SQUARE_TAP_TARGET =
  *    of that tab's padding, never its label; the tab keeps at least 40px. On the right the scroller's `pr-3` (12px,
  *    with the fold chevron pinned) or `px-4` holds the reach.
  *
- * Measured 2026-11-06 at 412x915 in Chromium (`e2e/pane-top-bar.spec.ts`).
+ * Measured 2026-11-06 at 412x915 in Chromium (`e2e/pane-top-bar.spec.ts`). Since ADR 0171 the phone's row is 44px and
+ * draws its "+" at that size, so no row wears this one; it stays as the 30px row's measure the two steps below
+ * are read against, and as the bare face's test reach.
  */
 export const TAB_ROW_ADD_TAP_TARGET =
   "relative before:absolute before:-inset-y-[3px] before:-inset-x-[10px] before:content-['']";

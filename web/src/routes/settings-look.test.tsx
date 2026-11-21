@@ -1,4 +1,4 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -6,20 +6,19 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { APPEARANCE_DOCS_URL } from "@/components/appearance-intro";
 import { withHeaderHost } from "@/test/header-host";
 import { __resetDesign, setDesignMark } from "@/lib/design";
-import { SettingsAppearanceRoute, SettingsCharacterRoute } from "./settings-sections";
+import { SettingsCharacterRoute, SettingsLookRoute } from "./settings-sections";
 
-// Settings → Appearance opens with "Make Collie your own", then the two cards that make the app
-// yours, in the order a person decides them: Theme, then System/Light/Dark (the card still titled
-// "Appearance"). The Character row follows them and opens the Character page below Appearance. The cards'
-// own behaviour is pinned beside each component.
+// Settings → Look and feel opens with "Make Collie your own", then the two cards that make the app
+// yours, in the order a person decides them: Theme, then Light or dark. The Character row follows them and
+// opens the Character page below. The cards' own behaviour is pinned beside each component.
 
 function renderPage() {
   const router = createMemoryRouter(
     [
-      { path: "/settings/appearance", element: withHeaderHost(<SettingsAppearanceRoute />) },
-      { path: "/settings/appearance/character", element: withHeaderHost(<SettingsCharacterRoute />) },
+      { path: "/settings/look", element: withHeaderHost(<SettingsLookRoute />) },
+      { path: "/settings/look/character", element: withHeaderHost(<SettingsCharacterRoute />) },
     ],
-    { initialEntries: ["/settings/appearance"] },
+    { initialEntries: ["/settings/look"] },
   );
   render(<RouterProvider router={router} />);
   return router;
@@ -35,7 +34,7 @@ function precedes(a: Element, b: Element): boolean {
   return (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
 }
 
-describe("Settings → Appearance", () => {
+describe("Settings → Look and feel", () => {
   it("opens with Make Collie your own and a link to the themes page", async () => {
     renderPage();
     const heading = await screen.findByRole("heading", { name: "Make Collie your own" });
@@ -45,23 +44,33 @@ describe("Settings → Appearance", () => {
     expect(precedes(heading, link)).toBe(true);
   });
 
-  it("puts Theme, then System/Light/Dark under the opening", async () => {
+  it("puts Theme, then Light or dark under the opening", async () => {
     renderPage();
     const heading = await screen.findByRole("heading", { name: "Make Collie your own" });
     const theme = screen.getByRole("combobox", { name: "Theme" });
-    const halves = screen.getByRole("radiogroup", { name: "Appearance" });
+    const halves = screen.getByRole("radiogroup", { name: "Light or dark" });
     expect(precedes(heading, theme)).toBe(true);
     expect(precedes(theme, halves)).toBe(true);
-    // The characters are on their own page; the Appearance page holds only a row for them.
+    // The characters are on their own page; this page holds only a row for them.
     expect(screen.queryByRole("radiogroup", { name: "Character" })).toBeNull();
   });
 
-  it("has the Pinch to zoom switch under the Zoom pill card, on until it is turned off", async () => {
+  it("holds the words in one group: language, typeface, then the three text sizes", async () => {
     renderPage();
-    const pill = await screen.findByText("Zoom pill");
-    const pinch = screen.getByRole("switch", { name: "Pinch to zoom" });
-    expect(pinch).toHaveAttribute("aria-checked", "true");
-    expect(precedes(pill, pinch)).toBe(true);
+    const group = await screen.findByRole("region", { name: "Language and text" });
+    const language = within(group).getByText("Language");
+    const typeface = within(group).getByText("Typeface");
+    const chat = within(group).getByText("Chat text size");
+    const terminal = within(group).getByText("Terminal text size");
+    const reply = within(group).getByText("Reply box text size");
+    expect(precedes(language, typeface) && precedes(typeface, chat) && precedes(chat, terminal) && precedes(terminal, reply)).toBe(true);
+  });
+
+  it("ends with the layout group: Belt size, Large-screen layout, Project pictures, Moving pictures from tricks", async () => {
+    renderPage();
+    const group = await screen.findByRole("region", { name: "Layout and pictures" });
+    const names = ["Belt size", "Large-screen layout", "Project pictures", "Moving pictures from tricks"].map((name) => within(group).getByText(name));
+    expect(names.every((el, i) => i === 0 || precedes(names[i - 1]!, el))).toBe(true);
   });
 
   it("has a Character row that says From the theme, and then the name of the device's choice", async () => {
@@ -74,13 +83,13 @@ describe("Settings → Appearance", () => {
     expect(row).toHaveTextContent("From the theme");
   });
 
-  it("opens the Character page below Appearance on a tap, and Back climbs to Appearance", async () => {
+  it("opens the Character page below on a tap, and Back climbs to Look and feel", async () => {
     const router = renderPage();
     await userEvent.click(await screen.findByRole("button", { name: /Character/ }));
-    expect(router.state.location.pathname).toBe("/settings/appearance/character");
+    expect(router.state.location.pathname).toBe("/settings/look/character");
     expect(await screen.findByRole("heading", { name: "Character" })).toBeInTheDocument();
     expect(screen.getAllByRole("radio")).toHaveLength(11);
     await userEvent.click(screen.getByRole("button", { name: "Back" }));
-    expect(router.state.location.pathname).toBe("/settings/appearance");
+    expect(router.state.location.pathname).toBe("/settings/look");
   });
 });

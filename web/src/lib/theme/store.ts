@@ -45,8 +45,10 @@ import {
   parseTheme,
   setsOptionalToken,
   toSrgbHex,
+  type FilledHalves,
   type Theme,
 } from "./schema";
+import { DERIVED_TOKENS, deriveTokens } from "./derive";
 import { isThemeEscape, withoutThemeEscape } from "./escape";
 import { readOrigin, type ThemeOrigin } from "./origin";
 import { sameTheme } from "./registry-match";
@@ -523,7 +525,10 @@ export function applyTheme(theme: Theme, source: ThemeSource): void {
   if (source === "shipped") {
     const id = SHIPPED_THEME_IDS.find((shipped) => shipped === checked.id);
     if (id === undefined || id === DEFAULT_THEME_ID) delete root.dataset.theme;
-    else root.dataset.theme = id;
+    else {
+      root.dataset.theme = id;
+      setDerived(root, fillHalves(checked, defaultTheme()));
+    }
     setMetaColours(id === undefined || id === DEFAULT_THEME_ID ? undefined : metaOf(checked));
     return;
   }
@@ -540,7 +545,20 @@ export function applyTheme(theme: Theme, source: ThemeSource): void {
   for (const [property, value] of versionTwoDeclarations(checked)) root.style.setProperty(property, value);
   // index.css paints Collie's grain on :root, so a theme that names no ground says `flat` itself.
   for (const [property, value] of omittedGroundDeclarations(checked.surface)) root.style.setProperty(property, value);
+  setDerived(root, filled);
   setMetaColours(metaOf(checked));
+}
+
+/**
+ * The colours made from the theme's own tokens (`derive.ts`): the planes, each plane's hover, selected and open fill,
+ * and the ring, one `light-dark()` each, set after the base tokens so a theme's own `ring` or plane is the start the
+ * floor works from. Collie never comes here: its stylesheet holds the same relations, and the reference test holds
+ * the two together.
+ */
+function setDerived(root: HTMLElement, filled: FilledHalves): void {
+  const light = deriveTokens(filled.light, "light");
+  const dark = deriveTokens(filled.dark, "dark");
+  for (const token of DERIVED_TOKENS) root.style.setProperty(`--${token}`, `light-dark(${light[token]}, ${dark[token]})`);
 }
 
 /** `collie` on the page: the attribute and every inline token gone, the default metas back. */
@@ -553,6 +571,7 @@ function reset(): void {
 
 function clearInline(root: HTMLElement): void {
   for (const token of ALL_THEME_TOKENS) root.style.removeProperty(`--${token}`);
+  for (const token of DERIVED_TOKENS) root.style.removeProperty(`--${token}`);
   for (const property of VERSION_TWO_PROPERTIES) root.style.removeProperty(property);
 }
 

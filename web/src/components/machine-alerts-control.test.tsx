@@ -30,17 +30,17 @@ describe("MachineAlertsControl", () => {
     render(<MachineAlertsControl machineId="lodge" alerts={BOTH} />);
     expect(screen.getByRole("switch", { name: "CPU alert" })).toBeChecked();
     expect(screen.getByRole("switch", { name: "Memory alert" })).toBeChecked();
-    const cpuAbove = screen.getByRole("radiogroup", { name: "CPU alert threshold" });
+    const cpuAbove = screen.getByRole("radiogroup", { name: "CPU above" });
     expect(cpuAbove.querySelector('[aria-checked="true"]')).toHaveTextContent("90%");
-    const memFor = screen.getByRole("radiogroup", { name: "Memory alert duration" });
+    const memFor = screen.getByRole("radiogroup", { name: "Memory for at least" });
     expect(memFor.querySelector('[aria-checked="true"]')).toHaveTextContent("5 min");
   });
 
   it("offers 80, 90 and 95 percent and 5, 10, 30 and 60 minutes", () => {
     render(<MachineAlertsControl machineId="lodge" alerts={{ cpu: { above: 0.9, forMin: 10 } }} />);
-    const above = screen.getByRole("radiogroup", { name: "CPU alert threshold" });
+    const above = screen.getByRole("radiogroup", { name: "CPU above" });
     expect([...above.querySelectorAll('[role="radio"]')].map((n) => n.textContent)).toEqual(["80%", "90%", "95%"]);
-    const forMin = screen.getByRole("radiogroup", { name: "CPU alert duration" });
+    const forMin = screen.getByRole("radiogroup", { name: "CPU for at least" });
     expect([...forMin.querySelectorAll('[role="radio"]')].map((n) => n.textContent)).toEqual(["5 min", "10 min", "30 min", "60 min"]);
   });
 
@@ -52,7 +52,7 @@ describe("MachineAlertsControl", () => {
 
   it("keeps a stored value that is not one of the shipped choices, selected", () => {
     render(<MachineAlertsControl machineId="lodge" alerts={{ cpu: { above: 0.85, forMin: 15 } }} />);
-    const above = screen.getByRole("radiogroup", { name: "CPU alert threshold" });
+    const above = screen.getByRole("radiogroup", { name: "CPU above" });
     expect(above.querySelector('[aria-checked="true"]')).toHaveTextContent("85%");
     expect([...above.querySelectorAll('[role="radio"]')].map((n) => n.textContent)).toEqual(["80%", "85%", "90%", "95%"]);
   });
@@ -60,7 +60,7 @@ describe("MachineAlertsControl", () => {
   it("posts the WHOLE object when one choice changes, the other metric's rule included", async () => {
     const user = userEvent.setup();
     render(<MachineAlertsControl machineId="lodge" alerts={BOTH} />);
-    await user.click(within95(screen.getByRole("radiogroup", { name: "CPU alert threshold" })));
+    await user.click(within95(screen.getByRole("radiogroup", { name: "CPU above" })));
     await waitFor(() => expect(posted).toHaveLength(1));
     expect(posted[0]).toEqual({
       id: "lodge",
@@ -184,12 +184,12 @@ describe("MachineAlertsControl", () => {
     expect(screen.getAllByText("Firing now")).toHaveLength(1);
   });
 
-  it("says the push reaches every subscribed device, and links to Settings, Alerts", async () => {
+  it("says the push reaches every subscribed device, and links to Settings, Notifications", async () => {
     const user = userEvent.setup();
     const onOpenAlerts = vi.fn();
     render(<MachineAlertsControl machineId="lodge" alerts={{}} onOpenAlerts={onOpenAlerts} />);
     expect(screen.getByText("The push goes to every device subscribed to this Collie.")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Settings, Alerts" }));
+    await user.click(screen.getByRole("button", { name: "Settings, Notifications" }));
     expect(onOpenAlerts).toHaveBeenCalledOnce();
   });
 });

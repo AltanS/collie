@@ -68,16 +68,21 @@ interface PaneMetaProps {
   onOpenCache?: () => void;
   /** The member's plain name on the host chip, never `<host> · <mux>`: the dashboard row has no room for two parts. */
   plainHost?: boolean;
+  /**
+   * The large screen's pane header (2026-11-21): the machine and the time at 12px, the size of the place and the
+   * branch beside them, and their glyphs and the dot between them at full strength.
+   */
+  full?: boolean;
   className?: string;
 }
 
-export function PaneMeta({ host, cache, session, onOpenCache, plainHost, className }: PaneMetaProps) {
+export function PaneMeta({ host, cache, session, onOpenCache, plainHost, full = false, className }: PaneMetaProps) {
   return (
     <div
       data-slot="pane-meta"
       className={cn("flex h-3 shrink-0 items-baseline gap-1.5", className)}
     >
-      <HostChip host={host} variant="bare" plain={plainHost} />
+      <HostChip host={host} variant="bare" plain={plainHost} className={full ? "text-xs/3" : undefined} />
       <SessionChip session={session} host={host} />
       {/* THE SEPARATOR IS THE CSS'S TO DECIDE, NOT A PREDICATE'S. The dot belongs between the
           address and the reading and nowhere else, and asking "is the host shown?" here would be a
@@ -87,7 +92,7 @@ export function PaneMeta({ host, cache, session, onOpenCache, plainHost, classNa
           reading opens the row — and `empty:` — the chip inside rendered nothing, so there is no
           row at all. A pseudo-element does not make an element non-`:empty`, which is what lets
           the two rules sit on one box. */}
-      <span className="flex items-baseline gap-1.5 before:text-muted-foreground/60 before:content-['·'] first:before:content-none empty:hidden">
+      <span className={cn("flex items-baseline gap-1.5 before:content-['·'] first:before:content-none empty:hidden", full ? "before:text-muted-foreground" : "before:text-muted-foreground/60")}>
         <CacheChip
           cache={cache}
           host={host}
@@ -95,14 +100,19 @@ export function PaneMeta({ host, cache, session, onOpenCache, plainHost, classNa
           // number — the same one difference the two callers already have.
           variant={onOpenCache === undefined ? "row" : "button"}
           onOpen={onOpenCache}
-          // Reached, not drawn: 12px of line plus 2px above and 16px below is 30px. A drawn box would
+          fullTone={full}
+          // Reached, not drawn: 12px of line plus 4px above and 4px below is 20px, all the room the header has: above
+          // is the 4px gap to the name's line, below the header's own edge (ADR 0171). A drawn box would
           // be nearly three times the line and would set the surrounding row's height on its own.
           // The reach hangs DOWN, not both ways: the pane name's button ends 4px above this line,
           // and 16px up put the cache tap over the lower half of the name (1.17.0 review).
           className={cn(
-            "text-[11px]/3",
+            full ? "text-xs/3" : "text-[11px]/3",
+            // THE REACH STOPS AT THE HEADER'S EDGE (ADR 0171): 4px below the line, not 16. The 16px reached past the
+            // header into the phone's tab row and took the top 11px of New tab's 44px (measured with
+            // `elementFromPoint`, 2026-11-21); in a large screen's 54px header it reached the transcript.
             onOpenCache !== undefined &&
-              "relative before:absolute before:inset-x-0 before:-top-0.5 before:-bottom-4 before:content-['']",
+              "relative before:absolute before:inset-x-0 before:-top-1 before:-bottom-1 before:content-['']",
           )}
         />
       </span>

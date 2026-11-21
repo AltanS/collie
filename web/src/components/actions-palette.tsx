@@ -354,6 +354,12 @@ function RowLabel({ text, marks, kind, destructive = false }: { text: string; ma
 }
 
 const ROW_ICON = "size-4 shrink-0";
+/**
+ * The house ring on the row a wrapper holds (an ActionRow, which the pane menu's sheet draws with the browser's own
+ * ring). Outside the row, so it clears the keyboard highlight's inset ring (PALETTE_HIGHLIGHT): drawn on the same
+ * pixels the two marks read as one, 1:1 (themes R5, 2026-11-21). The list's 4px inset holds it inside the scroller.
+ */
+const PALETTE_ROW_RING = "*:focus-visible:outline-2 *:focus-visible:outline-offset-2 *:focus-visible:outline-ring";
 
 function PaletteRow({
   row,
@@ -402,7 +408,7 @@ function PaletteRow({
   }
   return (
     // The row Enter or Go runs: a filled ground, no accent edge.
-    <div data-palette-row={row.key} data-highlighted={highlighted ? "true" : undefined} className={cn("rounded-lg", highlighted && PALETTE_HIGHLIGHT)}>
+    <div data-palette-row={row.key} data-highlighted={highlighted ? "true" : undefined} className={cn("rounded-lg", PALETTE_ROW_RING, highlighted && PALETTE_HIGHLIGHT)}>
       {body}
     </div>
   );

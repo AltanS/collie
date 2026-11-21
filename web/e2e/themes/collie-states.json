@@ -1,0 +1,246 @@
+{
+ "dashboard-new-tab@1440 collie-dark": {
+  "hover button[data-slot=button] \"Close\" #1": "#343331",
+  "ring button[data-slot=button] \"Close\" #1": "#b1b1b1",
+  "ring list-group button \"Claude Code\" #1": "#ffffff",
+  "ring list-group button \"htophtop\" #1": "#ffffff",
+  "ring list-group button \"Just a shell\" #1": "#ffffff"
+ },
+ "dashboard-new-tab@1440 collie-light": {
+  "hover button[data-slot=button] \"Close\" #1": "#dad9d6",
+  "hover list-group button \"Claude Code\" #1": "#f1f1ef",
+  "hover list-group button \"htophtop\" #1": "#f1f1ef",
+  "hover list-group button \"Just a shell\" #1": "#f1f1ef",
+  "ring button[data-slot=button] \"Close\" #1": "#636363",
+  "ring list-group button \"Claude Code\" #1": "#636363",
+  "ring list-group button \"htophtop\" #1": "#636363",
+  "ring list-group button \"Just a shell\" #1": "#636363"
+ },
+ "dashboard-not-paired@1440 collie-dark": {
+  "selected segmented button[role=tab] \"Dashboard\" #1": "#1d1c1b",
+  "hover button[data-slot=button] \"Pair with your phone\" #1": "#dddddc",
+  "ring header-row button \"Collie home\" #1": "#ffffff",
+  "ring segmented button[role=tab] \"Dashboard\" #1": "#b1b1b1",
+  "ring segmented button[role=tab] \"Files\" #1": "#b1b1b1",
+  "ring button[data-slot=actions-button] \"Actions\" #1": "#b1b1b1",
+  "ring button[data-slot=button] \"Pair with your phone\" #1": "#b1b1b1"
+ },
+ "dashboard-not-paired@1440 collie-light": {
+  "selected segmented button[role=tab] \"Dashboard\" #1": "#ffffff",
+  "hover button[data-slot=button] \"Pair with your phone\" #1": "#2d2d2d",
+  "ring header-row button \"Collie home\" #1": "#636363",
+  "ring segmented button[role=tab] \"Dashboard\" #1": "#636363",
+  "ring segmented button[role=tab] \"Files\" #1": "#636363",
+  "ring button[data-slot=actions-button] \"Actions\" #1": "#636363",
+  "ring button[data-slot=button] \"Pair with your phone\" #1": "#636363"
+ },
+ "dashboard@1440 collie-dark": {
+  "selected segmented button[role=tab] \"Dashboard, 2 blocked\" #1": "#1d1c1b",
+  "hover header-right button \"Space: default. Switch space\" #1": "#1d1c1b",
+  "hover wide-command-row button \"All spaces\" #1": "#343331",
+  "hover button[data-slot=fab-compact] \"New\" #1": "#343331",
+  "hover wide-rows button \"New tab in space-01\" #1": "#343331",
+  "hover list-group button \"work in space-01mainworking\" #1": "#1d1c1b",
+  "ring header-row button \"Collie home\" #1": "#ffffff",
+  "ring segmented button[role=tab] \"Dashboard, 2 blocked\" #1": "#b1b1b1",
+  "ring button[data-slot=actions-button] \"Actions\" #1": "#b1b1b1",
+  "ring wide-command-row button \"2 needs you1 unseen10 working11 \" #1": "#ffffff",
+  "ring wide-command-row button \"All spaces\" #1": "#b1b1b1",
+  "ring wide-waiting button \"work in space-02space-02›mainwai\" #1": "#ffffff",
+  "ring wide-waiting button \"work in space-04space-04›maindon\" #1": "#ffffff"
+ },
+ "dashboard@1440 collie-light": {
+  "selected segmented button[role=tab] \"Dashboard, 2 blocked\" #1": "#ffffff",
+  "hover header-right button \"Space: default. Switch space\" #1": "#ffffff",
+  "hover wide-command-row button \"All spaces\" #1": "#dad9d6",
+  "hover button[data-slot=fab-compact] \"New\" #1": "#dad9d6",
+  "hover wide-rows button \"New tab in space-01\" #1": "#dad9d6",
+  "ring header-row button \"Collie home\" #1": "#636363",
+  "ring segmented button[role=tab] \"Dashboard, 2 blocked\" #1": "#636363",
+  "ring segmented button[role=tab] \"Files\" #1": "#636363",
+  "ring button[data-slot=actions-button] \"Actions\" #1": "#636363",
+  "ring wide-command-row button \"2 needs you1 unseen10 working11 \" #1": "#636363",
+  "ring wide-command-row button \"All spaces\" #1": "#636363",
+  "ring wide-waiting button \"work in space-02space-02›mainwai\" #1": "#7e3839",
+  "ring wide-waiting button \"work in space-04space-04›maindon\" #1": "#636363"
+ },
+ "pane-actions@1440 collie-dark": {
+  "selected button[data-slot=pane-row] \"work in space-01space-01›main\" #1": "#343331",
+  "open button[data-slot=actions-button] \"Actions\" #1": "#0b1e2a",
+  "open button[data-slot=button] \"Actions, another pane needs you\" #1": "#0b1e2a",
+  "plane recess #1": "#030302",
+  "hover actions-palette-list button \"New tabCommand\" #1": "#343331",
+  "hover actions-palette-list button \"New shellCommand\" #1": "#343331",
+  "ring actions-palette input \"Search commands and panes\" #1": "#b1b1b1",
+  "ring actions-palette button \"Close\" #1": "#ffffff",
+  "ring actions-all-panes button \"1 needs you1 unseen\" #1": "#ffffff"
+ },
+ "pane-actions@1440 collie-light": {
+  "selected button[data-slot=pane-row] \"work in space-01space-01›main\" #1": "#dad9d6",
+  "open button[data-slot=button] \"Actions, another pane needs you\" #1": "#596f7d",
+  "plane recess #1": "#706f6e",
+  "hover actions-palette-list button \"New tabCommand\" #1": "#dad9d6",
+  "hover actions-palette-list button \"New shellCommand\" #1": "#dad9d6",
+  "ring actions-palette input \"Search commands and panes\" #1": "#636363",
+  "ring actions-palette button \"Close\" #1": "#636363",
+  "ring actions-palette-list button \"New shellCommand\" #1": "#636363",
+  "ring actions-all-panes button \"1 needs you1 unseen\" #1": "#636363"
+ },
+ "pane-chat@1440 collie-dark": {
+  "selected segmented button[role=radio] \"Place\" #1": "#1d1c1b",
+  "selected button[data-slot=pane-row] \"work in space-01space-01›main\" #1": "#1d1c1b",
+  "plane recess #1": "#060605",
+  "hover button[data-slot=pane-row] \"work in space-01space-01›main\" #1": "#1b1b19",
+  "hover button[data-slot=pane-row] \"work in space-02space-02›main\" #1": "#1b1b19",
+  "hover button[data-slot=new-space] \"New space\" #1": "#1d1c1b",
+  "hover space-header button \"workingmainmain\" #1": "#343331",
+  "hover space-header button \"New tab\" #1": "#343331",
+  "hover button[data-slot=button] \"Next space\" #1": "#343331",
+  "ring session-filter input \"Filter sessions\" #1": "#b1b1b1",
+  "ring segmented button[role=radio] \"Place\" #1": "#b1b1b1",
+  "ring segmented button[role=radio] \"Activity\" #1": "#b1b1b1",
+  "ring space-header button \"workingmainmain\" #1": "#b1b1b1"
+ },
+ "pane-chat@1440 collie-light": {
+  "selected segmented button[role=radio] \"Place\" #1": "#ffffff",
+  "selected button[data-slot=pane-row] \"work in space-01space-01›main\" #1": "#ffffff",
+  "plane recess #1": "#e1dfdd",
+  "hover button[data-slot=new-space] \"New space\" #1": "#ffffff",
+  "hover space-header button \"workingmainmain\" #1": "#dad9d6",
+  "ring sidebar-mark button \"Collie home\" #1": "#636363",
+  "ring session-filter input \"Filter sessions\" #1": "#636363",
+  "ring segmented button[role=radio] \"Place\" #1": "#636363",
+  "ring segmented button[role=radio] \"Activity\" #1": "#636363",
+  "ring space-header button \"workingmainmain\" #1": "#636363"
+ },
+ "pane-chat@390 collie-dark": {
+  "selected collapse button \"work in space-01 1\" #1": "#2a2a28",
+  "ring header-row button \"Collie home\" #1": "#ffffff",
+  "ring header-right button \"Pane actions\" #1": "#b1b1b1",
+  "ring collapse button \"workingmainmain\" #1": "#b1b1b1",
+  "ring button[data-slot=block-more] \"Message actions\" #1": "#b1b1b1"
+ },
+ "pane-chat@390 collie-light": {
+  "selected collapse button \"work in space-01 1\" #1": "#cccbc9",
+  "ring header-row button \"Collie home\" #1": "#636363",
+  "ring header-right button \"Pane actions\" #1": "#636363",
+  "ring collapse button \"workingmainmain\" #1": "#636363",
+  "ring button[data-slot=block-more] \"Message actions\" #1": "#636363"
+ },
+ "pane-keys-armed@1440 collie-dark": {
+  "selected segmented button[role=radio] \"Place\" #1": "#1d1c1b",
+  "selected button[data-slot=pane-row] \"work in space-01space-01›main\" #1": "#1d1c1b",
+  "selected strip section \"work in space-01\" #1": "#1d1c1b",
+  "plane paper #1": "#1d1c1b",
+  "plane recess #1": "#162d35",
+  "hover button[data-slot=pane-row] \"work in space-01space-01›main\" #1": "#1b1b19",
+  "hover button[data-slot=pane-row] \"work in space-02space-02›main\" #1": "#1b1b19",
+  "hover space-header button \"workingmainmain\" #1": "#343331",
+  "hover space-header button \"New tab\" #1": "#343331",
+  "hover button[data-slot=button] \"Next space\" #1": "#343331",
+  "hover button[data-slot=pane-identity-name] \"Pane settings for work in space-01\" #1": "#343331",
+  "ring session-filter input \"Filter sessions\" #1": "#b1b1b1",
+  "ring segmented button[role=radio] \"Place\" #1": "#b1b1b1",
+  "ring segmented button[role=radio] \"Activity\" #1": "#b1b1b1",
+  "ring space-header button \"workingmainmain\" #1": "#b1b1b1"
+ },
+ "pane-keys-armed@1440 collie-light": {
+  "selected segmented button[role=radio] \"Place\" #1": "#ffffff",
+  "selected button[data-slot=pane-row] \"work in space-01space-01›main\" #1": "#ffffff",
+  "selected strip section \"work in space-01\" #1": "#ffffff",
+  "plane paper #1": "#ffffff",
+  "plane recess #1": "#cdd9e0",
+  "hover space-header button \"workingmainmain\" #1": "#dad9d6",
+  "hover button[data-slot=pane-identity-name] \"Pane settings for work in space-01\" #1": "#dad9d6",
+  "ring sidebar-mark button \"Collie home\" #1": "#636363",
+  "ring session-filter input \"Filter sessions\" #1": "#636363",
+  "ring segmented button[role=radio] \"Place\" #1": "#636363",
+  "ring segmented button[role=radio] \"Activity\" #1": "#636363",
+  "ring space-header button \"workingmainmain\" #1": "#636363"
+ },
+ "pane-menu@1440 collie-dark": {
+  "open header-right button \"Pane actions\" #1": "#163c54",
+  "plane recess #1": "#060605",
+  "hover sheet-body button \"Conversation history\" #1": "#343331",
+  "hover sheet-body button \"Copy output\" #1": "#343331",
+  "ring sheet-body button \"Conversation history\" #1": "#ffffff",
+  "ring sheet-body button \"Copy output\" #1": "#ffffff"
+ },
+ "pane-menu@1440 collie-light": {
+  "open header-right button \"Pane actions\" #1": "#b2dffa",
+  "plane recess #1": "#e1dfdd",
+  "hover sheet-body button \"Conversation history\" #1": "#dad9d6",
+  "hover sheet-body button \"Copy output\" #1": "#dad9d6",
+  "ring sheet-body button \"Conversation history\" #1": "#636363",
+  "ring sheet-body button \"Copy output\" #1": "#636363"
+ },
+ "pane-menu@390 collie-dark": {
+  "ring button[data-slot=button] \"Close\" #1": "#b1b1b1"
+ },
+ "pane-menu@390 collie-light": {
+  "ring button[data-slot=button] \"Close\" #1": "#636363"
+ },
+ "pane-two-columns@1440 collie-dark": {
+  "selected segmented button[role=radio] \"Place\" #1": "#1d1c1b",
+  "selected button[data-slot=pane-row] \"work in space-01space-01›main\" #1": "#1d1c1b",
+  "selected strip section \"work in space-01\" #1": "#1d1c1b",
+  "plane paper #1": "#1d1c1b",
+  "plane recess #1": "#060605",
+  "hover button[data-slot=pane-row] \"work in space-01space-01›main\" #1": "#1b1b19",
+  "hover button[data-slot=pane-row] \"work in space-02space-02›main\" #1": "#1b1b19",
+  "hover button[data-slot=new-space] \"New space\" #1": "#1d1c1b",
+  "hover space-header button \"workingmainmain\" #1": "#343331",
+  "hover space-header button \"New tab\" #1": "#343331",
+  "hover button[data-slot=button] \"Next space\" #1": "#343331",
+  "ring session-filter input \"Filter sessions\" #1": "#b1b1b1",
+  "ring segmented button[role=radio] \"Place\" #1": "#b1b1b1",
+  "ring segmented button[role=radio] \"Activity\" #1": "#b1b1b1",
+  "ring space-header button \"workingmainmain\" #1": "#b1b1b1"
+ },
+ "pane-two-columns@1440 collie-light": {
+  "selected segmented button[role=radio] \"Place\" #1": "#ffffff",
+  "selected button[data-slot=pane-row] \"work in space-01space-01›main\" #1": "#ffffff",
+  "selected strip section \"work in space-01\" #1": "#ffffff",
+  "plane paper #1": "#ffffff",
+  "plane recess #1": "#e1dfdd",
+  "hover button[data-slot=new-space] \"New space\" #1": "#ffffff",
+  "hover space-header button \"workingmainmain\" #1": "#dad9d6",
+  "ring sidebar-mark button \"Collie home\" #1": "#636363",
+  "ring session-filter input \"Filter sessions\" #1": "#636363",
+  "ring segmented button[role=radio] \"Place\" #1": "#636363",
+  "ring segmented button[role=radio] \"Activity\" #1": "#636363",
+  "ring space-header button \"workingmainmain\" #1": "#636363"
+ },
+ "settings-trick-official@1440 collie-dark": {
+  "hover button[data-slot=button] \"Close Settings\" #1": "#1d1c1b",
+  "hover button[data-slot=button] \"Back\" #1": "#343331",
+  "hover button[data-slot=official-add] \"Add\" #1": "#dbdbdb",
+  "ring button[data-slot=button] \"Close Settings\" #1": "#b1b1b1",
+  "ring button[data-slot=button] \"Back\" #1": "#b1b1b1",
+  "ring a[data-slot=trick-repo-link] \"Open the repositorygithub.com\" #1": "#b1b1b1",
+  "ring button[data-slot=official-add] \"Add\" #1": "#b1b1b1"
+ },
+ "settings-trick-official@1440 collie-light": {
+  "hover button[data-slot=button] \"Close Settings\" #1": "#ffffff",
+  "hover button[data-slot=button] \"Back\" #1": "#dad9d6",
+  "hover button[data-slot=official-add] \"Add\" #1": "#2c2c2c",
+  "ring button[data-slot=button] \"Close Settings\" #1": "#636363",
+  "ring button[data-slot=button] \"Back\" #1": "#636363",
+  "ring a[data-slot=trick-repo-link] \"Open the repositorygithub.com\" #1": "#636363",
+  "ring button[data-slot=official-add] \"Add\" #1": "#636363"
+ },
+ "settings-trick@1440 collie-dark": {
+  "hover button[data-slot=button] \"Close Settings\" #1": "#1d1c1b",
+  "hover button[data-slot=button] \"Back\" #1": "#343331",
+  "ring button[data-slot=button] \"Close Settings\" #1": "#b1b1b1",
+  "ring button[data-slot=button] \"Back\" #1": "#b1b1b1",
+  "ring button[data-slot=switch] \"Kettle Watch\" #1": "#b1b1b1"
+ },
+ "settings-trick@1440 collie-light": {
+  "hover button[data-slot=button] \"Close Settings\" #1": "#ffffff",
+  "hover button[data-slot=button] \"Back\" #1": "#dad9d6",
+  "ring button[data-slot=button] \"Close Settings\" #1": "#636363",
+  "ring button[data-slot=button] \"Back\" #1": "#636363",
+  "ring button[data-slot=switch] \"Kettle Watch\" #1": "#636363"
+ }
+}

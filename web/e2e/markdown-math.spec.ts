@@ -216,7 +216,7 @@ test.describe("the math pack on the host", () => {
     await expect(page.getByRole("math")).toHaveCount(0);
     await expect(page.getByText(/\\sum_\{i=1\}/).first()).toBeVisible();
 
-    await page.goto("/settings/appearance");
+    await page.goto("/settings/look");
     await expect(page.getByRole("button", { name: /Download the math engines/ })).toBeVisible();
     await expect(page.getByLabel("Engine", { exact: true })).toHaveValue("off");
     expect(state.posts).toBe(0);
@@ -226,7 +226,7 @@ test.describe("the math pack on the host", () => {
     await installMathStub(page);
     const state = await hostPack(page, { state: "absent" });
 
-    await page.goto("/settings/appearance");
+    await page.goto("/settings/look");
     await expect(page.getByRole("button", { name: /Download the math engines/ })).toBeVisible();
     await page.getByLabel("Engine", { exact: true }).selectOption("katex");
     await expect(page.getByRole("progressbar", { name: "Math engines download" })).toBeVisible();
@@ -254,7 +254,7 @@ test.describe("the math pack on the host", () => {
     page.on("load", () => loads++);
 
     // The page starts with the stored engine and the host has no pack: KaTeX fails on this page.
-    await page.goto("/settings/appearance");
+    await page.goto("/settings/look");
     await page.getByRole("button", { name: /Download the math engines/ }).click();
     await expect(page.getByRole("progressbar", { name: "Math engines download" })).toBeVisible();
     const before = loads;

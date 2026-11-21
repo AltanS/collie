@@ -9,15 +9,15 @@ afterEach(() => localStorage.clear());
 const stored = () => JSON.parse(localStorage.getItem("collie:dash-prefs:v1") ?? "{}");
 
 describe("ZoomPillControl", () => {
-  it("starts on Screen view, stores nothing until a tap, and stores the choice of a tap", async () => {
+  it("starts on the Screen view, stores nothing until a tap, and stores the choice of a tap", async () => {
     render(<ZoomPillControl />);
-    expect(screen.getByRole("radiogroup", { name: "Zoom pill" })).toBeInTheDocument();
-    expect(screen.getByRole("radio", { name: "Screen view" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("radiogroup", { name: "Zoom button on the Belt" })).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "In the Screen view" })).toHaveAttribute("aria-checked", "true");
     expect(stored().zoomPill).toBeUndefined();
     await userEvent.click(screen.getByRole("radio", { name: "Off" }));
     expect(stored().zoomPill).toBe("off");
     expect(screen.getByRole("radio", { name: "Off" })).toHaveAttribute("aria-checked", "true");
-    await userEvent.click(screen.getByRole("radio", { name: "Screen view" }));
+    await userEvent.click(screen.getByRole("radio", { name: "In the Screen view" }));
     expect(stored().zoomPill).toBe("screen");
   });
 

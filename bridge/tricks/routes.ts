@@ -53,7 +53,7 @@ export const TRICKS_ROUTE_RIGHTS = {
   // A trick's code for the About sheet's folds: the approved copy's bytes, masked. It changes nothing and
   // shows what the list and a Hill proposal card already show a paired phone, so it is a read like them.
   code: "read",
-  // Take changes without asking, and go back a version (crew slice 3): both change what code runs.
+  // Update this trick without asking, and go back a version (crew slice 3): both change what code runs.
   auto: "write",
   undo: "write",
   // The official list (official.ts) is read only. Adding or updating from it fetches code onto the

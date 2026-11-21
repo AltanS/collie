@@ -42,7 +42,7 @@ describe("a carried trick that did not start is said on the Hill (§25)", () => 
     expect(await postCarryNotices({ stateDir: m.stateDir, hill, warn: () => {} })).toBe(1);
     const [card] = hill.collieDecisions("carried");
     expect(card?.title).toBe("The trick Leg day did not start after the takeover");
-    expect(card?.summary).toBe("It ran on desk. Collie did not start it on this machine: its copy on this machine does not match the version you approved. Switch it on again in Settings → Tricks when you want it here.");
+    expect(card?.summary).toBe("It ran on desk. Collie did not start it on this machine: its copy on this machine does not match the version you approved. Switch it on again in Settings → Tricks and the Hill when you want it here.");
     expect(card?.options.map((o) => [o.intent, o.label])).toEqual([["ok", "OK"]]);
     expect(card?.from).toMatchObject({ kind: "collie", label: "Collie", ref: { type: "carried", id: "legs", hash: FAIL.hash } });
     expect(await readdir(tricksStateDir(m.stateDir))).not.toContain(TAKEOVER_NOTICES_FILE);

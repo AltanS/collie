@@ -437,7 +437,7 @@ export const PLACES = {
   tabbar: {
     id: "tabbar",
     name: "Bottom bar item",
-    where: "An item in the Dashboard's bottom bar, after the Hill.",
+    where: "An item in the Dashboard's bottom bar, after the Hill. On a large screen there is no bar: the item stands after the views, in the control of the Dashboard's header.",
     shows: "One item: an icon over a short name, with a `badge` and a `tone`. It takes no view.",
     tap: "A tap opens the trick's Page when it has one. Without a Page the item is drawn and takes no tap.",
     limits: [
@@ -504,7 +504,7 @@ export const PLACES = {
     id: "float",
     name: "Floating picture",
     where: `A small moving picture over the app, on the Dashboard and in a session's Chat and Terminal, in the free area clear of the header, the strips, the Belt and the composer. ${FLOAT_WORDS}`,
-    shows: `One picture of the trick's \`media/\` folder, and one motion of a fixed list. A part says \`once\` (the picture plays one motion and is gone) or \`stay\` (it stays and shows a mood). It takes no view, no coordinates, no style and no code: Collie places and times the picture. Without \`sessions\` it shows on the Dashboard; with them (contract 2) it shows only in those sessions. It is hidden while a sheet, a dialog or a card that asks a question is open, while a field has focus and while a yes is held, and it comes back after. "Floating things" in Settings, Appearance, turns every picture off on a device, and each trick keeps its own switch. Pictures must be original art, never a known character.`,
+    shows: `One picture of the trick's \`media/\` folder, and one motion of a fixed list. A part says \`once\` (the picture plays one motion and is gone) or \`stay\` (it stays and shows a mood). It takes no view, no coordinates, no style and no code: Collie places and times the picture. Without \`sessions\` it shows on the Dashboard; with them (contract 2) it shows only in those sessions. It is hidden while a sheet, a dialog or a card that asks a question is open, while a field has focus and while a yes is held, and it comes back after. "Moving pictures from tricks" in Settings, Look and feel, turns every picture off on a device, and each trick keeps its own switch. Pictures must be original art, never a known character.`,
     tap: `A once picture never takes a tap: a tap goes to what is under it. A stay picture is tap-through too, unless its part says \`opens\` ${code('"page"')}: a parked picture (\`perch\` or \`idle\`, never one that is moving) then takes a tap in a ${String(FLOAT_TAP_PX)} px box and opens the trick's Page. ${FLOAT_OPENS_WORDS} Nothing else takes a tap.`,
     limits: [
       { what: "Parts of this place per trick", value: "one `stay` and one `once` for every session, and up to eight bound ones of each mode with `sessions`. No session is named by two parts of one mode" },
@@ -961,7 +961,7 @@ export interface HillEntry {
 /** The Hill: the place a program or an agent asks the person one question. It is not a `place` word. */
 export const HILL: HillEntry = {
   name: "The Hill",
-  what: "A page of Decisions: questions that a program or an agent asks the person, each answered with one tap. It ships with Collie as an experiment, off until the person switches it on in Settings → Experiments. A trick does not list it in `places`.",
+  what: "A page of Decisions: questions that a program or an agent asks the person, each answered with one tap. It ships with Collie as an experiment, off until the person switches it on in Settings → Tricks and the Hill. A trick does not list it in `places`.",
   program: `A program lists Decisions in the \`decisions\` key of its output (the helper's \`t.decide\`). The list is declarative: after each run that succeeded, Collie makes the Hill agree with it, as [The list is the truth](#the-list-is-the-truth) says below. A document lists at most ${String(DECISIONS_MAX)}.`,
   agent: "An agent posts one with `collie hill post` and reads the answer with `collie hill status <id>`. The answer also reaches the agent as a WalkyTalky message.",
   keys: DECISION_KEYS.map((key) => Object.assign({ key }, DECISION_KEY_WORDS[key])),
@@ -1653,7 +1653,7 @@ export const COMMANDS: readonly CommandEntry[] = [
   { group: "trick", verb: "helper", usage: "trick helper <id|folder>", what: "Rewrites a trick's `trick.ts` with the helper this Collie carries.", flags: [] },
   { group: "trick", verb: "skill", usage: "trick skill [<id>]", what: "Prints what a trick that is on asks of an agent. With no id, prints how to write a trick.", flags: [] },
   { group: "trick", verb: "guide", usage: "trick guide [--json]", what: "Prints how to write a trick and hand it to the person, as plain text for an agent.", flags: [JSON_FLAG] },
-  { group: "trick", verb: "propose", usage: "trick propose <folder> [--request-id <uuid>] [--json]", what: "Hands a trick folder to the person as a card of Collie's own on the lead: in the proposing session on the phone and in Settings, Tricks, and on the Hill while it is on. Nothing runs before their yes. It brings the code and the pictures of `media/` and `captures/`; `config.toml` stays behind.", flags: [{ flag: "--request-id", what: "The proposal's request id, a UUID. The same sender, id and files get the same answer." }, JSON_FLAG] },
+  { group: "trick", verb: "propose", usage: "trick propose <folder> [--request-id <uuid>] [--json]", what: "Hands a trick folder to the person as a card of Collie's own on the lead: in the proposing session on the phone and in Settings, Tricks and the Hill, and on the Hill while it is on. Nothing runs before their yes. It brings the code and the pictures of `media/` and `captures/`; `config.toml` stays behind.", flags: [{ flag: "--request-id", what: "The proposal's request id, a UUID. The same sender, id and files get the same answer." }, JSON_FLAG] },
   { group: "trick", verb: "view", usage: "trick view <trick> <verb> [args]", what: "Runs one verb of an agent view, from the agent's pane. The verbs are the `trick view` commands below.", flags: [] },
   { group: "tricks", verb: "on", usage: "tricks on [--json]", what: "Switches tricks on for this machine. They are an experiment and off until switched on. Each trick still has its own switch.", flags: [JSON_FLAG] },
   { group: "tricks", verb: "off", usage: "tricks off [--json]", what: "Switches tricks off for this machine: no trick runs or draws. Each trick keeps its own switch.", flags: [JSON_FLAG] },

@@ -17,6 +17,7 @@ import type { Scope } from "@/lib/scope";
 import { t } from "@/lib/i18n";
 import { useLocale } from "@/hooks/use-locale";
 import { useRevealActive } from "@/hooks/use-reveal-active";
+import { useWidthClass } from "@/hooks/use-width-class";
 
 interface PaneStripProps {
   /** The panes that share the current tab (agents + shells), in stable order. */
@@ -77,6 +78,7 @@ export function PaneStrip({
 }: PaneStripProps) {
   useLocale();
   const look = useTabLook();
+  const phone = useWidthClass() === "compact";
   const [sheetPane, setSheetPane] = useState<AgentView | null>(null);
   // Actions need both callbacks wired (revalidate on rename, navigate on close); without them the
   // pills stay plain tap-to-switch — long-press is inert.
@@ -134,11 +136,14 @@ export function PaneStrip({
       >
         {/* `px-4` moves the gutter from the scroller onto the track, so the track covers the
             gutters too and the scroll width keeps both of them. */}
-        <div className="flex w-max min-w-full shrink-0 items-center gap-2 px-4 py-px">
+        {/* THE PHONE'S ROW IS 44px (ADR 0171): a 32px pill and 6px of air above and below it, and the pill's reach is
+            the row, top edge to bottom edge, so it meets the tab row's 44px and reaches nothing under it. */}
+        <div className={cn("flex w-max min-w-full shrink-0 items-center gap-2 px-4", phone ? "py-1.5" : "py-px")}>
           {panes.map((p) => (
             <PanePill
               key={p.paneId}
               look={look}
+              phone={phone}
               pane={p}
               active={p.paneId === currentPaneId}
               onSelect={onSelect}
@@ -171,6 +176,7 @@ export function PaneStrip({
 
 function PanePill({
   look,
+  phone,
   pane,
   active,
   ordinal,
@@ -180,6 +186,8 @@ function PanePill({
 }: {
   /** The theme's tab look (lib/tab-look.ts). */
   look: TabLook;
+  /** The phone's 44px row: a 32px pill whose reach is the row (ADR 0171). */
+  phone: boolean;
   pane: AgentView;
   active: boolean;
   /** This pane's 1-based place in the row, given only when a neighbour reads the same (pane-ordinal.ts). */
@@ -242,6 +250,9 @@ function PanePill({
         // (see the row's comment in PaneStrip above).
         STRIP_TAP_TARGET,
         "flex h-6 min-w-11 shrink-0 select-none [-webkit-touch-callout:none] items-center justify-center gap-1.5 whitespace-nowrap rounded-md border border-transparent px-2.5 text-[11px] font-medium transition-colors before:-inset-y-[2px] active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+        // THE PHONE (ADR 0171): a 32px pill in 12px type. The reach resolves against the padding box, 1px inside the
+        // border, so 7px puts it on the 44px row's top and bottom edge: 1 + 30 + 1 + 2x6 of air.
+        phone && "h-8 text-[12px] before:-inset-y-[7px]",
         look === "folder"
           ? // The folder look: a tinted, ringed cell for the open pane, a `secondary` cell for the rest.
             active

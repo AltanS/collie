@@ -708,7 +708,7 @@ describe("take changes without asking, and undo an automatic change (crew slice 
   it("draws no auto switch and no hint on the card, for a trick that is on or off: the switch lives on the details page", async () => {
     renderWith(await storeWith([{ ...LEGS, auto: false }, TRACKER]), {});
     await screen.findByText("Browser leg");
-    expect(screen.queryByText("Take changes without asking")).toBeNull();
+    expect(screen.queryByText("Update this trick without asking")).toBeNull();
     expect(screen.queryByText(/still asks\./)).toBeNull();
     // The two rows' own switches are the only ones.
     expect(screen.getAllByRole("switch").map((sw) => sw.getAttribute("aria-label"))).toEqual(["Browser leg", "Tracker"]);
@@ -721,7 +721,7 @@ describe("take changes without asking, and undo an automatic change (crew slice 
     const onAuto = vi.fn(async (_host: string, _id: string, on: boolean) => ({ ...LEGS, auto: on }));
     renderTricksPages({ store: await storeWith([LEGS]), card: { now: NOW, onOfficialList: NO_OFFICIAL }, page: { onAuto, onOfficialList: NO_OFFICIAL } });
     await user.click(await screen.findByRole("link", { name: "About Browser leg" }));
-    const sw = () => within(detailPage()).getByRole("switch", { name: "Take changes without asking" });
+    const sw = () => within(detailPage()).getByRole("switch", { name: "Update this trick without asking" });
     await user.click(sw());
     expect(onAuto).toHaveBeenCalledWith("lodge", "legs", true);
     expect(sw()).toBeChecked();
@@ -911,7 +911,7 @@ describe("TricksSettingsCard: a trick's details page (its About sheet until 2026
   });
 
   describe("the Updates switch on the details page", () => {
-    const sheetSwitch = () => within(detailPage()).getByRole("switch", { name: "Take changes without asking" });
+    const sheetSwitch = () => within(detailPage()).getByRole("switch", { name: "Update this trick without asking" });
     const openPage = async (trick: WireTrickInfo) => {
       renderTricksPages({ store: await storeWith([trick]), card: { now: NOW, onOfficialList: NO_OFFICIAL }, page: { onOfficialList: NO_OFFICIAL } });
       await userEvent.setup().click(await screen.findByRole("link", { name: "About Browser leg" }));
@@ -929,7 +929,7 @@ describe("TricksSettingsCard: a trick's details page (its About sheet until 2026
       );
       renderCard(await storeWith([TOLD]));
       await screen.findByRole("link", { name: "About Browser leg" });
-      expect(within(rowOf("legs")).queryByText("Take changes without asking")).toBeNull();
+      expect(within(rowOf("legs")).queryByText("Update this trick without asking")).toBeNull();
       cleanup();
       await openPage(TOLD);
       expect(sheetSwitch()).not.toBeChecked();
@@ -1149,7 +1149,7 @@ describe("tricks switched off as a whole", () => {
     await findRow("legs");
     const lines = document.querySelectorAll('[data-line="tricks-off"]');
     expect(lines).toHaveLength(1);
-    expect(lines[0]?.textContent).toBe("Tricks are switched off on this machine; switch them on in Settings, Experiments.");
+    expect(lines[0]?.textContent).toBe("Tricks are switched off on this machine; switch them on in Settings, Tricks and the Hill.");
     expect(screen.getByTestId("tricks-settings").firstElementChild).toBe(lines[0]);
     expect(screen.getByRole("switch", { name: "Browser leg" })).toBeDisabled();
     expect(screen.getByRole("switch", { name: "Tracker" })).toBeDisabled();
@@ -1170,14 +1170,14 @@ describe("tricks switched off as a whole", () => {
   });
 
   it("the details page still opens, and its take-changes switch and the trick's own switch are disabled", async () => {
-    // The reply's off: the snapshot's own `tricksOff` sends both pages to Settings, Experiments (settings-trick.test.tsx).
+    // The reply's off: the snapshot's own `tricksOff` sends both pages to Settings, Tricks and the Hill (settings-trick.test.tsx).
     const reply: TricksReply = { rev: 5, tricks: [AUTO], parts: [], present: [], off: true };
     const store = createTricksStore({ fetchTricks: async () => reply, tapTrick: async () => Promise.reject(new Error("no tap")), mintRequestId: () => "r" });
     await store.syncTricks(5);
     renderTricksPages({ store, card: { now: NOW, onOfficialList: NO_OFFICIAL }, page: { onOfficialList: NO_OFFICIAL } });
     const row = await findRow("legs");
     await userEvent.click(within(row).getByRole("link", { name: /Browser leg/ }));
-    const auto = await screen.findByRole("switch", { name: "Take changes without asking" });
+    const auto = await screen.findByRole("switch", { name: "Update this trick without asking" });
     expect(auto).toBeDisabled();
     expect(within(detailPage()).getByRole("switch", { name: "Browser leg" })).toBeDisabled();
   });
