@@ -4,6 +4,7 @@ import { readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 import type { JsonObject, JsonValue } from "./json.ts";
+import { holdStat, statFactsOf, stillHolds, type StatFacts, type StatHeld } from "./stat-held.ts";
 
 // ── DEVICE PAIRING: A CREDENTIAL THE DEVICE HOLDS, NOT A NAME THE NETWORK ASSERTS ─────────────
 //
@@ -599,13 +600,12 @@ export interface PairingIo {
   readRegistrySync(): JsonValue | null;
 }
 
-/**
- * The real, owner-only implementation over `<stateDir>`.
- *
- * `readRegistrySync` stats before it reads and serves a cached parse when nothing changed, so the
- * per-request cost of the gate is one `stat` — not a parse — while a CLI revocation still lands on
- * the very next request.
- */
+/** What the registry's read looks with: the clock of a read (the racy window) and the `stat`, for a test. */
+export interface RegistryLook {
+  now?: () => number;
+  stat?: (path: string) => { size: number; mtimeMs: number; ino?: number; ctimeMs?: number };
+}
+
 /** A JSON file's parsed contents, or null when it is missing or unreadable. */
 async function readJson(path: string): Promise<JsonValue | null> {
   try {
@@ -616,10 +616,22 @@ async function readJson(path: string): Promise<JsonValue | null> {
   }
 }
 
-export function filePairingIo(stateDir: string): PairingIo {
+/**
+ * The real, owner-only implementation over `<stateDir>`.
+ *
+ * `readRegistrySync` stats before it reads and serves a cached parse when nothing changed, so the
+ * per-request cost of the gate is one `stat` — not a parse — while a CLI revocation still lands on
+ * the very next request. "Nothing changed" is the racy-timestamp rule (bridge/stat-held.ts): the same
+ * size, modified time, inode and change time, AND a parse made at least `RACY_WINDOW_MS` after the
+ * file's last write. A terminal's rewrite of the same size inside one timestamp tick (a `devices
+ * set-expiry`, a new label of the same length) is read on the next request, never kept. A write by
+ * this process drops the cache outright ({@link PairingIo.writeRegistry}).
+ */
+export function filePairingIo(stateDir: string, look: RegistryLook = {}): PairingIo {
   const pendingPath = join(stateDir, PENDING_FILENAME);
   const registryPath = join(stateDir, DEVICES_FILENAME);
-  let cache: { key: string; value: JsonValue } | null = null;
+  const clock = look.now ?? Date.now;
+  let cache: { held: StatHeld; value: JsonValue } | null = null;
 
   // Every temp name is unique to one write. A shared `${path}.tmp` is only atomic against a reader:
   // two writers both create it, the first `rename` moves it away, and the second gets ENOENT (#159).
@@ -673,16 +685,16 @@ export function filePairingIo(stateDir: string): PairingIo {
       cache = null;
     },
     readRegistrySync() {
-      let key: string;
+      const readAt = clock();
+      let facts: StatFacts;
       try {
-        const st = statSync(registryPath);
-        key = `${st.mtimeMs}:${st.size}`;
+        facts = statFactsOf(look.stat === undefined ? statSync(registryPath) : look.stat(registryPath));
       } catch (err) {
         cache = null;
         if (err instanceof Error && isMissing(err)) return null;
         throw new RegistryUnreadableError(`${DEVICES_FILENAME} cannot be read`, { cause: err });
       }
-      if (cache?.key === key) return cache.value;
+      if (cache !== null && stillHolds(cache.held, facts)) return cache.value;
       // An unreadable file is NEVER cached: the cache is dropped and the error thrown, so the request
       // after a repair (or after the writer's rename lands) reads the file again, whatever its mtime.
       cache = null;
@@ -700,7 +712,7 @@ export function filePairingIo(stateDir: string): PairingIo {
         if (err instanceof RegistryUnreadableError) throw err;
         throw new RegistryUnreadableError(`${DEVICES_FILENAME} is not valid JSON`, { cause: err });
       }
-      cache = { key, value };
+      cache = { held: holdStat(facts, readAt), value };
       return value;
     },
   };
