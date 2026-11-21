@@ -250,6 +250,12 @@ its mark alone, behind a hairline, and carries no word. It takes the blue of an 
 is open. A drag up, anywhere on the belt, opens the pane switcher, the Switch pane sheet. A sideways
 drag scrolls the belt instead.
 
+A mouse scrolls the belt three ways. Over its scrolling part, a wheel turn, a sideways swipe or Shift
+with the wheel moves the pills while there is room, and at the end the page scrolls as before. A drag
+with the mouse moves them too, and the drag never taps the pill under it. An arrow button over each
+fade edge that still hides pills scrolls the belt by most of its width. A phone's touch scrolling
+does not change, and no arrow shows there.
+
 The agents mark left of the Files button counts the pane's running subagents. For omp and Gentle
 Shell it counts their background jobs only while the pane's Chat is open on a phone; the Screen view
 does not count them.
@@ -1487,26 +1493,35 @@ To switch it off, open **Settings → Appearance → Large-screen layout** and p
 the default, turns it on where the screen is big enough. The choice is stored per device.
 
 The dashboard follows the same switch, from 900 pixels wide. The Spaces stand side by side in
-columns 384 pixels wide, as many as fit (two at 900 pixels, three at 1280, four at 1920, six at most),
-and the tab bar at the foot is as wide as the columns. A band at the top repeats every session that
+columns 384 pixels wide, as many as fit (two at 900 pixels, three at 1280, four at 1920, six at most).
+The tab bar at the foot is gone. A header spans the window, at the height of a pane's top strip, and
+the views are a control in it: Crew when you have a crew, Dashboard, Files, and then your tricks'
+items. The Hill is a button beside Actions, and **New** is the last button of the row with the counts
+and the filters, a row that stays in view while you scroll. A band at the top repeats every session that
 needs you or finished unseen, as a card with its question. A session in the band also keeps its row
 in its Space, so nothing moves out of place. The band closes when nothing waits, and the
 **needs you** switch hides it, because the columns then show only those sessions. Narrower than 900
-pixels, and with **Off**, the dashboard is the one narrow list.
+pixels, and with **Off**, the dashboard is the one narrow list, with its tab bar at the foot. When
+there is nothing to show yet, for example before pairing or before the first agent, the screen is
+one centred block.
 
 The layout has three parts.
 
 - **The sidebar.** It lists your panes, the same list the pane switcher shows. The button in its top
   row folds it to a narrow rail of icons, and the choice is kept on this device. The ColliePWA mark
-  in the top row goes home. **New space** and **Settings** sit at its foot.
+  in the top row goes home. Under it, one block stays at the top while the list scrolls: the filter
+  field, and a row with the count of what needs you and the three list views. While you filter, the
+  field shows how many rows match, such as `3 of 14`. **New space** and **Settings** sit at its foot.
 - **The row of panes.** Each space keeps its own row, and the row scrolls sideways. Tap a pane in
   the sidebar to show it. Hold it (right-click with a mouse) for **Open here**, which replaces the
   pane you are in, or **Open beside**, which adds it next to that pane. You can also drag a pane
   into the row. **Remove from view** takes a pane out of the row. The agent keeps running.
-- **The space header.** It holds the space's name, its tabs and a **+** for a new tab. Hold a tab
+- **The space header.** It holds the space's name, its tabs and a **+** for a new tab. A long name
+  takes at most a third of the bar and ends in an ellipsis, and the tabs start a small gap after it;
+  point at it to read the whole name. Hold a tab
   (right-click with a mouse) to **Rename** it or **Close tab**, as on the phone. Closing the tab you
-  work in moves you to a pane of the tab beside it. Its two buttons, or a vertical swipe, move to the space
-  above or below.
+  work in moves you to a pane of the tab beside it. The Actions button opens [Actions](sessions.md#actions).
+  Two arrow buttons, or a vertical swipe, move to the space above or below.
 
 Each pane has a width: **1/2**, **4/5** or **Full** of the row. A pane is never narrower than 440
 pixels, so a width that would make it narrower is not offered. When the row cannot hold two panes at
@@ -1517,11 +1532,41 @@ with **Open here** (the pane becomes the last one in the row). It also offers **
 space**, which opens the New page on that pane's machine and folder and adds the agent as a new tab
 of this space, next to the pane you are in, and **New agent in a new space**.
 
+A tap on **1/2**, **4/5** or **Full**, or on the Narrower pane and Wider pane shortcuts, grows or
+shrinks the pane on a spring that starts fast and settles in about a third of a second. The panes
+beside it and the row's scroll move with it in the same motion, and a second tap during the motion
+carries it on. The pane ends at the same width and in the same place as with no motion. A device set
+to reduce motion, and a foldable held as a book, change at once.
+
 Every pane has its own belt, except when you hold a foldable like a laptop (see below). The pane you
 work in has a frame and the reply box. A tap on another pane's belt acts on that pane and moves you
 there. Tap the pane to move without acting.
 
+The sidebar and the tab strip sit one step darker than the page. A pane without focus stays on the
+page, and the pane you work in is the lightest surface, with a soft frame, also when it is the only
+pane. A theme may set the two grounds, `surface-recess` and `surface-paper`, and gets them from its
+own colours when it does not ([Themes](themes.md)). The phone looks as before.
+
 The layout is kept on this device only, and Back and shared links work as before.
+
+**Sheets.** From 900 pixels wide, with the screen flat, a sheet opens as a panel in the middle of the
+window with four round corners, not as a strip at the bottom edge. That holds for a session's menu,
+the Attachment view, the Rename box and every other sheet. Close one with Escape, its close button or a
+click beside it. There is no handle to pull. A picture opens as wide as it is, up to most of the
+window. A menu that opens from its button, the three dots of a session, a tab or a space, opens
+beside that button and does not darken the page. A phone, a small tablet, a folded foldable and
+**Off** keep the sheet from the bottom.
+
+**Settings.** From 900 pixels wide the sections of Settings stand in a list at the left edge of the
+window, like the sidebar beside your panes, and the section you chose opens beside it. The list stays
+in view while you change a setting, and the arrow keys walk it. One header spans the window: Back
+leaves Settings, and on a page one level down or more it names the path, such as Tricks / CI. Every
+address keeps working, and the browser's Back returns to the section before. Settings itself opens
+Updates while a release waits, and Appearance otherwise. Machines is a row of the list that opens
+its own page. A phone, a tablet and **Off** keep Settings as one page.
+
+**Keyboard.** A desktop browser can drive all of this from the keyboard, the way Herdr is driven:
+`Ctrl+B`, then one key ([Keyboard shortcuts](keyboard-shortcuts.md)).
 
 **Foldables.** On a foldable held half open, Chrome and Samsung Internet split the screen at the fold.
 Held like a laptop, the conversation stays above the fold, and the belt and a taller reply box sit

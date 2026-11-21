@@ -558,19 +558,27 @@ Tricks to open it, or the info button at the end of the header on the trick's ow
 to where you came from.
 
 - **The top** holds the trick's icon, its name, its labels and its switch, with the state in words.
+  An official trick has the app's blue on its label and its icon tile. A community trick stays grey.
+  The header of the page says Trick details, and the trick's name is the page's heading.
 - **About** holds the trick's one-line description and its longer text, then "Written by the trick's
   author. Collie did not check it."
 - **What it does** holds only facts Collie knows: "It shows in: ...", the files it reads, the
-  environment names it asks for, the warnings of the text search, and a view's rules, shown whole.
+  environment names it asks for, the warnings of the text search, and a view's rules, shown whole. A
+  warning's icon takes the caution colour of a flagged line of code, and its words stay as they are.
+- **Settings** holds the values the trick asks you for, in one bordered group with one row each, when
+  its `trick.toml` lists `[[field]]`
+  ([Settings a trick asks you for](tricks-authoring.md#settings-a-trick-asks-you-for)). A change
+  saves at once and runs the trick once. It asks for no new yes. While a required setting is empty,
+  the trick's row says "Needs setup". A list of places or several names reads as plain words in the
+  row. A short value such as a duration, a file name or a version keeps its small box.
 - **Where it comes from** says "From owner/repo @ 3f2a91c" for a trick added from a repository, or
   "Added on this machine." A trick from a repository has a link to it, with the host shown in full.
   For a repository on `github.com`, the link also shows its stars and the date of its last commit,
   once Collie has read them. The version shows when the trick's author wrote one in `trick.toml`.
-- **Settings** holds the values the trick asks you for, one row each, when its `trick.toml` lists
-  `[[field]]` ([Settings a trick asks you for](tricks-authoring.md#settings-a-trick-asks-you-for)).
-  A change saves at once and runs the trick once. It asks for no new yes. While a required setting is
-  empty, the trick's row says "Needs setup".
 - **Updates** holds the "Take changes without asking" switch, for a trick that is on.
+- **Read the code** holds one fold for each file of the trick's code, with the lines of the text
+  search marked. The code is the approved copy, the one that runs, with keys masked. When the code
+  cannot be read, or changed while it was read, the page says "Go back and open this page again."
 
 The description and the longer text are the author's own words, and nothing checks them against the
 code. Read the rows under "What it does" first.

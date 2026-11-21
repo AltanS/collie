@@ -531,7 +531,8 @@ and the code is replaced only on your yes ([A trick an agent proposes](hill.md#a
 ## Hill
 
 The page of Decisions that wait for you, grouped Now, Today and Later, with the answered ones below.
-It is the fourth item of the Dashboard's bottom bar. One crew has one Hill, on the lead. "Hill" is the
+It is the fourth item of the Dashboard's bottom bar, and on a large screen a button beside Actions in
+the dashboard's header. One crew has one Hill, on the lead. "Hill" is the
 view's name and stays the same in every language ([The Hill](hill.md)).
 
 ## Event
