@@ -74,8 +74,8 @@ import type { PageId } from "@/lib/settings/types";
 // Each page is the registry's page (lib/settings/pages.ts) drawn with the controls Settings always had: its groups in
 // the registry's order, each under its heading, and each control in a `SettingSlot` that names the registry rows it
 // draws. The marks are what the completeness test reads (routes/settings-marks.test.tsx) and what a search result
-// scrolls to. The split came from a card sort of 2026-11-21: eight readers sorted every row, and four of them made
-// their own pages; the eleven are the pages they made, and the reasons per row are in the registry's order.
+// scrolls to. The split came from a card sort of 2026-11-21: eight readers, all language models (no user research),
+// sorted every row, four of them into pages of their own; the operator chose the eleven from what they made.
 //
 // A group whose one card already carries the heading's words (Math, Zen mode, Changes, the Hill) draws no heading of
 // its own: the same word twice, one above the other, reads as two things.

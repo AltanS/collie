@@ -1,11 +1,14 @@
 # 0170: Every setting is declared once, and Settings is its eleven pages
 
-- **Status:** Proposed (2026-11-21)
+- **Status:** Accepted (2026-11-21). The operator approved the page names, the labels and the index lines on
+  2026-11-21.
 - **Date:** 2026-11-21
 - **Trail:** The Settings card sort of 2026-11-21: eight readers sorted every row of Settings, of a pane's
   own sheets and of the views, into today's pages (four readers) and into pages of their own (four
-  readers). Closed readers found 69% of the rows on the page they looked on first; the four open readers
-  made the same seven pages. The operator approved the eleven page names and the label table. Files:
+  readers). The eight readers were language models, each given the cards and a reader's brief. It is no
+  user research: it showed where the old pages were ambiguous and which groups readers made, and the
+  operator decided the pages. Closed readers found 69% of the rows on the page they looked on first; the
+  four open readers made the same seven pages. Files:
   `web/src/lib/settings/` (`types.ts`, `pages.ts`, `registry.ts`, `index.ts`), `web/src/routes/settings-sections.tsx`,
   `web/src/components/setting-slot.tsx`, `web/src/components/settings-search.tsx`, `web/src/lib/nav.ts`.
 
@@ -38,9 +41,9 @@ tests read that list. Settings is eleven pages.**
   id is missing from the list. Stability is promised for a row that holds a value (a switch, a choice, a
   number, a text): its id stays, or its value moves to a new id through an alias. An action, a link or an
   info row holds no value; its id may be retired through the alias table.
-- **The registry describes; it moves nothing.** A row names who holds its value (device, machine, pane,
-  profile) and how the value is stored TODAY (a localStorage key, a field of a blob, a route, the
-  browser). The card that sets it still writes through its own hook, so a value set in Settings and the
+- **The registry declares; it moves nothing.** A row names who holds its value (device, machine, pane,
+  profile) and how the value is stored today (a localStorage key, a field of a blob, a route, the
+  browser). A store is a declaration, not an adapter: no code reads or writes a value through it. The card that sets it still writes through its own hook, so a value set in Settings and the
   same value in a pane's sheet are one value.
 - **One place per value, and the pane's own sheet.** A value has one Settings row. Its second place may
   only be the pane's own sheet or menu (`also`). A value that lives only in a pane, a view or the New
@@ -69,5 +72,16 @@ tests read that list. Settings is eleven pages.**
   shown only in a state (push off, no crew) says why in one line.
 - Some cards split across headings (Notifications' switches stand under three) through a part prop of
   the same card, not a second card.
-- A settings file can key on the ids later; nothing reads or writes one yet. Revisit the store
-  descriptors when it does: they are declarations today, not adapters.
+- A settings file can key on the ids later; nothing reads or writes one yet. The stores are declarations,
+  not adapters, and stay so until a settings file is decided.
+
+## Not decided here
+
+A settings file would need more than the registry holds today. Each of these is left for the record that
+decides the file:
+
+- A default per row. Today the default lives in the hook or the blob's defaults object that owns the value.
+- The values a row allows: the choices of a choice, the range and step of a number, the length of a text.
+- A validator per row, so a file that names a wrong value is refused with a reason, not taken.
+- The address of a per-item row (`each`): how a file names one harness, machine, trick or profile, and what
+  happens to an entry whose item is gone.
