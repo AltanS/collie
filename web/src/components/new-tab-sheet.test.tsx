@@ -106,16 +106,16 @@ const sheet = () => within(screen.getByRole("dialog", { name: "New tab in moonwa
 const row = (name: RegExp | string) => sheet().getByRole("button", { name });
 
 describe("NewTabSheet, the rows", () => {
-  it("lists the agents, then the commands, then Just a shell and More options, under the workspace's folder", () => {
+  it("lists the agents (own first), then the commands, then Just a shell and More options, under the workspace's folder", () => {
     mount();
     const names = sheet()
       .getAllByRole("button")
       .map((b) => b.textContent ?? "")
       .filter((n) => n !== "" && !/close/i.test(n));
     expect(names.map((n) => n.split(/(?=No prompts|Lead|not installed|claude --|htop$|This command)/)[0])).toEqual([
+      "Claude, no prompts",
       "Claude Code",
       "Codex",
-      "Claude, no prompts",
       "htop",
       "Logs",
       "Just a shell",

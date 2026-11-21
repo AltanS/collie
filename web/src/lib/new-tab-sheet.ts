@@ -1,5 +1,5 @@
 import { launchersKey, type LaunchersState } from "@/lib/launchers";
-import { offerFor, type OfferItem } from "@/lib/new-page";
+import { agentsInPickOrder, offerFor, type OfferItem } from "@/lib/new-page";
 import type { Scope } from "@/lib/scope";
 
 // THE NEW TAB SHEET'S ROWS (M91). The "+" of a workspace's tab row and of a dashboard heading open a
@@ -44,7 +44,7 @@ export function sheetRows(state: LaunchersState, scope: Scope | undefined): Shee
   const fromLead = new Set((state.items ?? []).filter((i) => i.from === "lead").map((i) => i.key));
   const row = (item: OfferItem): SheetRow => ({ ...item, fromLead: fromLead.has(item.key) });
   return {
-    agents: offer.agents.map(row),
+    agents: agentsInPickOrder(offer.agents).map(row),
     commands: offer.commands.filter((c) => c.what.kind !== "shell").map(row),
   };
 }

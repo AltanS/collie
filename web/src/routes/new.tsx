@@ -45,6 +45,7 @@ import { homePath, newAddPath, readNewAt } from "@/lib/nav";
 import {
   NEW_PAGE_DOCS,
   agentChoice,
+  agentsInPickOrder,
   MAX_RUN_CHARS,
   commandOptions,
   branchAllowed,
@@ -663,7 +664,7 @@ export function NewPage({ search, frame = "page", onClose }: { search: string; f
               onChange={(event) => setAgentPick(event.target.value)}
             >
               {agentItem === null && <option value="" disabled aria-label={t("newPage.kind.agent")} />}
-              {offer.agents.map((a) => (
+              {agentsInPickOrder(offer.agents).map((a) => (
                 <option key={a.key} value={a.key} disabled={a.unavailable !== null}>
                   {optionText(a, t("newPage.shell"))}
                 </option>

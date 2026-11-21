@@ -906,15 +906,15 @@ const liveBadges = () =>
   [...document.querySelectorAll('[data-slot="no-prompts-badge"]')].filter((el) => el.closest('[aria-hidden="true"]') === null);
 
 describe("the New page: the lists are the bridge's items", () => {
-  it("Agent holds the built-in agents and the agent rows; a No prompts row says so in its text", async () => {
+  it("Agent holds the agent rows first, then the built-in agents; a No prompts row says so in its text", async () => {
     serveItems();
     mount();
     const select = await agentSelect();
     await waitFor(() => expect(within(select).getAllByRole("option")).toHaveLength(4));
     expect(within(select).getAllByRole("option").map((o) => o.textContent)).toEqual([
-      "Claude Code",
       "Claude, opus",
       "Claude, no prompts (No prompts)",
+      "Claude Code",
       "Grok (not installed)",
     ]);
   });

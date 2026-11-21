@@ -400,6 +400,35 @@ test.describe("The space address, large screen", () => {
   });
 });
 
+// ── The order of the agents to start ───────────────────────────────────────────────────────────────────────
+
+/** The launchers with one own agent made with "Add your own": a neutral invented name. */
+const WITH_OWN: LaunchersResponse = {
+  ...LAUNCHERS,
+  items: [
+    ...(LAUNCHERS.items ?? []),
+    { key: "row:claude --review", start: { command: "claude --review" }, group: "agents", label: "Review bot", harness: "claude", command: "claude --review", source: "added", noPrompts: true, branch: true, available: true },
+  ],
+};
+
+for (const size of [{ width: 1440, height: 900 }, { width: 390, height: 844 }] as const) {
+  test(`at ${String(size.width)}x${String(size.height)} New lists own agents first and opens on the same agent`, async ({ browser }, testInfo) => {
+    test.skip(testInfo.project.name !== "app-phone", "sets its own viewport; one project is enough");
+    const { context, page } = await open(browser, String(testInfo.project.use.baseURL), size, size.width < 900);
+    try {
+      await page.route((url) => url.pathname === "/api/launchers", (route) => json(route, WITH_OWN));
+      await page.goto("/new");
+      const select = page.getByRole("combobox", { name: en["newPage.kind.agent"], exact: true });
+      await expect(select.locator("option")).toHaveCount(3);
+      const values = await select.locator("option").evaluateAll((options) => options.map((o) => o.getAttribute("value")));
+      expect(values).toEqual(["row:claude --review", "harness:claude", "harness:codex"]);
+      await expect(select).toHaveValue("harness:claude");
+    } finally {
+      await context.close();
+    }
+  });
+}
+
 // ── The phone keeps every box ───────────────────────────────────────────────────────────────────────────────
 
 const PHONE_PAGES = [
