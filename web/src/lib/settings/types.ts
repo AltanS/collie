@@ -27,10 +27,13 @@ export type PageId = (typeof PAGE_IDS)[number];
 export type PlaceId = "pane" | "files" | "new" | "dashboard-bar";
 
 /**
- * A stable dotted id: `<page or place>.<name>[.<part>]`. Never reused once shipped: a settings file will key on it.
+ * A stable dotted id: `<namespace>.<name>[.<part>]`, lower camel after the first segment. The first segment is a
+ * NAMESPACE, not the page: today it reads like the page the row was declared on, and it stays when the row moves
+ * (the row's `page` says where it is drawn). Once shipped an id is never reused for another value; a row that is
+ * retired or renamed keeps its old id as a key of `ALIASES` (pages.ts), and `shipped-ids.json` is the checked list.
  * A row drawn once per item (a harness, a machine, a trick) keeps ONE id; the item is the value's key, not the id's.
  */
-export type SettingId = `${PageId | PlaceId}.${string}`;
+export type SettingId = `${string}.${string}`;
 
 /** Who holds the value. `machine` is the bridge, for every device on it; `profile` is one profile on one machine. */
 export type SettingScope = "device" | "machine" | "pane" | "profile";

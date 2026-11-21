@@ -30,6 +30,14 @@ tests read that list. Settings is eleven pages.**
 - **One row, one id.** A row has a stable dotted id (`look.math`, `notifications.load.cpu`), never reused
   once shipped. Its label and hint are plain `en.ts` keys, so a word change is one line. A row drawn once
   per item (a harness, a machine, a trick) keeps one id; the item is the value's key.
+- **An id survives a move.** The first segment of an id is a namespace, not the page: today it reads like
+  the page the row was declared on, and when a row moves its `page` changes and its id does not. The ids
+  are public from this release on (a search result links to `/settings/<page>#<id>`), so
+  `web/src/lib/settings/shipped-ids.json` lists every id that shipped, and a test fails when a listed id is
+  neither declared nor a key of `ALIASES` (`pages.ts`, old id to new id, empty today), or when a declared
+  id is missing from the list. Stability is promised for a row that holds a value (a switch, a choice, a
+  number, a text): its id stays, or its value moves to a new id through an alias. An action, a link or an
+  info row holds no value; its id may be retired through the alias table.
 - **The registry describes; it moves nothing.** A row names who holds its value (device, machine, pane,
   profile) and how the value is stored TODAY (a localStorage key, a field of a blob, a route, the
   browser). The card that sets it still writes through its own hook, so a value set in Settings and the

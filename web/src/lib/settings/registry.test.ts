@@ -4,7 +4,7 @@ import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { en } from "@/lib/i18n/messages/en";
-import { groupHeading, isPageId, NOT_SETTINGS, OLD_FRAGMENTS, PAGES, pageDef, searchSettings, settingById, settingOfFragment, SETTINGS, settingPath } from "./index";
+import { ALIASES, currentRowId, groupHeading, isPageId, NOT_SETTINGS, PLACES, OLD_FRAGMENTS, PAGES, pageDef, searchSettings, settingById, settingOfFragment, SETTINGS, settingPath } from "./index";
 import { OLD_FRAGMENT_ROWS } from "./pages";
 import type { Store } from "./types";
 
@@ -71,10 +71,13 @@ describe("the settings registry", () => {
     expect([...NOT_SETTINGS.keys()].filter((k) => STORED.has(k))).toEqual([]);
   });
 
-  it("gives every row a unique id that starts with its page", () => {
+  // The first segment of an id is a namespace, not the page (types.ts `SettingId`): a row that moves keeps its id
+  // and changes its `page`. So the rules are the id's own, and the page is a declared one.
+  it("gives every row a unique dotted id, lower camel after its namespace, and a page or place that exists", () => {
     const ids = SETTINGS.map((s) => s.id);
     expect(ids.length).toBe(new Set(ids).size);
-    expect(SETTINGS.filter((s) => !s.id.startsWith(`${s.page}.`)).map((s) => s.id)).toEqual([]);
+    expect(ids.filter((id) => !/^[a-z][a-z0-9-]*(\.[a-z][a-zA-Z0-9]*)+$/.test(id))).toEqual([]);
+    expect(SETTINGS.filter((s) => !isPageId(s.page) && !Object.hasOwn(PLACES, s.page)).map((s) => s.id)).toEqual([]);
   });
 
   it("puts every row in a group its page has, and every page's groups are used", () => {
@@ -137,6 +140,12 @@ describe("the old fragments", () => {
       expect(row?.page, fragment).toBe(page);
       expect(row?.id).toBe(new Map<string, string>(Object.entries(OLD_FRAGMENT_ROWS)).get(fragment));
     }
+  });
+
+  it("reads an alias as the id it names now (none today, so an id reads as itself)", () => {
+    expect(Object.keys(ALIASES)).toEqual([]);
+    expect(currentRowId("look.math")).toBe("look.math");
+    expect(currentRowId("changes")).toBe("dashboard.changes.nested");
   });
 
   it("reads a row's own id, and nothing for an empty or unknown fragment", () => {
