@@ -240,16 +240,32 @@ function chunkFolder(ids: readonly string[]): string {
 // production twin beside it differs by one flag, `ENABLE_DEV_WARNINGS = false`, which lets the minifier
 // drop the console warnings the development build carries. Build only: `vite dev` keeps the warnings.
 // Found through the package's own `package.json` export, so a hoisted install resolves it too.
-const REACT_ROUTER_PRODUCTION = resolve(
-  dirname(createRequire(import.meta.url).resolve("react-router/package.json")),
-  "dist/production/index.mjs",
-);
+//
+// Resolved in `buildStart`, never at module load: loading this file must not need `node_modules`. A real
+// build always has them (cli/build.ts installs both trees first), but `cli/build.test.ts` loads the config
+// from a scratch checkout with stub packages only, to read the build identity it stamps.
+let reactRouterProduction: string | null = null;
+function resolveReactRouterProduction(): string {
+  try {
+    const manifest = createRequire(import.meta.url).resolve("react-router/package.json");
+    return resolve(dirname(manifest), "dist/production/index.mjs");
+  } catch (error) {
+    throw new Error(
+      "The web build needs react-router installed: run `bun install` in web/ first. " +
+        `(${error instanceof Error ? error.message : String(error)})`,
+      { cause: error },
+    );
+  }
+}
 const reactRouterProductionPlugin: Plugin = {
   name: "collie-react-router-production",
   apply: "build",
   enforce: "pre",
+  buildStart() {
+    reactRouterProduction = resolveReactRouterProduction();
+  },
   resolveId(source) {
-    return source === "react-router" ? REACT_ROUTER_PRODUCTION : null;
+    return source === "react-router" ? reactRouterProduction : null;
   },
 };
 
