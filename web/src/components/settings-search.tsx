@@ -6,13 +6,17 @@ import { Card } from "@/components/ui/card";
 import { SearchField } from "@/components/ui/search-field";
 import { useLocale } from "@/hooks/use-locale";
 import { useNav } from "@/hooks/use-nav";
+import { reloadOnChunkError } from "@/lib/chunk-reload";
 import { t } from "@/lib/i18n";
 import { scopeSearch } from "@/lib/scope";
 import { useScope } from "@/lib/session";
 import { cn } from "@/lib/utils";
 
-/** The results and the registry they read: a chunk of their own, loaded on the first word typed. */
-const Results = lazy(() => import("./settings-search-results"));
+/**
+ * The results and the registry they read: a chunk of their own, loaded on the first word typed. A chunk that a new
+ * build removed reloads the app once (lib/chunk-reload.ts), as every other lazy load does.
+ */
+const Results = lazy(() => reloadOnChunkError(() => import("./settings-search-results")));
 
 // THE SEARCH OF SETTINGS (ADR 0170). One field at the top of the phone's index and of the large screen's list. It
 // reads the registry, so it finds every declared row, those of a pane's own sheets and of a view too:
