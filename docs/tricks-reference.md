@@ -20,7 +20,7 @@ In the picture: 1 Dashboard tile, 2 Page, 3 Bottom bar item, 4 Status chip, 5 Be
 | `session` | Page | A page of the trick's own: a row on the Dashboard under Tricks, and a screen of its own. The code word is `session`. | A program |
 | `dashboard` | Dashboard tile | A round tile in the strip at the top of the Dashboard. The strip is hidden while no trick has a tile. | A program |
 | `status` | Status chip | One chip in the status line above the Belt, at the left end of the row; the model and the usage stay at the right end. | A program |
-| `tabbar` | Bottom bar item | An item in the Dashboard's bottom bar, after the Hill. On a large screen it is an item in the header's views control, after Files. | A program |
+| `tabbar` | Bottom bar item | An item in the Dashboard's bottom bar, after the Hill. | A program |
 | `menu` | Session settings rows | Rows in a session's settings (the sheet of the session's ⋮ button), in a group of the trick's own after Collie's rows and Close, under the heading "From the trick", then the trick's name. Agent sessions only. Adds rows to a session's settings. | A program |
 | `float` | Floating picture | A small moving picture over the app, on the Dashboard and in a session's Chat and Terminal, in the free area clear of the header, the strips, the Belt and the composer. It can draw a small moving picture over the app. It never covers a question and never blocks a tap. | A program |
 | `agent-view` | Agent view | A view of one agent session, beside Terminal and Chat. The session's own agent draws it, and the person switches it on per session. | A session's agent |
@@ -240,8 +240,7 @@ A program prints:
 
 ![The Dashboard, with a trick's item at the end of the bottom bar, after the Hill.](images/tricks/place-tabbar.png)
 
-**Where.** An item in the Dashboard's bottom bar, after the Hill. On a large screen the bar is gone, and
-the item stands in the header's views control, after Files.
+**Where.** An item in the Dashboard's bottom bar, after the Hill.
 
 **Shows.** One item: an icon over a short name, with a `badge` and a `tone`. It takes no view.
 
