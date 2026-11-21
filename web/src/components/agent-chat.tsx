@@ -99,7 +99,7 @@ import { BranchLabel } from "@/components/ui/branch-label";
 import { paneGitHead } from "@/lib/git-head";
 import { CacheSheet } from "@/components/cache-sheet";
 import { PaneActionsSheet, togglePanePin } from "@/components/pane-actions-sheet";
-import { openActionsPalette } from "@/lib/actions-palette/state";
+import { openActionsPalette, useActionsPaletteOpen } from "@/lib/actions-palette/state";
 import { useActionsPaletteOn } from "@/lib/actions-palette-store";
 import { CardWaitingCtx } from "@/components/chat-cards";
 import { chatStatusKey, SavedCopyRow, SessionStream, sharedFolderLine, type QueuedCardAction, type QueuedCardResult } from "@/components/session-stream";
@@ -782,6 +782,7 @@ export function AgentChat({
   // strip has its sidebar and no button. `switcherReachable` keeps the drag, the pane-nav handle and the
   // `switch_pane` shortcut a phone-only thing, with the palette on or off.
   const paletteOn = useActionsPaletteOn();
+  const paletteOpen = useActionsPaletteOpen();
   const hasSomewhereToGo = agents.length + shellPanes.length > 0 || launchers.length > 0;
   const switcherReachable = !inStrip && hasSomewhereToGo;
   const openSwitcher = () => {
@@ -798,6 +799,7 @@ export function AgentChat({
           onClick: openActionsPalette,
           label: t(elsewhereNeedsYou ? "actions.open.ariaNeedsYou" : "actions.open.aria"),
           alert: elsewhereNeedsYou,
+          open: paletteOpen,
         }
       : switcherReachable
         ? {
@@ -806,6 +808,7 @@ export function AgentChat({
             label: t(elsewhereNeedsYou ? "chat.switcher.ariaNeedsYou" : "chat.switcher.aria"),
             icon: "pane-switcher" as const,
             alert: elsewhereNeedsYou,
+            open: drawer === "switcher",
           }
         : undefined;
   // ── PANE NAVIGATION BY GESTURE (M70 spec 03, ADR 0121) ────────────────────────

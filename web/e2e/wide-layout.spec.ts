@@ -52,10 +52,24 @@ test("on a desktop window the focused pane's belt pins the Actions button, which
   expect(box.y + box.height).toBeLessThanOrEqual(beltBox.y + beltBox.height);
   const palette = page.getByRole("dialog", { name: en["actions.title"] });
   await expect(palette).toHaveCount(0);
+  const fill = () => button.evaluate((el) => getComputedStyle(el).backgroundColor);
+  await expect(button).toHaveAttribute("aria-expanded", "false");
+  const resting = await fill();
+  const boxBefore = (await button.boundingBox())!;
   await button.click();
   await expect(palette).toBeVisible();
+  // The pinned button says it is open and wears the shared open fill, in the same box.
+  await expect(button).toHaveAttribute("aria-expanded", "true");
+  expect(await fill()).not.toBe(resting);
+  const boxOpen = (await button.boundingBox())!;
+  expect([boxOpen.width, boxOpen.height]).toEqual([boxBefore.width, boxBefore.height]);
   await page.keyboard.press("Escape");
   await expect(palette).toHaveCount(0);
+  await expect(button).toHaveAttribute("aria-expanded", "false");
+  // The sidebar's collapse button is a toggle: it says the sidebar is open and takes no open fill.
+  const toggle = page.locator('[data-slot="sidebar-toggle"]');
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+  expect(await toggle.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe("rgba(0, 0, 0, 0)");
 });
 
 // THE BELT UNDER A MOUSE WHEEL. The Belt is a sideways scroller with no scrollbar, and a wheel turns vertically,

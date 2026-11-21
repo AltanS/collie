@@ -342,6 +342,21 @@ describe("the sidebar", () => {
     expect(q(container, "aside")?.style.width).toBe("264px");
   });
 
+  // THE COLLAPSE BUTTON IS A TOGGLE, NOT A TRIGGER (ui/button.tsx `TRIGGER_OPEN`): `aria-expanded` says whether the
+  // sidebar is open, and it takes no open fill, because an open sidebar is the resting state. The ghost Button already
+  // brings the house focus ring and the hover fill, so it misses neither.
+  it("says whether the sidebar is open, wears no open fill, and keeps the house focus ring and hover", async () => {
+    const { container } = await mount("w1:p1", 1200);
+    const toggle = q(container, '[data-slot="sidebar-toggle"]')!;
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(toggle.className).not.toContain("aria-expanded:bg-control-on");
+    expect(toggle.className).toContain("focus-visible:outline-2");
+    expect(toggle.className).toContain("hover:bg-accent");
+    fireEvent.click(toggle);
+    await waitFor(() => expect(q(container, '[data-slot="sidebar-toggle"]')?.getAttribute("aria-expanded")).toBe("false"));
+    expect(q(container, '[data-slot="sidebar-toggle"]')?.className).not.toContain("aria-expanded:bg-control-on");
+  });
+
   it("closes to a rail of icons with status marks, remembered on this device", async () => {
     const { container, router } = await mount("w1:p1", 1200);
     const toggle = q(container, '[data-slot="sidebar-toggle"]')!;
