@@ -103,6 +103,7 @@ for (const [scheme, theme] of [
   ["dark", "harbour"],
   ["dark", "nightwatch"],
   ["light", "daylight"],
+  ["dark", "daylight"],
 ] as const) {
   test(`the focused column is the lightest plane, inside a 3:1 frame (${scheme}${theme ? `, ${theme}` : ""})`, async ({ page }) => {
     await page.setViewportSize(VIEW);
@@ -118,6 +119,9 @@ for (const [scheme, theme] of [
     expect(L("recess")).toBeLessThanOrEqual(L("page") + 0.001);
     expect(L("paper")).toBeGreaterThan(L("page") + 0.01);
     expect(L("paper")).toBeGreaterThan(L("recess") + 0.05);
+    // In dark the paper is a small lift, half the card's step (2026-11-21: the full step, 0.12 on Collie and
+    // 0.21 on a black page, read as too bright a sheet); the frame marks the focus.
+    if (scheme === "dark") expect(L("paper") - L("page")).toBeLessThan(0.11);
     expect(L("tabs")).toBeCloseTo(L("recess"), 2);
     // The pane's own header is the paper too: the column is one sheet.
     expect(L("header")).toBeCloseTo(L("paper"), 2);

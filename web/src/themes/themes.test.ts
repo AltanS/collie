@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { SHIPPED_FONTS } from "@/lib/design";
-import { ALL_THEME_TOKENS, DERIVED_THEME_TOKENS, OPTIONAL_THEME_TOKENS, SHIPPED_THEME_IDS, THEME_TOKENS, contrast, contrastReport, parseTheme, type Theme } from "@/lib/theme/schema";
+import { ALL_THEME_TOKENS, DERIVED_THEME_TOKENS, OPTIONAL_THEME_TOKENS, derivedRootValue, SHIPPED_THEME_IDS, THEME_TOKENS, contrast, contrastReport, parseTheme, type Theme } from "@/lib/theme/schema";
 import { SHIPPED_FONTS as FACES } from "@/lib/shipped-fonts";
 import { SURFACE_DEFAULTS, SURFACE_TOKENS, ansiDeclarations, displayDeclarations, fullSurfaceDeclarations, wordDeclarations } from "@/lib/theme/surface";
 import { buildThemesCss } from "@/lib/theme/themes-css";
@@ -44,7 +44,7 @@ function shipped(id: string): Theme {
 /** The token a theme may leave out (schema version 3): index.css's pair holds when it does. */
 const OPTIONAL: ReadonlySet<string> = new Set(OPTIONAL_THEME_TOKENS);
 
-/** The optional tokens whose default is one derived expression, not a `light-dark()` pair: `collie` holds no value for them. */
+/** The optional tokens whose default is derived from other tokens, not a pair of colours: `collie` holds no value for them. */
 const DERIVED: ReadonlySet<string> = new Set(Object.keys(DERIVED_THEME_TOKENS));
 const PAIRED_TOKENS = ALL_THEME_TOKENS.filter((t) => !DERIVED.has(t));
 
@@ -52,7 +52,9 @@ const PAIRED_TOKENS = ALL_THEME_TOKENS.filter((t) => !DERIVED.has(t));
 const APP_READ_WORDS: ReadonlySet<string> = new Set(["zoom", "tabs", "composer"]);
 
 describe("the theme collie equals index.css", () => {
-  const tokens = rootTokens();
+  // A derived token may be written as a `light-dark()` of two expressions (the paper); it is held by its own
+  // test below, not as a colour pair the file for `collie` repeats.
+  const tokens = rootTokens().filter((t) => !DERIVED.has(t.token));
   const collie = shipped("collie");
 
   it("finds all 43 tokens in index.css, in the order of the token list, and the optional one", () => {
@@ -83,9 +85,10 @@ describe("the theme collie equals index.css", () => {
   });
 
   it("declares each derived token once in index.css, as the expression the schema writes for a missing half", () => {
-    for (const [token, expression] of Object.entries(DERIVED_THEME_TOKENS)) {
-      expect(css).toContain(`  --${token}: ${expression};`);
+    for (const token of ["surface-recess", "surface-paper"] as const) {
+      expect(css).toContain(`  --${token}: ${derivedRootValue(token)};`);
     }
+    expect(Object.keys(DERIVED_THEME_TOKENS).toSorted()).toEqual(["surface-paper", "surface-recess"]);
   });
 
   it("carries Atkinson for the text, Aldrich for the titles and the shipped author", () => {
