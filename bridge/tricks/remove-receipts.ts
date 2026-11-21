@@ -17,9 +17,17 @@ import { REMOVE_LINK_LINE, REMOVE_ON_LINE, REMOVE_RUNNING_LINE, type RemoveRefus
 // later under the same id. The record keeps the trick id, the device label and the outcome, never content.
 //
 // Written on the first remove and on nothing else, so a bridge nobody removes a trick on writes no file.
+//
+// Each record carries `v`. A record of a later version, or with an outcome this build does not know, is KEPT as it
+// is (a rewrite of the file keeps it whole) and answers `unknown`: it never acts. The file keeps the newest
+// {@link MAX_RECEIPTS} records (worktree-receipts.ts), so "an old `rid` never acts again" holds while its record
+// is among them; an id older than that needs the write right to be sent at all, which could send a new id anyway.
 
 /** The receipt file's name inside `<stateDir>/tricks/`. */
 export const REMOVE_RECEIPTS_FILE = "remove-receipts.json";
+
+/** The version of a record this build writes. */
+export const REMOVE_RECEIPT_V = 1;
 
 /** How a remove ended: removed, or the refusal it met. */
 export type RemoveOutcome = "removed" | RemoveRefusal;
@@ -32,6 +40,8 @@ function isOutcome(text: string | undefined): text is RemoveOutcome {
 
 /** One stored record. */
 export interface RemoveReceipt {
+  /** {@link REMOVE_RECEIPT_V} for a record this build wrote. */
+  v: number;
   requestId: string;
   /** The digest of what was asked (the trick id), so the same `rid` for another trick is told apart. */
   payloadDigest: string;
@@ -42,8 +52,8 @@ export interface RemoveReceipt {
   device: string | null;
   /** True while the remove has not ended: the marker. */
   pending: boolean;
-  /** How it ended, once it did. */
-  outcome: RemoveOutcome | null;
+  /** How it ended, once it did: a {@link RemoveOutcome}, or a word of a later build, kept as it is. */
+  outcome: string | null;
 }
 
 /** One record read off disk, or null when the entry is not one. */
@@ -57,10 +67,22 @@ export function coerceRemoveReceipt(raw: JsonValue): RemoveReceipt | null {
   const pending = asJsonBoolean(row.pending);
   const device = row.device === null ? null : asJsonString(row.device);
   const outcome = row.outcome === null ? null : asJsonString(row.outcome);
-  if (!isRequestId(requestId) || digest === undefined || at === undefined || trick === undefined || !isTrickId(trick) || pending === undefined || device === undefined || outcome === undefined) return null;
-  if (outcome === null) return pending ? { requestId, payloadDigest: digest, at, trick, device, pending, outcome } : null;
-  if (!isOutcome(outcome)) return null;
-  return { requestId, payloadDigest: digest, at, trick, device, pending: false, outcome };
+  // A record of this branch before `v` existed reads as version 1.
+  const v = row.v === undefined ? REMOVE_RECEIPT_V : asJsonNumber(row.v);
+  if (v === undefined || !isRequestId(requestId) || digest === undefined || at === undefined || trick === undefined || !isTrickId(trick) || pending === undefined || device === undefined || outcome === undefined) return null;
+  if (outcome === null && !pending) return null;
+  return { v, requestId, payloadDigest: digest, at, trick, device, pending: outcome === null ? true : pending, outcome };
+}
+
+/**
+ * The answer a stored record gives again: its own for a completed record of this version with an outcome this build
+ * knows; `unknown` (nothing is done) for a marker, a later version or an unknown outcome; `request-id-reused` for a
+ * record of another trick.
+ */
+export function storedAnswer(rid: string, digest: string, id: string, stored: RemoveReceipt): RemoveAnswer {
+  if (stored.payloadDigest !== digest) return { status: 409, body: { error: "request-id-reused", rid } };
+  if (stored.v !== REMOVE_RECEIPT_V || stored.outcome === null || !isOutcome(stored.outcome)) return { status: 409, body: { error: "unknown", message: REMOVE_UNKNOWN_LINE, rid } };
+  return removeAnswerOf(rid, id, stored.outcome);
 }
 
 /** The answer of the remove route. */

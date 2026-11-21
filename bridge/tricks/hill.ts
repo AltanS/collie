@@ -562,6 +562,19 @@ export class TrickHill {
     this.save();
   }
 
+  /**
+   * Every trick this map knows that `present` does not hold, and that still has a key that is not open: forgotten as
+   * for a new trick of that id ({@link forget}), so a later trick of the id inherits none. The generation only moves up.
+   * A trick with no such key is left as it is, so a scan writes nothing when there is nothing to forget (ADR 0168).
+   */
+  forgetAbsent(present: ReadonlySet<string>, memberId: string): void {
+    // `forget` sets an id the map holds, never a new one, so the walk sees each id once.
+    for (const [id, record] of this.map) {
+      if (present.has(id)) continue;
+      if (Object.values(record.keys).some((entry) => entry.state !== "open")) this.forget({ id, name: id, memberId });
+    }
+  }
+
   /** Every trick this map knows that `present` does not hold is off (removed while the bridge was down, too). */
   prune(present: ReadonlySet<string>, memberId: string): void {
     for (const id of this.map.keys()) {

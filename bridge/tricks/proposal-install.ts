@@ -101,6 +101,25 @@ async function renameOrRaced(stage: string, target: string, id: string): Promise
   }
 }
 
+/**
+ * Make the folders of `relDir` inside `target`, one level at a time, and never `target` itself: a trick folder that a
+ * remove renamed aside meanwhile is never made again (ADR 0168, B4). Throws ENOENT when `target` is gone, so the write
+ * stops and nothing lands.
+ */
+export async function makeFoldersUnder(target: string, relDir: string): Promise<void> {
+  if (relDir === "" || relDir === ".") return;
+  let at = target;
+  for (const part of relDir.split("/")) {
+    at = join(at, part);
+    try {
+      await mkdir(at, { mode: 0o700 });
+    } catch (err) {
+      if (err instanceof Error && "code" in err && err.code === "EEXIST") continue;
+      throw err;
+    }
+  }
+}
+
 /** A path as a case-insensitive file system may compare it: one Unicode form, lower case. */
 function foldPath(rel: string): string {
   return rel.normalize("NFC").toLowerCase();
@@ -296,7 +315,7 @@ export async function replaceCode(root: string, id: string, files: readonly Prop
       // A folder of old code only, where the new version puts a file: its code is gone, so it is empty.
       if (entries.get(file.rel)?.kind === "dir") await rm(path, { recursive: true, force: true });
       const fileDir = dirname(path);
-      await mkdir(fileDir, { recursive: true, mode: 0o700 });
+      await makeFoldersUnder(target, dirname(file.rel));
       // A dot name beside the file: the code hash never reads it, so a crash leaves no code behind.
       const tmp = join(fileDir, `.collie-new-${randomBytes(6).toString("hex")}`);
       await writeFile(tmp, file.bytes, { flag: "wx", mode: file.executable ? 0o755 : 0o644 });

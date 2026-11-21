@@ -786,6 +786,23 @@ describe("switched off", () => {
     expect(recordOf(r.stateDir, "other")).toEqual(before);
   });
 
+  test("forgetAbsent (ADR 0168): a trick with no folder loses its keys once; a second scan writes nothing", async () => {
+    const r = rig();
+    sync(r, [decision("a"), decision("b")]);
+    await answer(r, open(r).find((held) => held.from.trickKey === "a")!, 102, "skip");
+    r.tricks.forgetAbsent(new Set(["legs"]), HOST);
+    expect(Object.keys(r.tricks.entries(LEGS.id)).length).toBeGreaterThan(0);
+    // A scan withdraws the open ones first (`prune`, service.ts `apply`); what is left is forgotten.
+    r.tricks.prune(new Set(["other"]), HOST);
+    r.tricks.forgetAbsent(new Set(["other"]), HOST);
+    expect(open(r)).toEqual([]);
+    expect(r.tricks.entries(LEGS.id)).toEqual({});
+    const gen = recordOf(r.stateDir, LEGS.id)?.gen ?? 0;
+    expect(gen).toBeGreaterThan(0);
+    r.tricks.forgetAbsent(new Set(["other"]), HOST);
+    expect(recordOf(r.stateDir, LEGS.id)?.gen).toBe(gen);
+  });
+
   test("prune: a trick the scan no longer finds is off", () => {
     const r = rig();
     sync(r, [decision("a")]);

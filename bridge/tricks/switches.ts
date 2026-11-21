@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { chmod, link, mkdir, rename, stat, unlink, writeFile } from "node:fs/promises";
+import { chmod, link, lstat, mkdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
 import type { JsonObject, JsonValue } from "../json.ts";
@@ -465,6 +465,43 @@ export async function updateSwitches(stateDir: string, change: (switches: Switch
     },
     now,
   );
+}
+
+/**
+ * {@link updateSwitches} for a write that switches `id` on or approves it (the phone's switch, `collie trick on`, a
+ * version promoted, a proposal's yes, a carried trick): inside the lock the trick's folder must still be a real
+ * folder, or nothing is written and the answer is null. A remove (remove.ts) renames the folder under this same lock,
+ * so a switch on either lands first (and the remove then refuses a trick that is on) or finds the folder gone, and a
+ * removed trick is never left switched on with no folder (ADR 0168, B4).
+ */
+export async function updateSwitchesFor(stateDir: string, folder: string, change: (switches: Switches) => Switches | Promise<Switches>, now: () => number = Date.now): Promise<Switches | null> {
+  return await withSwitchLock(
+    stateDir,
+    async () => {
+      const st = await lstat(folder).catch(() => null);
+      if (st === null || !st.isDirectory()) return null;
+      const next = await change(parseSwitches(await readText(switchesPath(stateDir))).switches);
+      await writeSwitches(stateDir, next);
+      return next;
+    },
+    now,
+  );
+}
+
+/**
+ * The switch file as it is on disk now, for a writer that holds the lock and must not read a broken file as all off
+ * (remove.ts, approved.ts `forgetLeftovers`; ADR 0168, B1). A missing file is no trick on (`problem: null`). A file
+ * that cannot be read, reads empty or is not the shape answers EMPTY with its problem, and the caller refuses.
+ */
+export async function readSwitchesNow(stateDir: string): Promise<ParsedSwitches> {
+  let text: string;
+  try {
+    text = await readFile(switchesPath(stateDir), "utf8");
+  } catch (err) {
+    if (err instanceof Error && "code" in err && err.code === "ENOENT") return { switches: EMPTY, problem: null };
+    return { switches: EMPTY, problem: `switches.json cannot be read: ${err instanceof Error ? err.message : String(err)}` };
+  }
+  return parseSwitches(text);
 }
 
 /**

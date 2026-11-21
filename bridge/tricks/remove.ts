@@ -1,11 +1,11 @@
 import { mkdirSync, readFileSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
-import { lstat, realpath, rename } from "node:fs/promises";
+import { lstat, realpath } from "node:fs/promises";
 import { join } from "node:path";
 
 import { isTrickId } from "../../web/src/lib/tricks/schema.ts";
-import { moveAside, removeTree } from "./approved.ts";
+import { commitAside, finishAside, moveAside, newAsideToken, putBack, type Moved } from "./aside.ts";
 import { APPROVED_DIR, PENDING_DIR, tricksConfigDir, tricksStateDir } from "./paths.ts";
-import { updateSwitches } from "./switches.ts";
+import { readSwitchesNow, withSwitchLock } from "./switches.ts";
 
 // REMOVING A TRICK (ADR 0168): the one function `collie trick remove <id>` and the bridge route
 // `POST /api/tricks/<host>/<id>/remove` both call. What remove means lives here and nowhere else.
@@ -14,50 +14,71 @@ import { updateSwitches } from "./switches.ts";
 // approved and pending copies `<configDir>/tricks/.collie-approved/<id>/` and `.collie-pending/<id>/`. Then the
 // caller's `forget` drops what lives beside the files: the agent views and the Hill keys of the id (the bridge
 // hands its live stores, the terminal a disk-only forget). Nothing else is touched: not another trick, not the
-// switch file's other entries, not a shared cache.
+// switch file, not a shared cache. A trick whose folder is gone but whose other places are there (an older crash,
+// a folder deleted by hand) is removed the same way: its leftovers go.
 //
-// THE ID IS A NAME, NEVER A PATH. `id` must pass `isTrickId` (letters, digits, `-` and `_`; no dot, no slash), so
-// `..`, an absolute path and an encoded slash are refused before any path is built. Each of the four places must
-// then be a real folder whose real path is exactly `<real base>/<id>`: a link or a file in its place, or a base
-// folder that is a link pointing elsewhere, refuses the whole remove and nothing is deleted.
+// THE ID IS A NAME, NEVER A PATH. `id` must pass `isTrickId` (lower-case letters, digits and `-`; no dot, no slash),
+// so `..`, an absolute path and an encoded slash are refused before any path is built. Each of the four places that
+// is there must be a real folder whose real path is exactly `<real base>/<id>`: a link or a file in its place, or a
+// base folder that is a link pointing elsewhere, refuses the whole remove and nothing is moved.
 //
 // ONLY WHILE IT IS OFF, AND WITH NO RUN GOING. The check is made twice, the second time INSIDE the switch file's lock
-// (switches.ts `updateSwitches`): a switch on (the phone's, the terminal's) writes under the same lock, so it lands
-// before the check or after the remove, never in between. A run of a trick reads the switch file again before its
-// program starts (service.ts `recheck`), after it marked itself busy, so a run that begins after the check sees the
-// trick off and starts nothing. Inside the lock the four places are only RENAMED aside, to `.gone-<id>-<random>`
-// beside each (approved.ts `moveAside`); the deletes run after the unlock, so a slow delete never holds the lock
-// that every other writer waits at most six seconds for. A crash between the rename and the delete leaves only
-// dotted names, which no scan, add or list reads as a trick, and the bridge's next start sweeps them
-// (approved.ts `sweepGone`).
+// (switches.ts `withSwitchLock`): a switch on (the phone's, the terminal's) writes under the same lock and checks
+// that the folder is still there (`updateSwitchesFor`), so it lands before the check or finds the folder gone. A
+// switch file that cannot be read as switches REFUSES the remove (it is never read as "off", never rewritten). A run
+// of a trick reads the switch file again before its program starts (service.ts `recheck`), after it marked itself
+// busy, so a run that begins after the check sees the trick off and starts nothing.
+//
+// ONE COMMIT POINT (aside.ts). Inside the lock the places are only RENAMED aside, the trick's own folder LAST, so
+// that until the commit the trick is still listed; then the batch is committed (one synced file). Before the commit
+// any failure puts every place back. After it the answer is "removed" whatever happens next: `forget` and each delete
+// run on their own, a failure is logged and answered as a leftover, and the bridge's next start finishes it.
 
-/** What the app and the command say while a run of the trick is going, queued or waiting on a Hill answer. */
+/** What the app and the command say while a run of the trick is going, queued or waiting to deliver an answer. */
 export const REMOVE_RUNNING_LINE = "A run of this trick is still going. Try again in a few seconds.";
 /** What the app says for a trick that is on. The command prints its own line, which names `collie trick off`. */
 export const REMOVE_ON_LINE = "Switch the trick off to remove it.";
 /** What is said when a place is a link or a file, or its real path lies outside the tricks folders. */
 export const REMOVE_LINK_LINE = "A folder of this trick is a link or lies outside the tricks folder, so nothing was removed. Look at it on the machine.";
 
-/** Why a remove was refused. `unknown-trick`: no folder of that id; nothing else is told. */
+/** Why a remove was refused. `unknown-trick`: none of its places is there; nothing else is told. */
 export type RemoveRefusal = "unknown-trick" | "on" | "running" | "link";
 
-export type RemoveResult = { ok: true; folder: string; state: string } | { ok: false; code: RemoveRefusal; message: string };
+export type RemoveResult =
+  | {
+      ok: true;
+      folder: string;
+      state: string;
+      /** Asides still on disk after the commit (each logged); the next start deletes them. */
+      leftovers: string[];
+      /** False when `forget` threw (logged): the bridge's scan drops what it kept (service.ts `pruneAbsent`). */
+      forgot: boolean;
+    }
+  | { ok: false; code: RemoveRefusal; message: string };
+
+/** Thrown when the switch file cannot be read as switches: nothing was moved. */
+export class RemoveUnreadable extends Error {}
 
 export interface RemoveOptions {
   configDir: string;
   stateDir: string;
   id: string;
-  /** Whether a run of the trick is going, queued or waiting on a Hill answer. Asked inside the switch file's lock. */
+  /** Whether a run of the trick is going, queued or waiting to deliver an answer. Asked inside the switch file's lock. */
   busy: (id: string) => boolean;
-  /** Drop what lives beside the files (agent views, Hill keys). Runs after the unlock, before the deletes. */
+  /** Drop what lives beside the files (agent views, Hill keys). Runs after the commit and the unlock, before the deletes. */
   forget?: (id: string) => void | Promise<void>;
+  warn?: (line: string) => void;
+  /** The commit step (aside.ts `commitAside`). A seam for a test that fails it. */
+  commit?: (stateDir: string, id: string, token: string) => Promise<void>;
 }
 
-/** One of the four places, and the real path it must have. */
+/** One of the four places, and the real path it must have: the real path of `root`, then `sub`, then the id. */
 interface Place {
   path: string;
-  /** The real folder `path` must lie in; its real path joined with the id is what `path` must resolve to. */
-  base: string;
+  /** The folder resolved: the tricks folder, or the state folder's `tricks/` (it may live on another disk). */
+  root: string;
+  /** The folder inside `root`, never resolved on its own: a `.collie-approved` that is a link is refused. */
+  sub: string;
 }
 
 /** The trick's own folder, and the three places beside it: its state folder, its approved and its pending copies. */
@@ -69,84 +90,89 @@ interface Places {
 function placesOf(configDir: string, stateDir: string, id: string): Places {
   const root = tricksConfigDir(configDir);
   return {
-    folder: { path: join(root, id), base: root },
+    folder: { path: join(root, id), root, sub: "" },
     rest: [
-      { path: join(tricksStateDir(stateDir), id), base: tricksStateDir(stateDir) },
-      { path: join(root, APPROVED_DIR, id), base: join(root, APPROVED_DIR) },
-      { path: join(root, PENDING_DIR, id), base: join(root, PENDING_DIR) },
+      { path: join(tricksStateDir(stateDir), id), root: tricksStateDir(stateDir), sub: "" },
+      { path: join(root, APPROVED_DIR, id), root, sub: APPROVED_DIR },
+      { path: join(root, PENDING_DIR, id), root, sub: PENDING_DIR },
     ],
   };
 }
 
+type PlaceState = "absent" | "ok" | "bad";
+
 /** `absent`, `ok`, or `bad` (a link or a file in its place, or a real path outside its base). Never throws. */
-async function placeState(place: Place, id: string, realRoot: string, rootOf: (base: string) => string): Promise<"absent" | "ok" | "bad"> {
+async function placeState(place: Place, id: string): Promise<PlaceState> {
   const st = await lstat(place.path).catch(() => null);
   if (st === null) return "absent";
   if (!st.isDirectory()) return "bad";
+  const realRoot = await realpath(place.root).catch(() => null);
   const real = await realpath(place.path).catch(() => null);
-  return real === join(rootOf(realRoot), id) ? "ok" : "bad";
+  return realRoot !== null && real === join(realRoot, place.sub, id) ? "ok" : "bad";
 }
 
-/** Every place checked: whether the trick folder is there, and whether any place is a link or outside its base. */
-async function checkPlaces(configDir: string, stateDir: string, id: string): Promise<"absent" | "ok" | "bad"> {
+/** Every place checked: none there (`absent`), any one a link or outside its base (`bad`), else the ones there. */
+async function checkPlaces(configDir: string, stateDir: string, id: string): Promise<{ kind: "absent" } | { kind: "bad" } | { kind: "ok"; there: Set<string> }> {
   const { folder, rest } = placesOf(configDir, stateDir, id);
-  const realConfig = await realpath(tricksConfigDir(configDir)).catch(() => null);
-  if (realConfig === null) return "absent";
-  const first = await placeState(folder, id, realConfig, (r) => r);
-  if (first !== "ok") return first;
-  // The state folder's base is resolved on its own: the state folder may live on another disk than the config.
-  const realState = await realpath(tricksStateDir(stateDir)).catch(() => null);
-  const states = await Promise.all([
-    realState === null ? Promise.resolve<"absent">("absent") : placeState(rest[0]!, id, realState, (r) => r),
-    placeState(rest[1]!, id, realConfig, (r) => join(r, APPROVED_DIR)),
-    placeState(rest[2]!, id, realConfig, (r) => join(r, PENDING_DIR)),
-  ]);
-  return states.includes("bad") ? "bad" : "ok";
+  const all = [folder, ...rest];
+  const states = await Promise.all(all.map((place) => placeState(place, id)));
+  if (states.includes("bad")) return { kind: "bad" };
+  const there = new Set(all.filter((_, n) => states[n] === "ok").map((place) => place.path));
+  return there.size === 0 ? { kind: "absent" } : { kind: "ok", there };
 }
 
 /**
- * Remove one trick: refused for an id that is no trick id or has no folder, for a trick that is on or has a run going,
- * and for a place that is a link or lies outside the tricks folders. Each refusal deletes nothing. Throws only when a
- * rename fails for another reason than a missing path; the places already moved are put back first.
+ * Remove one trick: refused for an id that is no trick id or has none of its places, for a trick that is on or has
+ * a run going, and for a place that is a link or lies outside the tricks folders. Each refusal moves nothing. Throws
+ * {@link RemoveUnreadable} for a switch file that is not switches, and the error of a rename or of the commit after
+ * every place was put back (a place that could not go back is named in it): in both cases nothing was removed.
  */
 export async function removeTrick(opts: RemoveOptions): Promise<RemoveResult> {
   const { configDir, stateDir, id } = opts;
+  const warn = opts.warn ?? ((line: string) => console.warn(`[tricks] ${line}`));
   if (!isTrickId(id)) return { ok: false, code: "unknown-trick", message: `There is no trick ${id}.` };
   const before = await checkPlaces(configDir, stateDir, id);
-  if (before === "absent") return { ok: false, code: "unknown-trick", message: `There is no trick ${id}.` };
-  if (before === "bad") return { ok: false, code: "link", message: REMOVE_LINK_LINE };
+  if (before.kind === "absent") return { ok: false, code: "unknown-trick", message: `There is no trick ${id}.` };
+  if (before.kind === "bad") return { ok: false, code: "link", message: REMOVE_LINK_LINE };
   const { folder, rest } = placesOf(configDir, stateDir, id);
-  let refusal: RemoveResult | null = null;
-  const aside: { from: string; to: string }[] = [];
-  await updateSwitches(stateDir, async (now) => {
-    // Asked again under the lock: a folder that went or became a link, a switch on, a run that began.
+  const token = newAsideToken();
+  const moved: Moved[] = [];
+  const refusal = await withSwitchLock(stateDir, async (): Promise<RemoveResult | null> => {
+    const read = await readSwitchesNow(stateDir);
+    if (read.problem !== null) throw new RemoveUnreadable(`${read.problem}, so nothing was removed`);
+    // Asked again under the lock: a place that went or became a link, a switch on, a run that began.
     const held = await checkPlaces(configDir, stateDir, id);
-    if (held === "absent") refusal = { ok: false, code: "unknown-trick", message: `There is no trick ${id}.` };
-    else if (held === "bad") refusal = { ok: false, code: "link", message: REMOVE_LINK_LINE };
-    else if (now.on.has(id)) refusal = { ok: false, code: "on", message: REMOVE_ON_LINE };
-    else if (opts.busy(id)) refusal = { ok: false, code: "running", message: REMOVE_RUNNING_LINE };
-    if (refusal !== null) return now;
+    if (held.kind === "absent") return { ok: false, code: "unknown-trick", message: `There is no trick ${id}.` };
+    if (held.kind === "bad") return { ok: false, code: "link", message: REMOVE_LINK_LINE };
+    if (read.switches.on.has(id)) return { ok: false, code: "on", message: REMOVE_ON_LINE };
+    if (opts.busy(id)) return { ok: false, code: "running", message: REMOVE_RUNNING_LINE };
     try {
-      for (const place of [folder, ...rest]) {
-        const to = await moveAside(place.path, id);
-        if (to !== null) aside.push({ from: place.path, to });
+      // The trick's own folder last: until the commit it is still a listed trick.
+      for (const place of [...rest, folder]) {
+        if (!held.there.has(place.path)) continue;
+        const to = await moveAside(place.path, id, token);
+        if (to !== null) moved.push({ from: place.path, to });
       }
+      // No switch write: an off trick has no entry (asked above). The commit is the last step inside the lock.
+      await (opts.commit ?? commitAside)(stateDir, id, token);
     } catch (err) {
-      // Put back what moved, newest first, so a failed remove leaves the trick as it was.
-      for (const moved of aside.toReversed()) await rename(moved.to, moved.from).catch(() => {});
-      aside.length = 0;
-      throw err;
+      const back = await putBack(moved, warn);
+      moved.length = 0;
+      throw back.length === 0 ? err : new Error(`${err instanceof Error ? err.message : String(err)}; ${back.join("; ")}`);
     }
-    return now;
+    return null;
   });
   if (refusal !== null) return refusal;
+  // Committed: removed, whatever follows. Each step runs on its own.
+  let forgot = true;
   try {
     await opts.forget?.(id);
-  } finally {
-    // Outside the lock, and also when `forget` threw: what went aside is not wanted back.
-    for (const moved of aside) await removeTree(moved.to);
+  } catch (err) {
+    forgot = false;
+    warn(`the views and Hill keys of the removed trick ${id} could not be forgotten: ${err instanceof Error ? err.message : String(err)}`);
   }
-  return { ok: true, folder: folder.path, state: rest[0]!.path };
+  const leftovers = await finishAside({ stateDir, id, token, paths: moved.map((one) => one.to), warn });
+  return { ok: true, folder: folder.path, state: rest[0]!.path, leftovers, forgot };
 }
 
 // ── The run marks: what the terminal reads to know a run is going ─────────────────────────────────
