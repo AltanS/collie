@@ -2,6 +2,7 @@ import type { ComponentType } from "react";
 import type { RouteObject } from "react-router";
 
 import { reloadOnChunkError, type ChunkPreload } from "./chunk-reload";
+import { t } from "./i18n";
 
 // A SCREEN THAT LOADS ON DEMAND (ADR 0169). The route table (router.tsx) names a lazy screen with one
 // line, `lazy: lazyScreen(() => import("@/routes/x"), (m) => m.XRoute)`, and React Router fetches the
@@ -21,14 +22,28 @@ export type LazyScreen = () => Promise<{ Component: ComponentType }>;
 
 const PRELOADS = new WeakMap<object, ChunkPreload>();
 
+/** How long a navigation waits for a reload that was started for a missing chunk before it fails. */
+export const RELOAD_CEILING_MS = 10_000;
+
+/**
+ * The import resolved with nothing: Vite's `vite:preloadError` listener started a reload and cancelled the
+ * rethrow (lib/chunk-reload.ts `onPreloadError`, which does that only when it reloads; a held tab gets the
+ * error itself). Keep the old screen while the page goes, rather than flash the error screen. A reload that
+ * never takes the page (a `beforeunload` prompt cancelled it) must not leave the navigation hanging, so after
+ * RELOAD_CEILING_MS it fails, and the route's error screen shows with its reload link.
+ */
+function waitForTheReload(): Promise<never> {
+  return new Promise<never>((_resolve, reject) => {
+    setTimeout(() => reject(new Error(t("apiError.unknown"))), RELOAD_CEILING_MS);
+  });
+}
+
 /** The `lazy` of a route whose screen is `pick(await load())`. */
 export function lazyScreen<M>(load: () => Promise<M>, pick: (module: NonNullable<M>) => ComponentType): LazyScreen {
   const lazy: LazyScreen = async () => {
-    // Undefined when Vite's `vite:preloadError` listener already started the reload: it cancels the
-    // rethrow then (lib/chunk-reload.ts `onPreloadError`), and the import resolves with nothing.
+    // Undefined when Vite's `vite:preloadError` listener already started the reload (`waitForTheReload`).
     const module: M | undefined = await reloadOnChunkError(load);
-    // The page is reloading: keep the old screen until it goes, rather than flash the error screen.
-    if (module === undefined || module === null) return new Promise<never>(() => undefined);
+    if (module === undefined || module === null) return waitForTheReload();
     return { Component: pick(module) };
   };
   PRELOADS.set(lazy, async () => {
@@ -65,7 +80,11 @@ export function lazyChunk<M>(load: () => Promise<M>): () => Promise<M> {
   };
   if (chunkSink === null) pendingChunks.push(bare);
   else chunkSink(bare);
-  return () => reloadOnChunkError(load);
+  return async () => {
+    const module: M | undefined = await reloadOnChunkError(load);
+    if (module === undefined || module === null) return waitForTheReload();
+    return module;
+  };
 }
 
 /** For the preload: every `lazyChunk` door so far; any later one goes to `sink`. */

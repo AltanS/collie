@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { onPreloadError, preloadQuietly, PRELOAD_RELOAD_KEY, setChunkReloader } from "./chunk-reload";
-import { __resetChunkPreloads, drainChunkPreloads, lazyChunk, lazyScreen, preloadOf } from "./lazy-route";
-import { __resetReloadGuard } from "./reload-guard";
+import { __resetChunkPreloads, drainChunkPreloads, lazyChunk, lazyScreen, preloadOf, RELOAD_CEILING_MS } from "./lazy-route";
+import { __resetReloadGuard, holdReload } from "./reload-guard";
 
 function Screen() {
   return null;
@@ -38,13 +38,37 @@ describe("a lazy screen", () => {
     expect(reloads).toBe(1);
   });
 
-  it("keeps the old screen when Vite's own listener already started the reload", async () => {
-    // Vite resolves the import with undefined once its `vite:preloadError` listener cancelled the rethrow.
-    const lazy = lazyScreen<{ Screen: typeof Screen } | undefined>(() => Promise.resolve(undefined), (m) => m.Screen);
-    const settled = vi.fn();
-    void lazy().then(settled, settled);
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(settled).not.toHaveBeenCalled();
+  it("keeps the old screen while a started reload takes the page, and fails after the ceiling", async () => {
+    vi.useFakeTimers();
+    try {
+      // Vite resolves the import with undefined once its `vite:preloadError` listener started the reload.
+      const lazy = lazyScreen<{ Screen: typeof Screen } | undefined>(() => Promise.resolve(undefined), (m) => m.Screen);
+      const settled = vi.fn();
+      const failed = lazy().then(settled, (error: Error) => {
+        settled();
+        return error;
+      });
+      await vi.advanceTimersByTimeAsync(RELOAD_CEILING_MS - 1);
+      expect(settled).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      await expect(failed).resolves.toBeInstanceOf(Error);
+      expect(settled).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("fails at once in a tab that holds its reload: no reload, no wait, the route's error screen", async () => {
+    holdReload("draft");
+    const missing = new TypeError("Failed to fetch dynamically imported module: /assets/x.js");
+    // What Vite does first: its listener sees the hold and does not cancel the rethrow.
+    const event = new Event("vite:preloadError", { cancelable: true });
+    Object.assign(event, { payload: missing });
+    onPreloadError(event);
+    expect(event.defaultPrevented).toBe(false);
+    const lazy = lazyScreen(() => Promise.reject(missing), () => Screen);
+    await expect(lazy()).rejects.toBe(missing);
+    expect(reloads).toBe(0);
   });
 
   it("gives the preload the bare import, which never reloads", async () => {
