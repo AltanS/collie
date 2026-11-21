@@ -24,7 +24,7 @@ import { findTrickSession } from "@/lib/tricks/places";
 import { ACTIONS_MAX, parseTrickSessionId, type TrickAction } from "@/lib/tricks/schema";
 import type { LinkTarget } from "@/lib/tricks/render";
 import { tricksStore, trickTapper, useTrickPart, type TricksStore } from "@/lib/tricks/store";
-import { homePath, pathOnly, readForSession, readFrom, resolveHomeScope } from "@/lib/nav";
+import { homePath, pathOnly, readForSession, readFrom, resolveHomeScope, trickDetailKey, trickDetailPath } from "@/lib/nav";
 import { scopeFromSearchParams, type Scope } from "@/lib/scope";
 import { paneName } from "@/lib/pane-name";
 import { useRootData } from "@/lib/route-data";
@@ -59,8 +59,14 @@ function actionControl(id: string): string {
   return `actions/${id}`;
 }
 
-/** The Header's row: back, the trick's icon in its frame, the name with its badge, and line 2. */
-export function TrickSessionHeaderRow({ pane, onBack }: { pane: AgentView | undefined; onBack: () => void }) {
+/**
+ * The Header's row: back, the trick's icon in its frame, the name with its badge, line 2, and at the end the
+ * trick's details button (2026-11-21): the house info glyph in a 44 px button, "Trick details", that opens the
+ * trick's details page one level below (routes/settings-trick.tsx); Back there comes up to this page. It stands in
+ * the row's trailing place and takes no room from the trick's view. A destructive act is never here: it would be
+ * reached through the details page. Absent without `onDetails` (a trick id that does not parse).
+ */
+export function TrickSessionHeaderRow({ pane, onBack, onDetails }: { pane: AgentView | undefined; onBack: () => void; onDetails?: () => void }) {
   useLocale();
   const line = pane === undefined ? null : trickSessionLine(pane);
   return (
@@ -80,6 +86,11 @@ export function TrickSessionHeaderRow({ pane, onBack }: { pane: AgentView | unde
           {line ?? ""}
         </p>
       </div>
+      {onDetails !== undefined && (
+        <Button variant="ghost" size="icon" data-slot="trick-session-details" className="size-11 shrink-0" onClick={onDetails} aria-label={t("tricks.session.details")}>
+          <KeyIcon name="info" className="size-5" />
+        </Button>
+      )}
     </>
   );
 }
@@ -223,6 +234,9 @@ export function TrickSessionRoute() {
   const { linkFor } = useTrickHandlers();
   const onLink = useMemo(() => linkFor(host), [linkFor, host]);
   const back = () => nav.up(homePath(resolveHomeScope(pathname, search, state)));
+  // The details page of this trick, a level below: Back there steps back up to this page (lib/nav.ts ladder).
+  const own = parseTrickSessionId(paneId);
+  const details = own === undefined ? undefined : () => nav.down(trickDetailPath(trickDetailKey(own.host, own.trick)));
   // The Dashboard's bar stays under a trick's Session, with this trick's own item as the current one
   // when it has one (amended 2026-11-10, components/dashboard-route-bar.tsx).
   const bar = useDashboardBar();
@@ -232,7 +246,7 @@ export function TrickSessionRoute() {
   }, [paneId]);
   return (
     <div data-slot="trick-session-screen" className="mx-auto flex min-h-0 w-full max-w-screen-sm flex-1 flex-col">
-      <RouteHeader width="column" override={<TrickSessionHeaderRow pane={pane} onBack={back} />} />
+      <RouteHeader width="column" override={<TrickSessionHeaderRow pane={pane} onBack={back} onDetails={details} />} />
       <TrickSessionBody pane={pane} onLink={onLink} onDraft={onDraft} barBelow={bar.shown} />
       <DashboardRouteBar bar={bar} at={at} />
     </div>
