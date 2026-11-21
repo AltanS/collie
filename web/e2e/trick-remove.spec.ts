@@ -8,7 +8,7 @@ import { installApiStub } from "./fixtures/api";
 // REMOVING A TRICK FROM ITS DETAILS PAGE (ADR 0168), in a real engine at 390 x 844 and at 1440 x 900: the last
 // section of the page of a trick that is off offers Remove trick; the confirm (the sheet on a phone, a centred
 // dialog on a large screen) starts on Cancel and Escape closes it; its Remove trick posts `{ rid }` once and the page
-// leaves for the list, which no longer holds the trick. A refusal stays on the page and says why in the row.
+// leaves for the list, which no longer holds the trick, and the layout's live region says it was removed. A refusal stays on the page and says why in the row.
 
 test.use({ serviceWorkers: "block" });
 
@@ -58,6 +58,8 @@ for (const size of [
     test("Remove trick asks once, starts on Cancel, and a yes leaves for the list without it", async ({ page }) => {
       const { bodies } = await stub(page, { status: 200, body: { rid: "x", code: "removed", id: "kettle" } });
       await page.goto("/settings/tricks");
+      // The live region is mounted before anything is said, so its first words are heard.
+      await expect(page.locator('[data-slot="status-live"]')).toHaveCount(1);
       await page.getByRole("link", { name: "About Kettle Watch" }).click();
       await expect(page).toHaveURL(/\/settings\/tricks\/lodge%3Akettle$/);
       const section = page.locator('[data-section="remove"]');
@@ -77,8 +79,11 @@ for (const size of [
       await expect(dialog).toBeVisible();
       await dialog.getByRole("button", { name: "Remove trick" }).click();
       await expect(page).toHaveURL(/\/settings\/tricks$/);
-      // "Removed Kettle Watch." goes to the app's status line (lib/status.ts), the list's own way, as its failures
-      // do; the Settings layout draws no status text today, so the words are pinned by the web test only.
+      // "Removed Kettle Watch." goes to the status line (lib/status.ts); Settings draws none, so a screen reader hears it
+      // from the layout's live region, which shows nothing. The trick leaving the list is the visible sign.
+      const live = page.locator('[data-slot="status-live"]');
+      await expect(live).toHaveAttribute("aria-live", "polite");
+      await expect(live).toHaveText("Removed Kettle Watch.");
       await expect(page.getByRole("link", { name: "About Kettle Watch" })).toHaveCount(0);
       expect(bodies).toEqual([{ rid: expect.stringMatching(/^[0-9a-f-]{36}$/u) }]);
       // Back does not return to the page of the trick that is gone.
