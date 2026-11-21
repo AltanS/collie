@@ -49,6 +49,7 @@ import { COLUMN_SNAP_CLASSES, STRIP_SNAP_CLASSES, leftmostWholeColumn, shouldFol
 import { pickTabPane } from "@/lib/tab-pane-memory";
 import { shownStatus } from "@/lib/triage";
 import { isReadOnly, statusLabel, type AgentView } from "@/lib/types";
+import { shortcutTarget } from "@/lib/shortcuts/target";
 import { cn } from "@/lib/utils";
 import {
   allowedPresets,
@@ -546,12 +547,12 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
           )}
         >
           {sidebarShown ? (
-            <Button variant="ghost" data-slot="new-space" className="h-11 min-w-0 flex-1 justify-start gap-2.5 px-2 text-sm font-medium" onClick={toNew}>
+            <Button variant="ghost" data-slot="new-space" {...shortcutTarget("new_space")} className="h-11 min-w-0 flex-1 justify-start gap-2.5 px-2 text-sm font-medium" onClick={toNew}>
               <Icon name="new-space" className="size-5" aria-hidden />
               <span className="truncate">{t("wide.newSpace")}</span>
             </Button>
           ) : (
-            <Button variant="ghost" size="lg" data-slot="new-space" className="size-11 px-0" aria-label={t("wide.newSpace")} onClick={toNew}>
+            <Button variant="ghost" size="lg" data-slot="new-space" {...shortcutTarget("new_space")} className="size-11 px-0" aria-label={t("wide.newSpace")} onClick={toNew}>
               <Icon name="new-space" className="size-5" aria-hidden />
             </Button>
           )}
@@ -619,7 +620,7 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
           {bookPair && <span aria-hidden className="flex-1" />}
           {/* The Actions palette (ADR 0165), the header's door to it; the focused pane's belt pins the same button. */}
           <ActionsButton />
-          <Button variant="ghost" size="lg" className="size-11 px-0" aria-label={t("wide.space.previous")} disabled={spaceAt <= 0} onClick={() => moveSpace(-1)}>
+          <Button variant="ghost" size="lg" className="size-11 px-0" aria-label={t("wide.space.previous")} {...shortcutTarget("previous_space")} disabled={spaceAt <= 0} onClick={() => moveSpace(-1)}>
             <Icon name="space-prev" className="size-5" />
           </Button>
           <Button
@@ -627,6 +628,7 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
             size="lg"
             className="size-11 px-0"
             aria-label={t("wide.space.next")}
+            {...shortcutTarget("next_space")}
             disabled={spaceAt < 0 || spaceAt >= spaces.length - 1}
             onClick={() => moveSpace(1)}
           >
@@ -845,6 +847,7 @@ function SidebarTop({ open, setMark, toggle: hasToggle }: { open: boolean; setMa
       variant="ghost"
       size="lg"
       data-slot="sidebar-toggle"
+      {...shortcutTarget("toggle_sidebar")}
       className="size-11 shrink-0 px-0 text-muted-foreground"
       aria-label={t("wide.sidebar.label")}
       aria-expanded={open}

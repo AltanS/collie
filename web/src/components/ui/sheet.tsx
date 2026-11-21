@@ -245,6 +245,12 @@ interface BottomSheetProps {
    * sheet: no change at all. Pass it only when the sheet was opened by a tap on that button.
    */
   anchor?: React.RefObject<HTMLElement | null>;
+  /**
+   * When the sheet is drawn as a menu beside `anchor`, put the focus on its first row as it opens, so the
+   * arrow keys and Enter work at once. For a menu a key opened (the Pane menu); a tap opens it with the
+   * focus on the panel, as before. The arrow keys move between the rows of any menu, with this or without.
+   */
+  focusFirstRow?: boolean;
 }
 
 export function BottomSheet(props: BottomSheetProps) {
@@ -267,6 +273,7 @@ function SheetLayer({
   size = "column",
   presentation: only = "auto",
   anchor,
+  focusFirstRow = false,
 }: BottomSheetProps) {
   useLocale();
   const panelRef = React.useRef<HTMLDivElement>(null);
@@ -301,6 +308,17 @@ function SheetLayer({
     const trigger = anchor?.current;
     return () => trigger?.focus({ preventScroll: true });
   }, [menu, anchor]);
+  React.useEffect(() => {
+    if (!menu || !focusFirstRow) return;
+    menuRows(panelRef.current)[0]?.focus({ preventScroll: true });
+  }, [menu, focusFirstRow]);
+  // The arrow keys of a menu go between its rows. Heard on the window, as Escape is, and only while it is a menu.
+  React.useEffect(() => {
+    if (!menu) return;
+    const onKey = (e: KeyboardEvent) => moveMenuFocus(e, panelRef.current);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [menu]);
   React.useEffect(() => {
     if (!open) return;
     bumpOpenSheets(1);
@@ -597,6 +615,38 @@ function menuPanelClass(className: string | undefined): string {
     className,
     "h-auto max-h-none rounded-md pb-0",
   );
+}
+
+/** The rows of a menu beside its button: the buttons and links that can take the focus, in order. */
+function menuRows(panel: HTMLElement | null): HTMLElement[] {
+  if (panel === null) return [];
+  return [...panel.querySelectorAll<HTMLElement>("button, a[href]")].filter((row) => !row.matches(":disabled, [tabindex='-1']"));
+}
+
+/**
+ * A menu's roving focus: Down and Up move to the next and the previous row (past the last row it wraps),
+ * Home and End go to the ends. Enter and Space press the focused row as a button does, so nothing is added
+ * for them. With the focus on the panel itself, Down takes the first row and Up the last.
+ */
+function moveMenuFocus(e: KeyboardEvent, panel: HTMLElement | null): void {
+  if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+  const rows = menuRows(panel);
+  const at = rows.findIndex((row) => row === document.activeElement);
+  const target = menuTarget({ key: e.key, at, count: rows.length });
+  if (target === null) return;
+  e.preventDefault();
+  rows[target]?.focus({ preventScroll: true });
+}
+
+/** The row a key moves the focus to, or null when the key is not a menu's. `at` is -1 when no row has the focus. */
+function menuTarget(input: { key: string; at: number; count: number }): number | null {
+  const { key, at, count } = input;
+  if (count === 0) return null;
+  if (key === "Home") return 0;
+  if (key === "End") return count - 1;
+  if (key === "ArrowDown") return (at + 1) % count;
+  if (key === "ArrowUp") return at < 0 ? count - 1 : (at - 1 + count) % count;
+  return null;
 }
 
 /**

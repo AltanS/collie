@@ -1,5 +1,6 @@
 import { Icon } from "@/components/icons/icon";
 
+import type { ShortcutTarget } from "@/lib/shortcuts/target";
 import { cn } from "@/lib/utils";
 
 /**
@@ -53,6 +54,8 @@ interface AddButtonProps {
    */
   reach: string;
   className?: string;
+  /** The shortcut action this button presses (`shortcutTarget`), for the key hint the prefix shows on it. */
+  target?: ShortcutTarget;
 }
 
 // ONE LOOK FOR "NEW" IN A ROW (DESIGN.md §1). A dashed circle with a "+" in it, at the end of a row
@@ -72,10 +75,11 @@ interface AddButtonProps {
 //
 // It owns the look, the busy swap and the name. It owns no gate: whether the "+" is drawn at all is
 // the caller's capability check, and whether a tap may write is the caller's handler.
-export function AddButton({ label, onClick, busy = false, size, face = "ring", reach, className }: AddButtonProps) {
+export function AddButton({ label, onClick, busy = false, size, face = "ring", reach, className, target }: AddButtonProps) {
   return (
     <button
       type="button"
+      {...target}
       onClick={onClick}
       disabled={busy}
       aria-label={label}

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
+import { shortcutTarget } from "@/lib/shortcuts/target";
 import { cn } from "@/lib/utils";
 import { savedAtLabel } from "@/lib/format";
 import { BrandMark } from "@/components/brand-mark";
@@ -382,6 +383,7 @@ export function CollieHome({
     <button
       type="button"
       onClick={() => onHome?.(target)}
+      {...shortcutTarget("open_dashboard", { corner: "top-left", icon: true })}
       // The bloom conveys connection state visually; fold it into the button's accessible name too,
       // so screen-reader users get it (inside a pane there's no other cue).
       aria-label={homeLabel({ trouble, lost, applying: applies, starting: starts, reconnected: greets, lastSeenAt })}

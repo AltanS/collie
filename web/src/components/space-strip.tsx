@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/labelled-strip";
 import { SpaceActionsSheet } from "@/components/space-actions-sheet";
 import { spaceKey } from "@/lib/hosts";
+import { shortcutTarget } from "@/lib/shortcuts/target";
 import { cn } from "@/lib/utils";
 import { worstTriage } from "@/lib/triage";
 import { useMuxCapability, useMuxDeclared, useMuxHasSpaces } from "@/lib/mux-capability";
@@ -183,6 +184,7 @@ export function SpaceStrip({
             size="md"
             reach={STRIP_TAP_TARGET_SQUARE}
             label={t("space.overview.new.aria")}
+            target={shortcutTarget("new_space")}
             busy={creatingSpace}
             onClick={onNewSpace}
           />

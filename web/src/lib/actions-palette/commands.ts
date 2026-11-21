@@ -29,6 +29,7 @@ export const PALETTE_COMMANDS: readonly PaletteCommand[] = [
   { id: "walky_messages", labelKey: "actions.command.walky", icon: "messages" },
   { id: "pin_pane", labelKey: "actions.command.pin", icon: "pin" },
   { id: "rename_pane", labelKey: "actions.command.renamePane", icon: "edit" },
+  { id: "pane_menu", labelKey: "paneActions.menu.label", icon: "pane-menu" },
   { id: "pane_settings", labelKey: "paneActions.settings.label", icon: "pane-settings" },
   { id: "open_files", labelKey: "chat.changes.label", icon: "files" },
   { id: "close_pane", labelKey: "paneActions.close.label", icon: "close-pane" },

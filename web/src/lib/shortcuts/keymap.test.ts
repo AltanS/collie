@@ -70,8 +70,8 @@ describe("the defaults", () => {
 
 describe("the operator's file replaces an action whole", () => {
   it("drops every default of the action", () => {
-    const keymap = build({ new_tab: ["prefix+m"] });
-    expect(keymap.prefixed.get("m")).toEqual({ action: "new_tab" });
+    const keymap = build({ new_tab: ["prefix+y"] });
+    expect(keymap.prefixed.get("y")).toEqual({ action: "new_tab" });
     expect(keymap.prefixed.has("c")).toBe(false);
     expect(keymap.diagnostics).toEqual([]);
   });
@@ -119,11 +119,11 @@ describe("collisions", () => {
   });
 
   it("keeps the first of two operator bindings on one key and reports the second", () => {
-    const keymap = build({ open_dashboard: ["prefix+m"], settings: ["prefix+m"] });
+    const keymap = build({ open_dashboard: ["prefix+y"], settings: ["prefix+y"] });
     // `settings` comes first in the table, so it is the one kept, whatever order the file wrote.
-    expect(keymap.prefixed.get("m")).toEqual({ action: "settings" });
+    expect(keymap.prefixed.get("y")).toEqual({ action: "settings" });
     expect(keymap.diagnostics).toEqual([
-      { action: "open_dashboard", binding: "prefix+m", code: "collision", message: "prefix+m: kept settings, disabled open_dashboard" },
+      { action: "open_dashboard", binding: "prefix+y", code: "collision", message: "prefix+y: kept settings, disabled open_dashboard" },
     ]);
   });
 
@@ -177,10 +177,10 @@ describe("the prefix", () => {
   });
 
   it("falls back to ctrl+b when the prefix is bad, and the rest of the file loads", () => {
-    const keymap = build({ prefix: ["nonsense"], switch_pane: ["prefix+m"] });
+    const keymap = build({ prefix: ["nonsense"], switch_pane: ["prefix+y"] });
     expect(keymap.prefix).toEqual([chord("b", { ctrl: true })]);
     expect(codes(keymap.diagnostics)).toEqual(["invalid-binding", "invalid-prefix"]);
-    expect(keymap.prefixed.get("m")).toEqual({ action: "switch_pane" });
+    expect(keymap.prefixed.get("y")).toEqual({ action: "switch_pane" });
   });
 
   it("falls back when the prefix is emptied", () => {
@@ -273,11 +273,11 @@ describe("direct bindings", () => {
 
 describe("a bad binding is dropped with a diagnostic and the file still loads", () => {
   it("reports grammar errors with the action and the text", () => {
-    const keymap = build({ switch_pane: ["prefix+nope"], open_dashboard: ["prefix+m"] });
+    const keymap = build({ switch_pane: ["prefix+nope"], open_dashboard: ["prefix+y"] });
     expect(keymap.diagnostics).toEqual([
       { action: "switch_pane", binding: "prefix+nope", code: "invalid-binding", message: 'prefix+nope: unknown key "nope"' },
     ]);
-    expect(keymap.prefixed.get("m")).toEqual({ action: "open_dashboard" });
+    expect(keymap.prefixed.get("y")).toEqual({ action: "open_dashboard" });
     expect(keymap.bindings.get("switch_pane")).toEqual([]);
   });
 
@@ -287,8 +287,8 @@ describe("a bad binding is dropped with a diagnostic and the file still loads", 
   });
 
   it("keeps the good bindings of one list", () => {
-    const keymap = build({ switch_pane: ["prefix+nope", "prefix+m"] });
-    expect(keymap.prefixed.get("m")).toEqual({ action: "switch_pane" });
+    const keymap = build({ switch_pane: ["prefix+nope", "prefix+y"] });
+    expect(keymap.prefixed.get("y")).toEqual({ action: "switch_pane" });
     expect(codes(keymap.diagnostics)).toEqual(["invalid-binding"]);
   });
 
@@ -310,15 +310,15 @@ describe("a bad binding is dropped with a diagnostic and the file still loads", 
   });
 
   it("reports an action the table does not have", () => {
-    const keymap = build({ nonsense: ["prefix+m", "ctrl+k"], switch_pane: ["prefix+g"] });
+    const keymap = build({ nonsense: ["prefix+y", "ctrl+k"], switch_pane: ["prefix+g"] });
     expect(keymap.diagnostics).toEqual([
-      { action: "nonsense", binding: "prefix+m, ctrl+k", code: "unknown-action", message: "nonsense is not an action" },
+      { action: "nonsense", binding: "prefix+y, ctrl+k", code: "unknown-action", message: "nonsense is not an action" },
     ]);
-    expect(keymap.prefixed.has("m")).toBe(false);
+    expect(keymap.prefixed.has("y")).toBe(false);
   });
 
   it("does not trust a name that looks like an object method", () => {
-    const user: UserShortcuts = JSON.parse('{"constructor":["prefix+m"],"__proto__":["x"]}');
+    const user: UserShortcuts = JSON.parse('{"constructor":["prefix+y"],"__proto__":["x"]}');
     const keymap = build(user);
     expect(keymap.diagnostics.map((diagnostic) => diagnostic.action)).toEqual(["constructor", "__proto__"]);
     expect(keymap.prefixed.get("g")).toEqual({ action: "open_actions" });

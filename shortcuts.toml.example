@@ -67,8 +67,9 @@
 # cycle_pane_next = "prefix+tab"
 # cycle_pane_previous = "prefix+shift+tab"
 
-# Remove the pane from the view (it keeps running), zen mode, the sidebar.
+# Remove the pane from the view (it keeps running), open the pane menu, zen mode, the sidebar.
 # remove_from_view = "prefix+x"
+# pane_menu = "prefix+m"
 # zen_mode = "prefix+z"
 # toggle_sidebar = "prefix+b"
 

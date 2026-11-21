@@ -17,6 +17,7 @@ import { availableCommands, isDestructive, suggestedCommands, type PaletteComman
 import { hitKey, searchPalette, type CommandEntry, type Hit } from "@/lib/actions-palette/rank";
 import { useActionsPaletteOn } from "@/lib/actions-palette-store";
 import { closeActionsPalette, openActionsPalette, useActionsPaletteOpen } from "@/lib/actions-palette/state";
+import { shortcutTarget } from "@/lib/shortcuts/target";
 import type { Range } from "@/lib/fuzzy";
 import { paneRowKey, paneScope } from "@/lib/hosts";
 import { t } from "@/lib/i18n";
@@ -451,6 +452,7 @@ export function ActionsButton({ className }: { className?: string }) {
       // While the palette is open the button wears the shared open look (ui/button.tsx `TRIGGER_OPEN`).
       aria-expanded={open}
       data-slot="actions-button"
+      {...shortcutTarget("open_actions")}
       // A real 44px box, as the Settings gear beside it (app-header.tsx `SettingsGear`). `rounded-md` gives the open fill the house corner.
       className={cn("grid size-11 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:text-foreground", FOCUS_RING, TRIGGER_OPEN, className)}
     >
