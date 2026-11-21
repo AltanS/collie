@@ -153,7 +153,7 @@ describe("offerFor", () => {
 
 describe("a durable program's starter (ADR 0102)", () => {
   const starter = item({
-    key: "starter:denis-laptop:notes-new",
+    key: "starter:casey-laptop:notes-new",
     start: { starter: "notes-new" },
     group: "agents",
     label: "New note chat",

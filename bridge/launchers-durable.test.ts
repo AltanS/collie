@@ -114,7 +114,7 @@ describe("durable: starters on GET /api/launchers", () => {
     const rigged = await rig();
     const body = await read(rigged);
     const row: LauncherItem = {
-      key: `starter:denis-laptop:${STARTER}`,
+      key: `starter:casey-laptop:${STARTER}`,
       start: { starter: STARTER },
       group: "agents",
       label: "New note chat",
@@ -197,7 +197,7 @@ describe("durable: POST /api/launch with a starter", () => {
     expect(started).toMatchObject({ starterId: STARTER, requestId: ID });
     expect(body).toEqual({
       ok: true,
-      pane: { paneId: started?.paneId ?? "", workspaceId: "ws-notes", workspaceLabel: "notes", tabId: "ws-notes:main", cwd: "/home/denis/notes" },
+      pane: { paneId: started?.paneId ?? "", workspaceId: "ws-notes", workspaceLabel: "notes", tabId: "ws-notes:main", cwd: "/home/casey/notes" },
     });
     expect(rigged.receipts.get(ID)?.pane?.paneId).toBe(started?.paneId);
   });
