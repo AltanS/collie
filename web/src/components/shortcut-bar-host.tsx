@@ -1,7 +1,7 @@
 import { ShortcutModeBar, ShortcutNoticeText } from "@/components/shortcut-mode-bar";
 import { Notice } from "@/components/ui/notice";
 import { useAvailableShortcutActions } from "@/hooks/use-shortcut-handler";
-import { useShortcutKeymap, useShortcutMode, useShortcutNotice } from "@/lib/shortcuts/state";
+import { isShortcutBarUp, useShortcutKeymap, useShortcutMode, useShortcutNotice } from "@/lib/shortcuts/state";
 
 // THE MODE BAR, PLACED (M108, option 4 of the design round, picked by Altan on 2026-11-19). Mounted once
 // in the root layout. While the prefix or a sticky mode is active, a band of the info tone (the blue of
@@ -20,7 +20,7 @@ export function ShortcutBarHost() {
   const available = useAvailableShortcutActions();
   const isNoticeShown = useShortcutNotice();
   if (keymap === null) return null;
-  if (mode === "normal" && !isNoticeShown) return null;
+  if (!isShortcutBarUp(mode, keymap) && !isNoticeShown) return null;
   return (
     <div data-slot="mode-band" className="fixed inset-x-0 bottom-0 z-40 bg-background">
       <Notice

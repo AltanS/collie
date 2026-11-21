@@ -20,6 +20,7 @@ import { clearStatus, currentStatus, setStatus } from "@/lib/status";
 import { buzz } from "@/lib/haptics";
 import { stampSend } from "@/lib/poll-intent";
 import { useBusyWhile } from "@/lib/busy";
+import { shortcutTarget } from "@/lib/shortcuts/target";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { TOOLBAR_TAP_TARGET } from "@/components/ui/tap-target";
@@ -4672,6 +4673,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           )}
           <ChatInput
             ref={inputRef}
+            {...shortcutTarget("focus_composer")}
             value={direct.active ? direct.value : input}
             // The start hold is `readOnly`, not `disabled`: a disabled field drops focus, so the soft keyboard closed
             // under a person who was typing and never came back. While held, no input reaches the draft: the

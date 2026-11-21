@@ -63,6 +63,7 @@ import { SessionTrickCards, useSessionProposalWaiting } from "@/components/sessi
 import { HookHoldCard } from "@/components/hook-hold-card";
 import { MIRROR_SPACE, MIRROR_INVERT, MUSE_MIRROR, segmentStyle } from "@/components/mirror-space";
 import { AgentsFooter } from "@/components/agents-footer";
+import { shortcutTarget } from "@/lib/shortcuts/target";
 import { cn } from "@/lib/utils";
 import { parseAnsi } from "@/lib/ansi";
 import { splitLines } from "@/lib/blocks";
@@ -2689,6 +2690,7 @@ export function AgentChat({
                   onClick={() => setDrawer("paneSettings")}
                   aria-label={t("chat.header.openPaneSettingsAria", { name })}
                   data-slot="pane-identity-name"
+                  {...shortcutTarget("pane_settings")}
                   className={cn("min-h-0 flex-1 rounded-t-lg transition-colors active:bg-muted/60", FOCUS_RING_INSET, HOVER_FILL)}
                 />
                 <button
@@ -2942,6 +2944,7 @@ export function AgentChat({
               type="button"
               onClick={() => setZen(false)}
               aria-label={t("chat.zen.exitAria")}
+              {...shortcutTarget("zen_mode")}
               className="absolute right-3 top-3 z-20 grid size-11 place-items-center rounded-full border border-rule bg-chrome text-muted-foreground transition-colors active:bg-muted/60"
             >
               <Icon name="zen-exit" className="size-5" />

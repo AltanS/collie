@@ -14,6 +14,7 @@ import { useLocale } from "@/hooks/use-locale";
 import * as api from "@/lib/api";
 import { describeApiError, describeThrownError } from "@/lib/api-error-message";
 import { t } from "@/lib/i18n";
+import { shortcutTarget } from "@/lib/shortcuts/target";
 import { useMuxCapability, useMuxName } from "@/lib/mux-capability";
 import { branchOffOffered } from "@/lib/branch-off";
 import { setStatus } from "@/lib/status";
@@ -478,6 +479,7 @@ export function PaneActionsSheet({
             <ActionRow
               icon={<Icon name="find-in-pane" className="size-4 shrink-0 text-muted-foreground" />}
               label={t("chat.find.label")}
+              target={shortcutTarget("find")}
               onClick={() => {
                 // Close FIRST, then act. Both land in one React event, so the sheet unmounts in the
                 // same commit that mounts the find bar — see the focus note in agent-chat.tsx.
@@ -538,6 +540,7 @@ export function PaneActionsSheet({
                 )
               }
               label={t(bodyRowTarget(paneView, agentViews?.showing === true) === "terminal" ? "chat.mode.terminal" : "chat.mode.chat")}
+              target={shortcutTarget("toggle_chat_terminal")}
               hint={paneViewNote}
               onClick={() => {
                 onClose();
@@ -567,6 +570,7 @@ export function PaneActionsSheet({
             <ActionRow
               icon={<Icon name="pane-settings" className="size-4 shrink-0 text-muted-foreground" />}
               label={t("paneActions.settings.label")}
+              target={shortcutTarget("pane_settings")}
               onClick={() => {
                 onClose();
                 onSettings();
@@ -582,6 +586,7 @@ export function PaneActionsSheet({
             <ActionRow
               icon={<Icon name="zen-enter" className="size-4 shrink-0 text-muted-foreground" />}
               label={t("chat.zen.label")}
+              target={shortcutTarget("zen_mode")}
               onClick={() => {
                 onClose();
                 onZen();

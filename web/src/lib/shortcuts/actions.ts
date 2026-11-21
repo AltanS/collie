@@ -124,7 +124,7 @@ export const ACTIONS = [
   { id: "resize_wider", group: "panes", defaults: ["l", "right"], labelKey: "shortcuts.action.resize_wider", scope: "resize" },
   { id: "rename_pane", group: "panes", defaults: [], labelKey: "shortcuts.action.rename_pane" },
   { id: "pin_pane", group: "panes", defaults: [], labelKey: "shortcuts.action.pin_pane" },
-  { id: "pane_settings", group: "panes", defaults: [], labelKey: "shortcuts.action.pane_settings" },
+  { id: "pane_settings", group: "panes", defaults: ["prefix+m"], labelKey: "shortcuts.action.pane_settings" },
   { id: "close_pane", group: "panes", defaults: [], labelKey: "shortcuts.action.close_pane", destructive: true },
 
   { id: "zen_mode", group: "view", defaults: ["prefix+z"], labelKey: "shortcuts.action.zen_mode" },
@@ -138,3 +138,30 @@ export const ACTIONS = [
 ] as const satisfies readonly ActionDef[];
 
 export type ActionId = (typeof ACTIONS)[number]["id"];
+
+/**
+ * The actions that have NO control on any screen, each with the reason. While the prefix waits, every
+ * control an action key would press wears that key (components/shortcut-hint-layer.tsx), and a control
+ * names its action with `shortcutTarget("<id>")` (lib/shortcuts/target.ts). An action with a default
+ * `prefix+` key is therefore either named by such a call somewhere in `web/src`, or listed here with
+ * the reason nothing on screen can wear its key. `lib/shortcuts/hint-coverage.test.ts` holds both
+ * halves, so a new action with a default key cannot ship without its hint.
+ */
+export const NO_CONTROL_ACTIONS = {
+  help: "its door is the Keyboard shortcuts row in Settings, and the bar already names `?`",
+  previous_tab: "it steps through the tabs, and no control is one step back",
+  next_tab: "it steps through the tabs, and no control is one step forward",
+  previous_space: "the header's chevrons each step one way, and the bar names the pair of keys",
+  next_space: "the header's chevrons each step one way, and the bar names the pair of keys",
+  focus_pane_left: "it moves the focus over the row, and a pane has no button that says so",
+  focus_pane_right: "it moves the focus over the row, and a pane has no button that says so",
+  cycle_pane_next: "it moves the focus over the row, and a pane has no button that says so",
+  cycle_pane_previous: "it moves the focus over the row, and a pane has no button that says so",
+  navigate_mode: "it opens a mode, and the mode has no button",
+  resize_mode: "it opens a mode, and the mode has no button",
+  navigate_down: "a key inside Navigate mode, pressed with no prefix",
+  navigate_up: "a key inside Navigate mode, pressed with no prefix",
+  navigate_open: "a key inside Navigate mode, pressed with no prefix",
+  resize_narrower: "a key inside Resize mode, pressed with no prefix",
+  resize_wider: "a key inside Resize mode, pressed with no prefix",
+} as const satisfies Partial<Record<ActionId, string>>;

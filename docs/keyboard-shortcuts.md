@@ -46,6 +46,13 @@ Press the prefix, let go, then press one action key. The prefix waits for as lon
 While the prefix waits, a bar along the foot of the window names the mode and the keys that work
 next. It follows the keys you set. `Esc` cancels it.
 
+While the prefix waits, each control shows its key. A small key cap sits on the top right corner of
+the Actions button, the Settings gear, the new-tab "+", each numbered tab, the sidebar's fold button
+and the others that a key presses. The cap shows the key you set, and nothing for an action with no
+key. It shows only on a control that you can see, and only where the key works on this screen. In a
+row of panes it shows on the focused pane. A sheet or the Actions list that is open covers the page,
+and then only the controls inside it show a key.
+
 ## Navigate mode and Resize mode
 
 A mode stays on until you press `Esc`. In Resize mode `Enter` leaves too. The bar shows its name and
@@ -115,7 +122,7 @@ is written `prefix+<key>`. A key inside a mode is a bare key.
 | `resize_wider` | `l`, `right` | Panes | In Resize mode: makes the pane wider. | [Resize mode](terminology.md#resize-mode) |
 | `rename_pane` | - | Panes | Renames the pane you are in. | [Pane](terminology.md#pane) |
 | `pin_pane` | - | Panes | Pins the pane to the top of the lists, or unpins it. | [Pins](terminology.md#pins) |
-| `pane_settings` | - | Panes | Opens the pane's settings. | [Pane](terminology.md#pane) |
+| `pane_settings` | `prefix+m` | Panes | Opens the pane's settings. | [Pane](terminology.md#pane) |
 | `close_pane` | - | Panes | Opens the pane's menu with Close pane ready. One more tap closes the pane. | [Pane](terminology.md#pane) |
 | `zen_mode` | `prefix+z` | View | Turns zen mode on or off, where the pane's menu offers it. | - |
 | `toggle_sidebar` | `prefix+b` | View | Folds the sidebar to its rail, or opens it. | - |

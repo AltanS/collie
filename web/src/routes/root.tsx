@@ -36,6 +36,7 @@ import { CollieMark } from "@/components/collie-mark";
 import { TourHost } from "@/components/tour-sheet";
 import { KeyboardHintCard } from "@/components/keyboard-hint-card";
 import { ShortcutBarHost } from "@/components/shortcut-bar-host";
+import { ShortcutHintLayer } from "@/components/shortcut-hint-layer";
 import { ShortcutHelpDoor } from "@/components/shortcut-help-door";
 import { TrickFloatLayer } from "@/components/trick-float-layer";
 import { describeThrownError } from "@/lib/api-error-message";
@@ -284,6 +285,8 @@ export function RootLayout() {
           prefix or a sticky mode is active, and the shortcut list's sheet, which the `help` action and the
           Settings row open. Both read the keymap that `useShortcuts` above publishes. */}
       <ShortcutBarHost />
+      {/* Each control an action key would press wears that key while the prefix waits (components/shortcut-hint-layer.tsx). */}
+      <ShortcutHintLayer />
       <ShortcutHelpDoor />
       {/* The Actions palette (ADR 0165): one searchable list of this screen's commands and the panes to go
           to, opened by the Belt's Actions button, the header buttons and `prefix+g`. */}

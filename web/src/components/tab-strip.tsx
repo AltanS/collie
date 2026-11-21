@@ -13,6 +13,7 @@ import { UnseenMark } from "@/components/ui/unseen-mark";
 import { useLongPress } from "@/hooks/use-long-press";
 import { useRevealActive } from "@/hooks/use-reveal-active";
 import { useWidthClass } from "@/hooks/use-width-class";
+import { shortcutTarget, type ShortcutTarget } from "@/lib/shortcuts/target";
 import { cn } from "@/lib/utils";
 import { FOCUS_RING_INSET, HOVER_FILL, TRIGGER_OPEN } from "@/components/ui/button";
 import { useTabLook, type TabLook } from "@/lib/tab-look";
@@ -358,6 +359,8 @@ export function TabStrip({
                 look={look}
                 step={step}
                 label={t.label}
+                // The tab's number is its key (`prefix+1..9`): the tabs past the ninth have none.
+                target={wsTabs.indexOf(t) < 9 ? shortcutTarget("switch_tab", { index: wsTabs.indexOf(t) + 1 }) : undefined}
                 title={tabCellTitle(t.label, inTab)}
                 fade={tabKey(host, t.tabId)}
                 active={selected === t.tabId}
@@ -394,6 +397,7 @@ export function TabStrip({
               face="bare"
               reach={step.addReach}
               label={translate("space.tabStrip.new.aria")}
+              target={shortcutTarget("new_tab")}
               busy={creatingTab}
               onClick={() => (newTab.capable ? onNewTab(workspaceId) : onNewStarters?.())}
               // Under `folder` the group's `-mx-3` cancels the tab's `px-3`, so the last tab's CARD
@@ -444,6 +448,8 @@ interface TabProps {
   title?: TabTitle | null;
   /** The tab's identity ({@link tabKey}): a rename of this tab fades its words in ({@link CrossfadeText}). */
   fade?: string;
+  /** The shortcut that goes to this tab (`shortcutTarget`), for the key hint the prefix shows on it. */
+  target?: ShortcutTarget;
   active: boolean;
   /**
    * The most urgent thing happening inside this tab ({@link worstTriage}) — drawn as a leading dot
@@ -468,6 +474,7 @@ function Tab({
   label,
   title: titleProp,
   fade,
+  target,
   active,
   status,
   onClick,
@@ -502,6 +509,7 @@ function Tab({
     <button
       type="button"
       onClick={handleClick}
+      {...target}
       {...longPress}
       // Not role="tab". These do not swap a panel in place — they navigate: on the space route the
       // selection is the route's own tab filter, and in the pane view a tap goes to another pane's

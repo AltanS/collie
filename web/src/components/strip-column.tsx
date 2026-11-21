@@ -32,6 +32,7 @@ import { paneScopeKey, type Scope } from "@/lib/scope";
 import { isUnseen, shownStatus } from "@/lib/triage";
 import type { AgentView } from "@/lib/types";
 import { statusLabel } from "@/lib/types";
+import { shortcutTarget } from "@/lib/shortcuts/target";
 import { cn } from "@/lib/utils";
 import type { Preset } from "@/lib/wide-layout";
 
@@ -98,6 +99,7 @@ export function ColumnControls({
         variant="ghost"
         size="lg"
         data-slot="column-remove"
+        {...shortcutTarget("remove_from_view")}
         className="size-11 shrink-0 px-0 text-muted-foreground"
         aria-label={t("wide.removeFromView")}
         // Says what the button does NOT do: the pane stays alive and stays in the sidebar.
