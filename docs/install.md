@@ -346,7 +346,8 @@ your package manager manages this tree.
 
 ## Name your multiplexer
 
-Collie mirrors one backend: `COLLIE_MUX=herdr` (default), `herdr-core`, `tmux`, or `zellij`.
+Collie mirrors one backend: `COLLIE_MUX=herdr` (default), `herdr-core`, `tmux`, or `zellij`. tuios,
+Tern and Rex (experimental) work too, but `start` never looks for them: name one with `COLLIE_MUX`.
 
 You do not need to set it before the first start. `start` looks for a live Herdr socket, a Herdr
 core socket without a Herdr socket, a running tmux server and zellij sessions, prints what it found, and writes your choice to the config `.env`,

@@ -781,7 +781,7 @@ command and the folder you pick all belong to the machine you picked, and that m
   lead. The folders list, the Recent and Favourite rows, stays each machine's own, and the page
   checks the folder on that machine's disk.
 - **A New worktree is made on the machine you pick.** That machine needs git and a multiplexer
-  that opens a space. Herdr, the Herdr core, tmux, tuios and tern open one; zellij does not. When
+  that opens a space. Herdr, the Herdr core, tmux, tuios, tern and Rex open one; zellij does not. When
   the machine cannot, the switch stays, off, and says why.
 - **A member from before 1.19.0 starts nothing by name.** The page lists its choices, disabled, with
   the reason "this machine runs an older Collie". Update the member to start agents on it

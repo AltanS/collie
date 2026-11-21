@@ -16,14 +16,14 @@ In a crew, the instances of one host show as one machine
 One run of an agent, with its own history. A pane shows it, and Chat reads it from the harness
 ([Sessions](sessions.md)). In the app and in these docs, "session" alone means this and nothing else.
 
-Herdr, tmux and zellij call their own top-level group a session too. Collie shows that group as a
+Herdr, tmux, zellij and Rex call their own top-level group a session too. Collie shows that group as a
 [space](#space), and older versions of the app said "session" for it. A trick's own screen is a
 [page](#page), never a session.
 
 ## Space
 
 A group of tabs, with a folder. It is the top level on the phone. A Herdr workspace is a space, a
-tmux session is a space, a zellij session is a space, and a [durable agent](#durable-agent) is a space.
+tmux session is a space, a zellij session is a space, a Rex session is a space, and a [durable agent](#durable-agent) is a space.
 The switcher in the header says **Spaces** and **All spaces**. A space is not a [session](#session).
 
 ## Tab
@@ -99,7 +99,7 @@ pane narrower or wider in the [row of panes](#row-of-panes)
 
 ## Terminal (mux)
 
-Herdr, the Herdr core (`herdr-core`), tmux, zellij, tuios or Tern, the program that holds your
+Herdr, the Herdr core (`herdr-core`), tmux, zellij, tuios, Tern or Rex, the program that holds your
 shells and agents. Other tools call it a multiplexer, or a mux. You choose it with `COLLIE_MUX`
 ([Terminals](multiplexers.md#pointing-collie-at-a-multiplexer)).
 

@@ -15,8 +15,8 @@
 ColliePWA is an open-source (MIT) web app for your phone. It displays your terminal AI agents,
 including Claude Code, Codex and OpenCode, and lets you answer them remotely. You host it on your
 own computer alongside [Herdr](https://herdr.dev). Support for the new Herdr core,
-[tmux](https://github.com/tmux/tmux) and [zellij](https://zellij.dev) is experimental. ColliePWA
-is served over Tailscale, so only devices on your own tailnet reach it. You install it via your browser
+[tmux](https://github.com/tmux/tmux), [zellij](https://zellij.dev), tuios, Tern and Rex is
+experimental. ColliePWA is served over Tailscale, so only devices on your own tailnet reach it. You install it via your browser
 directly to your home screen, bypassing app stores.
 
 Using Herdr? Read about the
@@ -52,7 +52,7 @@ math is enabled ([syntax](./docs/changes.md#equations)). Edge receives features 
 ## Get it on your phone in 3 steps
 
 Prerequisites: [Tailscale](https://tailscale.com) on your computer and phone, and
-[Herdr](https://herdr.dev) (or experimental Herdr core, tmux, or zellij) running on your computer.
+[Herdr](https://herdr.dev) (or experimental Herdr core, tmux, zellij, tuios, Tern or Rex) running on your computer.
 For new setups, follow **[Install in five minutes](./docs/five-minute-install.md)** for
 platform-specific instructions, including [Windows](./docs/five-minute-install.md#windows).
 Alternative options (Arch, Nix, Herdr plugin, source) are in **[Install](./docs/install.md)**.
@@ -67,11 +67,12 @@ curl -fsSL https://colliepwa.dev/install.sh | sh
 **2. Start** it on your tailnet:
 
 ```bash
-COLLIE_MUX=herdr collie start          # or: herdr-core, tmux, zellij
+COLLIE_MUX=herdr collie start          # or: herdr-core, tmux, zellij, tuios, tern, rex
 ```
 
 Without `COLLIE_MUX`, `collie start` checks for Herdr, tmux, and zellij and prompts you to pick
-one. It offers Herdr core only if the Herdr TUI is absent.
+one. It offers Herdr core only if the Herdr TUI is absent. It never looks for tuios, Tern or Rex:
+name one with `COLLIE_MUX`.
 
 **3. Put it on your phone and pair it.** Run `collie qr` and scan the code. Add ColliePWA to
 your home screen:
@@ -110,8 +111,8 @@ device gating before running the service.
 ## Who this is for
 
 Collie is for developers running terminal-multiplexed AI agents who want phone access via a touch
-UI instead of an emulated terminal. Herdr is the primary target. **The Herdr core, tmux and zellij
-are experimental**: they function, but testing is limited.
+UI instead of an emulated terminal. Herdr is the primary target. **The Herdr core, tmux, zellij,
+tuios, Tern and Rex are experimental**: they function, but testing is limited.
 [Bug reports are welcome](./docs/multiplexers.md#pointing-collie-at-a-multiplexer), including reports
 of working setups.
 
@@ -270,13 +271,13 @@ multiplexer directly.
      │  one mux adapter, chosen per install
      ▼
   the multiplexer        owns the panes, agents and terminal state
-  Herdr · Herdr core · tmux · zellij
+  Herdr · Herdr core · tmux · zellij · tuios · Tern · Rex
 ```
 
 Under [Variant C](./docs/deployment.md#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale),
 a standard reverse proxy replaces `tailscale serve`. The downstream components are unchanged.
 
-- **Only the adapter touches the multiplexer** (`bridge/mux/<name>/`: Herdr dials a Unix socket, tmux and zellij shell out to their CLIs); everything else speaks the bridge's HTTP API. What every adapter must answer is [`MUX_CONTRACT.md`](./MUX_CONTRACT.md).
+- **Only the adapter touches the multiplexer** (`bridge/mux/<name>/`: Herdr dials a Unix socket, tmux, zellij and Rex shell out to their CLIs); everything else speaks the bridge's HTTP API. What every adapter must answer is [`MUX_CONTRACT.md`](./MUX_CONTRACT.md).
 - **Polling is still the model.** The bridge takes one snapshot per tick from the adapter and the browser polls `/api/snapshot`; where the multiplexer offers an event stream (Herdr does) it only pokes the bridge's poll to go faster, it never replaces it. No resync logic.
 - **Actions are plain HTTP.** A reply or key `POST`s to `/api/pane/:id/{reply,keys}`, and the adapter types it into a real terminal (hence the security posture).
 - **The UI is a static PWA.** Vite builds `web/dist`, served from disk, so a rebuild is live with no restart.

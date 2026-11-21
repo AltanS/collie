@@ -5,14 +5,14 @@ Collie shows each session on your phone in a pane. Chat reads the session from t
 record, so you can read it and answer it from your phone. The terminal view is one more way
 to look at the same pane.
 
-tmux and zellij call their own top-level group a session. Collie shows it as a space. This page
+tmux, zellij and Rex call their own top-level group a session. Collie shows it as a space. This page
 uses "session" only for the conversation.
 
 ## Where sessions come from
 
 Sessions come from two places:
 
-- **A terminal.** Herdr, the Herdr core, tmux, zellij, tuios or Tern holds your shells, and an agent runs in one of
+- **A terminal.** Herdr, the Herdr core, tmux, zellij, tuios, Tern or Rex holds your shells, and an agent runs in one of
   them. Collie reads the panes from it and finds the agent's session. This is how most people use
   Collie. [Terminals](multiplexers.md) says how to point Collie at yours.
 - **A durable agent.** One that you wrote or run has no screen, and each of its
