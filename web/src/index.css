@@ -2275,3 +2275,67 @@ svg[data-mark].mark-steps .ct-tw {
 :root[data-th="1"] [data-slot="space-header"] > div:first-child > :not([data-slot="tab-strip"]) {
   align-self: center;
 }
+/* ── 2 CARDS AND A BAND. Every part is a box with an edge. The selected tab is a card of the focused
+   pane's paper inside the focused pane's own 2px frame colour, so the tab and its pane carry one mark;
+   the header is a band of its own, a layer of ink over the column's plane, closed by the firm edge; the
+   column's controls are one segmented group of 44px cells. */
+:root[data-th="2"] [data-slot="space-header"],
+:root[data-th="2"] header[data-slot="app-header"],
+:root[data-th="2"] [data-slot="column-header"] {
+  border-bottom-color: var(--sh-edge);
+}
+
+:root[data-th="2"] [data-slot="tab"] {
+  margin-inline: 2px;
+}
+
+:root[data-th="2"] [data-slot="tab"][aria-current] {
+  background-color: var(--surface-paper);
+  box-shadow: inset 0 0 0 2px var(--sh-frame);
+}
+
+:root[data-th="2"] [data-slot="tab-strip"]:not([data-slot="space-header"] *) [data-slot="tab"][aria-current] {
+  background-color: var(--card);
+  box-shadow: inset 0 0 0 1px var(--sh-edge);
+}
+
+:root[data-th="2"] header[data-slot="app-header"],
+:root[data-th="2"] [data-slot="column-header"] {
+  background-image: linear-gradient(var(--sh-band), var(--sh-band));
+}
+
+:root[data-th="2"] [data-slot="header-right"] > div {
+  padding-right: 0;
+}
+
+:root[data-th="2"] [data-slot="header-right"] button[data-shortcut-action="pane_menu"],
+:root[data-th="2"] [data-slot="column-width"],
+:root[data-th="2"] [data-slot="column-remove"] {
+  border-radius: 0;
+  border: 1px solid var(--sh-edge);
+  height: 44px;
+  min-height: 44px;
+  align-self: center;
+}
+
+:root[data-th="2"] [data-slot="column-width"],
+:root[data-th="2"] [data-slot="column-remove"] {
+  margin-left: -1px;
+}
+
+:root[data-th="2"] [data-slot="column-header"] [data-slot="column-width"] {
+  margin-left: 0;
+}
+
+:root[data-th="2"] [data-slot="header-row"] {
+  padding-right: 12px;
+}
+
+:root[data-th="2"] [data-slot="column-header"] {
+  padding-right: 12px;
+}
+
+/* 2: the pane menu joins the column's two controls in one group. */
+:root[data-th="2"] [data-slot="header-dock-trail"] {
+  margin-left: calc(-0.5rem - 1px);
+}
