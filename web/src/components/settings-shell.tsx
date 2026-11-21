@@ -21,6 +21,7 @@ import { markInAppBack } from "@/lib/nav-entry";
 import { navTrail, type TrailEntries } from "@/lib/nav-trail";
 import { useScope } from "@/lib/session";
 import { cn } from "@/lib/utils";
+import { oldIndexTarget } from "@/routes/settings-redirect";
 
 // ── SETTINGS ON A LARGE SCREEN (ADR 0158, addendum 2026-11-21) ──────────────────────────────────────────────────
 //
@@ -114,7 +115,7 @@ interface ListRow {
 const ROW = "flex min-h-11 w-full min-w-0 items-center gap-2.5 rounded-lg px-2 text-left text-sm font-medium transition-colors";
 
 function WideSettings() {
-  const { pathname, state, key } = useLocation();
+  const { pathname, search, hash, state, key } = useLocation();
   const navigate = useNavigate();
   const nav = useNav();
   const scope = useScope();
@@ -143,9 +144,10 @@ function WideSettings() {
   const listRef = useRef<HTMLElement | null>(null);
 
   if (section === null) {
-    // `/settings` itself: the first section that is not an action. A replace, carrying where Settings was opened from.
+    // `/settings` itself: the first section that is not an action, or the page an old fragment names
+    // (`/settings#paired-devices`). A replace, carrying where Settings was opened from.
     const from = readFrom(state);
-    const to = updates.available ? updatesPath(scope) : settingsSectionPath("look", scope);
+    const to = oldIndexTarget(search, hash) ?? (updates.available ? updatesPath(scope) : settingsSectionPath("look", scope));
     return <Navigate to={to} replace state={from === undefined ? undefined : { from }} />;
   }
 

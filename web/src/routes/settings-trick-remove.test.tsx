@@ -40,8 +40,10 @@ describe("the Remove section", () => {
     await screen.findByRole("heading", { name: "Browser leg" });
     const remove = section();
     expect(remove).not.toBeNull();
-    const sections = [...document.querySelectorAll('[data-slot="trick-detail"] > section')];
-    expect(sections.at(-1)).toBe(remove);
+    // Each part of the page sits in its registry slot (ADR 0170), so the last part holds the section.
+    const parts = [...document.querySelectorAll('[data-slot="trick-detail"] > *')];
+    expect(parts.at(-1)?.querySelector('[data-section="remove"]')).toBe(remove);
+    expect(parts.at(-1)?.getAttribute("data-setting")).toBe("tricks.trick.remove");
     expect(remove).toHaveTextContent("Remove");
     expect(remove).toHaveTextContent("Delete this trick from this machine.");
     const button = within(remove!).getByRole("button", { name: "Remove trick" });

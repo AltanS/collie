@@ -3,8 +3,9 @@ import type { MessageKey } from "@/lib/i18n";
 
 // THE SHAPE OF ONE DECLARED LIST OF SETTINGS (ADR 0170). Every setting a person can see or set is declared once,
 // in `registry.ts`: a stable dotted id, its words, its kind, who holds its value, where it is drawn and how its
-// value is stored TODAY. The Settings pages, the search, the completeness test and, later, a settings file all
-// read this one list. Nothing here moves a value: a store names the storage the value has always had.
+// value is stored today. The Settings pages, the search, the completeness test and, later, a settings file all
+// read this one list. Nothing here moves a value: a store is a declaration of the storage the value has always
+// had, not an adapter. No code reads or writes a value through it.
 
 /** The eleven Settings pages, by the word in their path (`/settings/<id>`). */
 export const PAGE_IDS = [
@@ -27,10 +28,13 @@ export type PageId = (typeof PAGE_IDS)[number];
 export type PlaceId = "pane" | "files" | "new" | "dashboard-bar";
 
 /**
- * A stable dotted id: `<page or place>.<name>[.<part>]`. Never reused once shipped: a settings file will key on it.
+ * A stable dotted id: `<namespace>.<name>[.<part>]`, lower camel after the first segment. The first segment is a
+ * NAMESPACE, not the page: today it reads like the page the row was declared on, and it stays when the row moves
+ * (the row's `page` says where it is drawn). Once shipped an id is never reused for another value; a row that is
+ * retired or renamed keeps its old id as a key of `ALIASES` (pages.ts), and `shipped-ids.json` is the checked list.
  * A row drawn once per item (a harness, a machine, a trick) keeps ONE id; the item is the value's key, not the id's.
  */
-export type SettingId = `${PageId | PlaceId}.${string}`;
+export type SettingId = `${string}.${string}`;
 
 /** Who holds the value. `machine` is the bridge, for every device on it; `profile` is one profile on one machine. */
 export type SettingScope = "device" | "machine" | "pane" | "profile";
@@ -77,8 +81,9 @@ export type PerItem = "harness" | "trick" | "machine" | "profile" | "pane" | "de
 export type StorageKey = `collie:${string}` | `collie.${string}`;
 
 /**
- * How a value is stored TODAY. The completeness test reads every saved key of the app and fails one that no
- * setting names and no entry of `NOT_SETTINGS` explains.
+ * How a value is stored today: a declaration, not an adapter. The completeness test reads every saved key of the
+ * app and fails one that no setting names and no entry of `NOT_SETTINGS` explains, and each field of a typed blob
+ * (`BLOB_FIELDS` in registry.ts) that no setting names and `NOT_SETTING_FIELDS` does not explain.
  */
 export type Store =
   /** A whole localStorage key holds this one value. */
@@ -114,6 +119,7 @@ export interface SettingDef {
   experiment?: true;
   also?: readonly Surface[];
   each?: PerItem;
+  /** Where its value is stored today: a declaration, not an adapter. */
   store: Store;
   /**
    * Left out of the search: a state of another row (Retry, Go back now), a part of a form, a line that only

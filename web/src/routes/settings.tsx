@@ -1,3 +1,5 @@
+import { Navigate, useLocation } from "react-router";
+
 import { Icon } from "@/components/icons/icon";
 
 import { RouteHeader } from "@/components/app-header";
@@ -14,6 +16,7 @@ import { useNav } from "@/hooks/use-nav";
 import { t } from "@/lib/i18n";
 import { homePath, updatesPath } from "@/lib/nav";
 import { useScope } from "@/lib/session";
+import { oldIndexTarget } from "@/routes/settings-redirect";
 import { BandMain } from "@/components/ui/strip-host";
 
 // ── THE SETTINGS INDEX ──────────────────────────────────────────────────────────────────────────
@@ -69,7 +72,12 @@ export function SettingsRoute() {
   const scope = useScope();
   const updates = useUpdatesStatus();
   const { rows, hold: holdList } = useSettingsRows();
+  const { search, hash, state } = useLocation();
   useLocale();
+
+  // An old fragment on the index (`/settings#paired-devices`, `#changes`) opens the page that holds its row now.
+  const old = oldIndexTarget(search, hash);
+  if (old !== null) return <Navigate to={old} replace state={state} />;
 
   return (
     <div className="mx-auto flex min-h-0 w-full max-w-screen-sm flex-1 flex-col">

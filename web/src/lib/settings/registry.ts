@@ -1,3 +1,7 @@
+import type { DashPrefs } from "@/hooks/use-dash-prefs";
+import type { DisplayPrefs } from "@/hooks/use-display-prefs";
+import type { DesignPrefs } from "@/lib/design";
+import type { HarnessPref } from "@/lib/harness-prefs";
 import type { MessageKey } from "@/lib/i18n";
 
 import type { SettingDef, Store, StorageKey } from "./types";
@@ -34,7 +38,7 @@ const LIST = [
   { id: "look.theme.import", label: "theme.import", kind: "action", scope: "device", page: "look", group: "theme", store: local("collie:themes:v1") },
   { id: "look.theme.paste", label: "theme.paste", kind: "action", scope: "device", page: "look", group: "theme", store: local("collie:themes:v1") },
   { id: "look.theme.export", label: "theme.export", kind: "action", scope: "device", page: "look", group: "theme", store: { kind: "browser", what: "clipboard" } },
-  { id: "look.theme.remove", label: "theme.remove", kind: "action", scope: "device", page: "look", group: "theme", store: local("collie:themes:v1"), find: false },
+  { id: "look.theme.remove", label: "theme.remove", kind: "action", scope: "device", page: "look", group: "theme", store: local("collie:themes:v1"), words: words("settings.words.delete") },
   { id: "look.theme.trial", label: "theme.trial.try", kind: "action", scope: "device", page: "look", group: "theme", store: local("collie:theme-trial:v1"), find: false },
   { id: "look.lightDark", label: "settings.lightDark.title", hint: "settings.theme.description", kind: "choice", scope: "device", page: "look", group: "theme", store: local("collie:theme:v1"), words: words("settings.words.darkMode") },
   { id: "look.character", label: "settings.character.title", hint: "settings.character.description", kind: "choice", scope: "device", page: "look", below: "character", group: "character", store: blob(DESIGN, "mark") },
@@ -47,7 +51,7 @@ const LIST = [
   { id: "look.textSize.draft", label: "settings.textSize.draft", hint: "settings.fonts.draftSize.hint", kind: "number", scope: "device", page: "look", group: "text", store: blob(DISPLAY, "draftFontSize"), words: words("settings.words.bigger") },
   { id: "look.math", label: "settings.math.title", hint: "settings.math.description", kind: "choice", scope: "device", page: "look", group: "math", store: blob(DESIGN, "math"), words: words("settings.words.formula") },
   { id: "look.math.download", label: "settings.math.title", kind: "action", scope: "machine", page: "look", group: "math", store: route("/api/math"), find: false },
-  { id: "look.math.remove", label: "settings.appearance.math.remove", kind: "action", scope: "machine", page: "look", group: "math", store: route("/api/math"), when: "math-ready", find: false },
+  { id: "look.math.remove", label: "settings.appearance.math.remove", kind: "action", scope: "machine", page: "look", group: "math", store: route("/api/math"), when: "math-ready", words: words("settings.words.delete", "settings.words.storage") },
   { id: "look.beltSize", label: "settings.beltSize.label", hint: "settings.beltSize.description", kind: "choice", scope: "device", page: "look", group: "layout", store: blob(DASH, "beltScale") },
   { id: "look.largeScreen", label: "settings.wideLayout.title", hint: "settings.wideLayout.hint", kind: "choice", scope: "device", page: "look", group: "layout", store: local("collie:wide-layout-mode:v1"), words: words("settings.words.desktop") },
   { id: "look.projectPictures", label: "settings.projectPictures.title", hint: "settings.projectPictures.hint", kind: "switch", scope: "device", page: "look", group: "layout", store: local("collie:project-pictures:v1") },
@@ -116,7 +120,7 @@ const LIST = [
   { id: "voice.model.setUp", label: "settings.voice.copy.setup", hint: "settings.voice.copy.setup.note", kind: "action", scope: "machine", page: "voice", below: "model", group: "model", store: route("/api/stt/whistle"), words: words("settings.words.whistle") },
   { id: "voice.model.removeHost", label: "settings.speech.host.remove", kind: "action", scope: "machine", page: "voice", below: "model", group: "model", store: route("/api/stt/whistle"), find: false },
   { id: "voice.model.copyToPhone", label: "settings.voice.copy.toPhone", kind: "action", scope: "device", page: "voice", below: "model", group: "model", store: { kind: "browser", what: "indexeddb-model" }, find: false },
-  { id: "voice.model.removePhone", label: "settings.speech.phone.remove", kind: "action", scope: "device", page: "voice", below: "model", group: "model", store: { kind: "browser", what: "indexeddb-model" }, find: false },
+  { id: "voice.model.removePhone", label: "settings.speech.phone.remove", kind: "action", scope: "device", page: "voice", below: "model", group: "model", store: { kind: "browser", what: "indexeddb-model" }, words: words("settings.words.delete", "settings.words.storage") },
   { id: "voice.model.restore", label: "settings.voice.restore", kind: "action", scope: "device", page: "voice", below: "model", group: "model", store: { kind: "browser", what: "indexeddb-model" }, find: false },
   { id: "voice.model.details", label: "settings.voice.details", kind: "info", scope: "machine", page: "voice", below: "model", group: "model", store: route("/api/stt/whistle"), find: false },
 
@@ -139,8 +143,8 @@ const LIST = [
   { id: "accounts.add.folder", label: "accounts.add.folder", kind: "text", scope: "profile", page: "accounts", below: "add", group: "add", store: route("/api/accounts"), find: false },
   { id: "accounts.add.create", label: "accounts.add.create", kind: "action", scope: "profile", page: "accounts", below: "add", group: "add", store: route("/api/accounts"), find: false },
   { id: "accounts.changeLogin", label: "accounts.changeLogin.action", hint: "accounts.changeLogin.what", kind: "action", scope: "profile", page: "accounts", below: ":id", group: "profile", store: none, each: "profile", also: ["pane-settings"], when: "has-profile" },
-  { id: "accounts.signInAgain", label: "accounts.detail.signIn", kind: "action", scope: "profile", page: "accounts", below: ":id", group: "profile", store: none, each: "profile", find: false },
-  { id: "accounts.remove", label: "accounts.detail.remove", kind: "action", scope: "profile", page: "accounts", below: ":id", group: "profile", store: route("/api/accounts/remove", "profile"), each: "profile", find: false },
+  { id: "accounts.signInAgain", label: "accounts.detail.signIn", kind: "action", scope: "profile", page: "accounts", below: ":id", group: "profile", store: none, each: "profile", words: words("settings.words.login") },
+  { id: "accounts.remove", label: "accounts.detail.remove", kind: "action", scope: "profile", page: "accounts", below: ":id", group: "profile", store: route("/api/accounts/remove", "profile"), each: "profile", words: words("settings.words.delete", "settings.words.forget") },
   { id: "accounts.terminal", label: "accounts.detail.terminal", hint: "accounts.detail.terminalHint", kind: "info", scope: "profile", page: "accounts", below: ":id", group: "profile", store: none, find: false },
   { id: "accounts.login.start", label: "accounts.changeLogin.action", kind: "action", scope: "profile", page: "accounts", below: ":id/login", group: "login", store: none, find: false },
   { id: "accounts.login.open", label: "accounts.changeLogin.open", kind: "action", scope: "profile", page: "accounts", below: ":id/login", group: "login", store: none, find: false },
@@ -162,13 +166,14 @@ const LIST = [
   { id: "tricks.trick.code", label: "settings.tricks.about.code.title", kind: "action", scope: "machine", page: "tricks", below: ":key", group: "trick", store: route("/api/tricks", "trick"), each: "trick", find: false },
   { id: "tricks.trick.rules", label: "settings.tricks.about.rulesOpen", kind: "action", scope: "machine", page: "tricks", below: ":key", group: "trick", store: none, each: "trick", find: false },
   { id: "tricks.trick.repo", label: "settings.tricks.about.repoOpen", kind: "link", scope: "machine", page: "tricks", below: ":key", group: "trick", store: none, each: "trick", find: false },
+  { id: "tricks.trick.remove", label: "settings.tricks.remove.button", hint: "settings.tricks.remove.line", kind: "action", scope: "machine", page: "tricks", below: ":key", group: "trick", store: route("/api/tricks", "trick"), each: "trick", words: words("settings.words.delete") },
 
   // ── 9. Devices and machines ───────────────────────────────────────────────────────────────────────
   { id: "devices.pair", label: "settings.devices.pair.title", hint: "settings.devices.pair.hint", kind: "action", scope: "device", page: "devices", group: "device", store: route("/api/pair"), words: words("settings.words.pairing") },
   { id: "devices.pair.code", label: "settings.devices.pair.codeLabel", kind: "text", scope: "device", page: "devices", group: "device", store: route("/api/pair"), find: false },
   { id: "devices.pair.name", label: "settings.devices.pair.nameLabel", kind: "text", scope: "device", page: "devices", group: "device", store: route("/api/pair"), find: false },
-  { id: "devices.unpair", label: "settings.devices.unpairSelf", kind: "action", scope: "device", page: "devices", group: "device", store: route("/api/devices/revoke"), find: false },
-  { id: "devices.paired", label: "settings.devices.title", kind: "list", scope: "machine", page: "devices", group: "paired", store: route("/api/devices", "device"), each: "device", words: words("settings.words.pairing") },
+  { id: "devices.unpair", label: "settings.devices.unpairSelf", kind: "action", scope: "device", page: "devices", group: "device", store: route("/api/devices/revoke"), words: words("settings.words.signOut", "settings.words.forget", "settings.words.pairing") },
+  { id: "devices.paired", label: "settings.devices.title", kind: "list", scope: "machine", page: "devices", group: "paired", store: route("/api/devices", "device"), each: "device", words: words("settings.words.pairing", "settings.words.unpair") },
   { id: "devices.revoke", label: "settings.devices.revoke", kind: "action", scope: "machine", page: "devices", group: "paired", store: route("/api/devices/revoke", "device"), each: "device", find: false },
   { id: "devices.machines", label: "machines.entry.title", hint: "machines.entry.description", kind: "link", scope: "machine", page: "devices", group: "machines", store: none, words: words("settings.words.load") },
   { id: "devices.crew", label: "crew.entry.title", hint: "crew.entry.description", kind: "link", scope: "machine", page: "devices", group: "machines", store: none, when: "crew" },
@@ -181,8 +186,8 @@ const LIST = [
   { id: "devices.connection.serverBuild", label: "settings.connection.row.serverBuild", kind: "info", scope: "machine", page: "devices", group: "connection", store: none, find: false },
 
   // ── 10. Privacy and data ──────────────────────────────────────────────────────────────────────────
-  { id: "privacy.keepChat", label: "settings.keepChat.title", hint: "settings.keepChat.description", kind: "choice", scope: "device", page: "privacy", group: "phone", store: blob(DISPLAY, "keepChat") },
-  { id: "privacy.keepChat.clear", label: "settings.keepChat.clearNow", kind: "action", scope: "device", page: "privacy", group: "phone", store: { kind: "browser", what: "chat-store" } },
+  { id: "privacy.keepChat", label: "settings.keepChat.title", hint: "settings.keepChat.description", kind: "choice", scope: "device", page: "privacy", group: "phone", store: blob(DISPLAY, "keepChat"), words: words("settings.words.storage") },
+  { id: "privacy.keepChat.clear", label: "settings.keepChat.clearNow", kind: "action", scope: "device", page: "privacy", group: "phone", store: { kind: "browser", what: "chat-store" }, words: words("settings.words.delete", "settings.words.storage") },
   { id: "privacy.telemetry", label: "telemetry.card.title", hint: "telemetry.card.description", kind: "switch", scope: "machine", page: "privacy", group: "leaves", store: route("/api/telemetry"), words: words("settings.words.installCount") },
   { id: "privacy.telemetry.next", label: "telemetry.card.next.show", kind: "action", scope: "machine", page: "privacy", below: "install-count", group: "installCount", store: route("/api/telemetry"), find: false },
   { id: "privacy.telemetry.docs", label: "telemetry.card.more", kind: "link", scope: "machine", page: "privacy", below: "install-count", group: "installCount", store: none, find: false },
@@ -203,9 +208,9 @@ const LIST = [
   { id: "updates.releaseLine.wait", label: "updates.line.back.wait", kind: "action", scope: "machine", page: "updates", group: "line", store: none, when: "release-line-skew", find: false },
   { id: "updates.installApp", label: "settings.install.title", hint: "settings.install.description", kind: "action", scope: "device", page: "updates", group: "app", store: { kind: "browser", what: "install-prompt" }, when: "install-offered", also: ["settings-index"] },
   { id: "updates.version", label: "settings.version.label", kind: "info", scope: "device", page: "updates", group: "app", store: none, also: ["settings-index"] },
-  { id: "updates.firstScreen", label: "settings.tour.title", hint: "settings.tour.description", kind: "action", scope: "device", page: "updates", group: "app", store: local("collie:tour:v1"), words: words("settings.words.tour") },
-  { id: "updates.reportOffer", label: "settings.report.title", hint: "settings.report.description", kind: "switch", scope: "device", page: "updates", group: "help", store: blob(DISPLAY, "reportOffer") },
-  { id: "updates.report", label: "settings.report.open", kind: "action", scope: "device", page: "updates", group: "help", store: local("collie:report-episodes:v1"), also: ["pane-menu"], words: words("settings.words.bug") },
+  { id: "updates.firstScreen", label: "settings.tour.title", hint: "settings.tour.description", kind: "action", scope: "device", page: "updates", group: "app", store: local("collie:tour:v1"), words: words("settings.words.tour", "settings.words.help") },
+  { id: "updates.reportOffer", label: "settings.report.title", hint: "settings.report.description", kind: "switch", scope: "device", page: "updates", group: "help", store: blob(DISPLAY, "reportOffer"), words: words("settings.words.feedback") },
+  { id: "updates.report", label: "settings.report.open", kind: "action", scope: "device", page: "updates", group: "help", store: local("collie:report-episodes:v1"), also: ["pane-menu"], words: words("settings.words.bug", "settings.words.feedback") },
 
   // ── Only where it is used ─────────────────────────────────────────────────────────────────────────
   { id: "pane.rename", label: "paneActions.rename.label", kind: "action", scope: "pane", page: "pane", group: "settings", store: none, also: ["pane-settings", "pane-menu"] },
@@ -285,4 +290,66 @@ export const NOT_SETTINGS: ReadonlyMap<string, string> = new Map([
   ["collie:last-snapshot:", "dropped at boot by an older build's cleanup"],
   ["collie:last-pane:", "dropped at boot by an older build's cleanup"],
   ["collie:send-again:", "dropped at boot by an older build's cleanup"],
+]);
+
+/**
+ * Every field of each JSON blob a setting stores into, from the blob's own type (ADR 0170). A key of the blob is one
+ * storage key holding many values, so the storage-key check alone would pass a new field undeclared. `satisfies`
+ * makes a field added to the type fail typecheck here until it is listed; `registry.test.ts` then fails a listed
+ * field that no row stores into and `NOT_SETTING_FIELDS` does not explain. Types only: nothing of the hooks loads.
+ */
+export const BLOB_FIELDS = {
+  [DISPLAY]: {
+    wrap: true,
+    fontSize: true,
+    draftFontSize: true,
+    chatFontSize: true,
+    fontFamily: true,
+    rawTerminal: true,
+    tapToFocus: true,
+    expandClippedReply: true,
+    stretchText: true,
+    keepChat: true,
+    hand: true,
+    sentSuggestions: true,
+    paneNav: true,
+    reportOffer: true,
+  } satisfies Record<keyof DisplayPrefs, true>,
+  [DASH]: {
+    spacesOpen: true,
+    shellsOpen: true,
+    launchOpen: true,
+    recentDir: true,
+    isolatedSpaces: true,
+    hiddenSpaces: true,
+    changesNested: true,
+    changesDepth: true,
+    changesLayout: true,
+    filesShowIgnored: true,
+    changesOnly: true,
+    beltScale: true,
+    dashView: true,
+    needsYouOnly: true,
+    showToolCalls: true,
+    showCompactions: true,
+    paneOrder: true,
+    paneView: true,
+    zoomPill: true,
+    pageZoom: true,
+    usageRow: true,
+    floatingThings: true,
+  } satisfies Record<keyof DashPrefs, true>,
+  [DESIGN]: { font: true, operatorFont: true, theme: true, math: true, mark: true, markMoves: true } satisfies Record<keyof DesignPrefs, true>,
+  "collie:harness-prefs:v1": { statusLine: true } satisfies Record<keyof HarnessPref, true>,
+} as const satisfies Partial<Record<StorageKey, Readonly<Record<string, true>>>>;
+
+/** Fields of a blob that are no setting, by `<key>#<field>`, and why. */
+export const NOT_SETTING_FIELDS: ReadonlyMap<string, string> = new Map([
+  [`${DASH}#spacesOpen`, "whether the Spaces section is open, remembered from its header's tap"],
+  [`${DASH}#shellsOpen`, "whether the Shells section of the pane switcher is open, remembered from its header's tap"],
+  [`${DASH}#launchOpen`, "whether the Launch section is open, remembered from its header's tap"],
+  [`${DASH}#recentDir`, "no screen sets or reads it now; the field stays so an older device's blob still parses"],
+  [`${DASH}#isolatedSpaces`, "the dashboard's workspace filter, chosen in its own sheet: what the list shows now, not a preference"],
+  [`${DASH}#hiddenSpaces`, "workspaces an older build hid; the workspace filter's sheet shows them and clears them"],
+  [`${DESIGN}#operatorFont`, "a cache of the machine's own font faces (/api/config), never a choice on this device"],
 ]);

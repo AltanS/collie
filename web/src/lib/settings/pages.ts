@@ -188,6 +188,19 @@ export const OLD_FRAGMENT_ROWS = {
 } as const satisfies Record<keyof typeof OLD_FRAGMENTS, string>;
 
 /**
+ * Ids that a shipped Collie used and the id that holds the value now (ADR 0170, "an id survives a move"). A row
+ * that is renamed or retired leaves its old id here, so an old address, a search result in an old tab and, later, a
+ * settings file still find it. A key here is never declared again; `shipped-ids.test.ts` checks both. Empty today.
+ */
+export const ALIASES = {} as const satisfies Record<string, string>;
+
+/** The id a fragment or an old id names today: through the old fragments, then through `ALIASES`. */
+export function currentRowId(id: string): string {
+  const old = new Map<string, string>(Object.entries(OLD_FRAGMENT_ROWS)).get(id) ?? id;
+  return new Map<string, string>(Object.entries(ALIASES)).get(old) ?? old;
+}
+
+/**
  * The places a row lives in when it has no Settings row: one pane's own sheets and menu, a view, the New page. Per
  * group, the words that say where, which the search shows in place of a page and a link.
  */
@@ -215,7 +228,7 @@ export function fragmentRowId(hash: string): string | undefined {
   } catch {
     return undefined;
   }
-  const old = new Map<string, string>(Object.entries(OLD_FRAGMENT_ROWS)).get(id);
-  if (old !== undefined) return old;
+  const current = currentRowId(id);
+  if (current !== id) return current;
   return /^[a-z][A-Za-z-]*(\.[A-Za-z][A-Za-z0-9-]*)+$/.test(id) ? id : undefined;
 }

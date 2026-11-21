@@ -4,8 +4,9 @@ import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { en } from "@/lib/i18n/messages/en";
-import { groupHeading, isPageId, NOT_SETTINGS, OLD_FRAGMENTS, PAGES, pageDef, searchSettings, settingById, settingOfFragment, SETTINGS, settingPath } from "./index";
+import { ALIASES, currentRowId, groupHeading, isPageId, NOT_SETTINGS, PLACES, OLD_FRAGMENTS, PAGES, pageDef, searchSettings, settingById, settingOfFragment, SETTINGS, settingPath } from "./index";
 import { OLD_FRAGMENT_ROWS } from "./pages";
+import { BLOB_FIELDS, NOT_SETTING_FIELDS } from "./registry";
 import type { Store } from "./types";
 
 // THE REGISTRY IS COMPLETE AND TRUE (ADR 0170). A saved key of the app that no setting stores into and no line of
@@ -64,6 +65,18 @@ describe("the settings registry", () => {
     expect(loose).toEqual([]);
   });
 
+  // A blob is one storage key holding many values, so the check above passes a new field of it undeclared.
+  // BLOB_FIELDS lists each blob's fields from its type (a field added to the type fails typecheck there).
+  it("declares every field of a typed blob: a row stores into it, or NOT_SETTING_FIELDS says why it is none", () => {
+    const declared = new Set(SETTINGS.flatMap((s) => (s.store.kind === "blob" ? [`${s.store.key}#${s.store.field}`] : [])));
+    const listed = Object.entries(BLOB_FIELDS).flatMap(([key, fields]) => Object.keys(fields).map((field) => `${key}#${field}`));
+    expect(listed.filter((f) => !declared.has(f) && !NOT_SETTING_FIELDS.has(f))).toEqual([]);
+    expect(listed.filter((f) => declared.has(f) && NOT_SETTING_FIELDS.has(f))).toEqual([]);
+    expect([...declared, ...NOT_SETTING_FIELDS.keys()].filter((f) => !listed.includes(f))).toEqual([]);
+    const blobKeys = new Set(SETTINGS.flatMap((s) => (s.store.kind === "blob" ? [s.store.key] : [])));
+    expect([...blobKeys].filter((key) => !Object.hasOwn(BLOB_FIELDS, key))).toEqual([]);
+  });
+
   it("names only keys the app still has", () => {
     const keys = savedKeys();
     expect([...STORED].filter((k) => !keys.has(k))).toEqual([]);
@@ -71,10 +84,13 @@ describe("the settings registry", () => {
     expect([...NOT_SETTINGS.keys()].filter((k) => STORED.has(k))).toEqual([]);
   });
 
-  it("gives every row a unique id that starts with its page", () => {
+  // The first segment of an id is a namespace, not the page (types.ts `SettingId`): a row that moves keeps its id
+  // and changes its `page`. So the rules are the id's own, and the page is a declared one.
+  it("gives every row a unique dotted id, lower camel after its namespace, and a page or place that exists", () => {
     const ids = SETTINGS.map((s) => s.id);
     expect(ids.length).toBe(new Set(ids).size);
-    expect(SETTINGS.filter((s) => !s.id.startsWith(`${s.page}.`)).map((s) => s.id)).toEqual([]);
+    expect(ids.filter((id) => !/^[a-z][a-z0-9-]*(\.[a-z][a-zA-Z0-9]*)+$/.test(id))).toEqual([]);
+    expect(SETTINGS.filter((s) => !isPageId(s.page) && !Object.hasOwn(PLACES, s.page)).map((s) => s.id)).toEqual([]);
   });
 
   it("puts every row in a group its page has, and every page's groups are used", () => {
@@ -139,6 +155,12 @@ describe("the old fragments", () => {
     }
   });
 
+  it("reads an alias as the id it names now (none today, so an id reads as itself)", () => {
+    expect(Object.keys(ALIASES)).toEqual([]);
+    expect(currentRowId("look.math")).toBe("look.math");
+    expect(currentRowId("changes")).toBe("dashboard.changes.nested");
+  });
+
   it("reads a row's own id, and nothing for an empty or unknown fragment", () => {
     expect(settingOfFragment("#look.math")?.id).toBe("look.math");
     expect(settingOfFragment("")).toBeUndefined();
@@ -157,6 +179,31 @@ describe("searchSettings", () => {
     const hit = searchSettings("pin").find((each) => each.setting.page === "pane");
     expect(hit).toBeDefined();
     expect(settingPath(hit!.setting)).toBeNull();
+  });
+
+  // What a person types to undo or tidy (counsel of 2026-11-21): each verb finds the rows that do it.
+  it.each([
+    ["delete", ["look.theme.remove", "look.math.remove", "voice.model.removePhone", "accounts.remove", "tricks.trick.remove", "privacy.keepChat.clear"]],
+    ["remove", ["look.theme.remove", "look.math.remove", "voice.model.removePhone", "accounts.remove", "tricks.trick.remove"]],
+    ["sign out", ["devices.unpair"]],
+    ["log out", ["devices.unpair"]],
+    ["forget", ["devices.unpair", "accounts.remove"]],
+    ["unpair", ["devices.unpair", "devices.paired"]],
+    ["sign in", ["accounts.signInAgain"]],
+    ["storage", ["voice.model.removePhone", "look.math.remove", "privacy.keepChat"]],
+    ["free space", ["voice.model.removePhone", "look.math.remove", "privacy.keepChat.clear"]],
+    ["clear", ["notifications.clear", "privacy.keepChat.clear"]],
+    ["smaller", ["look.textSize.chat"]],
+    ["zoom", ["keys.pinchZoom"]],
+    ["version", ["updates.version"]],
+    ["help", ["updates.firstScreen", "updates.report"]],
+    ["bug", ["updates.report"]],
+    ["feedback", ["updates.report", "updates.reportOffer"]],
+    ["light mode", ["look.lightDark"]],
+    ["dark mode", ["look.lightDark"]],
+  ])("finds %s", (query, ids) => {
+    const found = new Set<string>(searchSettings(query, 40).map((h) => h.setting.id));
+    expect(ids.filter((id) => !found.has(id))).toEqual([]);
   });
 
   it("finds nothing for words no row has", () => {

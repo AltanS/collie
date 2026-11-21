@@ -4396,6 +4396,13 @@ export const en = {
   "settings.words.tour": "tour welcome",
   "settings.words.bug": "bug issue GitHub",
   "settings.words.diffLayout": "diff unified side by side split changes",
+  "settings.words.delete": "delete",
+  "settings.words.signOut": "sign out log out",
+  "settings.words.forget": "forget",
+  "settings.words.unpair": "unpair revoke",
+  "settings.words.storage": "storage free space",
+  "settings.words.help": "help",
+  "settings.words.feedback": "feedback",
   "files.diffLayout.label": "Unified or side by side",
 } as const;
 
@@ -4698,6 +4705,13 @@ export const PENDING_TRANSLATION = [
   "settings.words.tour",
   "settings.words.bug",
   "settings.words.diffLayout",
+  "settings.words.delete",
+  "settings.words.signOut",
+  "settings.words.forget",
+  "settings.words.unpair",
+  "settings.words.storage",
+  "settings.words.help",
+  "settings.words.feedback",
   "files.diffLayout.label",
   "settings.tricks.about.autoUpdate.label",
 ] as const satisfies readonly MessageKey[];
