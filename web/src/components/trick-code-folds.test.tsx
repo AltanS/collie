@@ -185,19 +185,19 @@ describe("the folds", () => {
     expect(screen.getByText("Masked lines: 3. A key or a hidden character shows as dots or ?.")).toBeInTheDocument();
   });
 
-  it("says a failed read in a muted line, for the index and for a file, and the rest of the sheet stays", async () => {
+  it("says a failed read in a muted line, for the index and for a file, and the rest of the page stays", async () => {
     const user = userEvent.setup();
     const { unmount } = open(TRICK, reader({ index: async () => Promise.reject(new CodeFailure("otherMachine")) }).reader);
     expect(await screen.findByText("This trick is on another machine. Its code is not shown here.")).toBeInTheDocument();
     expect(screen.getByRole("list", { name: "What it does" })).toBeInTheDocument();
     unmount();
     open(TRICK, reader({ index: async () => Promise.reject(new Error("boom")) }).reader);
-    expect(await screen.findByText("The code could not be read. Close this sheet and open it again.")).toBeInTheDocument();
+    expect(await screen.findByText("The code could not be read. Go back and open this page again.")).toBeInTheDocument();
     cleanup();
     open(TRICK, reader({ file: async () => Promise.reject(new CodeFailure("moved")) }).reader);
     await screen.findByRole("list", { name: "Read the code" });
     await user.click(toggleOf("legs.sh"));
-    expect(await screen.findByText("The code changed while it was read. Close this sheet and open it again.")).toBeInTheDocument();
+    expect(await screen.findByText("The code changed while it was read. Go back and open this page again.")).toBeInTheDocument();
   });
 
   it("asks for the index again when the row moves under an open sheet", async () => {
