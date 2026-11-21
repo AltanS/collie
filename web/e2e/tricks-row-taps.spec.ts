@@ -5,8 +5,8 @@ import type { OfficialTricksReply, TricksReply, WireTrickInfo } from "@/lib/tric
 
 import { installApiStub } from "./fixtures/api";
 
-// SETTINGS, TRICKS: THE WHOLE ROW OPENS THE ABOUT SHEET (2026-11-12), measured in a real engine. The name is
-// the one button and its `::after` is stretched over the row (components/ui/row-open.ts), so a tap on the
+// SETTINGS, TRICKS: THE WHOLE ROW OPENS THE DETAILS PAGE (2026-11-12; a sheet until 2026-11-21), measured in a
+// real engine. The name is the one link and its `::after` is stretched over the row (components/ui/row-open.ts), so a tap on the
 // description, the places, the source line or the row's empty space lands on it. The switch and Add are its
 // siblings, lifted above that layer, and keep their own taps. jsdom lays nothing out, so every probe here is
 // `elementFromPoint` or a tap at a point.
@@ -58,11 +58,11 @@ async function stubTricks(page: Page, posts: string[]): Promise<void> {
   });
 }
 
-/** What the tap at a point reaches: the accessible name of the button there, or its role when it has none. */
+/** What the tap at a point reaches: the accessible name of the button or link there, or its role when it has none. */
 async function targetAt(page: Page, x: number, y: number): Promise<string | null> {
   return page.evaluate(
     ([px, py]) => {
-      const el = document.elementFromPoint(px!, py!)?.closest("button");
+      const el = document.elementFromPoint(px!, py!)?.closest("button, a");
       if (el === null || el === undefined) return null;
       return el.getAttribute("aria-label") ?? el.getAttribute("role");
     },
@@ -76,7 +76,7 @@ async function centre(page: Page, selector: string): Promise<{ x: number; y: num
   return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
 }
 
-test("every line of a trick's row reaches its About button, and the switch keeps its own taps", async ({ page }) => {
+test("every line of a trick's row reaches its About link, and the switch keeps its own taps", async ({ page }) => {
   const posts: string[] = [];
   await stubTricks(page, posts);
   await page.goto("/settings/tricks");
@@ -94,18 +94,19 @@ test("every line of a trick's row reaches its About button, and the switch keeps
   expect(await targetAt(page, sw!.x + sw!.width / 2, sw!.y + sw!.height / 2)).toBe("Browser leg");
   expect(await targetAt(page, sw!.x + sw!.width / 2, sw!.y - 6)).toBe("Browser leg");
 
-  // A tap on the switch switches, and opens no sheet.
+  // A tap on the switch switches, and opens no page.
   await page.mouse.click(sw!.x + sw!.width / 2, sw!.y + sw!.height / 2);
   await expect.poll(() => posts).toEqual(["/api/tricks/lodge/legs/switch"]);
-  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page).toHaveURL(/\/settings\/tricks$/);
 
-  // A tap on the description opens the sheet.
+  // A tap on the description opens the details page.
   const { x, y } = await centre(page, `${row} [data-line="description"]`);
   await page.mouse.click(x, y);
-  await expect(page.getByRole("dialog", { name: "Browser leg" })).toBeVisible();
+  await expect(page).toHaveURL(/\/settings\/tricks\/lodge%3Alegs$/);
+  await expect(page.locator('[data-slot="trick-detail-name"]')).toHaveText("Browser leg");
 });
 
-test("an official entry's lines open its sheet, and Add adds without opening it", async ({ page }) => {
+test("an official entry's lines open its details page, and Add adds without opening it", async ({ page }) => {
   const posts: string[] = [];
   await stubTricks(page, posts);
   await page.goto("/settings/tricks");
@@ -117,7 +118,7 @@ test("an official entry's lines open its sheet, and Add adds without opening it"
   expect(await targetAt(page, add.x, add.y)).toBe("Add Running Builds");
   await page.mouse.click(add.x, add.y);
   await expect.poll(() => posts).toEqual(["/api/tricks/official/running-builds/add"]);
-  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page).toHaveURL(/\/settings\/tricks$/);
 });
 
 // THE NAME LINE WRAPS (2026-11-12): at 360 px, a row with both labels keeps the whole name and moves the labels

@@ -13,6 +13,7 @@ import { readOfficialAddReply, readOfficialTricksReply } from "@/lib/tricks/wire
 import type { JsonObject, JsonValue } from "@/lib/json";
 import { clearStatus, currentStatus } from "@/lib/status";
 import { server } from "@/test/setup";
+import { renderTricksPages } from "@/test/tricks-pages";
 
 // Official tricks in Settings → Tricks (M94; one list since 2026-11-12): the official tricks this release can
 // add and the installed ones as one list, each once, official first in the list's order, then the community's
@@ -120,7 +121,7 @@ describe("Official tricks: one list", () => {
     expect(document.querySelector('[data-section="official"]')).toBeNull();
     expect(screen.queryByText("Official tricks")).toBeNull();
     const review = officialRow("design-review");
-    expect(within(review).getByRole("button", { name: "About Design Review" })).toHaveTextContent("Design ReviewOfficial");
+    expect(within(review).getByRole("link", { name: "About Design Review" })).toHaveTextContent("Design ReviewOfficial");
     expect(within(review).getByText("Turns an agent's UI notes into Decisions you approve by name.").className).toContain("text-muted-foreground");
     expect(review.querySelector('[data-line="slot"]')).toHaveTextContent("From AltanS/collie-tricks @ 0d80399");
     const add = within(review).getByRole("button", { name: "Add Design Review" });
@@ -373,8 +374,15 @@ describe("Official tricks: Add", () => {
   });
 });
 
-describe("Official tricks: the About sheet before the add", () => {
-  it("shows the name, the line and where it comes from, no invented facts, and Add at the foot; it closes once the bridge took the add", async () => {
+/** The details page that is drawn. */
+function detailPage(): HTMLElement {
+  const el = document.querySelector<HTMLElement>('[data-slot="trick-detail"]');
+  if (el === null) throw new Error("no details page");
+  return el;
+}
+
+describe("Official tricks: the details page before the add (the About sheet until 2026-11-21)", () => {
+  it("shows the name, the line and where it comes from, no invented facts, and Add at the foot; once the bridge took the add it is the trick's own details", async () => {
     const user = userEvent.setup();
     serveList(() => ({ tricks: [REVIEW] }));
     const posts: string[] = [];
@@ -384,10 +392,13 @@ describe("Official tricks: the About sheet before the add", () => {
         return HttpResponse.json({ id: "design-review", state: "added" });
       }),
     );
-    const { store } = await liveStore([LEGS]);
-    renderCard(store);
-    await user.click(await screen.findByRole("button", { name: "About Design Review" }));
-    const dialog = screen.getByRole("dialog", { name: "Design Review" });
+    const { store, list } = await liveStore([LEGS]);
+    const router = renderTricksPages({ store, card: { now: NOW }, page: {} });
+    const link = await screen.findByRole("link", { name: "About Design Review" });
+    expect(link.getAttribute("href")).toBe("/settings/tricks/design-review");
+    await user.click(link);
+    const dialog = detailPage();
+    expect(dialog.querySelector('[data-slot="trick-detail-name"]')).toHaveTextContent("Design Review");
     expect(within(dialog).getByText("Turns an agent's UI notes into Decisions you approve by name.")).toBeInTheDocument();
     expect(within(dialog).getByText("Where it comes from")).toBeInTheDocument();
     expect(within(dialog).getByText("From AltanS/collie-tricks @ 0d80399")).toBeInTheDocument();
@@ -396,11 +407,14 @@ describe("Official tricks: the About sheet before the add", () => {
     expect(within(dialog).queryByText("Written by the trick's author. Collie did not check it.")).toBeNull();
     expect(within(dialog).queryByRole("switch")).toBeNull();
     await user.click(within(dialog).getByRole("button", { name: "Add" }));
-    await vi.waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-    expect(posts).toEqual(["/api/tricks/official/design-review/add"]);
+    await vi.waitFor(() => expect(posts).toEqual(["/api/tricks/official/design-review/add"]));
+    // The bridge's list now holds the added trick: the same address draws its own details, with its switch.
+    await list([LEGS, installed(REVIEW)]);
+    await vi.waitFor(() => expect(within(detailPage()).getByRole("switch", { name: "Design Review" })).toBeInTheDocument());
+    expect(router.state.location.pathname).toBe("/settings/tricks/design-review");
   });
 
-  it("adds on a tap on the row's Add and opens no sheet: Add is a sibling of the About button, above its layer", async () => {
+  it("adds on a tap on the row's Add and opens no page: Add is a sibling of the About link, above its layer", async () => {
     const user = userEvent.setup();
     serveList(() => ({ tricks: [REVIEW] }));
     const posts: string[] = [];
@@ -414,26 +428,27 @@ describe("Official tricks: the About sheet before the add", () => {
     renderCard(store);
     await vi.waitFor(() => officialRow("design-review"));
     const row = officialRow("design-review");
-    const about = within(row).getByRole("button", { name: "About Design Review" });
+    const about = within(row).getByRole("link", { name: "About Design Review" });
     const add = within(row).getByRole("button", { name: "Add Design Review" });
     expect(about.contains(add)).toBe(false);
     expect(about.className).toContain("after:inset-0");
     expect(add.className).toContain("z-10");
     await user.click(add);
     await vi.waitFor(() => expect(posts).toEqual(["/api/tricks/official/design-review/add"]));
-    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(document.querySelector('[data-slot="trick-detail"]')).toBeNull();
   });
 
-  it("stays open and says why when the add fails", async () => {
+  it("stays on its page and says why when the add fails", async () => {
     const user = userEvent.setup();
     serveList(() => ({ tricks: [REVIEW] }));
     server.use(http.post("/api/tricks/official/:id/:mode", () => HttpResponse.json({ error: "unreachable", message: "x" }, { status: 502 })));
     const { store } = await liveStore([LEGS]);
-    renderCard(store);
-    await user.click(await screen.findByRole("button", { name: "About Design Review" }));
-    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Add" }));
+    renderTricksPages({ store, card: { now: NOW }, page: {} });
+    await user.click(await screen.findByRole("link", { name: "About Design Review" }));
+    await user.click(within(detailPage()).getByRole("button", { name: "Add" }));
     await vi.waitFor(() => expect(currentStatus()?.text).toBe("GitHub did not answer. Nothing was added."));
-    expect(screen.getByRole("dialog", { name: "Design Review" })).toBeInTheDocument();
+    expect(detailPage().querySelector('[data-slot="trick-detail-name"]')).toHaveTextContent("Design Review");
+    await vi.waitFor(() => expect(within(detailPage()).getByRole("button", { name: "Add" })).toBeEnabled());
   });
 });
 

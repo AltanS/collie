@@ -16,8 +16,8 @@ import { cn } from "@/lib/utils";
 // than cut it (tricks-settings-card.tsx `NAME_LINE`, the Hill's and WalkyTalky's titles). The chip shrinks,
 // with an ellipsis, only when it alone is wider than its line, so it never runs into a switch or Add.
 //
-// A trick's About sheet says why in one sentence, the first row of "What it does" (`tokenUseWhy`), and draws
-// no chip there.
+// A trick's details page says why in one sentence, the first row of "What it does" (`tokenUseWhy`), and draws
+// no chip there; the chip stands once in the page's head, with the other labels, as on the row (2026-11-21).
 
 /**
  * Whether the label is drawn, and its words. The app never sets it: every chip and sentence draws, in the
@@ -63,7 +63,7 @@ const WHY = {
   answer: "settings.tricks.about.tokens.answer",
 } as const satisfies Record<TokenUseReason, MessageKey>;
 
-/** The About sheet's sentence: why the trick makes an agent read or write more. */
+/** The details page's sentence: why the trick makes an agent read or write more. */
 export function tokenUseWhy(reason: TokenUseReason): string {
   return t(WHY[reason]);
 }

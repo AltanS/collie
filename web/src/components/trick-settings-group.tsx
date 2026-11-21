@@ -9,7 +9,7 @@ import { t } from "@/lib/i18n";
 import { FIELD_TEXT_MAX } from "@/lib/tricks/limits";
 import { fieldValueOf, fieldValueProblem, type FieldProblem, type FieldValue, type TrickField, type WireTrickInfo } from "@/lib/tricks/schema";
 
-// A trick's "Settings" group in its About sheet (contract 3, `[[field]]`): one 44 px row per field, the values
+// A trick's "Settings" group on its details page (contract 3, `[[field]]`): one 44 px row per field, the values
 // the person keeps for the trick. Phone first: a text or number field is a box on its row with the "done" key,
 // saved when the keyboard's done is tapped or the box loses focus, never per keystroke; a choice is the native
 // select (the OS draws the picker); a switch flips and saves at once. The row checks a value by the field's own
@@ -47,8 +47,8 @@ export function TrickSettingsGroup({ trick, canWrite, onLead = false, onValue }:
   const values = trick.values ?? {};
   const writable = canWrite && !onLead;
   return (
-    <section data-section="settings" className="pt-4">
-      <SectionLabel className="mb-1.5 block">{t("settings.tricks.about.settings")}</SectionLabel>
+    <section data-section="settings" className="pt-6">
+      <SectionLabel className="mb-2 block">{t("settings.tricks.about.settings")}</SectionLabel>
       <p data-line="settings-no-secrets" className="pb-1 text-xs text-muted-foreground">
         {t("settings.tricks.fields.noSecrets")}
       </p>

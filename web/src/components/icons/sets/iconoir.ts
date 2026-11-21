@@ -314,6 +314,12 @@ export const ICONOIR = {
   "tool-search": "search", // a search tool call · lucide Search
   "tool-task": "sparks", // a task or subagent tool call · lucide Bot
   "tour": "compass", // the guided tour · lucide Compass
+  "trick-fact-adds": "plus-square", // what a trick adds to the app, on its details page · lucide SquarePlus
+  "trick-fact-reads": "eye", // what a trick may read or do, on its details page · lucide Eye
+  "trick-fact-runs": "timer", // when a trick runs, on its details page · lucide Timer
+  "trick-fact-shows": "app-window", // where a trick shows, on its details page · lucide PanelsTopLeft
+  "trick-fact-starts": "terminal", // what starts a trick's program, on its details page · lucide SquareTerminal
+  "trick-fact-tokens": "coins", // why a trick uses agent tokens, on its details page · lucide Coins
   "tricks": "puzzle", // Collie tricks, the small add-ons a person switches on · lucide Puzzle
   "type-into-terminal": "terminal", // type into the terminal · lucide Terminal
   "typeface": "text-size", // the typeface setting · lucide CaseSensitive

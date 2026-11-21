@@ -332,7 +332,7 @@ export function SettingsTricksRoute() {
   const scope = useScope();
   if (root?.tricksOff === true) return <Navigate to={settingsSectionPath("experiments", scope)} replace />;
   return (
-    <SettingsPage title="settings.section.tricks.title">
+    <SettingsPage title="settings.section.tricks.title" keepScroll>
       {/* The cards of Collie's own that wait for a yes (M96 spec 14): with the Hill off, the one list of them. */}
       <TrickCardsWaiting />
       <TricksSettingsCard />

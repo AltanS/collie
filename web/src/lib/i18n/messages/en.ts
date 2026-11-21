@@ -3617,6 +3617,8 @@ export const en = {
   "tricks.mark.open": "Open {trick}",
   "tricks.session.back": "Back",
   "tricks.session.gone": "This trick's page is not here any more.",
+  // The header button of a trick's page that opens its details page (2026-11-21).
+  "tricks.session.details": "Trick details",
   "tricks.link.gone": "That pane is not here any more.",
   // --- Settings → Tricks (M94 slice 04) ---
   "settings.tricks.none": "No tricks yet",
@@ -3674,7 +3676,13 @@ export const en = {
   // What a contract 2 trick reads (M99). The same words as schema.ts `inputsSentence`, held there by a test.
   "settings.tricks.reads.solo": "Reads {globs} in your agent sessions' folders.",
   "settings.tricks.reads.crew": "Reads {globs} in your agent sessions' folders on every machine of the crew.",
-  // A trick's About sheet.
+  // A trick's details page (its About sheet until 2026-11-21): the head's switch state, the label of the author's
+  // words, and the page of a trick that is gone.
+  "settings.tricks.detail.on": "On",
+  "settings.tricks.detail.off": "Off",
+  "settings.tricks.detail.about": "About",
+  "settings.tricks.detail.gone": "This trick is not here any more.",
+  "settings.tricks.detail.toList": "Show all tricks",
   "settings.tricks.about.open": "About {name}",
   "settings.tricks.about.none": "This trick has no description.",
   "settings.tricks.about.does": "What it does",
@@ -4296,6 +4304,12 @@ export type Messages = typeof en;
  * key for good: a key stays here only between a feature and its translation pass.
  */
 export const PENDING_TRANSLATION = [
+  "tricks.session.details",
+  "settings.tricks.detail.on",
+  "settings.tricks.detail.off",
+  "settings.tricks.detail.about",
+  "settings.tricks.detail.gone",
+  "settings.tricks.detail.toList",
   "settings.tricks.about.drafts",
   "tricks.draft.noSession",
   "tricks.draft.holdsWords",
