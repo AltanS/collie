@@ -868,6 +868,7 @@ describe("ompBuildBlocks emits nothing but raw, bar the four lifted screens", ()
         "composerReady", // the pre-flight's refusal
         "dialogDetectors", // names for the card's report, read only (ADR 0123 amendment 2026-10-28)
         "modalOnScreen", // positive evidence a modal is up: the card's fifth condition
+        "prepareDisplay", // reflow boxed shell output after the readers have finished
         "replyChunks", // lossless transport plan, not a dialog action
         "draftIsOpaque", // never take over an opaque paste chip as literal text
         "extractInputDraft", // the stranded-draft preview + the type-then-verify half
