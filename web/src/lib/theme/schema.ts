@@ -1112,6 +1112,24 @@ export function isColour(value: string): boolean {
   return normaliseColour(value) !== undefined;
 }
 
+/** A colour the grammar accepts, in its parts: sRGB channels 0 to 1 for hex, L C H for oklch, and the alpha. */
+export type ColourParts = { form: "hex"; rgb: [number, number, number]; alpha: number } | { form: "oklch"; l: number; c: number; h: number; alpha: number };
+
+/**
+ * The parts of a colour, read by this grammar and nothing else, or `undefined` when the grammar refuses the value
+ * (`lib/theme/derive.ts` reads every colour here, so it accepts exactly what a theme file may hold).
+ */
+export function readColour(value: string): ColourParts | undefined {
+  const text = normaliseColour(value);
+  if (text === undefined) return undefined;
+  if (text.startsWith("#")) {
+    const byte = (i: number) => Number.parseInt(text.slice(i, i + 2), 16) / 255;
+    return { form: "hex", rgb: [byte(1), byte(3), byte(5)], alpha: text.length === 9 ? byte(7) : 1 };
+  }
+  const o = readOklch(text);
+  return o === undefined ? undefined : { form: "oklch", ...o };
+}
+
 // ── Colour arithmetic ─────────────────────────────────────────────────────────────────────────
 //
 // oklch to oklab is polar to Cartesian; oklab to linear sRGB is Björn Ottosson's published pair of

@@ -36,9 +36,11 @@ Harbour name nothing and draw `plain`. The fix may not overrule that word.
 phone's two rows are the 44 px floor, drawn.**
 
 1. **One line token, derived.** `--edge-firm` is `color-mix(in oklch, var(--foreground) 58%, var(--background))`
-   in `index.css`, and nothing else writes that mix. It is not a theme token, so every theme, an imported one too,
-   gets it from its own ink and page. It is the edge something stands on: the bar's lower edge and a column's pane
-   header. A region cut stays `--rule`.
+   in `index.css`, and nothing else in the stylesheet writes that mix. It is not a theme token. For a theme that is
+   applied, `deriveTokens` makes it (ADR 0172): the same mix first, then a floor of 3:1 against the grounds it
+   separates (the recess, the page and the paper), pushed toward the ink. Collie keeps the stylesheet's line, and
+   the reference test holds the two together. It is the edge something stands on: the bar's lower edge and a
+   column's pane header. A region cut stays `--rule`.
 2. **The bar and its band.** The bar keeps 48 px and ends on `--edge-firm`. Under it lies a 6 px band of the page
    colour across the strip. Both pane headers in the strip are 54 px instead of 60, so the band costs the
    transcript nothing: every column body still starts 111 px down, with the same height and the same first line.
@@ -91,10 +93,11 @@ of `theme-ink-low` and one of `ink-thinned`, all on `pane-chat@390`. The screen 
 
 ## Consequences
 
-- A theme still picks its look, and both looks hold their contrast in every bundled theme. Tuning the 58% is one
-  edit in `index.css`, measured by `e2e/strip-head.spec.ts`.
-- On the phone the stack above the transcript is 26 to 28 px taller. With that shorter reading area a
-  `block-more` button lies under the sticky prompt at 390 in 32 of the themes check's looks, which R5 counts as a
-  clipped ring (`ring-clipped`, an open FINDING of the chat stream's overflow); that ceiling was not raised.
+- A theme still picks its look, and both looks hold their contrast in every bundled theme. An installed theme
+  gets the 3:1 floor from `deriveTokens`. Tuning the 58% is an edit in `index.css` and in `derive.ts` (`EDGE_SHARE`)
+  together; `derive.test.ts` fails when only one moves, and `e2e/strip-head.spec.ts` measures the result.
+- On the phone the stack above the transcript is 26 to 28 px taller. At first a `block-more` button lay under the
+  sticky prompt at 390 in 32 of the themes check's looks (`ring-clipped`). That is fixed: the chat stream keeps
+  scroll padding for the pinned prompt, and the button draws an inset ring. `ring-clipped` is 0 in every look.
 - `TAB_ROW_ADD_TAP_TARGET` is no row's reach any more; it stays as the 30 px row's measure the two larger steps
   are read against.

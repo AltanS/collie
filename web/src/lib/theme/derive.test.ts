@@ -5,8 +5,12 @@ import { describe, expect, it } from "vitest";
 import { generateThemes } from "../../../e2e/themes/generate";
 import {
   contrast,
+  formatColour,
+  rgbToLab,
   DERIVED_TOKENS,
+  deriveReport,
   deriveTokens,
+  EDGE_FLOOR,
   distance,
   HOVER_FLOOR,
   parseColour,
@@ -19,7 +23,7 @@ import {
   type DerivedHalf,
   type Lab,
 } from "./derive";
-import { fillHalves, parseTheme, type Half, type Theme } from "./schema";
+import { fillHalves, isColour, parseTheme, type Half, type Theme } from "./schema";
 
 const read = (id: string): Theme => {
   const parsed = parseTheme(readFileSync(resolve(__dirname, `../../themes/${id}.json`), "utf8"), { maxBytes: 64 * 1024, allowReservedId: true });
@@ -29,13 +33,32 @@ const read = (id: string): Theme => {
 const COLLIE = read("collie");
 const filled = (t: Theme) => fillHalves(t, COLLIE);
 
-// THE REFERENCE: Collie through the function is Collie as painted. The planes are the colours the themes set read
-// off the screen on 2026-11-21 (e2e/themes/collie-states.json, "plane recess" and "plane paper"); the state fills
-// are the tokens Collie's stylesheet points them at. Held within 0.02 in OKLab, the hold of Altan's approval.
+// THE REFERENCE: Collie through the function is Collie as painted. Collie's base tokens are read from
+// `src/themes/collie.json`, which `src/themes/themes.test.ts` holds equal to index.css's `:root`, token by token; the
+// relations derive.ts mirrors are held to index.css's own lines below, so the stylesheet cannot move alone. The planes
+// are the colours the themes set read off the screen on 2026-11-21 (e2e/themes/collie-states.json, "plane recess" and
+// "plane paper"); the state fills are the tokens Collie's stylesheet points them at. Held within 0.005 in OKLab (the
+// worst is 0.0021, the dark recess), well inside the 0.02 of Altan's approval.
+const REFERENCE_TOLERANCE = 0.005;
 const PAINTED = {
   light: { "surface-recess": "#e1dfdd", "surface-paper": "#ffffff" },
   dark: { "surface-recess": "#060605", "surface-paper": "#1d1c1b" },
 } as const;
+
+/**
+ * CSS `color-mix(in oklch, x <share>, y)`, written out here on its own (not derive.ts's), for the firm edge's expected
+ * value: L and C weighted, the hue from x toward y the short way, a hue with no chroma taking the other's.
+ */
+function cssMixOklch(x: Lab, y: Lab, share: number): Lab {
+  const cx = Math.hypot(x[1], x[2]);
+  const cy = Math.hypot(y[1], y[2]);
+  const hx = cx < 1e-4 ? Math.atan2(y[2], y[1]) : Math.atan2(x[2], x[1]);
+  const hy = cy < 1e-4 ? hx : Math.atan2(y[2], y[1]);
+  const d = Math.atan2(Math.sin(hy - hx), Math.cos(hy - hx));
+  const h = hx + d * (1 - share);
+  const c = cx * share + cy * (1 - share);
+  return [x[0] * share + y[0] * (1 - share), c * Math.cos(h), c * Math.sin(h)];
+}
 
 describe("Collie is the reference", () => {
   for (const half of ["light", "dark"] as const) {
@@ -59,8 +82,32 @@ describe("Collie is the reference", () => {
         "state-open-recess": token("control-on"),
         "state-open-paper": token("control-on"),
         ring: token("ring"),
+        "edge-firm": cssMixOklch(token("foreground"), page, 0.58),
       } satisfies Record<keyof DerivedHalf, Lab>;
-      for (const name of DERIVED_TOKENS) expect(distance(at(name), expected[name]), `${half} ${name}`).toBeLessThanOrEqual(0.02);
+      for (const name of DERIVED_TOKENS) expect(distance(at(name), expected[name]), `${half} ${name}`).toBeLessThanOrEqual(REFERENCE_TOLERANCE);
+    });
+  }
+});
+
+describe("index.css holds the relations derive.ts mirrors", () => {
+  const css = readFileSync(resolve(__dirname, "../../index.css"), "utf8");
+  // One line each, as written: a change to any of them is a change to derive.ts's relation too (and to its golden values).
+  for (const line of [
+    "--surface-recess: oklch(from var(--background) calc(l - 0.05) c h);",
+    "--surface-paper: light-dark(oklch(from var(--card) min(1, calc(l + 0.05)) c h), color-mix(in oklch, var(--background), oklch(from var(--card) calc(l + 0.05) c h)));",
+    "--state-hover-page: var(--accent);",
+    "--state-hover-recess: var(--surface-paper);",
+    "--state-hover-paper: var(--accent);",
+    "--state-on-page: var(--accent);",
+    "--state-on-recess: var(--surface-paper);",
+    "--state-on-paper: var(--accent);",
+    "--state-open-page: var(--control-on);",
+    "--state-open-recess: var(--control-on);",
+    "--state-open-paper: var(--control-on);",
+    "--edge-firm: color-mix(in oklch, var(--foreground) 58%, var(--background));",
+  ]) {
+    it(line.slice(0, line.indexOf(":")), () => {
+      expect(css).toContain(`  ${line}\n`);
     });
   }
 });
@@ -103,6 +150,10 @@ function brokenFloors(tokens: Half, d: DerivedHalf): string[] {
     if (hover < HOVER_FLOOR - 1e-3) out.push(`hover on the ${plane} ${hover.toFixed(3)}`);
     if (on < STATE_FLOOR - 1e-3) out.push(`selected on the ${plane} ${on.toFixed(3)}`);
     if (open < STATE_FLOOR - 1e-3) out.push(`open on the ${plane} ${open.toFixed(3)}`);
+  }
+  const edge = at("edge-firm");
+  for (const [name, g] of [["page", page], ["recess", ground.recess], ["paper", ground.paper]] as const) {
+    if (contrast(edge, g) < EDGE_FLOOR - 0.01) out.push(`firm edge on the ${name} ${contrast(edge, g).toFixed(2)}`);
   }
   const ring = at("ring");
   for (const [name, g] of [
@@ -149,4 +200,111 @@ describe("a ground at each end of the lightness range", () => {
       expect(brokenFloors(tokens, deriveTokens(tokens, half))).toEqual([]);
     });
   }
+});
+
+describe("one grammar, finite numbers", () => {
+  it("reads white at lightness 1 (Ottosson's coefficients, none truncated)", () => {
+    expect(Math.abs(rgbToLab([1, 1, 1])[0] - 1)).toBeLessThan(1e-6);
+  });
+
+  it("refuses what the schema refuses, and reads what it reads", () => {
+    for (const bad of ["oklch(1.2.3 0 0)", "oklch(0.5 0.1)", "#abc", "rgb(0 0 0)", "oklch(2 0 0)", "oklch(0.5 0.1 20 / 2)", "var(--x)"]) {
+      expect(isColour(bad), bad).toBe(false);
+      expect(() => parseColour(bad), bad).toThrow(/not a theme colour/u);
+    }
+    for (const good of ["#a1b2c3", "#a1b2c380", "oklch(0.5 0.1 20)", "oklch(.5 0.1 20 / 50%)", "OKLCH( 0.5 0.1 20 )"]) {
+      expect(isColour(good), good).toBe(true);
+      expect(parseColour(good, [0.5, 0, 0]).every((x) => Number.isFinite(x)), good).toBe(true);
+    }
+  });
+
+  it("refuses to write a colour that is not finite", () => {
+    expect(() => formatColour([Number.NaN, 0, 0])).toThrow(/not a finite colour/u);
+  });
+});
+
+/** A small seeded generator (mulberry32), so the fuzz is the same on every run. */
+function seeded(seed: number): () => number {
+  let a = seed;
+  return () => {
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4_294_967_296;
+  };
+}
+
+describe("a few thousand random halves", () => {
+  it("never throws, and every derived value is finite and a colour the schema accepts", () => {
+    const rand = seeded(172);
+    // SAFETY: the index is below the length of a list that is never empty.
+    const pick = <T,>(xs: readonly T[]): T => xs[Math.floor(rand() * xs.length)] as T;
+    const n = (x: number) => String(Math.round(x * 1000) / 1000);
+    const colour = (): string => {
+      const L = pick([0, 1, rand(), rand(), rand() * 0.1, 1 - rand() * 0.1]);
+      const C = pick([0, rand() * 0.05, rand() * 0.37]);
+      const H = rand() * 360;
+      const alpha = pick([undefined, undefined, undefined, rand()]);
+      if (rand() < 0.3) {
+        const byte = () => Math.floor(rand() * 256).toString(16).padStart(2, "0");
+        return `#${byte()}${byte()}${byte()}${alpha === undefined ? "" : byte()}`;
+      }
+      return alpha === undefined ? `oklch(${n(L)} ${n(C)} ${n(H)})` : `oklch(${n(L)} ${n(C)} ${n(H)} / ${n(alpha)})`;
+    };
+    const keys = ["background", "card", "foreground", "muted-foreground", "accent", "control-on", "control-on-foreground", "ring", "secondary", "muted", "surface-recess", "surface-paper"] as const;
+    let halves = 0;
+    for (let i = 0; i < 1500; i += 1) {
+      for (const half of ["light", "dark"] as const) {
+        const tokens: Half = { ...filled(COLLIE)[half] };
+        for (const key of keys) if (key === "background" || rand() < 0.7) tokens[key] = colour();
+        // The edge cases on purpose: the page as the card, the ink as the page.
+        if (i % 7 === 0) tokens.card = tokens.background;
+        if (i % 11 === 0) tokens.foreground = tokens.background;
+        if (i % 13 === 0) tokens["muted-foreground"] = tokens.background;
+        if (rand() < 0.5) delete tokens["surface-recess"];
+        if (rand() < 0.5) delete tokens["surface-paper"];
+        const out = deriveTokens(tokens, half);
+        for (const token of DERIVED_TOKENS) expect(isColour(out[token]), `${token} = ${out[token]}`).toBe(true);
+        halves += 1;
+      }
+    }
+    expect(halves).toBe(3000);
+  }, 120_000);
+});
+
+// THE HONEST ACCOUNT (deriveReport): where floors fight, the derivation takes the best it can reach and says so. Over
+// the three bundled looks and the 24 generated themes, the counts are pinned, so a change shows here as a number.
+describe("the floors the derivation could not meet, over the 27 looks", () => {
+  it("are counted, and the counts hold", () => {
+    const looks: [string, Theme][] = [
+      ["nightwatch", read("nightwatch")],
+      ["daylight", read("daylight")],
+      ["harbour", read("harbour")],
+      ...generateThemes().themes.map((g, i): [string, Theme] => [`gen-${String(i + 1)}-${g.profile}`, g.theme]),
+    ];
+    const themesWith = { ringUnmet: new Set<string>(), recessLighterInLight: new Set<string>(), collapsed: new Set<string>(), anyUnmet: new Set<string>() };
+    for (const [id, theme] of looks) {
+      for (const half of ["light", "dark"] as const) {
+        const r = deriveReport(filled(theme)[half], half);
+        if (r.unmet.some((u) => u.token === "ring")) themesWith.ringUnmet.add(id);
+        if (r.planes.recessLighterInLight) themesWith.recessLighterInLight.add(id);
+        if (r.planes.collapsed) themesWith.collapsed.add(id);
+        if (r.unmet.length > 0) themesWith.anyUnmet.add(id);
+        for (const u of r.unmet) expect(Number.isFinite(u.reached), `${id} ${half} ${u.token}`).toBe(true);
+      }
+    }
+    expect({
+      ringUnmet: themesWith.ringUnmet.size,
+      recessLighterInLight: themesWith.recessLighterInLight.size,
+      collapsed: themesWith.collapsed.size,
+      anyUnmet: themesWith.anyUnmet.size,
+    }).toMatchInlineSnapshot(`
+      {
+        "anyUnmet": 10,
+        "collapsed": 5,
+        "recessLighterInLight": 2,
+        "ringUnmet": 0,
+      }
+    `);
+  });
 });

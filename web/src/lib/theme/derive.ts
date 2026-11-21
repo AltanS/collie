@@ -16,7 +16,7 @@
 // Pure: no DOM, no package. `applyTheme` (store.ts) calls it for every theme it applies; Collie applies no theme and
 // keeps its stylesheet.
 
-import type { AnyThemeToken, Half } from "./schema";
+import { readColour, type AnyThemeToken, type Half } from "./schema";
 
 // ── The floors ────────────────────────────────────────────────────────────────────────────────
 
@@ -26,6 +26,10 @@ export const HOVER_FLOOR = 0.04;
 export const STATE_FLOOR = 0.06;
 /** The focus ring against every ground it can stand on (WCAG 1.4.11). */
 export const RING_FLOOR = 3;
+/** The firm edge against the grounds it separates (WCAG 1.4.11, ADR 0171). */
+export const EDGE_FLOOR = 3;
+/** The ink's share in the firm edge, index.css's `--edge-firm` (58%). */
+const EDGE_SHARE = 0.58;
 /** Text on a plane (WCAG 1.4.3). */
 export const TEXT_FLOOR = 4.5;
 /**
@@ -33,6 +37,13 @@ export const TEXT_FLOOR = 4.5;
  * page clamps Collie's recess to the page itself, where this floor lifts the recess instead.
  */
 export const PLANE_GAP = 0.025;
+
+/**
+ * The version of this function's output. Bump it whenever a change here moves a derived value (a floor, MARGIN, STEP,
+ * a relation): the first frame (`public/theme-init.js`) then ignores the values an older version stored. The golden
+ * values in `derive.golden.test.ts` show such a change as a diff.
+ */
+export const DERIVE_VERSION = 3;
 
 /** The planes a state fill is made for. */
 export const PLANES = ["page", "recess", "paper"] as const;
@@ -52,24 +63,12 @@ export const DERIVED_TOKENS = [
   "state-open-recess",
   "state-open-paper",
   "ring",
+  "edge-firm",
 ] as const;
 export type DerivedToken = (typeof DERIVED_TOKENS)[number];
 
-/** One half's derived tokens, each an `oklch()` value. */
-export interface DerivedHalf {
-  "surface-recess": string;
-  "surface-paper": string;
-  "state-hover-page": string;
-  "state-hover-recess": string;
-  "state-hover-paper": string;
-  "state-on-page": string;
-  "state-on-recess": string;
-  "state-on-paper": string;
-  "state-open-page": string;
-  "state-open-recess": string;
-  "state-open-paper": string;
-  ring: string;
-}
+/** One half's derived tokens, each an `oklch()` value; keyed by DERIVED_TOKENS, so a new token is one entry there. */
+export type DerivedHalf = Record<DerivedToken, string>;
 
 // ── Colour ────────────────────────────────────────────────────────────────────────────────────
 
@@ -82,9 +81,9 @@ const toGamma = (c: number): number => (c <= 0.0031308 ? 12.92 * c : 1.055 * c *
 const clamp01 = (x: number): number => Math.min(1, Math.max(0, x));
 const each = (t: Rgb, f: (x: number) => number): Rgb => [f(t[0]), f(t[1]), f(t[2])];
 
-function rgbToLab(rgb: Rgb): Lab {
+export function rgbToLab(rgb: Rgb): Lab {
   const [r, g, b] = each(rgb, toLinear);
-  const l = Math.cbrt(0.4122214708 * r + 0.5363282 * g + 0.0514459929 * b);
+  const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
   const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
   const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
   return [0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s, 1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s, 0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s];
@@ -108,44 +107,43 @@ export function painted(c: Lab): Lab {
   return rgbToLab(labToRgb(c));
 }
 
-const HEX = /^#([0-9a-f]{6})([0-9a-f]{2})?$/iu;
-const OKLCH = /^oklch\(\s*([\d.]+)\s+([\d.]+)\s+([\d.]+)\s*(?:\/\s*([\d.]+)(%?)\s*)?\)$/u;
+/** A non-finite number inside the derivation is a defect: it throws, and `applyTheme` keeps the stylesheet's relations. */
+function finite(c: Lab, what: string): Lab {
+  if (!c.every((x) => Number.isFinite(x))) throw new Error(`derive: ${what} is not a finite colour`);
+  return c;
+}
 
-/** A theme colour (`#rrggbb`, `#rrggbbaa`, `oklch(L C H)`, `oklch(L C H / A)`) as OKLab, laid over `ground` when it has alpha. */
+/**
+ * A theme colour as OKLab, laid over `ground` when it has alpha. It reads with the schema's own grammar (`readColour`:
+ * `#rrggbb`, `#rrggbbaa`, `oklch(L C H)`, `oklch(L C H / A[%])`), so it accepts exactly what a theme file may hold.
+ */
 export function parseColour(value: string, ground?: Lab): Lab {
+  const parts = readColour(value);
+  if (parts === undefined) throw new Error(`derive: not a theme colour: ${value.slice(0, 64)}`);
   let lab: Lab;
-  let alpha = 1;
-  const hex = HEX.exec(value);
-  const lch = OKLCH.exec(value);
-  if (hex !== null) {
-    const h = hex[1] ?? "000000";
-    const byte = (i: number) => Number.parseInt(h.slice(i, i + 2), 16) / 255;
-    lab = rgbToLab([byte(0), byte(2), byte(4)]);
-    if (hex[2] !== undefined) alpha = Number.parseInt(hex[2], 16) / 255;
-  } else if (lch !== null) {
-    const c = Number(lch[2]);
-    const h = (Number(lch[3]) * Math.PI) / 180;
-    lab = [Number(lch[1]), c * Math.cos(h), c * Math.sin(h)];
-    if (lch[4] !== undefined) alpha = Number(lch[4]) / (lch[5] === "%" ? 100 : 1);
-  } else {
-    throw new Error(`not a theme colour: ${value}`);
+  if (parts.form === "hex") lab = rgbToLab(parts.rgb);
+  else {
+    const h = (parts.h * Math.PI) / 180;
+    lab = [parts.l, parts.c * Math.cos(h), parts.c * Math.sin(h)];
   }
-  if (alpha >= 1 || ground === undefined) return lab;
+  finite(lab, value.slice(0, 64));
+  if (parts.alpha >= 1 || ground === undefined) return lab;
   // Alpha composites in sRGB, as the browser does.
   const top = labToRgb(lab);
   const under = labToRgb(ground);
-  const over = (i: 0 | 1 | 2) => top[i] * alpha + under[i] * (1 - alpha);
-  return rgbToLab([over(0), over(1), over(2)]);
+  const over = (i: 0 | 1 | 2) => top[i] * parts.alpha + under[i] * (1 - parts.alpha);
+  return finite(rgbToLab([over(0), over(1), over(2)]), value.slice(0, 64));
 }
 
 const places = (x: number): string => String(Math.round(x * 10_000) / 10_000);
 
 /** As `oklch(L C H)`, four places: the value written to a custom property. */
 export function formatColour(c: Lab): string {
-  const [L, a, b] = c;
+  const [L, a, b] = finite(c, "a derived value");
   const C = Math.hypot(a, b);
   const H = C < 1e-4 ? 0 : ((Math.atan2(b, a) * 180) / Math.PI + 360) % 360;
-  return `oklch(${places(L)} ${places(C)} ${places(H)})`;
+  // Lightness is written inside 0..1 (a value a hair outside is the clip's rounding), so the output passes the grammar.
+  return `oklch(${places(clamp01(L))} ${places(C)} ${places(H)})`;
 }
 
 /** Distance in OKLab, of the painted colours. */
@@ -172,8 +170,8 @@ export function withLightness(c: Lab, L: number): Lab {
   return [clamp01(L), c[1], c[2]];
 }
 
-/** `color-mix(in oklch, x, y)` at an even split: lightness and chroma halfway, the hue the short way round. */
-function mixOklchHalf(x: Lab, y: Lab): Lab {
+/** `color-mix(in oklch, x <share>, y)`: lightness and chroma `share` of the way from y to x, the hue the short way round. */
+function mixOklch(x: Lab, y: Lab, share: number): Lab {
   const cx = Math.hypot(x[1], x[2]);
   const cy = Math.hypot(y[1], y[2]);
   // A hue with no chroma is powerless in CSS: the other colour's hue is taken.
@@ -182,9 +180,10 @@ function mixOklchHalf(x: Lab, y: Lab): Lab {
   let d = hy - hx;
   if (d > Math.PI) d -= 2 * Math.PI;
   if (d < -Math.PI) d += 2 * Math.PI;
-  const h = hx + d / 2;
-  const c = (cx + cy) / 2;
-  return [(x[0] + y[0]) / 2, c * Math.cos(h), c * Math.sin(h)];
+  const t = 1 - share;
+  const h = hx + d * t;
+  const c = cx * share + cy * t;
+  return [x[0] * share + y[0] * t, c * Math.cos(h), c * Math.sin(h)];
 }
 
 // ── The floor ─────────────────────────────────────────────────────────────────────────────────
@@ -206,11 +205,13 @@ export type Floor = (c: Lab, margin: boolean) => boolean;
  * and chroma stay. When no lightness meets it, the one with the best `score` (how close it came).
  */
 export function pushLightness(start: Lab, direction: 1 | -1, floor: Floor, score: (c: Lab) => number, bothWays = true): Lab {
-  if (floor(start, false)) return start;
+  // A start that is not moved is still returned as painted: the colour checked is the colour on the screen.
+  if (floor(start, false)) return painted(start);
   for (const dir of bothWays ? [direction, -direction] : [direction]) {
     for (let L = start[0] + dir * STEP; L >= 0 && L <= 1; L += dir * STEP) {
-      const c = withLightness(start, L);
-      if (floor(c, true)) return painted(c);
+      // The floor is checked on the painted value, the one returned, so a value on a floor's edge cannot pass and then fail.
+      const c = painted(withLightness(start, L));
+      if (floor(c, true)) return c;
     }
   }
   let best = start;
@@ -287,7 +288,7 @@ function planes(w: Work): void {
   const recess = placePlane(recessStart, awayFrom(recessStart, page), inks, [(c, m) => off(c, page, PLANE_GAP, m)], muted, true);
   w.out["surface-recess"] = recess;
 
-  const paperStart = own("surface-paper") ?? (w.half === "light" ? withLightness(card, Math.min(1, card[0] + 0.05)) : mixOklchHalf(page, withLightness(card, card[0] + 0.05)));
+  const paperStart = own("surface-paper") ?? (w.half === "light" ? withLightness(card, Math.min(1, card[0] + 0.05)) : mixOklch(page, withLightness(card, card[0] + 0.05), 0.5));
   const paperDir = distance(paperStart, page) > 1e-3 ? awayFrom(paperStart, page) : awayFrom(paperStart, recess);
   w.out["surface-paper"] = placePlane(paperStart, paperDir, inks, [(c, m) => off(c, page, PLANE_GAP, m), (c, m) => off(c, recess, PLANE_GAP, m)], muted, false);
 }
@@ -367,8 +368,10 @@ function states(w: Work): void {
 function pushTiers(start: Lab, direction: 1 | -1, tiers: readonly Floor[], score: (c: Lab) => number): Lab {
   for (const bothWays of [false, true]) {
     for (const tier of tiers) {
+      // The relation's own value is checked as it is, with no margin; a pushed one with it.
+      if (tier(start, false)) return painted(start);
       const found = pushLightness(start, direction, tier, () => Number.NEGATIVE_INFINITY, bothWays);
-      if (tier(found, found !== start)) return found;
+      if (tier(found, true)) return found;
     }
   }
   return pushLightness(start, direction, () => false, score);
@@ -390,7 +393,90 @@ function ring(w: Work): void {
   w.out.ring = pushLightness(start, awayFrom(start, page), (c, m) => worst(c) >= RING_FLOOR + (m ? MARGIN.ratio : 0), worst);
 }
 
-const STEPS: readonly ((w: Work) => void)[] = [planes, states, ring];
+/**
+ * THE FIRM EDGE (ADR 0171): the line the large screen's tab bar and a pane's header stand on. Collie's relation is
+ * index.css's own, `color-mix(in oklch, var(--foreground) 58%, var(--background))`. Floor: 3:1 against the grounds it
+ * separates, the recess (the bar), the page (the open tab) and the paper (a column's header), pushed toward the ink.
+ */
+function edgeFirm(w: Work): void {
+  const page = w.colour("background");
+  const start = mixOklch(w.colour("foreground"), page, EDGE_SHARE);
+  const grounds = [page, made(w, "surface-recess"), made(w, "surface-paper")];
+  const worst = (c: Lab) => Math.min(...grounds.map((g) => contrast(c, g)));
+  w.out["edge-firm"] = pushLightness(start, awayFrom(start, page), (c, m) => worst(c) >= EDGE_FLOOR + (m ? MARGIN.ratio : 0), worst);
+}
+
+const STEPS: readonly ((w: Work) => void)[] = [planes, states, ring, edgeFirm];
+
+/** A floor the derivation could not meet: the token, the floor in words, and the value it reached. */
+export interface UnmetFloor {
+  token: DerivedToken;
+  floor: string;
+  reached: number;
+}
+
+/**
+ * How the planes ended: in the light half a recess lighter than the page (the order turned over, as `placePlane` may do
+ * when the muted ink leaves no darker step), and planes that sit on each other (within 0.005).
+ */
+export interface PlaneOrder {
+  recessLighterInLight: boolean;
+  collapsed: boolean;
+}
+
+/** What `deriveReport` returns: the tokens, the floors not met, and how the planes ended. */
+export interface DeriveReport {
+  tokens: DerivedHalf;
+  unmet: UnmetFloor[];
+  planes: PlaneOrder;
+}
+
+/**
+ * The derived tokens and an honest account: which floors were not met (where floors fight, the code takes the best it
+ * can reach), and how the planes ended. Unused by the app for now; derive.test.ts reads it. Each floor is checked on
+ * the finished values with the definitions the steps use, without the margin a pushed value is given.
+ */
+export function deriveReport(tokens: Half, half: Half2): DeriveReport {
+  const out = deriveTokens(tokens, half);
+  const page = parseColour(tokens.background ?? "");
+  const token = (name: AnyThemeToken): Lab => parseColour(tokens[name] ?? "", page);
+  const at = (name: DerivedToken): Lab => parseColour(out[name]);
+  const fg = token("foreground");
+  const muted = token("muted-foreground");
+  const recess = at("surface-recess");
+  const paper = at("surface-paper");
+  const unmet: UnmetFloor[] = [];
+  const need = (ok: boolean, name: DerivedToken, floor: string, reached: number) => {
+    if (!ok) unmet.push({ token: name, floor, reached: Math.round(reached * 1000) / 1000 });
+  };
+  for (const [name, plane] of [["surface-recess", recess], ["surface-paper", paper]] as const) {
+    need(inkHolds(muted, plane, page), name, "muted ink 4.5:1 (or the page's)", contrast(muted, plane));
+    need(inkHolds(fg, plane, page), name, "ink 4.5:1 (or the page's)", contrast(fg, plane));
+    need(distance(plane, page) >= PLANE_GAP, name, `${String(PLANE_GAP)} off the page`, distance(plane, page));
+  }
+  need(distance(paper, recess) >= PLANE_GAP, "surface-paper", `${String(PLANE_GAP)} off the recess`, distance(paper, recess));
+  const grounds = { page, recess, paper };
+  for (const plane of PLANES) {
+    const g = grounds[plane];
+    for (const [kind, floor] of [["hover", HOVER_FLOOR], ["on", STATE_FLOOR], ["open", STATE_FLOOR]] as const) {
+      const name: DerivedToken = `state-${kind}-${plane}`;
+      need(distance(at(name), g) >= floor, name, `${String(floor)} off its ground`, distance(at(name), g));
+    }
+    for (const kind of ["hover", "on"] as const) {
+      const name: DerivedToken = `state-${kind}-${plane}`;
+      need(inkHolds(fg, at(name), page), name, "ink 4.5:1 (or the page's)", contrast(fg, at(name)));
+    }
+  }
+  const fills = PLANES.flatMap((plane) => [at(`state-hover-${plane}`), at(`state-on-${plane}`)]);
+  const ringGrounds = [page, token("card"), recess, paper, token("secondary"), token("muted"), ...fills];
+  const ringWorst = Math.min(...ringGrounds.map((g) => contrast(at("ring"), g)));
+  need(ringWorst >= RING_FLOOR, "ring", `${String(RING_FLOOR)}:1 on every ground`, ringWorst);
+  const edgeWorst = Math.min(...[page, recess, paper].map((g) => contrast(at("edge-firm"), g)));
+  need(edgeWorst >= EDGE_FLOOR, "edge-firm", `${String(EDGE_FLOOR)}:1 on the recess, the page and the paper`, edgeWorst);
+  const recessLighterInLight = half === "light" && recess[0] > page[0] + 1e-3;
+  const collapsed = distance(recess, page) < 0.005 || distance(paper, page) < 0.005 || distance(paper, recess) < 0.005;
+  return { tokens: out, unmet, planes: { recessLighterInLight, collapsed } };
+}
 
 /**
  * The derived tokens of one half of a theme, each an `oklch()` value. `tokens` is the half filled from Collie
@@ -400,6 +486,8 @@ export function deriveTokens(tokens: Half, half: Half2): DerivedHalf {
   const pageValue = tokens.background;
   if (pageValue === undefined) throw new Error("derive: the half has no background");
   const page = parseColour(pageValue);
+  // A token with alpha (a `ring` or a `muted-foreground` with `/ A`) is measured as laid over the page; over the recess,
+  // the paper or a fill it paints a little differently, and that difference is not measured.
   const colour = (token: AnyThemeToken): Lab => {
     const v = tokens[token];
     if (v === undefined) throw new Error(`derive: the half has no "${token}"`);
@@ -407,19 +495,6 @@ export function deriveTokens(tokens: Half, half: Half2): DerivedHalf {
   };
   const w: Work = { half, tokens, colour, out: {} };
   for (const step of STEPS) step(w);
-  const v = (token: DerivedToken): string => formatColour(made(w, token));
-  return {
-    "surface-recess": v("surface-recess"),
-    "surface-paper": v("surface-paper"),
-    "state-hover-page": v("state-hover-page"),
-    "state-hover-recess": v("state-hover-recess"),
-    "state-hover-paper": v("state-hover-paper"),
-    "state-on-page": v("state-on-page"),
-    "state-on-recess": v("state-on-recess"),
-    "state-on-paper": v("state-on-paper"),
-    "state-open-page": v("state-open-page"),
-    "state-open-recess": v("state-open-recess"),
-    "state-open-paper": v("state-open-paper"),
-    ring: v("ring"),
-  };
+  // SAFETY: the entries are exactly DERIVED_TOKENS, each made above (`made` throws for one that is not).
+  return Object.fromEntries(DERIVED_TOKENS.map((token) => [token, formatColour(made(w, token))])) as DerivedHalf;
 }

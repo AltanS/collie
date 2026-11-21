@@ -1169,7 +1169,8 @@ not among them: the app makes them from the base colours. Each one must stay vis
 the four shipped ones ([ADR 0172](./.adr/0172-derived-state-colours-are-measured-and-collie-is-held.md)).
 
 **One function makes them.** `deriveTokens(base, half)` in `web/src/lib/theme/derive.ts` takes one half of a
-theme and returns the recess, the paper, a hover, a selected and an open fill for each plane, and the ring. Each
+theme and returns the recess, the paper, a hover, a selected and an open fill for each plane, the ring and the firm
+edge. Each
 value is made in two steps.
 
 1. Collie's relation: the same expression Collie's stylesheet uses today.
@@ -1180,8 +1181,9 @@ value is made in two steps.
 and sets the result inline beside the base tokens. Collie applies no theme. Its stylesheet holds the same
 relations in `index.css`.
 
-**The reference test.** `derive.test.ts` puts Collie's own base tokens through the function. The result must be
-Collie as painted, within 0.02 in OKLab, in both halves. The worst value today is 0.0021, the dark recess. This
+**The reference test.** `derive.test.ts` puts Collie's own base tokens through the function. It reads them from
+`src/themes/collie.json`, which `themes.test.ts` holds equal to `index.css`; the relations are held to `index.css`'s
+own lines. The result must be Collie as painted, within 0.005 in OKLab, in both halves. The worst value today is 0.0021, the dark recess. This
 test keeps Altan's approved look and the function from drifting apart. The themes set also holds the 241 state
 colours Collie painted on 2026-11-21 (`web/e2e/themes/collie-states.json`), within 0.02.
 
@@ -1193,6 +1195,11 @@ colours Collie painted on 2026-11-21 (`web/e2e/themes/collie-states.json`), with
 | `--state-on-<plane>` | the same as the hover | 0.06 off its ground; the same inks |
 | `--state-open-<plane>` | `--control-on` | 0.06 off its ground; the on-colour's ink as readable as on the tint |
 | `--ring` | the theme's own ring | 3:1 on the page, the card, the recess, the paper, the band, the muted fill and each plane's hover and selected fill |
+| `--edge-firm` | the ink 58% into the page (`color-mix` in oklch) | 3:1 on the recess, the page and the paper |
+
+Where floors fight, the function takes the best value it can reach; `deriveReport` names each floor not met. A
+theme's own `ring` and planes are a start that a floor may move. The state variables (`--state-hover-<plane>` and
+the rest) are internal names and no contract for a theme file.
 
 A pushed value lands 0.006 past a distance floor and 0.1 past a ratio floor, because the screen rounds it to 8 bits.
 A fill on the page that has to move is also kept off the recess, because a strip of the recess with no plane class
