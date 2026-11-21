@@ -547,6 +547,22 @@ describe("theme-init.js sets the stored derived colours, and only current ones",
     expect(run(bad).map(([p]) => p)).toEqual(ONLY_DERIVED.slice(1).map((t) => `--${t}`));
   });
 
+  it("stored but no theme applies it: Collie, a blob-less device, a removed theme: ignored", () => {
+    fresh();
+    applyTheme(midnightTheme(), "imported");
+    const stored = localStorage.getItem(DERIVED_STORAGE_KEY) ?? "";
+    expect(stored).not.toBe("");
+    // The switch back to Collie (reset, Use Collie): the cache stays, and theme-init.js stops before it.
+    const collie = runInit({ "collie:design:v1": JSON.stringify({ theme: "collie" }), "collie:themes:v1": JSON.stringify(midnight(1)), [DERIVED_STORAGE_KEY]: stored });
+    expect(derivedOf(collie)).toEqual([]);
+    expect(ringOf(collie)).toBeUndefined();
+    expect(derivedOf(runInit({ [DERIVED_STORAGE_KEY]: stored }))).toEqual([]);
+    // The theme removed from the library while the design blob still names it.
+    const removed = runInit({ "collie:design:v1": JSON.stringify({ theme: "midnight" }), "collie:themes:v1": JSON.stringify({ version: 1, themes: [] }), [DERIVED_STORAGE_KEY]: stored });
+    expect(derivedOf(removed)).toEqual([]);
+    expect(ringOf(removed)).toBeUndefined();
+  });
+
   it("none stored: no derived colour", () => {
     fresh();
     const seen = runInit({ "collie:design:v1": JSON.stringify({ theme: "midnight" }), "collie:themes:v1": JSON.stringify(midnight(1)) });

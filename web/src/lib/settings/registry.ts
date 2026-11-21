@@ -253,6 +253,7 @@ export const NOT_SETTINGS: ReadonlyMap<string, string> = new Map([
   ["collie:push-disabled", "the Push switch's memory of an Off, part of notifications.push"],
   ["collie:pairing-expires", "the pairing's expiry"],
   ["collie:shape:", "remembered page shapes for a calm first frame"],
+  ["collie:derived:v1", "a cache of the colours derived from the applied theme: applyTheme rebuilds it, theme-init.js reads it for the first frame"],
   ["collie:session-later", "trick proposals closed with Not now"],
   ["collie:recent-panes:v1", "the panes this device opened last"],
   ["collie:slot:v1:", "a pane's reserved layout slot"],
