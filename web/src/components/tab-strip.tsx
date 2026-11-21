@@ -616,6 +616,10 @@ function Tab({
         // THE PLAIN LOOK IN THE BAR: the open tab stands on the bar's firm edge with a 2px bar of the theme's ink,
         // as wide as the tab, square ends. An inset shadow, so the box and the label do not move.
         clear && look === "plain" && active && "shadow-[inset_0_-2px_0_0_var(--foreground)]",
+        // The focus ring 2px clear of the tab's own edge: the folder tab's top and sides and the plain tab's bar of
+        // ink are 1 to 2px of the firm edge or of full ink, and a ring laid against them measured 1.0:1 on that side
+        // (e2e/themes, R5). The offset is the ring's outer edge, so -6px draws it 4 to 6px inside.
+        clear && "focus-visible:-outline-offset-6",
         // THE FOLDER LOOK (`tabs: folder`). Both states carry the same 1px side borders, so the
         // box is one size and only the paint changes; the open tab paints them in `rule`, fills with
         // the page colour and wears the 2px `tab-active` edge as an inset shadow (no top border, so

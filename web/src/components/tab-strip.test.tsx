@@ -1084,8 +1084,9 @@ describe("TabStrip at each width class", () => {
     renderStrip();
     const cell =
       "relative flex h-11 min-w-11 shrink-0 select-none items-center justify-center gap-1.5 [-webkit-touch-callout:none] whitespace-nowrap px-2 text-[12px] transition-colors before:inset-y-0 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring";
-    const open = cn(STRIP_TAP_TARGET, cell, "font-semibold text-foreground", "shadow-[inset_0_-2px_0_0_var(--foreground)]");
-    const other = cn(STRIP_TAP_TARGET, cell, "font-normal text-muted-foreground hover:bg-foreground/10 hover:text-foreground");
+    // The ring 4 to 6px inside (`-outline-offset-6`), clear of the bar of ink (ADR 0171 rule 7).
+    const open = cn(STRIP_TAP_TARGET, cell, "font-semibold text-foreground", "shadow-[inset_0_-2px_0_0_var(--foreground)]", "focus-visible:-outline-offset-6");
+    const other = cn(STRIP_TAP_TARGET, cell, "font-normal text-muted-foreground hover:bg-foreground/10 hover:text-foreground", "focus-visible:-outline-offset-6");
     expect(classesOf(screen.getByRole("button", { name: "Alpha" }))).toEqual(open.split(" ").toSorted());
     expect(classesOf(screen.getByRole("button", { name: "Beta" }))).toEqual(other.split(" ").toSorted());
     const plus = screen.getByRole("button", { name: "New tab" });

@@ -91,9 +91,10 @@ export function ColumnControls({
           size="lg"
           data-slot="column-width"
           // A stated width, so 1/2, 4/5 and Full are one box and a cycle moves nothing (DESIGN.md §2). A WORD, not
-          // a box: the bordered box was the heaviest thing in the header (2026-11-21), so it takes the icons'
-          // muted ink and one weight, and the ghost button's hover.
-          className="w-14 shrink-0 px-0 text-xs font-semibold tabular-nums text-muted-foreground"
+          // a box: the bordered box was the heaviest thing in the header (2026-11-21), so it keeps the box's ink and
+          // weight and loses only the border, with the ghost button's hover. Not the muted ink: on a column's paper in
+          // a generated mid-grey theme that fell under 4.5:1 (e2e/themes, R5), where the full ink holds.
+          className="w-14 shrink-0 px-0 text-xs font-medium tabular-nums text-foreground"
           aria-label={t("wide.width.aria", { width: presetWord(preset) })}
           onClick={own(onCycle)}
         >

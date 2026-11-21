@@ -3099,7 +3099,7 @@ export function AgentChat({
                             workspace: agent.workspaceLabel,
                             status: t("chat.header.statusAria", { label: isShell ? t("status.shellBadge") : statusLabel(shownStatus(agent)) }),
                           })}
-                          className={cn("-ml-2 flex h-11 max-w-[40%] shrink-0 items-center gap-1 rounded-md px-2 text-[12px] font-semibold text-foreground transition-colors", FOCUS_RING_INSET, HOVER_FILL)}
+                          className={cn("-ml-2 flex h-11 max-w-[40%] shrink-0 items-center gap-1 rounded-md px-2 text-[12px] font-semibold text-foreground transition-colors", FOCUS_RING_INSET, "focus-visible:-outline-offset-4", HOVER_FILL)}
                         >
                           <span className="min-w-0 truncate">{agent.workspaceLabel}</span>
                           <Icon name="row-go" className="size-3.5 shrink-0 text-muted-foreground" />
