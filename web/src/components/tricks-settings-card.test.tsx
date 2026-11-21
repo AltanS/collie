@@ -1149,7 +1149,7 @@ describe("tricks switched off as a whole", () => {
     await findRow("legs");
     const lines = document.querySelectorAll('[data-line="tricks-off"]');
     expect(lines).toHaveLength(1);
-    expect(lines[0]?.textContent).toBe("Tricks are switched off on this machine; switch them on in Settings, Experiments.");
+    expect(lines[0]?.textContent).toBe("Tricks are switched off on this machine; switch them on in Settings, Tricks and the Hill.");
     expect(screen.getByTestId("tricks-settings").firstElementChild).toBe(lines[0]);
     expect(screen.getByRole("switch", { name: "Browser leg" })).toBeDisabled();
     expect(screen.getByRole("switch", { name: "Tracker" })).toBeDisabled();
@@ -1170,7 +1170,7 @@ describe("tricks switched off as a whole", () => {
   });
 
   it("the details page still opens, and its take-changes switch and the trick's own switch are disabled", async () => {
-    // The reply's off: the snapshot's own `tricksOff` sends both pages to Settings, Experiments (settings-trick.test.tsx).
+    // The reply's off: the snapshot's own `tricksOff` sends both pages to Settings, Tricks and the Hill (settings-trick.test.tsx).
     const reply: TricksReply = { rev: 5, tricks: [AUTO], parts: [], present: [], off: true };
     const store = createTricksStore({ fetchTricks: async () => reply, tapTrick: async () => Promise.reject(new Error("no tap")), mintRequestId: () => "r" });
     await store.syncTricks(5);

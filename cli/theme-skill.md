@@ -12,7 +12,7 @@ CSS in it.
 ## The loop
 
 1. Start from the complete example under "Write a theme" below, or from a file the operator exported
-   from the app (Settings, Appearance, Theme, Export).
+   from the app (Settings, Look and feel, Theme, Export).
 2. Set `id`, `name` and `author`. The `id` of a theme Collie ships is refused.
 3. Change only the keys you need. A token you leave out takes the value of the theme Collie, so a short
    file is a good file.
@@ -25,7 +25,7 @@ CSS in it.
 5. Exit 1 is a refusal. Fix every cause it prints, then run the check again.
 6. Exit 0 with warnings is a theme that is hard to read in one place. Fix each warning the operator did
    not ask for, then run the check again. Stop when the check is clean or the operator accepts a warning.
-7. Tell the operator how to try it: Settings, Appearance, Theme, Paste or Import, then Try.
+7. Tell the operator how to try it: Settings, Look and feel, Theme, Paste or Import, then Try.
 
 ## Rules that save a round trip
 

@@ -38,7 +38,7 @@ const OPEN: Extract<PairApproveState, { kind: "open" }> = {
 };
 
 const PHONE_STATES: readonly { state: string; label: string; reach: string; value: PairPhoneState }[] = [
-  { state: "pair-phone-idle", label: "1. idle, the button", reach: "an unpaired browser, Dashboard or Settings, System", value: { kind: "idle" } },
+  { state: "pair-phone-idle", label: "1. idle, the button", reach: "an unpaired browser, Dashboard or Settings, Devices and machines", value: { kind: "idle" } },
   { state: "pair-phone-waiting", label: "2. waiting, QR and code", reach: "tap Pair with your phone", value: { kind: "waiting", code: "K7MP2Q", link: LINK, remainingMs: 94_000 } },
   { state: "pair-phone-approved", label: "3. approved, reloading", reach: "tap the right code on the phone", value: { kind: "approved", label: "Chrome on Linux" } },
   { state: "pair-phone-refused", label: "4. refused by the phone", reach: "tap a wrong code or Not my device", value: { kind: "refused" } },

@@ -34,19 +34,19 @@ const valueIn = (label: string): string => slotIn(label).textContent!;
 describe("FontSettingsControl — the draft-text size row", () => {
   it("offers its own stepper, starting at the 14px default", () => {
     render(<FontSettingsControl />);
-    expect(screen.getByText("Draft text")).toBeInTheDocument();
-    expect(valueIn("Draft text")).toBe("14");
+    expect(screen.getByText("Reply box text size")).toBeInTheDocument();
+    expect(valueIn("Reply box text size")).toBe("14");
   });
 
   it("steps the draft size without moving the mirror's", async () => {
     const user = userEvent.setup();
     render(<FontSettingsControl />);
-    const mirrorBefore = valueIn("Mirror text");
+    const mirrorBefore = valueIn("Terminal text size");
 
     await user.click(increaseDraft());
 
-    expect(valueIn("Draft text")).toBe("15");
-    expect(valueIn("Mirror text")).toBe(mirrorBefore);
+    expect(valueIn("Reply box text size")).toBe("15");
+    expect(valueIn("Terminal text size")).toBe(mirrorBefore);
     expect(localStorage.getItem(STORAGE_KEY)).toContain('"draftFontSize":15');
   });
 
@@ -55,13 +55,13 @@ describe("FontSettingsControl — the draft-text size row", () => {
     render(<FontSettingsControl />);
 
     await user.click(decreaseDraft()); // 13
-    expect(valueIn("Draft text")).toBe("13");
+    expect(valueIn("Reply box text size")).toBe("13");
     expect(decreaseDraft()).toBeDisabled(); // …and no further: 13 is the floor for a field you type in
 
     await user.click(increaseDraft());
     await user.click(increaseDraft());
     await user.click(increaseDraft());
-    expect(valueIn("Draft text")).toBe("16");
+    expect(valueIn("Reply box text size")).toBe("16");
     expect(increaseDraft()).toBeDisabled();
 
     // The mirror's own stepper is untouched by all of that and still has room below 13.
@@ -88,6 +88,6 @@ describe("FontSettingsControl — the draft-text size row", () => {
   // figures are tabular, so stepping 9 → 10 cannot walk the two buttons beside it.
   it("pins the number's slot so stepping it cannot move the buttons", () => {
     render(<FontSettingsControl />);
-    expect(slotIn("Draft text").className).toMatch(/(?:^|\s)w-8(?=\s|$)/);
+    expect(slotIn("Reply box text size").className).toMatch(/(?:^|\s)w-8(?=\s|$)/);
   });
 });

@@ -68,7 +68,7 @@ export const PAGES: readonly PageDef[] = [
     icon: "mic",
     groups: [
       { id: "mic", heading: "settings.voice.status.label" },
-      { id: "phone", heading: "settings.voice.phone.label" },
+      { id: "phone", heading: "settings.voice.phoneSpeech.label" },
       { id: "after", heading: "settings.voice.after.label" },
       { id: "host", heading: "settings.voice.host.label" },
       { id: "model", heading: "settings.voice.model.title" },
@@ -180,6 +180,13 @@ export const OLD_FRAGMENTS = {
   "install-count": "privacy",
 } as const satisfies Record<string, PageId>;
 
+/** The row each old fragment pointed at, so the page it opens scrolls to that row and marks it as a search result does. */
+export const OLD_FRAGMENT_ROWS = {
+  changes: "dashboard.changes.nested",
+  "paired-devices": "devices.paired",
+  "install-count": "privacy.telemetry",
+} as const satisfies Record<keyof typeof OLD_FRAGMENTS, string>;
+
 /**
  * The places a row lives in when it has no Settings row: one pane's own sheets and menu, a view, the New page. Per
  * group, the words that say where, which the search shows in place of a page and a link.
@@ -195,3 +202,20 @@ export const PLACES = {
   new: { page: "settings.where.newPage" },
   "dashboard-bar": { bar: "settings.where.dashboardBar", machines: "settings.where.machinesSheet" },
 } as const satisfies Record<PlaceId, Readonly<Record<string, MessageKey>>>;
+
+/**
+ * The row id a page's fragment names, without reading the registry: an old fragment's row, or a fragment of a row id's
+ * shape (`look.math`). The page looks for that id's slot; a fragment of another shape (`#theme=…`) names no row.
+ */
+export function fragmentRowId(hash: string): string | undefined {
+  const raw = hash.startsWith("#") ? hash.slice(1) : hash;
+  let id: string;
+  try {
+    id = decodeURIComponent(raw);
+  } catch {
+    return undefined;
+  }
+  const old = new Map<string, string>(Object.entries(OLD_FRAGMENT_ROWS)).get(id);
+  if (old !== undefined) return old;
+  return /^[a-z][A-Za-z-]*(\.[A-Za-z][A-Za-z0-9-]*)+$/.test(id) ? id : undefined;
+}

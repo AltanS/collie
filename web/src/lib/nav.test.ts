@@ -84,7 +84,7 @@ describe("the hill path", () => {
 });
 
 describe("a trick's card (M96 spec 14)", () => {
-  it("carries the scope, and Back steps back to Settings, Tricks or the Dashboard, whichever opened it", () => {
+  it("carries the scope, and Back steps back to Settings, Tricks and the Hill or the Dashboard, whichever opened it", () => {
     expect(trickCardPath("dc_abc123def456")).toBe("/trick-card/dc_abc123def456");
     expect(trickCardPath("dc_abc123def456", { host: "badger", session: undefined })).toBe("/trick-card/dc_abc123def456?h=badger");
     expect(ancestorsOf("/trick-card/dc_abc123def456")).toEqual(["/", "/settings/tricks"]);
@@ -255,10 +255,10 @@ describe("voicePagePath", () => {
 });
 
 describe("installCountPath", () => {
-  it("names the page below System, keeping the scope, and is where the dashboard notice opens", () => {
-    expect(installCountPath()).toBe("/settings/system/install-count");
-    expect(installCountPath({ host: "badger", session: "demo" })).toBe("/settings/system/install-count?h=badger&s=demo");
-    expect(telemetrySettingsPath()).toBe("/settings/system/install-count");
+  it("names the page below Privacy and data, keeping the scope, and is where the dashboard notice opens", () => {
+    expect(installCountPath()).toBe("/settings/privacy/install-count");
+    expect(installCountPath({ host: "badger", session: "demo" })).toBe("/settings/privacy/install-count?h=badger&s=demo");
+    expect(telemetrySettingsPath()).toBe("/settings/privacy/install-count");
   });
 });
 
@@ -275,18 +275,18 @@ describe("accountsAddPath and accountPath", () => {
 });
 
 describe("characterPath", () => {
-  it("names the page below Appearance, keeping the scope", () => {
-    expect(characterPath()).toBe("/settings/appearance/character");
-    expect(characterPath({ host: "badger", session: "demo" })).toBe("/settings/appearance/character?h=badger&s=demo");
+  it("names the page below Look and feel, keeping the scope", () => {
+    expect(characterPath()).toBe("/settings/look/character");
+    expect(characterPath({ host: "badger", session: "demo" })).toBe("/settings/look/character?h=badger&s=demo");
   });
 });
 
 describe("pairLandingPath", () => {
-  // The QR `collie pair` prints names `/settings?pair=<code>`. The form is on System now, so the
+  // The QR `collie pair` prints names `/settings?pair=<code>`. The form is on Devices and machines, so the
   // index forwards a code there with the whole query, scope included.
-  it("sends a pairing code to Settings → System with the query intact", () => {
-    expect(pairLandingPath("?pair=ABCD2345")).toBe("/settings/system?pair=ABCD2345");
-    expect(pairLandingPath("?h=badger&pair=ABCD2345")).toBe("/settings/system?h=badger&pair=ABCD2345");
+  it("sends a pairing code to Settings → Devices and machines with the query intact", () => {
+    expect(pairLandingPath("?pair=ABCD2345")).toBe("/settings/devices?pair=ABCD2345");
+    expect(pairLandingPath("?h=badger&pair=ABCD2345")).toBe("/settings/devices?h=badger&pair=ABCD2345");
   });
 
   it("leaves the index alone when there is no code", () => {
@@ -344,12 +344,14 @@ describe("ancestorsOf / isAncestor: the level tree", () => {
     ["/space/w1/changes/commit", "/space/w1/changes", false],
     ["/settings/voice", "/settings/voice/host", true],
     ["/settings", "/settings/voice/model", true],
-    ["/settings/system", "/settings/system/install-count", true],
-    ["/settings", "/settings/system/install-count", true],
-    ["/settings/system/install-count", "/settings/system", false],
-    ["/settings/appearance", "/settings/appearance/character", true],
-    ["/settings", "/settings/appearance/character", true],
-    ["/settings/appearance/character", "/settings/appearance", false],
+    ["/settings/privacy", "/settings/privacy/install-count", true],
+    ["/settings", "/settings/privacy/install-count", true],
+    ["/settings/privacy/install-count", "/settings/privacy", false],
+    ["/settings/look", "/settings/look/character", true],
+    ["/settings", "/settings/look/character", true],
+    ["/settings/look/character", "/settings/look", false],
+    ["/settings/notifications", "/settings/notifications/load/lodge", true],
+    ["/settings/notifications/load/lodge", "/settings/notifications", false],
     ["/settings/accounts", "/settings/accounts/add", true],
     ["/settings", "/settings/accounts/acc-work", true],
     ["/settings/accounts/acc-work", "/settings/accounts", false],
@@ -368,16 +370,16 @@ describe("ancestorsOf / isAncestor: the level tree", () => {
     ["/new", "/settings", true],
     ["/conversations", "/settings", true],
     ["/pane/w1%3Ap1/history", "/settings", false],
-    ["/settings/system", "/settings", false],
+    ["/settings/devices", "/settings", false],
     ["/machines", "/settings", false],
     ["/settings", "/settings/updates", true],
     ["/", "/settings/updates", true],
     ["/", "/crew", true],
     ["/settings", "/crew", true],
-    // Machines: Settings above it, and a machine above that. The crew census and the System card
-    // open both, so each is a legitimate parent there too.
+    // Machines: Devices and machines above it, and Settings above that. The crew census opens a
+    // machine, so it is a legitimate parent there too.
     ["/settings", "/machines", true],
-    ["/settings/system", "/machines", true],
+    ["/settings/devices", "/machines", true],
     ["/", "/machines", true],
     ["/crew", "/machines", false],
     ["/machines", "/machines/lodge", true],
@@ -429,7 +431,7 @@ describe("Settings' back arrow", () => {
   it("keeps the opener across a section round trip", () => {
     // Pane, Settings, a section: the section's arrow steps back onto Settings, whose own entry still
     // holds the pane as its `from`, so Settings' arrow steps back onto the pane.
-    expect(resolveUp("/settings/system", "/settings", "/settings")).toEqual({ kind: "back" });
+    expect(resolveUp("/settings/devices", "/settings", "/settings")).toEqual({ kind: "back" });
     expect(resolveUp("/settings", "/pane/w1%3Ap1", "/")).toEqual({ kind: "back" });
     // A section reached with no Settings entry behind it (the update ribbon on a pane) is replaced by
     // Settings, and `useNav` keeps the pane as its `from` because the pane is now a parent of Settings.
@@ -446,7 +448,7 @@ describe("resolveUp: the back arrow", () => {
 
   it("replaces onto the structural parent when the entry behind is not one", () => {
     expect(resolveUp("/settings/updates", "/pane/p1", "/settings")).toEqual({ kind: "replace", to: "/settings" });
-    expect(resolveUp("/settings", "/settings/system", "/")).toEqual({ kind: "replace", to: "/" });
+    expect(resolveUp("/settings", "/settings/devices", "/")).toEqual({ kind: "replace", to: "/" });
   });
 
   it("replaces on a cold entry with no from", () => {
@@ -583,27 +585,29 @@ describe("parentChain: what a cold deep link gets behind it", () => {
     ["/settings", "", ["/"]],
     // Updates is the first row of the index, so a cold deep link gets the index behind it.
     ["/settings/updates", "", ["/", "/settings"]],
-    ["/settings/device", "", ["/", "/settings"]],
+    ["/settings/keys", "", ["/", "/settings"]],
     ["/settings/voice", "", ["/", "/settings"]],
     // The two pages below the Voice hub: the hub and the index behind them.
     ["/settings/voice/host", "", ["/", "/settings", "/settings/voice"]],
     ["/settings/voice/model", "?h=badger", ["/?h=badger", "/settings?h=badger", "/settings/voice?h=badger"]],
-    // The install count sits one level below System: the index and System behind it.
-    ["/settings/system/install-count", "", ["/", "/settings", "/settings/system"]],
-    ["/settings/system/install-count", "?h=badger", ["/?h=badger", "/settings?h=badger", "/settings/system?h=badger"]],
-    // The Character page sits one level below Appearance: the index and Appearance behind it.
-    ["/settings/appearance/character", "", ["/", "/settings", "/settings/appearance"]],
-    ["/settings/appearance/character", "?h=badger", ["/?h=badger", "/settings?h=badger", "/settings/appearance?h=badger"]],
+    // The install count sits one level below Privacy and data: the index and that page behind it.
+    ["/settings/privacy/install-count", "", ["/", "/settings", "/settings/privacy"]],
+    ["/settings/privacy/install-count", "?h=badger", ["/?h=badger", "/settings?h=badger", "/settings/privacy?h=badger"]],
+    // The Character page sits one level below Look and feel: the index and that page behind it.
+    ["/settings/look/character", "", ["/", "/settings", "/settings/look"]],
+    ["/settings/look/character", "?h=badger", ["/?h=badger", "/settings?h=badger", "/settings/look?h=badger"]],
     // Accounts (M101): the Add form and one account's page sit below the list, and the index behind that.
     ["/settings/accounts", "", ["/", "/settings"]],
     ["/settings/accounts/add", "", ["/", "/settings", "/settings/accounts"]],
     ["/settings/accounts/claude%3Adefault", "?h=badger", ["/?h=badger", "/settings?h=badger", "/settings/accounts?h=badger"]],
     ["/settings/accounts/claude%3Adefault/login", "", ["/", "/settings", "/settings/accounts", "/settings/accounts/claude%3Adefault"]],
-    ["/crew", "", ["/", "/settings", "/settings/system"]],
-    // Machines sits under Settings, and one machine under Machines: a cold deep link gets both behind it.
-    ["/machines", "", ["/", "/settings"]],
-    ["/machines/lodge", "", ["/", "/settings", "/machines"]],
-    ["/machines/lodge", "?h=badger", ["/?h=badger", "/settings?h=badger", "/machines?h=badger"]],
+    ["/crew", "", ["/", "/settings", "/settings/devices"]],
+    // Machines sits under Devices and machines, and one machine under Machines: a cold deep link gets them all behind it.
+    ["/machines", "", ["/", "/settings", "/settings/devices"]],
+    ["/machines/lodge", "", ["/", "/settings", "/settings/devices", "/machines"]],
+    ["/machines/lodge", "?h=badger", ["/?h=badger", "/settings?h=badger", "/settings/devices?h=badger", "/machines?h=badger"]],
+    // One machine's load alerts sit below Notifications (ADR 0168).
+    ["/settings/notifications/load/lodge", "", ["/", "/settings", "/settings/notifications"]],
     // The New page: the screen it names behind it. A pane's worktree gets the pane too.
     ["/new", "", ["/"]],
     ["/new", "?machine=mini", ["/?h=mini"]],

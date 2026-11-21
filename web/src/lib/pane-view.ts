@@ -8,7 +8,7 @@
 // that.
 //
 // ── CHAT IS THE DEFAULT (1.17.0, ADR 0082) ───────────────────────────────────
-// Until 1.16 this value sat behind an opt-in (`chatExperiment`, Settings → Experiments) and the
+// Until 1.16 this value sat behind an opt-in (`chatExperiment`, Settings → Tricks and the Hill) and the
 // recorded decision was "Terminal is the default, and the default flips in 2.0". It flipped in
 // 1.17.0 instead, and the gate is gone: this value alone says which body a pane with a session
 // draws, and its default IS the flip. A device that had chosen the terminal keeps it. A stored

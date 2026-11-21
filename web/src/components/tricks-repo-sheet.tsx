@@ -13,7 +13,7 @@ import { readPhoneSource, shownIndexText, type RepoAddReply, type RepoListEntry,
 import { cn } from "@/lib/utils";
 import { mintRequestId } from "@/lib/worktree-name";
 
-// Settings, Tricks: "Add from a repository" (2026-11-17, package J). One row at the foot of the list opens this
+// Settings, Tricks and the Hill: "Add from a repository" (2026-11-17, package J). One row at the foot of the list opens this
 // sheet. A person pastes the https link of a repository, the bridge reads its `collie-tricks.json` (a list of
 // folders, and nothing more) and the sheet shows one row per trick with its own Add. An Add fetches that one
 // folder, checks it as any trick is checked, and lands it OFF: the trick appears in the main list, and its own
@@ -94,7 +94,7 @@ export function RepoAddRow({ onList = listRepoTricks, onAdd = addRepoTrick, tric
         className="-mx-3 h-11 w-[calc(100%+1.5rem)] justify-start gap-2 px-3 font-medium"
       >
         <Icon name="add" className="size-4 shrink-0 text-muted-foreground" aria-hidden />
-        <span className="min-w-0 truncate">{t("settings.tricks.repo.row")}</span>
+        <span className="min-w-0 truncate">{t("settings.tricks.repo.rowTrick")}</span>
       </Button>
       {/* In the page body, outside the list group: the group's rules style every child, and a fixed sheet is none of its rows. */}
       {open && createPortal(<RepoAddSheet open onClose={() => setOpen(false)} onList={onList} onAdd={onAdd} />, document.body)}

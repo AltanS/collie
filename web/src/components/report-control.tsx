@@ -8,7 +8,7 @@ import { useLocale } from "@/hooks/use-locale";
 import { t } from "@/lib/i18n";
 import { openReport } from "@/lib/report/store";
 
-// Settings, System: Report a problem (ADR 0123). The switch turns the card after failed sends on or off
+// Settings, Updates and about: Report a problem (ADR 0123). The switch turns the card after failed sends on or off
 // for this device (on by default: the rule collects nothing and sends nothing). The button opens the same
 // sheet the card opens, with no pane: it reports this machine's setup and the problems this phone noted.
 // A pane's own report opens from that pane's menu.

@@ -31,7 +31,7 @@ import { isReadOnly } from "@/lib/types";
 //
 // The header's title is "Trick details"; the trick's name is the page's `h1`, in the head (2026-11-21).
 // Back goes up one level (ADR 0067): to the list, or to the trick's own page when its header opened this one.
-// Tricks switched off as a whole send a deep link to Settings, Experiments, as the list does.
+// Tricks switched off as a whole send a deep link to Settings, Tricks and the Hill, as the list does.
 
 export interface SettingsTrickRouteProps extends TrickWriteCalls {
   /** The store the trick is read from. The app's own by default; a test passes its own. */
@@ -53,7 +53,7 @@ export function rowOfAddress(rows: readonly TrickListRow[], address: TrickDetail
 export function SettingsTrickRoute(props: SettingsTrickRouteProps) {
   const root = useOptionalRootData();
   const scope = useScope();
-  if (root?.tricksOff === true) return <Navigate to={settingsSectionPath("experiments", scope)} replace />;
+  if (root?.tricksOff === true) return <Navigate to={settingsSectionPath("tricks", scope)} replace />;
   return <TrickPage {...props} />;
 }
 

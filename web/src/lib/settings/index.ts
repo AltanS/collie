@@ -1,7 +1,7 @@
 import { matchTerm, queryTerms, type Range } from "@/lib/fuzzy";
 import { t, type MessageKey } from "@/lib/i18n";
 
-import { PLACES, pageDef } from "./pages";
+import { OLD_FRAGMENT_ROWS, PLACES, pageDef } from "./pages";
 import { SETTINGS } from "./registry";
 import { PAGE_IDS, type Condition, type PageId, type SettingDef } from "./types";
 
@@ -133,6 +133,8 @@ export function searchSettings(query: string, limit = 12): SettingHit[] {
 
 /** A row's id as the fragment of an address, read back: the setting, or undefined. */
 export function settingOfFragment(hash: string): SettingDef | undefined {
-  const id = hash.startsWith("#") ? hash.slice(1) : hash;
-  return id === "" ? undefined : settingById(decodeURIComponent(id));
+  const id = decodeURIComponent(hash.startsWith("#") ? hash.slice(1) : hash);
+  if (id === "") return undefined;
+  const old = new Map<string, string>(Object.entries(OLD_FRAGMENT_ROWS)).get(id);
+  return settingById(old ?? id);
 }

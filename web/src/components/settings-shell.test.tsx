@@ -50,7 +50,7 @@ function data(over: Partial<HomeData> = {}): HomeData {
 }
 
 /** A section page as every real one draws: through `SettingsPage`. */
-function Section({ title }: { title: "settings.section.device.title" | "settings.section.voice.title" | "settings.section.appearance.title" | "updates.title" }) {
+function Section({ title }: { title: "settings.page.keys.title" | "settings.section.voice.title" | "settings.page.look.title" | "settings.page.updates.title" }) {
   return (
     <SettingsPage title={title}>
       <p data-testid="section-body">{title}</p>
@@ -72,8 +72,8 @@ function renderSettings(at: string, root: HomeData = data()) {
             element: withHeaderHost(<SettingsLayout />),
             children: [
               { index: true, element: <SettingsRoute /> },
-              { path: "appearance", element: <Section title="settings.section.appearance.title" /> },
-              { path: "device", element: <Section title="settings.section.device.title" /> },
+              { path: "look", element: <Section title="settings.page.look.title" /> },
+              { path: "keys", element: <Section title="settings.page.keys.title" /> },
               { path: "voice", element: <Section title="settings.section.voice.title" /> },
               {
                 path: "voice/host",
@@ -91,7 +91,7 @@ function renderSettings(at: string, root: HomeData = data()) {
                   </SettingsPage>
                 ),
               },
-              { path: "updates", element: <Section title="updates.title" /> },
+              { path: "updates", element: <Section title="settings.page.updates.title" /> },
             ],
           },
         ],
@@ -114,13 +114,13 @@ afterEach(() => {
 });
 
 describe("Settings on a large screen", () => {
-  it("opens /settings on the first section that is not an action: Appearance", async () => {
+  it("opens /settings on the first page that is not an action: Look and feel", async () => {
     windowOf(1440, 900);
     const { router, container } = renderSettings("/settings");
-    await waitFor(() => expect(router.state.location.pathname).toBe("/settings/appearance"));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/settings/look"));
     // A replace: Back from the section is the screen Settings was opened from, not a page that only forwards.
     expect(router.state.historyAction).toBe("REPLACE");
-    await waitFor(() => expect(row(container, "appearance")).toHaveAttribute("aria-current", "page"));
+    await waitFor(() => expect(row(container, "look")).toHaveAttribute("aria-current", "page"));
     expect(list(container)).not.toBeNull();
   });
 
@@ -132,14 +132,14 @@ describe("Settings on a large screen", () => {
 
   it("marks the row of the address, and a row opens its section as a push", async () => {
     windowOf(1440, 900);
-    const { router, container } = renderSettings("/settings/device");
-    await waitFor(() => expect(row(container, "device")).toHaveAttribute("aria-current", "page"));
+    const { router, container } = renderSettings("/settings/keys");
+    await waitFor(() => expect(row(container, "keys")).toHaveAttribute("aria-current", "page"));
     expect(row(container, "voice")).not.toHaveAttribute("aria-current");
     // One tab stop for the list: the chosen row.
-    expect(row(container, "device")).toHaveAttribute("tabindex", "0");
+    expect(row(container, "keys")).toHaveAttribute("tabindex", "0");
     expect(row(container, "voice")).toHaveAttribute("tabindex", "-1");
     // The section's own title, once, as the column's h1; the header names Settings and is no heading.
-    expect([...container.ownerDocument.querySelectorAll("h1")].map((h) => h.textContent)).toEqual(["Device"]);
+    expect([...container.ownerDocument.querySelectorAll("h1")].map((h) => h.textContent)).toEqual(["Keys and touch"]);
     fireEvent.click(row(container, "voice")!);
     await waitFor(() => expect(router.state.location.pathname).toBe("/settings/voice"));
     expect(router.state.historyAction).toBe("PUSH");
@@ -153,12 +153,12 @@ describe("Settings on a large screen", () => {
 
   it("walks the list with the arrow keys", async () => {
     windowOf(1440, 900);
-    const { container } = renderSettings("/settings/device");
-    await waitFor(() => expect(row(container, "device")).not.toBeNull());
-    row(container, "device")!.focus();
-    fireEvent.keyDown(row(container, "device")!, { key: "ArrowDown" });
-    expect(document.activeElement).toBe(row(container, "voice"));
-    expect(row(container, "voice")).toHaveAttribute("tabindex", "0");
+    const { container } = renderSettings("/settings/keys");
+    await waitFor(() => expect(row(container, "keys")).not.toBeNull());
+    row(container, "keys")!.focus();
+    fireEvent.keyDown(row(container, "keys")!, { key: "ArrowDown" });
+    expect(document.activeElement).toBe(row(container, "notifications"));
+    expect(row(container, "notifications")).toHaveAttribute("tabindex", "0");
     fireEvent.keyDown(document.activeElement!, { key: "Home" });
     expect(document.activeElement).toBe(row(container, "updates"));
   });
@@ -186,7 +186,7 @@ describe("Settings on a large screen", () => {
 
   it("draws one header, 48px, on the recess with the navigation's edge", async () => {
     windowOf(1440, 900);
-    const { container } = renderSettings("/settings/device");
+    const { container } = renderSettings("/settings/keys");
     await waitFor(() => expect(list(container)).not.toBeNull());
     const headers = container.ownerDocument.querySelectorAll("header");
     expect(headers).toHaveLength(1);
@@ -234,13 +234,13 @@ describe("settingsExitSteps", () => {
   const trail = (hrefs: string[]) => new Map(hrefs.map((href, i) => [i, href]));
 
   it("steps back past every Settings entry to the one Settings was opened from", () => {
-    expect(settingsExitSteps(trail(["/", "/pane/a", "/settings/appearance", "/settings/device", "/settings/voice/host"]), 4)).toEqual({ steps: 3, to: "/pane/a" });
-    expect(settingsExitSteps(trail(["/?h=b", "/settings/appearance?h=b"]), 1)).toEqual({ steps: 1, to: "/?h=b" });
+    expect(settingsExitSteps(trail(["/", "/pane/a", "/settings/look", "/settings/keys", "/settings/voice/host"]), 4)).toEqual({ steps: 3, to: "/pane/a" });
+    expect(settingsExitSteps(trail(["/?h=b", "/settings/look?h=b"]), 1)).toEqual({ steps: 1, to: "/?h=b" });
   });
 
   it("gives up where the trail does not reach (a cold open, a lost entry)", () => {
-    expect(settingsExitSteps(trail(["/settings/appearance"]), 0)).toBeNull();
-    expect(settingsExitSteps(new Map([[2, "/settings/device"]]), 3)).toBeNull();
+    expect(settingsExitSteps(trail(["/settings/look"]), 0)).toBeNull();
+    expect(settingsExitSteps(new Map([[2, "/settings/keys"]]), 3)).toBeNull();
   });
 
   it("names the section of an address", () => {

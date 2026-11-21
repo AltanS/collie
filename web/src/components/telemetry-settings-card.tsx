@@ -107,7 +107,7 @@ function useTelemetryLoad(): [Load, Dispatch<SetStateAction<Load>>] {
 }
 
 /**
- * The row Settings → System keeps for the install count: the state in two or three words and a
+ * The row Settings → Privacy and data keeps for the install count: the state in two or three words and a
  * chevron to the page that holds the switch and its explanation. It reads the same endpoint the card
  * does and never writes; the switch is on the page below.
  */

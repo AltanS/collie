@@ -199,13 +199,17 @@ export function transformIndexIcons(html: string, channel: Channel): string {
  *   edge.5   2,026,635
  *   1.24.1   2,101,583 (2026-10-25, int/1.24.1 f653954ad; 325218dcd was 2,095,645, 1.5 kB under
  *            the old 2 MiB default, so one merge of ordinary code, +5.9 kB, tipped it over)
+ *   stage/next 3,128,881 (2026-11-21, 0c8e0b225), 16.8 kB under 3 MiB; the eleven Settings pages of
+ *            ADR 0168 added 26 kB (the new English words and their PENDING_TRANSLATION names, the pages,
+ *            the cards for the values that had no Settings row) after the search and the registry it reads
+ *            moved to a lazy chunk of their own (`settings-search-results`), so 3 MiB became 3.5 MiB.
  * The growth is organic: the 2026-10-25 source-map attribution found no wrong import, no test
  * fixture and no node-only module in the chunk, and the message catalogs other than English are
  * already their own lazy chunks. The chunk has grown about 100 to 150 kB a minor release.
  *
- * 3 MiB leaves room for roughly seven minor releases at that rate. Before it is raised again, run
+ * 3 MiB was set for roughly seven minor releases at that rate and lasted about five. Before it is raised again, run
  * `bunx vite build --sourcemap --outDir /tmp/x` and look at what grew; the English catalog
  * (`en.ts`, ~150 kB) and `react-router`'s `development` build (~94 kB) are the two large
  * candidates for a split.
  */
-export const PRECACHE_MAX_FILE_BYTES = 3 * 1024 * 1024;
+export const PRECACHE_MAX_FILE_BYTES = 3.5 * 1024 * 1024;

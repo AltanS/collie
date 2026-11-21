@@ -848,7 +848,7 @@ describe("AgentChat — raw-terminal escape hatch", () => {
     renderChat({ agent, agents: [agent], text: "body\n" });
 
     await user.click(screen.getByRole("button", { name: "Display settings" }));
-    const toggle = screen.getByRole("switch", { name: "Render this pane natively" });
+    const toggle = screen.getByRole("switch", { name: "Keep this pane's own colours" });
     // Muse renders natively already, so the switch starts on with nothing stored.
     expect(toggle).toBeChecked();
     expect(paneMirrorOverride(undefined, agent.paneId)).toBeUndefined();
@@ -4962,7 +4962,7 @@ describe("AgentChat — the model label and a footer that already names it", () 
   });
 });
 
-// Settings → Harness configurations. The switch is per harness and only DRAWS less: the strip, and for
+// Settings → Chat and terminal. The switch is per harness and only DRAWS less: the strip, and for
 // Claude Code the background-agents block, leave the Chat view, and the model label comes back above
 // the belt because nothing on screen names the model any more.
 describe("AgentChat — the status line switch of Harness configurations", () => {

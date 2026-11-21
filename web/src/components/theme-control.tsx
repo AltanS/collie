@@ -37,7 +37,7 @@ export function ThemeControl() {
         <div className="flex min-w-0 items-start gap-3">
           <Icon name={icon} className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
           <div className="min-w-0">
-            <div className="font-medium">{t("settings.theme.title")}</div>
+            <div className="font-medium">{t("settings.lightDark.title")}</div>
             <p className="text-sm text-muted-foreground">{t("settings.theme.description")}</p>
           </div>
         </div>
@@ -45,7 +45,7 @@ export function ThemeControl() {
 
       <div
         role="radiogroup"
-        aria-label={t("settings.theme.title")}
+        aria-label={t("settings.lightDark.title")}
         className="flex gap-1 border-t border-border p-2"
       >
         {OPTIONS.map((option) => {

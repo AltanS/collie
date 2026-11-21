@@ -1,7 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
-/* Math (Settings → Appearance; lib/math/). Each engine's own stylesheet ships in its lazy chunk,
+/* Math (Settings → Look and feel; lib/math/). Each engine's own stylesheet ships in its lazy chunk,
    never here, so a device on Off downloads none of it. These two rules are the engine-neutral box.
    Each formula pans within the reading column, including a long inline formula. */
 .math-inline {

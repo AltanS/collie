@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 
 import { Icon } from "@/components/icons/icon";
 import { FeatureTokenChip } from "@/components/token-use-label";
+import { ExperimentalBadge } from "@/components/experimental-badge";
 import { Card } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { useArm, useDisarmOn } from "@/hooks/use-arm";
@@ -11,11 +12,11 @@ import { useHillCount } from "@/lib/hill/store";
 import { t, tn } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
-// Settings → Experiments → The Hill: one row, one switch (bridge/hill/switch.ts). The Hill is an experiment
+// Settings → Tricks and the Hill → The Hill: one row, one switch (bridge/hill/switch.ts). The Hill is an experiment
 // and OFF by default (2026-11-13); the switch turns it on. Off, agents and tricks cannot post and the Hill
 // leaves the bar; the open Decisions stay on the bridge and come back when it is on again. It is the one
 // place the switch lives: it is no longer on Settings, Alerts, and the Hill's row and About sheet left
-// Settings, Tricks. The value rides on the snapshot, so the row is drawn from the first frame with no
+// Settings, Tricks and the Hill. The value rides on the snapshot, so the row is drawn from the first frame with no
 // reading of its own.
 //
 // THE ARMED SECOND TAP (moved here from the Tricks card's About sheet). Off blocks every answer: the Decisions
@@ -81,8 +82,16 @@ export function HillSwitchCard({ on, disabled, onToggle, waiting = 0 }: HillSwit
             <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 font-medium">
               <span className="max-w-full min-w-0 truncate">{t("settings.hill.label")}</span>
               <FeatureTokenChip feature="hill" />
+              <ExperimentalBadge />
             </div>
-            <p className="text-sm text-muted-foreground">{t("settings.hill.hint")}</p>
+            {/* What the Hill is, then the switch's own sentence word for word, then the Experiments page's notice,
+                which moved onto its rows (ADR 0168). */}
+            <p className="text-sm text-muted-foreground">
+              {t("settings.hill.what")} {t("settings.hill.hint")}
+            </p>
+            <p data-line="experiment" className="text-sm text-muted-foreground">
+              {t("settings.experiment.note")}
+            </p>
           </div>
         </div>
         <Switch checked={on} disabled={disabled} onCheckedChange={flip} aria-label={t("settings.hill.label")} />

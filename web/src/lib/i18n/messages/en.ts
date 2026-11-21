@@ -22,7 +22,7 @@ export const en = {
   // The handoff when a bare shell pane becomes an agent pane (components/agent-start.tsx).
   // `{agent}` is the harness's own name and is never translated.
   "pane.agentStart.handed": "Handed to {agent}",
-  // The stand-in for the steps a turn took, when tool calls are off (Settings → Appearance). Per
+  // The stand-in for the steps a turn took, when tool calls are off (Settings → Look and feel). Per
   // TURN, not per call: one line where forty cards were.
   "transcript.tools.hidden.one": "{count} step hidden, tap to show",
   "transcript.tools.hidden.other": "{count} steps hidden, tap to show",
@@ -32,41 +32,24 @@ export const en = {
   "settings.compactions.description": "Keep the recap an agent writes when it compacts its context. Off leaves one marker line where it happened.",
   // --- settings.experiments (the fifth section) ---
   // The contract is the SECTION'S, said once at the top rather than repeated on every card.
-  "settings.experiments.contract": "Anything here may change, lose settings, or be withdrawn in a patch release.",
   // --- settings sections (the index's four rows) ---
   // The blurb names the three or four cards a person is most likely to be hunting for, so the row
   // answers "is it in here?" without being opened. Keep it short: it truncates on a narrow phone.
-  "settings.section.appearance.title": "Appearance",
-  "settings.section.appearance.blurb": "Theme, language, fonts",
-  "settings.section.harnesses.title": "Harness configurations",
-  "settings.section.harnesses.blurb": "Status line, per agent",
-  "settings.section.device.title": "Device",
-  "settings.section.device.blurb": "Haptics, zen mode",
   "settings.section.voice.title": "Voice",
   "settings.section.voice.blurb": "Where your speech becomes text, and hands-free.",
-  "settings.section.alerts.title": "Alerts",
-  "settings.section.alerts.blurb": "Notifications, quiet hours",
-  "settings.section.system.title": "System",
-  "settings.section.system.blurb": "Devices, crew, connection",
   // The fifth section, and the only one that can be absent: it renders while `lib/experiments.ts`
   // holds something and disappears when the last experiment graduates (that file says why).
-  "settings.section.experiments.title": "Experiments",
-  "settings.section.experiments.blurb": "Features still being tested",
   // The Tricks section (M94 slice 04): its index row renders only while the phone holds a tricks reply.
   "settings.section.tricks.title": "Tricks",
-  "settings.section.tricks.blurb": "Add tricks and switch each one on or off",
-  "settings.section.machines.title": "Machines",
-  "settings.section.machines.blurb": "CPU, memory, disk, network, alert rules",
   "settings.nav.back": "Back",
   // The large-screen Settings header's arrow (components/settings-shell.tsx): it leaves Settings, while "Back" beside a page's title goes up one level.
   "settings.nav.close": "Close Settings",
 
   // --- settings.theme ---
-  // The opening of Settings → Appearance (components/appearance-intro.tsx).
+  // The opening of Settings → Look and feel (components/appearance-intro.tsx).
   "settings.appearance.intro.title": "Make Collie your own",
   "settings.appearance.intro.body": "Pick a theme for the colours, the shape and the character in the header, then light or dark.",
   "settings.appearance.intro.docs": "How themes work",
-  "settings.theme.title": "Appearance",
   "settings.theme.description": "Follow your phone, or pin one.",
   "settings.theme.option.system": "System",
   "settings.theme.option.light": "Light",
@@ -200,7 +183,6 @@ export const en = {
   "settings.harnessBar.description": "A row of the running agent's own commands above the keys.",
   "settings.harnesses.statusLine.label": "Show the status line",
   "settings.harnesses.statusLine.description": "The agent's own status line, lifted under Chat. Off, when the belt pills already say it.",
-  "settings.beltSize.title": "Action belt size",
   "settings.beltSize.description": "How tall the row of actions above the input is, and how large its icons and words are.",
   "settings.beltSize.option.default": "Default",
   "settings.beltSize.option.large": "Large",
@@ -228,7 +210,6 @@ export const en = {
     "Move between panes and spaces by gesture. Two fingers: hold one finger on the chat or the terminal, then swipe with a second. Joystick: hold the handle above the belt, then drag. A change shows the next time a pane opens.",
   "settings.zen.title": "Zen mode",
   "settings.zen.description": "Adds a row to the pane menu that hides everything but the terminal.",
-  "settings.zen.auto.label": "Enter on landscape",
   "settings.zen.auto.hint": "Rotate the phone sideways to open zen automatically; rotate back to close it.",
 
   // --- settings.handsFree ---
@@ -265,12 +246,9 @@ export const en = {
   "settings.notify.done.hint": "an agent completes its task",
   "settings.notify.individual.label": "One notification per agent",
   "settings.notify.individual.hint": "Each agent that needs you gets its own notification. Off: one summary per machine.",
-  "settings.notify.updates.label": "App updates",
   "settings.notify.updates.hint": "a new Collie version is available",
   "settings.notify.machines.label": "Machine load stays high",
   "settings.notify.machines.hint": "CPU or memory stays above a rule you set on a machine",
-  "settings.notify.decisions.label": "Decisions that need you now",
-  "settings.notify.decisions.hint": "an agent or a trick posts a Decision marked now on the Hill",
   "settings.notify.cache.label": "Cache about to go cold",
   // The second clause is the whole point of this hint: the rule is global OR per-pane, with no per-pane
   // off, so a watched list keeps working under this switch and the operator is told once, here.
@@ -483,8 +461,6 @@ export const en = {
   "settings.fonts.title": "Terminal font",
   "settings.fonts.description": "The terminal mirror and the draft field, on this device.",
   "settings.fonts.family": "Family",
-  "settings.fonts.size": "Mirror text",
-  "settings.fonts.draftSize": "Draft text",
   "settings.fonts.draftSize.hint":
     "iOS keeps this at 16. Safari zooms the page into any smaller field you type in, and never zooms back out.",
   "settings.fonts.draftSize.decrease": "Decrease draft text size",
@@ -498,18 +474,11 @@ export const en = {
   "settings.display.tapToType.label": "Tap to type",
   "settings.display.tapToType.hint":
     "On, tapping the mirror anywhere opens the keyboard. Off, the mirror behaves like a document. Taps land on the text and only the composer opens the keyboard.",
-  "settings.display.fullReply.label": "Full latest reply",
   "settings.display.fullReply.hint":
     "An agent's terminal keeps no scrollback, so a long answer loses its start. On, that reply is shown in full from the agent's own log, in place of the rows it covers.",
-  "settings.display.stretchText.label": "Stretchtext replies",
-  "settings.display.stretchText.hint":
-    "Replies written with the cc-stretch plugin show their short form; tap a phrase to open it.",
   "settings.display.rawTerminal.label": "Raw terminal",
   "settings.display.rawTerminal.hint":
     "Shows the plain mirror. No tappable prompt buttons, no chrome or status strips. Use it when a dialog renders wrong and you want to drive it by hand from Keys.",
-  "settings.display.noInvert.label": "Render this pane natively",
-  "settings.display.noInvert.hint":
-    "Skips the light-theme inversion for this pane only. Turn it on when an agent is on a LIGHT theme and the mirror renders it dark; leave it off when the pane looks right.",
   "settings.display.textSize.label": "Text size",
   "settings.display.textSize.decrease": "Decrease font size",
   "settings.display.textSize.increase": "Increase font size",
@@ -1918,8 +1887,6 @@ export const en = {
   "machines.alerts.mem": "Memory alert",
   "machines.alerts.disk": "Disk alert",
   "machines.alerts.firingNow": "Firing now",
-  "machines.alerts.above": "{metric} threshold",
-  "machines.alerts.for": "{metric} duration",
   "machines.alerts.minutes": "{count} min",
   "machines.alerts.saving": "Saving",
   "machines.alerts.saved": "Saved",
@@ -1927,7 +1894,6 @@ export const en = {
   "machines.alerts.notPaired": "Pair this device to change alerts",
   "machines.alerts.needsUpdate": "Alerts need this machine to be updated. It does not report its load yet.",
   "machines.alerts.push": "The push goes to every device subscribed to this Collie.",
-  "machines.alerts.pushLink": "Settings, Alerts",
   "crew.title": "Crew",
   "crew.releaseLine.stable": "Members follow the lead's release line, Stable.",
   "crew.releaseLine.edge": "Members follow the lead's release line, Edge.",
@@ -3116,8 +3082,6 @@ export const en = {
   "settings.voice.why.hostSays": "Your host says: {reason}",
   "settings.voice.restore": "Restore ({size})",
   "settings.voice.fix": "Fix",
-  "settings.voice.phone.label": "Only this phone",
-  "settings.voice.phone.hint": "Where this phone's speech becomes text.",
   "settings.voice.host.label": "Every device on your host",
   "settings.voice.host.hint": "What your host uses when a device sends it audio.",
   "settings.voice.after.label": "After you speak",
@@ -3516,16 +3480,11 @@ export const en = {
   "telemetry.card.cause.url": "Off: COLLIE_TELEMETRY_URL on this machine is not an https address.",
   "telemetry.card.thisMachine": "This switch changes this machine only.",
   "telemetry.card.members": "Not covered by this switch: {names}. Set it on each machine.",
-  "settings.zoomPill.title": "Zoom pill",
   "settings.zoomPill.description": "The magnifier button on the belt that opens the screen full size. It never shows in Chat.",
-  "settings.zoomPill.option.screen": "Screen view",
   "settings.zoomPill.option.off": "Off",
   "settings.pageZoom.title": "Pinch to zoom",
   "settings.pageZoom.description": "Pinch the page to make it bigger. Off stops a stray pinch from zooming the app. The Screen view's own zoom works either way.",
-  "settings.floatingThings.title": "Floating things",
   "settings.floatingThings.description": "Small moving pictures over the app. They never cover a question and never block a tap. Off hides all of them.",
-  "settings.usageRow.title": "Usage row",
-  "settings.usageRow.description": "How the small model line shows context and limits: as the percent used, or as five dots.",
   "settings.usageRow.option.percent": "Percent",
   "settings.usageRow.option.dots": "Dots",
 
@@ -3605,8 +3564,6 @@ export const en = {
   "tricks.menu.asOf": "As of {age}.",
   "tricks.menu.off": "{name} is off.",
   "tricks.menu.armed": "Tap again: {label}",
-  "tricks.menu.more.one": "{count} more trick has rows. See Settings, Tricks.",
-  "tricks.menu.more.other": "{count} more tricks have rows. See Settings, Tricks.",
   "tricks.frame.why": "Why",
   "tricks.frame.hide": "Hide",
   "tricks.frame.fix": "Copy for an agent",
@@ -3623,7 +3580,7 @@ export const en = {
   // The header button of a trick's page that opens its details page (2026-11-21).
   "tricks.session.details": "Trick details",
   "tricks.link.gone": "That pane is not here any more.",
-  // --- Settings → Tricks (M94 slice 04) ---
+  // --- Settings → Tricks and the Hill (M94 slice 04) ---
   "settings.tricks.none": "No tricks yet",
   "settings.tricks.foot": "A trick runs as you.",
   "settings.tricks.runsOn": "Tricks run on the lead of this crew. This machine runs none.",
@@ -3709,7 +3666,6 @@ export const en = {
   "settings.tricks.about.autoUpdate.label": "Update this trick without asking",
   "settings.tricks.about.auto.hint": "A change that asks for new rights, or does something new such as reaching the network, still asks.",
   // A trick's settings (contract 3, `[[field]]`): components/trick-settings-group.tsx.
-  "settings.tricks.about.settings": "Settings",
   "settings.tricks.fields.required": "Required",
   "settings.tricks.fields.notSet": "Not set",
   "settings.tricks.fields.range": "{min} to {max}",
@@ -3818,7 +3774,6 @@ export const en = {
   "settings.tricks.official.updateMismatch": "The code did not match. Nothing was changed.",
   "settings.tricks.official.updateBlocked": "Your own files block it. Nothing was changed.",
   "settings.tricks.official.updateFailed": "Could not update {name}. Try again.",
-  "settings.tricks.repo.row": "Add from a repository",
   "settings.tricks.repo.title": "Add from a repository",
   "settings.tricks.repo.linkLabel": "Repository link",
   "settings.tricks.repo.placeholder": "https://github.com/owner/repo",
@@ -3957,7 +3912,6 @@ export const en = {
   "settings.tricks.switch.starts": "These start again: {names}.",
   "settings.tricks.switch.andMore.one": "{names} and {count} more",
   "settings.tricks.switch.andMore.other": "{names} and {count} more",
-  "settings.tricks.switch.offLine": "Tricks are switched off on this machine; switch them on in Settings, Experiments.",
   "hill.state.answered": "Answered",
   "hill.state.dismissed": "Dismissed",
   "hill.state.expired": "Expired",
@@ -4356,7 +4310,6 @@ export const en = {
   "settings.notify.decisionNow.label": "A Decision marked Now on the Hill",
   "settings.notify.decisionNow.hint": "An agent or a trick asks you to choose, and it cannot wait.",
   "settings.voice.phoneSpeech.label": "Speech on this phone",
-  "accounts.add.profileLabel": "Add a profile",
   "accounts.found.addLabel": "Add as a profile",
   "settings.tricks.repo.rowTrick": "Add a trick from a repository",
   "settings.tricks.about.settingsHeading": "This trick's settings",
@@ -4643,7 +4596,6 @@ export const PENDING_TRANSLATION = [
   "settings.notify.decisionNow.label",
   "settings.notify.decisionNow.hint",
   "settings.voice.phoneSpeech.label",
-  "accounts.add.profileLabel",
   "accounts.found.addLabel",
   "settings.tricks.repo.rowTrick",
   "settings.tricks.about.settingsHeading",

@@ -4,7 +4,8 @@ import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { en } from "@/lib/i18n/messages/en";
-import { groupHeading, isPageId, NOT_SETTINGS, PAGES, pageDef, SETTINGS, settingPath } from "./index";
+import { groupHeading, isPageId, NOT_SETTINGS, OLD_FRAGMENTS, PAGES, pageDef, searchSettings, settingById, settingOfFragment, SETTINGS, settingPath } from "./index";
+import { OLD_FRAGMENT_ROWS } from "./pages";
 import type { Store } from "./types";
 
 // THE REGISTRY IS COMPLETE AND TRUE (ADR 0168). A saved key of the app that no setting stores into and no line of
@@ -118,5 +119,39 @@ describe("the settings registry", () => {
   it("has the eleven pages in the table's order", () => {
     expect(PAGES.map((p) => p.id)).toEqual(["look", "chat", "keys", "notifications", "voice", "dashboard", "accounts", "tricks", "devices", "privacy", "updates"]);
     expect(PAGES.every((p) => isPageId(p.id) && pageDef(p.id) === p)).toBe(true);
+  });
+});
+
+describe("the old fragments", () => {
+  it("each name a row on the page their redirect opens", () => {
+    for (const [fragment, page] of Object.entries(OLD_FRAGMENTS)) {
+      const row = settingOfFragment(`#${fragment}`);
+      expect(row?.page, fragment).toBe(page);
+      expect(row?.id).toBe(new Map<string, string>(Object.entries(OLD_FRAGMENT_ROWS)).get(fragment));
+    }
+  });
+
+  it("reads a row's own id, and nothing for an empty or unknown fragment", () => {
+    expect(settingOfFragment("#look.math")?.id).toBe("look.math");
+    expect(settingOfFragment("")).toBeUndefined();
+    expect(settingOfFragment("#no-such-row")).toBeUndefined();
+  });
+});
+
+describe("searchSettings", () => {
+  it("finds a row by its label, with its page and group, best first", () => {
+    const [first] = searchSettings("enter sends");
+    expect(first?.setting.id).toBe(settingById("keys.enterSends")?.id);
+    expect(first?.page).toBe("Keys and touch");
+  });
+
+  it("finds a pane's own row and gives it no path", () => {
+    const hit = searchSettings("pin").find((each) => each.setting.page === "pane");
+    expect(hit).toBeDefined();
+    expect(settingPath(hit!.setting)).toBeNull();
+  });
+
+  it("finds nothing for words no row has", () => {
+    expect(searchSettings("zzqxv")).toEqual([]);
   });
 });

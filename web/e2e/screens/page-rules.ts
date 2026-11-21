@@ -199,6 +199,9 @@ function covers(root: string | null): Violation[] {
     const at = centreOf(el);
     if (at === null) continue;
     const top = document.elementFromPoint(at.x, at.y);
+    // No top element at all: the centre is on or past the window's edge (elementFromPoint answers null only there), a
+    // label half below the fold of a page that scrolls. That is no cover; a window too narrow for a label is R1's.
+    if (top === null) continue;
     if (top !== null && (top === el || el.contains(top) || top.contains(el))) continue;
     // Not a cover a person can see: a hit area that paints nothing (a card's stretched link), chrome that content scrolls
     // under (a fixed or sticky bar), or a pinned control over the end of a scroller.

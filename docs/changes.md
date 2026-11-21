@@ -166,7 +166,7 @@ whose `.git` file points at such a repo. It also looks for repos in
 folders below it, even repos the parent repo ignores. That is how a workspace repo with its member repos ignored inside it
 still shows every member's changes.
 
-Two per-device settings control that search. Both live in **Settings → Device → Changes**.
+Two per-device settings control that search. Both live in **Settings → Dashboard and projects → Changes**.
 
 | Setting | Default | What it does |
 | --- | --- | --- |
@@ -257,7 +257,7 @@ In **Changes**, a changed file whose type has a preview, and that is not deleted
 
 ### Equations
 
-Turn math on under **Settings → Appearance → Math**. It is a per-device setting, and it is off
+Turn math on under **Settings → Look and feel → Math**. It is a per-device setting, and it is off
 by default.
 
 | Engine | What it draws |

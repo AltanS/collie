@@ -126,7 +126,7 @@ describe("fault B: the Hill card of a trick stopped for its rights", () => {
     expect(card).toMatchObject({
       state: "open",
       title: "Browser leg changed its rights",
-      summary: "Collie now reads other rights in this trick than the ones you said yes to, so the trick stopped. Read its rights in Settings → Tricks, and switch it on again if you want it.",
+      summary: "Collie now reads other rights in this trick than the ones you said yes to, so the trick stopped. Read its rights in Settings → Tricks and the Hill, and switch it on again if you want it.",
       options: [{ intent: "ok", label: "OK" }],
       from: { kind: "collie", label: "Collie", ref: { type: "rights", id: "legs" } },
     });

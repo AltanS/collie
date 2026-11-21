@@ -130,7 +130,7 @@ export interface TrickWrites {
   addOfficial: (entry: WireOfficialTrick, mode: "add" | "update") => Promise<void>;
 }
 
-/** The writes of one screen of Settings, Tricks, against the store's `tricks` and the official list it read. */
+/** The writes of one screen of Settings, Tricks and the Hill, against the store's `tricks` and the official list it read. */
 export function useTrickWrites(calls: TrickWriteCalls, tricks: readonly WireTrickInfo[], official: OfficialListState): TrickWrites {
   const { onSwitch = switchTrick, onAuto = setTrickAuto, onUndo = undoTrick, onSetValue = setTrickValue, onOfficialAdd = addOfficialTrick } = calls;
   // The position a flipped switch holds until the list agrees, and the switches with a post in flight

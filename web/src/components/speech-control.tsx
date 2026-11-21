@@ -858,7 +858,7 @@ function PhoneChoices(props: WithAbout) {
     ? t("settings.voice.choice.host.off")
     : t("settings.voice.choice.host.what", { option: option === null ? currentHostProvider(props.host, props.hostStt) : t(SHORT_KEYS[option]) });
   return (
-    <div role="radiogroup" aria-label={t("settings.voice.phone.hint")} className="space-y-2">
+    <div role="radiogroup" aria-label={t("settings.voice.phoneSpeech.hint")} className="space-y-2">
       <ChoiceCard
         checked={inForce === "phone"}
         disabled={!open.phone}
@@ -1179,7 +1179,7 @@ function VoiceHub(props: WithAbout) {
         </Zone>
       )}
       <ChangeDisclosure open={changeOpen} onToggle={() => setTapped(!changeOpen)}>
-        <Zone label={t("settings.voice.phone.label")} hint={t("settings.voice.phone.hint")}>
+        <Zone label={t("settings.voice.phoneSpeech.label")} hint={t("settings.voice.phoneSpeech.hint")}>
           <PhoneChoices {...props} />
         </Zone>
         <Zone label={t("settings.voice.host.label")} hint={t("settings.voice.host.hint")}>

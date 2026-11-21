@@ -23,7 +23,7 @@ function rowWords(rows: readonly TrickListRow[]): string[] {
   return rows.map((row) => (row.kind === "official" ? `add:${row.entry.id}` : `${row.origin ?? "none"}:${row.trick.id}`));
 }
 
-describe("trickListRows: the order of Settings, Tricks", () => {
+describe("trickListRows: the order of Settings, Tricks and the Hill", () => {
   const cases: { name: string; tricks: WireTrickInfo[]; list: OfficialTricksReply | null; rows: string[] }[] = [
     {
       name: "nothing added: the official list alone, Morph first",

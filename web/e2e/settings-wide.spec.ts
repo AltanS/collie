@@ -61,8 +61,8 @@ for (const size of WIDTHS) {
       await page.goto("/");
       await page.waitForSelector("#root *");
       await page.goto("/settings");
-      await expect(page).toHaveURL(/\/settings\/appearance$/u);
-      await expect(row(page, "appearance")).toHaveAttribute("aria-current", "page");
+      await expect(page).toHaveURL(/\/settings\/look$/u);
+      await expect(row(page, "look")).toHaveAttribute("aria-current", "page");
 
       const a = (await list(page).boundingBox())!;
       const b = (await column(page).boundingBox())!;
@@ -80,7 +80,7 @@ for (const size of WIDTHS) {
       });
       const before = await list(page).evaluate((el) => el.scrollTop);
       const ids = await page.locator("[data-settings-row]").evaluateAll((els) => els.map((el) => el.getAttribute("data-settings-row") ?? ""));
-      for (const id of ids.filter((each) => each !== "machines")) {
+      for (const id of ids) {
         await row(page, id).click();
         await expect(page).toHaveURL(new RegExp(`/settings/${id}$`, "u"));
         await expect(row(page, id)).toHaveAttribute("aria-current", "page");
@@ -90,14 +90,14 @@ for (const size of WIDTHS) {
       }
 
       // The browser's Back returns to the section before.
-      await row(page, "device").click();
-      await expect(page).toHaveURL(/\/settings\/device$/u);
+      await row(page, "keys").click();
+      await expect(page).toHaveURL(/\/settings\/keys$/u);
       await row(page, "voice").click();
       await expect(page).toHaveURL(/\/settings\/voice$/u);
       await page.goBack();
-      await expect(page).toHaveURL(/\/settings\/device$/u);
-      await expect(row(page, "device")).toHaveAttribute("aria-current", "page");
-      await expect(title(page)).toHaveText("Device");
+      await expect(page).toHaveURL(/\/settings\/keys$/u);
+      await expect(row(page, "keys")).toHaveAttribute("aria-current", "page");
+      await expect(title(page)).toHaveText("Keys and touch");
 
       // The header's Back leaves Settings for where it was opened from, past every section walked through.
       // It is named for what it does, so the Back beside a deep page's title is the only Back on the page.
@@ -115,22 +115,22 @@ test("the arrow keys walk the list, Enter opens a row and the section's title ta
   onlyOnce(testInfo);
   const page = await openAt(browser, testInfo, WIDTHS[0]);
   try {
-    await page.goto("/settings/device");
-    await expect(row(page, "device")).toHaveAttribute("tabindex", "0");
-    await row(page, "device").focus();
+    await page.goto("/settings/keys");
+    await expect(row(page, "keys")).toHaveAttribute("tabindex", "0");
+    await row(page, "keys").focus();
     await page.keyboard.press("ArrowDown");
-    await expect(row(page, "voice")).toBeFocused();
+    await expect(row(page, "notifications")).toBeFocused();
     await page.keyboard.press("ArrowUp");
     await page.keyboard.press("ArrowUp");
-    await expect(page.locator("[data-settings-row]:focus")).toHaveAttribute("data-settings-row", /^(harnesses|accounts)$/u);
+    await expect(row(page, "chat")).toBeFocused();
     await page.keyboard.press("Home");
     await expect(row(page, "updates")).toBeFocused();
     await page.keyboard.press("ArrowDown");
     await page.keyboard.press("Enter");
-    await expect(page).toHaveURL(/\/settings\/appearance$/u);
+    await expect(page).toHaveURL(/\/settings\/look$/u);
     await expect(title(page)).toBeFocused();
     // One tab stop: Tab from the chosen row leaves the list.
-    await row(page, "appearance").focus();
+    await row(page, "look").focus();
     await page.keyboard.press("Tab");
     await expect(page.locator("[data-settings-row]:focus")).toHaveCount(0);
   } finally {
@@ -143,7 +143,7 @@ test("a trick's details name their path in the header, and Back beside the title
   const page = await openAt(browser, testInfo, WIDTHS[0]);
   try {
     await openIn(page, "tricks", "/settings/tricks/lodge%3Aci");
-    await expect(page.locator('[data-slot="settings-path"]')).toHaveText("/Tricks/CI");
+    await expect(page.locator('[data-slot="settings-path"]')).toHaveText("/Tricks and the Hill/CI");
     await expect(row(page, "tricks")).toHaveAttribute("aria-current", "page");
     await expect(column(page).getByRole("heading", { level: 1 })).toHaveText("CI");
     await page.locator('[data-slot="settings-page-head"]').getByRole("button", { name: en["settings.nav.back"] }).click();
@@ -206,20 +206,16 @@ for (const size of WIDTHS) {
   });
 }
 
-// THE PHONE IS UNCHANGED. The boxes below are the ones `stage/next` drew at 390x844 before this layout (measured on
-// a36fd0bc5): the header and the first three rows of the index. The layout route draws only its outlet there.
-const PHONE_BOXES = {
-  header: { x: 0, y: 0, width: 390, height: 61 },
-  rows: [
-    { x: 17, y: 78, width: 356, height: 77 },
-    { x: 17, y: 155, width: 356, height: 77 },
-    { x: 17, y: 232, width: 356, height: 77 },
-  ],
-} as const;
+// THE PHONE'S INDEX. The header is the one `stage/next` drew at 390x844 before the large-screen layout (measured on
+// a36fd0bc5). Since ADR 0168 the search field stands above the rows, and a page's line may wrap to a second line, so
+// the rows keep their column (x and width) and their one-line height as the least, and stand under the field.
+const PHONE_HEADER = { x: 0, y: 0, width: 390, height: 61 } as const;
+const ROW_COLUMN = { x: 17, width: 356 } as const;
+const ONE_LINE_ROW = 77;
 
 const round = (b: { x: number; y: number; width: number; height: number } | null) => b && { x: Math.round(b.x), y: Math.round(b.y), width: Math.round(b.width), height: Math.round(b.height) };
 
-test("at 390px Settings is the phone's index, box for box", async ({ browser }, testInfo) => {
+test("at 390px Settings is the phone's index: the header unchanged, the search field, then the rows", async ({ browser }, testInfo) => {
   onlyOnce(testInfo);
   const page = await openAt(browser, testInfo, { width: 390, height: 844 }, true);
   try {
@@ -228,8 +224,57 @@ test("at 390px Settings is the phone's index, box for box", async ({ browser }, 
     const rows = page.locator("main [data-slot=list-group] > button");
     await expect(rows.first()).toBeVisible();
     await expect(list(page)).toHaveCount(0);
-    expect(round(await page.locator("header").boundingBox())).toEqual(PHONE_BOXES.header);
-    expect([round(await rows.nth(0).boundingBox()), round(await rows.nth(1).boundingBox()), round(await rows.nth(2).boundingBox())]).toEqual(PHONE_BOXES.rows);
+    expect(round(await page.locator("header").boundingBox())).toEqual(PHONE_HEADER);
+    const field = (await page.getByRole("textbox", { name: en["settings.search.label"] }).boundingBox())!;
+    const first = round(await rows.nth(0).boundingBox())!;
+    expect(first.y).toBeGreaterThan(field.y + field.height);
+    for (let i = 0; i < 3; i += 1) {
+      const box = round(await rows.nth(i).boundingBox())!;
+      expect({ x: box.x, width: box.width }).toEqual(ROW_COLUMN);
+      expect(box.height).toBeGreaterThanOrEqual(ONE_LINE_ROW);
+    }
+  } finally {
+    await page.context().close();
+  }
+});
+
+// THE INDEX LINES (ADR 0168): on a phone a page's line wraps to two lines at 390px and is never cut; at 360px a third
+// line is reported, not failed (the words are approved, a person decides). On a large screen the list rows have no line.
+test("the index lines take at most two lines at 390px and are never cut; 360px is reported", async ({ browser }, testInfo) => {
+  onlyOnce(testInfo);
+  for (const width of [390, 360]) {
+    const page = await openAt(browser, testInfo, { width, height: 844 }, true);
+    try {
+      await page.goto("/settings");
+      await expect(page.locator("main [data-slot=list-group] > button").first()).toBeVisible();
+      const lines = await page.locator("main [data-slot=list-group] > button p").evaluateAll((els) =>
+        els.map((el) => {
+          const style = getComputedStyle(el);
+          const line = Number.parseFloat(style.lineHeight);
+          return { text: el.textContent ?? "", lines: Math.round(el.getBoundingClientRect().height / line), cut: el.scrollWidth > el.clientWidth + 1 || style.textOverflow === "ellipsis" };
+        }),
+      );
+      testInfo.annotations.push({ type: `index-lines@${String(width)}`, description: JSON.stringify(lines) });
+      if (width === 390) {
+        for (const each of lines.filter((l) => !l.text.startsWith("Up to date") && !/available|Unknown|behind/u.test(l.text))) {
+          expect(each.lines, each.text).toBeLessThanOrEqual(2);
+          expect(each.cut, each.text).toBe(false);
+        }
+      }
+    } finally {
+      await page.context().close();
+    }
+  }
+});
+
+test("on a large screen the list rows have no second line, and the page's line stands under its title", async ({ browser }, testInfo) => {
+  onlyOnce(testInfo);
+  const page = await openAt(browser, testInfo, WIDTHS[0]);
+  try {
+    await page.goto("/settings/notifications");
+    await expect(row(page, "notifications")).toHaveAttribute("aria-current", "page");
+    await expect(list(page).locator("[data-settings-row] p")).toHaveCount(0);
+    await expect(page.locator('[data-slot="settings-page-blurb"]')).toHaveText(en["settings.page.notifications.blurb"]);
   } finally {
     await page.context().close();
   }
@@ -238,14 +283,14 @@ test("at 390px Settings is the phone's index, box for box", async ({ browser }, 
 // ── The shots for a person ──────────────────────────────────────────────────────────────────────────────────────
 const SHOT_PAGES: { name: string; path: string; setup?: "tricks" | "accounts" }[] = [
   { name: "01-updates", path: "/settings/updates" },
-  { name: "02-appearance", path: "/settings/appearance" },
-  { name: "03-harnesses", path: "/settings/harnesses" },
+  { name: "02-look", path: "/settings/look" },
+  { name: "03-chat", path: "/settings/chat" },
   { name: "04-profiles", path: "/settings/accounts", setup: "accounts" },
-  { name: "05-device", path: "/settings/device" },
+  { name: "05-keys", path: "/settings/keys" },
   { name: "06-voice", path: "/settings/voice" },
-  { name: "07-alerts", path: "/settings/alerts" },
-  { name: "08-system", path: "/settings/system" },
-  { name: "09-experiments", path: "/settings/experiments" },
+  { name: "07-notifications", path: "/settings/notifications" },
+  { name: "08-devices", path: "/settings/devices" },
+  { name: "09-privacy", path: "/settings/privacy" },
   { name: "10-tricks", path: "/settings/tricks", setup: "tricks" },
   { name: "11-trick-details", path: "/settings/tricks/lodge%3Aci", setup: "tricks" },
   { name: "12-profile", path: "/settings/accounts/acct-work", setup: "accounts" },
@@ -253,8 +298,9 @@ const SHOT_PAGES: { name: string; path: string; setup?: "tricks" | "accounts" }[
   { name: "14-profile-add", path: "/settings/accounts/add", setup: "accounts" },
   { name: "15-voice-host", path: "/settings/voice/host" },
   { name: "16-voice-model", path: "/settings/voice/model" },
-  { name: "17-character", path: "/settings/appearance/character" },
-  { name: "18-install-count", path: "/settings/system/install-count" },
+  { name: "17-character", path: "/settings/look/character" },
+  { name: "18-install-count", path: "/settings/privacy/install-count" },
+  { name: "19-dashboard", path: "/settings/dashboard" },
 ];
 
 test("shots: five pages at 1920x1080", async ({ browser }, testInfo) => {
@@ -262,7 +308,7 @@ test("shots: five pages at 1920x1080", async ({ browser }, testInfo) => {
   test.skip(SHOTS === undefined, "set SETTINGS_SHOTS=<dir> to write the shots");
   test.setTimeout(120_000);
   const dir = SHOTS!;
-  for (const shot of SHOT_PAGES.filter((each) => ["01-updates", "02-appearance", "04-profiles", "10-tricks", "11-trick-details"].includes(each.name))) {
+  for (const shot of SHOT_PAGES.filter((each) => ["01-updates", "02-look", "04-profiles", "10-tricks", "11-trick-details"].includes(each.name))) {
     const page = await openAt(browser, testInfo, WIDTHS[1]);
     try {
       if (shot.setup === undefined) await page.goto(shot.path);
@@ -303,9 +349,9 @@ test("shots: every section at 1440x900, and three sheets", async ({ browser }, t
   }
   // Three sheets opened from a section: each must stand as a centred dialog on this width.
   const sheets: { name: string; path: string; open: string }[] = [
-    { name: "20-sheet-theme-browse", path: "/settings/appearance", open: en["theme.browse"] },
-    { name: "21-sheet-theme-paste", path: "/settings/appearance", open: en["theme.paste"] },
-    { name: "22-sheet-report", path: "/settings/system", open: en["settings.report.open"] },
+    { name: "20-sheet-theme-browse", path: "/settings/look", open: en["theme.browse"] },
+    { name: "21-sheet-theme-paste", path: "/settings/look", open: en["theme.paste"] },
+    { name: "22-sheet-report", path: "/settings/updates", open: en["settings.report.open"] },
   ];
   for (const sheet of sheets) {
     const page = await openAt(browser, testInfo, WIDTHS[0]);

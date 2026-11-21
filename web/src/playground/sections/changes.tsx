@@ -753,7 +753,7 @@ export function ChangesSection() {
         <Card
           state="files-back-list-left"
           label="back bar, the list, left hand"
-          reach="the same with Settings, Appearance, Hand on Left: Back moves to the left end."
+          reach="the same with Settings, Keys and touch, Hand on Left: Back moves to the left end."
         >
           <ListBackCard hand="left" />
         </Card>

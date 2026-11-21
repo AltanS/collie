@@ -3,7 +3,7 @@
 A trick is a folder: a manifest, and a program or a rules file. This page builds one of each.
 
 Tricks are experimental. They may change, lose settings, or be withdrawn in a patch release. They are
-off until you switch them on in Settings → Experiments, or with `collie tricks on`
+off until you switch them on in Settings → Tricks and the Hill, or with `collie tricks on`
 ([Switch tricks on or off](tricks.md#switch-tricks-on-or-off)). `collie trick dev` and
 `collie trick check --run` run a folder once in your terminal with tricks off too.
 
@@ -168,7 +168,7 @@ program as the answer to that Decision. Every flag of `check` and `dev` is in
 [`collie trick`](tricks-reference.md#collie-trick).
 
 To use the trick, the person reads the code and runs `collie trick on idle-watch` in a shell of their
-own, or uses the switch in Settings → Tricks.
+own, or uses the switch in Settings → Tricks and the Hill.
 
 ## Session settings rows
 
@@ -332,9 +332,9 @@ collie trick propose ~/work/idle-watch
 `propose` takes the draft from the agent's own work folder, such as the `./<id>/` that `init` made.
 It adds nothing to this machine's tricks. `propose` runs the same check as `collie trick check`, then sends the files to the person as a
 card, "Switch on the trick idle-watch?". The card shows in the agent's own session on the phone, and
-in Settings, Tricks under "Waiting for your yes", and on the Hill too while the Hill is on. One tap on
+in Settings, Tricks and the Hill under "Waiting for your yes", and on the Hill too while the Hill is on. One tap on
 Switch it on approves exactly the code the card showed and switches the trick on. Not now closes the
-card in the session, and the trick still waits in Settings, Tricks. It brings the PNG, JPEG and WebP
+card in the session, and the trick still waits in Settings, Tricks and the Hill. It brings the PNG, JPEG and WebP
 pictures of `media/` and `captures/` (at most 50, 2 MB each), and the card names each one. It leaves dot
 files, `node_modules/`, logs, `inputs/`, `config.toml` and any other file in `media/` or `captures/`
 behind, and names each file of those two folders that stays behind. It prints the card's id. Read the answer with
@@ -392,7 +392,7 @@ over 32 KiB, and a `contract` it does not read. The other limits are in the
 [reference](tricks-reference.md#a-repositorys-index-collie-tricksjson).
 
 `collie trick add https://github.com/owner/tricks` then prints the list and adds nothing. On the phone,
-Settings → Tricks → "Add from a repository" shows the list and adds one trick per tap, from `github.com`,
+Settings → Tricks and the Hill → "Add a trick from a repository" shows the list and adds one trick per tap, from `github.com`,
 `gitlab.com` and `codeberg.org` only. The list grants nothing: each trick is still fetched, checked and
 added off, and its own `trick.toml` wins over the list's name and line. A repository's list never
 makes a trick Official.

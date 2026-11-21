@@ -14,7 +14,7 @@ import { useScope } from "@/lib/session";
 // version, a trick's rights. The SAME card the Hill draws (`LiveDecisionCard`, components/decision-card.tsx)
 // with the same state and every guard (the code pages, the yes that waits until every card was on screen,
 // the confirm tap), on a page with no Hill list and no Hill words around it, so it works with the Hill off.
-// The page wears the Settings section shell with the Tricks title; Back steps back to Settings, Tricks or
+// The page wears the Settings section shell with the Tricks title; Back steps back to Settings, Tricks and the Hill or
 // to the Dashboard, whichever opened it, else lands on the Dashboard (lib/nav.ts `ancestorsOf`).
 //
 // The card comes from the hill's store, which the root loader keeps current: with the Hill on from

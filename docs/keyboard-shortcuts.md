@@ -15,7 +15,7 @@ counts. The card is gone for good once you close it, open the
 [shortcut list](terminology.md#shortcut-list) from it, or press the prefix.
 
 Open the shortcut list with the prefix, then `?`. On a wide window you can also open it from
-**Settings → Device → Keyboard shortcuts**. That row shows once the device has seen such a key press.
+**Settings → Keys and touch → Keyboard shortcuts**. That row shows once the device has seen such a key press.
 
 The bar and the list follow the screen you are on. On the dashboard the bar names no tab or pane
 key. The list opened with `?` shows what works here first, and ends with a section called "Not on
@@ -231,7 +231,7 @@ which Collie name to write, or that Collie has no such action.
 
 A shortcut is a second way to reach something. It is never the only way. Each action above has a
 button, a mark or a menu entry that does the same, so you can do everything with no keyboard.
-`help` has its row in **Settings → Device**, and `shortcuts.toml` reloads by itself, so it needs
+`help` has its row in **Settings → Keys and touch**, and `shortcuts.toml` reloads by itself, so it needs
 no reload action. The actions with no default key are rows of [Actions](terminology.md#actions).
 
 See also [Configure](configure.md#keyboard-shortcuts) for `shortcuts.toml` beside the other files.

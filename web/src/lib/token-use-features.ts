@@ -38,7 +38,7 @@ export const TOKEN_USE_FEATURES: readonly TokenUseFeature[] = [
   { id: "hill", reason: "decision-answers", place: "settings", component: "components/hill-switch-card.tsx" },
   // bridge/agent-view/service.ts: a tap types `[view:<trick> <address>] from operator: tapped "<label>"`.
   // Not drawn on that switch yet: at 360 px the chip does not fit the hint's second line (2026-11-12). The
-  // trick's own row in Settings, Tricks carries it, and the playground's "Uses agent tokens" section shows it.
+  // trick's own row in Settings, Tricks and the Hill carries it, and the playground's "Uses agent tokens" section shows it.
   { id: "agent-view", reason: "view-taps", place: "session-sheet", component: "components/trick-menu-group.tsx SwitchRow" },
 ];
 

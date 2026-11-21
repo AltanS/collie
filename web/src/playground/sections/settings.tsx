@@ -318,7 +318,7 @@ export function SettingsSection() {
         <Card
           state="theme-picker"
           label="the Theme card, one imported theme in the library"
-          reach="open Settings, Appearance. The card is the first one on the page, above System, Light and Dark."
+          reach="open Settings, Look and feel. The card is the first one on the page, above Light or dark."
           note="The real component over the real store. The pills are the shipped themes, then the imported one, each with a disc of its light and dark ground. Tapping a pill applies it to this whole page, because that is what it does on a phone; tap the first pill to come back. Import opens a file chooser, Export saves the active theme, Remove is a disabled slot until an imported theme is active, so nothing in the card changes height."
         >
           <PhoneFrameCard height={420}>
@@ -342,7 +342,7 @@ export function SettingsSection() {
         <Card
           state="theme-browse"
           label="the Browse sheet, three themes"
-          reach="open Settings, Appearance, and tap Browse community themes in the Theme card."
+          reach="open Settings, Look and feel, and tap Browse community themes in the Theme card."
           note="The host's copy of the community list, three hours old, one entry left out by the check. Each row is drawn from the theme's own tokens; Install opens the import preview. Nothing here fetches from the site: Refresh asks the host (M59 spec 06)."
         >
           <PhoneFrameCard height={844}>
@@ -353,7 +353,7 @@ export function SettingsSection() {
         <Card
           state="theme-paste"
           label="the paste sheet, filled"
-          reach="open Settings, Appearance, and tap Paste in the Theme card."
+          reach="open Settings, Look and feel, and tap Paste in the Theme card."
           note="One field and Read. Read opens the same preview or refusal sheet as Import. A pasted link is refused with a sentence, and nothing is fetched (ADR 0106, 2026-11-07)."
         >
           <PhoneFrameCard height={844}>

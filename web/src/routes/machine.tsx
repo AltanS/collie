@@ -167,7 +167,7 @@ function MachineDetail({ id, given }: { id: string; given: MachineHistoryState |
                 needsUpdate={row.sample === undefined && (row.health === "reachable" || row.health === "incompatible")}
                 hasDisks={row.sample?.disks !== undefined}
                 onSaved={() => void revalidator.revalidate()}
-                onOpenAlerts={() => nav.down(settingsSectionPath("alerts", scope))}
+                onOpenAlerts={() => nav.down(settingsSectionPath("notifications", scope))}
               />
             )}
           </>

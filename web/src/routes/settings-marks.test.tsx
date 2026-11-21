@@ -6,59 +6,51 @@ import { describe, expect, it } from "vitest";
 import { isPageId, SETTINGS, settingById } from "@/lib/settings";
 import { withHeaderHost } from "@/test/header-host";
 import {
-  SettingsAlertsRoute,
-  SettingsAppearanceRoute,
   SettingsCharacterRoute,
-  SettingsDeviceRoute,
-  SettingsExperimentsRoute,
-  SettingsHarnessesRoute,
+  SettingsChatRoute,
+  SettingsDashboardRoute,
+  SettingsDevicesRoute,
   SettingsInstallCountRoute,
-  SettingsSystemRoute,
+  SettingsKeysRoute,
+  SettingsLookRoute,
+  SettingsNotificationsRoute,
+  SettingsPrivacyRoute,
   SettingsTricksRoute,
   SettingsVoiceHostRoute,
   SettingsVoiceModelRoute,
   SettingsVoiceRoute,
 } from "./settings-sections";
+import { UpdatesRoute } from "./updates";
 
 // EVERY SETTINGS ROW HAS A MARKED PLACE ON A PAGE (ADR 0168). Each page wraps the control that draws a row in a
 // `SettingSlot` naming its registry ids. This renders every page and reads the marks: an id no row has fails, and a
-// registry row on a Settings page that no page marks fails, unless the list below says why it is not drawn yet.
+// registry row on a Settings page that no page marks fails.
 
 const PAGES = {
-  "/settings/appearance": <SettingsAppearanceRoute />,
-  "/settings/appearance/character": <SettingsCharacterRoute />,
-  "/settings/harnesses": <SettingsHarnessesRoute />,
-  "/settings/device": <SettingsDeviceRoute />,
+  "/settings/look": <SettingsLookRoute />,
+  "/settings/look/character": <SettingsCharacterRoute />,
+  "/settings/chat": <SettingsChatRoute />,
+  "/settings/keys": <SettingsKeysRoute />,
+  "/settings/notifications": <SettingsNotificationsRoute />,
   "/settings/voice": <SettingsVoiceRoute />,
   "/settings/voice/host": <SettingsVoiceHostRoute />,
   "/settings/voice/model": <SettingsVoiceModelRoute />,
-  "/settings/alerts": <SettingsAlertsRoute />,
-  "/settings/experiments": <SettingsExperimentsRoute />,
+  "/settings/dashboard": <SettingsDashboardRoute />,
   "/settings/tricks": <SettingsTricksRoute />,
-  "/settings/system": <SettingsSystemRoute />,
-  "/settings/system/install-count": <SettingsInstallCountRoute />,
+  "/settings/devices": <SettingsDevicesRoute />,
+  "/settings/privacy": <SettingsPrivacyRoute />,
+  "/settings/privacy/install-count": <SettingsInstallCountRoute />,
+  "/settings/updates": <UpdatesRoute />,
 } satisfies Record<string, ReactNode>;
 
 /**
- * Rows of a Settings page that today's pages do not draw yet, by why. The restructure of 2026-11-21 empties it: a
- * row named here is a row a person cannot reach from Settings.
+ * Rows of a Settings page that no page draws yet, by why. Empty since the eleven pages (2026-11-21): a row named here
+ * would be a row a person cannot reach from Settings.
  */
-const NOT_DRAWN_YET = {
-  "look.textSize.chat": "only in a pane's Display sheet today",
-  "chat.view": "only in a pane's Display sheet and ⋮ menu today",
-  "chat.shortForm": "only in a pane's Display sheet today",
-  "chat.wrap": "only in a pane's Display sheet today",
-  "chat.wholeReply": "only in a pane's Display sheet today",
-  "chat.rawTerminal": "only in a pane's Display sheet today",
-  "keys.tapToType": "only in a pane's Display sheet today",
-  "keys.pad.edit": "only in the Keys pad's tray today",
-  "keys.pad.presets": "only in the Keys pad's tray today",
-  "keys.pad.copy": "only in the Keys pad's tray today",
-} satisfies Record<string, string>;
+const NOT_DRAWN_YET = {} satisfies Record<string, string>;
 
 /** Rows drawn by a page this test does not render: they have tests of their own. */
-const DRAWN_ELSEWHERE = (id: string) =>
-  /^(accounts|updates)\./.test(id) || id.startsWith("tricks.trick.") || id.startsWith("notifications.load.");
+const DRAWN_ELSEWHERE = (id: string) => id.startsWith("accounts.") || id.startsWith("tricks.trick.");
 
 async function marksOf(path: string, page: ReactNode): Promise<string[]> {
   const router = createMemoryRouter([{ path, element: withHeaderHost(page) }], { initialEntries: [path] });

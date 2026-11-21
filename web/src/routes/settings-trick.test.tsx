@@ -9,7 +9,7 @@ import { renderTricksPages } from "@/test/tricks-pages";
 // SETTINGS → TRICKS → ONE TRICK (2026-11-21): the details page at its own address. A reload or a deep link draws
 // it from the store and the official list alone; a key that names no trick says so calmly with a way back; Back
 // comes up one level, to the list or to the trick's own page; tricks switched off as a whole send it to
-// Settings, Experiments; and the page holds no Remove (the bridge has no route for one, see the report).
+// Settings, Tricks and the Hill; and the page holds no Remove (the bridge has no route for one, see the report).
 
 const NOW = Date.parse("2026-11-11T09:41:00Z");
 const LEGS: WireTrickInfo = {
@@ -99,9 +99,9 @@ describe("the details page at its own address", () => {
     await vi.waitFor(() => expect(router.state.location.pathname).toBe("/trick/trick%3Alodge%3Alegs%3Alegs"));
   });
 
-  it("sends a deep link to Settings, Experiments while tricks are switched off on the machine", async () => {
+  it("sends a deep link to Settings, Tricks and the Hill while tricks are switched off on the machine", async () => {
     const router = renderTricksPages({ store: await storeWith([LEGS]), loader: () => ({ tricksOff: true }), page: { onOfficialList: officialOf([]) }, entries: ["/settings/tricks/lodge%3Alegs"] });
-    await vi.waitFor(() => expect(router.state.location.pathname).toBe("/settings/experiments"));
+    await vi.waitFor(() => expect(router.state.location.pathname).toBe("/settings/tricks"));
   });
 
   it("holds no Remove: the bridge has no route that removes a trick", async () => {

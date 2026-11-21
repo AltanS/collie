@@ -568,7 +568,7 @@ herdr plugin action invoke update-major --plugin herdr.collie   # Herdr plugin
 collie update --major                                           # standalone
 ```
 
-The phone can do the routine update too: Settings → System → Updates, one tap, and on a crew lead one tap
+The phone can do the routine update too: Settings → Updates and about → Updates, one tap, and on a crew lead one tap
 levels every member. For the phone path, the preflight, rollback, crews, and what to do when an
 update sticks, see **[Manage & update](upgrading.md)**.
 

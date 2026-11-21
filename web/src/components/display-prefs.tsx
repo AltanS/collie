@@ -56,10 +56,10 @@ export interface PaneViewControl {
    * (ADR 0099 point 9). Absent reads as true, a pane with a terminal to switch to.
    */
   terminalOffered?: boolean;
-  /** Whether the stream draws the agent's tool calls. Settings → Appearance writes the same value. */
+  /** Whether the stream draws the agent's tool calls. Settings → Look and feel writes the same value. */
   showToolCalls: boolean;
   setShowToolCalls: (on: boolean) => void;
-  /** Whether the stream keeps the recap Claude writes at a compaction. Settings → Appearance writes the same value. */
+  /** Whether the stream keeps the recap Claude writes at a compaction. Settings → Look and feel writes the same value. */
   showCompactions: boolean;
   setShowCompactions: (on: boolean) => void;
   /** The stream's own text size in px, and its stepper. Its own number, never the mirror's. */
@@ -243,15 +243,15 @@ export function DisplayPrefsContent({
   // this one row answers for either.
   const stretchTextRow = (
     <Row
-      label={t("settings.display.stretchText.label")}
-      hint={t("settings.display.stretchText.hint")}
+      label={t("settings.display.shortForm.label")}
+      hint={t("settings.display.shortForm.hint")}
       htmlFor="pref-stretch-text"
       control={
         <Switch
           id="pref-stretch-text"
           checked={prefs.stretchText}
           onCheckedChange={setStretchText}
-          aria-label={t("settings.display.stretchText.label")}
+          aria-label={t("settings.display.shortForm.label")}
         />
       }
     />
@@ -325,7 +325,7 @@ export function DisplayPrefsContent({
             }
           />
           <Row
-            label={t("settings.display.fullReply.label")}
+            label={t("settings.display.wholeReply.label")}
             hint={t("settings.display.fullReply.hint")}
             htmlFor="pref-expand-clipped-reply"
             control={
@@ -333,7 +333,7 @@ export function DisplayPrefsContent({
                 id="pref-expand-clipped-reply"
                 checked={prefs.expandClippedReply}
                 onCheckedChange={setExpandClippedReply}
-                aria-label={t("settings.display.fullReply.label")}
+                aria-label={t("settings.display.wholeReply.label")}
               />
             }
           />
@@ -352,15 +352,15 @@ export function DisplayPrefsContent({
             }
           />
           <Row
-            label={t("settings.display.noInvert.label")}
-            hint={t("settings.display.noInvert.hint")}
+            label={t("settings.display.ownColours.label")}
+            hint={t("settings.display.ownColours.hint")}
             htmlFor="pref-no-invert"
             control={
               <Switch
                 id="pref-no-invert"
                 checked={mirrorNative}
                 onCheckedChange={setMirrorNative}
-                aria-label={t("settings.display.noInvert.label")}
+                aria-label={t("settings.display.ownColours.label")}
               />
             }
           />

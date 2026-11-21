@@ -19,7 +19,7 @@ import { cn } from "@/lib/utils";
 // approval, and the bridge posts, serves and answers it with the Hill on or off (bridge/hill/service.ts).
 // With the Hill off the bar has no Hill item, so the phone reaches the card three ways:
 //
-//   1. Settings, Tricks: a first group "Waiting for your yes", one row per open card, oldest first. The
+//   1. Settings, Tricks and the Hill: a first group "Waiting for your yes", one row per open card, oldest first. The
 //      row is the card's own title (Collie's words, with the trick's id) and the first line of its summary
 //      (who proposed it, as the bridge knows them). A tap opens the card's page. With the Hill on the
 //      group is there too and opens the same page.
@@ -31,7 +31,7 @@ import { cn } from "@/lib/utils";
 //
 // The page itself is routes/trick-card.tsx: the same card component with the same guards.
 
-/** The group in Settings, Tricks, every value handed in, so a test and the playground draw the real markup. */
+/** The group in Settings, Tricks and the Hill, every value handed in, so a test and the playground draw the real markup. */
 export function TrickCardsWaitingList({ cards, onOpen }: { cards: readonly HillDecision[]; onOpen: (decision: HillDecision) => void }) {
   useLocale();
   if (cards.length === 0) return null;

@@ -115,7 +115,7 @@ function props(over: Partial<SpeechCardsProps> = {}): SpeechCardsProps {
 const WHISTLE_HUB: Partial<SpeechCardsProps> = { whistle: { ...READY, hostEngine: true }, hostStt: STT_WHISTLE, host: HOST_WHISTLE };
 
 const follows = (a: Node, b: Node) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
-const phoneGroup = () => screen.getByRole("radiogroup", { name: "Where this phone's speech becomes text." });
+const phoneGroup = () => screen.getByRole("radiogroup", { name: "Where this phone turns your speech into text. Other devices keep their own choice." });
 const hostGroup = () => screen.getByRole("radiogroup", { name: "What your host uses" });
 
 /** The in-use card. It holds the words of both choices; the ones shown now are in `[data-active]` layers. */
@@ -148,7 +148,7 @@ const statusExtra = () =>
 const changeRow = () => screen.getByRole("button", { name: "Change how speech works" });
 /** Everything behind the fold, by what each part is called. `null` while it is folded away. */
 const folded = () => ({
-  phone: screen.queryByRole("heading", { name: "Only this phone" }),
+  phone: screen.queryByRole("heading", { name: "Speech on this phone" }),
   host: screen.queryByRole("heading", { name: "Every device on your host" }),
   model: screen.queryByRole("button", { name: /Whistle model/ }),
 });

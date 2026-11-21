@@ -3,7 +3,7 @@
 A trick adds its own parts to ColliePWA on your phone: a count, a question, or a whole screen.
 
 Tricks are experimental. They may change, lose settings, or be withdrawn in a patch release. They are
-off until you switch them on in Settings → Experiments, or with `collie tricks on`. See
+off until you switch them on in Settings → Tricks and the Hill, or with `collie tricks on`. See
 [Switch tricks on or off](#switch-tricks-on-or-off).
 
 Collie is a web app for your phone. It lets you watch and answer the AI coding agents that run in the
@@ -45,12 +45,12 @@ Collie's own look.
   of the screen, never covers a question and never blocks a tap. A picture that rests on an edge can
   open the trick's Page, when its part says so. A picture is a file in the trick's `media/` folder,
   drawn by Collie from a fixed list of motions. Use original art, never a known character.
-  "Floating things" in Settings → Appearance turns every picture off on a device, and each trick
+  "Moving pictures from tricks" in Settings → Look and feel turns every picture off on a device, and each trick
   keeps its own switch.
 - **The agent view is the eighth.** It is a view of one agent session, beside Terminal and Chat, and
   that session's own agent draws it.
 - **The Hill is not a place, it ships with Collie.** It is the page of questions that wait for you,
-  and an experiment: off until you switch it on in Settings → Experiments. A trick posts a question
+  and an experiment: off until you switch it on in Settings → Tricks and the Hill. A trick posts a question
   there, a Decision, and does not list the Hill in its `places`.
 
 ![Three phone screens, the Dashboard, a session and a session's settings sheet, with the eight places of a trick numbered.](images/tricks/places.png)
@@ -390,12 +390,12 @@ official repository. Any other https git repository takes an address, then optio
 folder, and `#` and a branch, a tag or a full 40-digit commit. An address with a user name or a
 password is refused, and so is any address that is not https.
 
-On the phone, Settings → Tricks is one list. The official tricks come first, in the order of the
+On the phone, Settings → Tricks and the Hill shows one list of tricks. The official tricks come first, in the order of the
 release's list, then your other tricks by name. Each row says Official or Community. An official trick
 you have not added shows an Add button in its place. A tap makes one git fetch, then checks the hash of
 what arrived. The added trick stays in the same place, with its switch. Adding a trick or switching it
 changes its row, never its place. The Hill is not a row of that card: it is not a trick, and its
-switch is in Settings → Experiments.
+switch is on the same page, in the card **The Hill**.
 
 ### Add from a repository that lists its tricks
 
@@ -410,7 +410,7 @@ prints each folder, its name and its one line, and the commit it read. It adds n
 `collie trick add https://github.com/owner/tricks//<folder>`. A repository with no such file and no
 `trick.toml` at its top says so and names the `//<folder>` form.
 
-On the phone, Settings → Tricks ends with "Add from a repository". Paste the https link, tap "Read the
+On the phone, the list in Settings → Tricks and the Hill ends with "Add a trick from a repository". Paste the https link, tap "Read the
 list", then tap Add on one trick. The list shows the repository's own words under "The repository
 says". They are a claim, not a check: the trick's own `trick.toml` wins once it is added. Add makes one
 git fetch, checks the folder as `collie trick add` does, and the trick arrives switched off. Its switch
@@ -443,9 +443,9 @@ collie tricks status
 ```
 
 Tricks as a whole have one switch for each machine, and it is off until you switch it on. On the phone
-it is the **Tricks** card in Settings → Experiments, under the card for the Hill. While the switch is
-on, Settings has a **Tricks** row that opens the list of your tricks. While it is off, that row is
-gone, and a link to Settings → Tricks opens Settings → Experiments. The switch holds for the machine,
+it is the **Tricks** card at the top of Settings → Tricks and the Hill, above the card for the Hill. The page
+always shows the switch. While the switch is on, it also shows the list of your tricks. While it is
+off, the list is gone. The switch holds for the machine,
 on every phone at once. A trick's program runs as you on
 this machine.
 
@@ -470,7 +470,7 @@ collie trick off design-review
 collie trick remove design-review
 ```
 
-A trick runs only while it is on. Switch it on in Settings → Tricks, or with `collie trick on` in a
+A trick runs only while it is on. Switch it on in Settings → Tricks and the Hill, or with `collie trick on` in a
 shell. Switching on is your yes to the code as it is now. Collie copies the code to a folder of its
 own and runs that copy. The row, and `collie trick on`, list any warnings from a text search of the
 code first. The search reads every file the `run` line names, whatever its name, and warns about code
@@ -494,7 +494,7 @@ is a speed bump, not a lock. Your user account is the real boundary
 Collie runs the approved copy. When you edit the trick's folder, or `collie trick update` fetches new
 code, the trick keeps running the old version. Its row says "A new version waits for your yes."
 
-A card asks "Use the new version of `<name>`?". It is on the [Hill](hill.md), and in Settings → Tricks
+A card asks "Use the new version of `<name>`?". It is on the [Hill](hill.md), and in Settings → Tricks and the Hill
 under **Waiting for your yes**, where the trick's row opens it too, with the Hill on or off. It shows the files that changed
 and any new power the version asks for. You have three options:
 
@@ -554,7 +554,7 @@ version, a change to `config.toml`, switching it on again, or a tap starts it ag
 ### The details page
 
 The details page is what you read before you switch a trick on. Tap the trick's name in Settings →
-Tricks to open it, or the info button at the end of the header on the trick's own page. Back returns
+Tricks and the Hill to open it, or the info button at the end of the header on the trick's own page. Back returns
 to where you came from.
 
 - **The top** holds the trick's icon, its name, its labels and its switch, with the state in words.
@@ -600,7 +600,7 @@ tries it with `collie trick dev`, and then proposes it to you:
 collie trick propose ~/work/disk-space
 ```
 
-A card appears with the whole code on it: on your Hill, or in Settings → Tricks under **Waiting for
+A card appears with the whole code on it: on your Hill, or in Settings → Tricks and the Hill under **Waiting for
 your yes** while the Hill is off. Collie never recommends "Switch it on": your
 own judgement is the check. The yes is a hold of 1.5 seconds. Nothing of the trick runs before your yes. Collie offers an agent no way to
 switch a trick on. A program that runs as you can still do it.
@@ -633,11 +633,11 @@ An agent on a member machine can still put a Decision on the lead's Hill
 
 ## Troubleshooting
 
-Most problems show in the trick's row in Settings → Tricks, or in `collie trick list`.
+Most problems show in the trick's row in Settings → Tricks and the Hill, or in `collie trick list`.
 
 | What you see | What it means and what to do |
 | --- | --- |
-| "Tricks are switched off on this machine; ..." | Tricks as a whole are off. Switch them on in Settings → Experiments, or run `collie tricks on` |
+| "Tricks are switched off on this machine; ..." | Tricks as a whole are off. Switch them on in Settings → Tricks and the Hill, or run `collie tricks on` |
 | "This trick cannot run. ..." | `trick.toml` has an error, and the rest of the line says which. Run `collie trick check <folder>` and fix each line it prints |
 | "Part of this trick is not shown. ..." | The trick runs, but Collie refused one part of what it printed, for example a status line over its length. The rest of the line says which. Run `collie trick dev <folder>` to see each refusal |
 | "A new version waits for your yes." | The folder moved past the approved copy. Tap the line to open its card, or run `collie trick on <id>` |
@@ -647,7 +647,7 @@ Most problems show in the trick's row in Settings → Tricks, or in `collie tric
 | "Stopped after repeated failures" | The program failed after 1, 5 and 30 minutes. Fix it, then switch it off and on, or tap its mark |
 | "Last run failed" | The phone keeps the last good version. "Why" shows the error, and "Copy for an agent" copies it |
 | "This Collie cannot draw this part" | A crew member's older Collie does not know the kind. Update Collie |
-| "The Hill is off: this trick's Decisions are not shown." | Switch the Hill on in Settings → Experiments, or run `collie hill on` |
+| "The Hill is off: this trick's Decisions are not shown." | Switch the Hill on in Settings → Tricks and the Hill, or run `collie hill on` |
 | "Tricks run on the lead of this crew. This machine runs none." | You are on a member. Switch tricks on from the lead |
 | "Could not switch `<name>`. Try again." | The phone could not write the switch. Check that the device may write, and that the bridge answers |
 | "error: collie trick on is a person's yes to the code, ..." | An agent ran the command. Run it in a shell pane, or tap the switch on the phone |

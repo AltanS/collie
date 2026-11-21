@@ -129,7 +129,7 @@ const LIST = [
   // ── 7. Profiles ───────────────────────────────────────────────────────────────────────────────────
   { id: "accounts.intro", label: "accounts.intro", kind: "info", scope: "profile", page: "accounts", group: "profiles", store: none, when: "accounts-offered", find: false },
   { id: "accounts.profiles", label: "accounts.title", hint: "accounts.row.none", kind: "list", scope: "profile", page: "accounts", group: "profiles", store: route("/api/accounts", "profile"), each: "profile", when: "accounts-offered", words: words("settings.words.login") },
-  { id: "accounts.add", label: "accounts.add.profileLabel", kind: "link", scope: "profile", page: "accounts", group: "profiles", store: none, when: "accounts-offered" },
+  { id: "accounts.add", label: "settings.group.accounts.add", kind: "link", scope: "profile", page: "accounts", group: "profiles", store: none, when: "accounts-offered" },
   { id: "accounts.removeNote", label: "accounts.removeNote", kind: "info", scope: "profile", page: "accounts", group: "profiles", store: none, when: "accounts-offered", find: false },
   { id: "accounts.found", label: "accounts.found.hint", kind: "info", scope: "profile", page: "accounts", group: "found", store: none, when: "accounts-offered", find: false },
   { id: "accounts.found.add", label: "accounts.found.addLabel", kind: "action", scope: "profile", page: "accounts", group: "found", store: route("/api/accounts"), when: "accounts-offered", find: false },

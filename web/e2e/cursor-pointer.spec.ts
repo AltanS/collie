@@ -45,8 +45,9 @@ test("the real controls of the app show the hand", async ({ page }) => {
   expect(await cursor(page.getByRole("combobox").first())).toBe("pointer");
 
   // Settings: a switch, a radio of a segmented control, and a link.
-  await page.goto("/settings/appearance");
+  await page.goto("/settings/keys");
   expect(await cursor(page.getByRole("switch", { name: en["settings.harnessBar.title"] }))).toBe("pointer");
+  await page.goto("/settings/look");
   expect(await cursor(page.getByRole("radio", { name: "Dark", exact: true }))).toBe("pointer");
   expect(await cursor(page.getByRole("link", { name: en["settings.appearance.intro.docs"] }))).toBe("pointer");
 

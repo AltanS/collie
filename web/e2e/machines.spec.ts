@@ -31,11 +31,11 @@ async function landed(page: Page, path: string) {
   await expect.poll(() => at(page)).toBe(path);
 }
 
-test("Settings to Machines to a machine, its Alerts view, set a CPU alert, back twice", async ({ page }) => {
+test("Settings, Devices and machines to Machines to a machine, its Alerts view, set a CPU alert, back twice", async ({ page }) => {
   const { posted } = await installMachinesWorld(page);
 
-  await page.goto("/settings");
-  await page.getByRole("button", { name: new RegExp(`^${en["settings.section.machines.title"]}`, "u") }).click();
+  await page.goto("/settings/devices");
+  await page.getByRole("button", { name: new RegExp(`^${en["machines.entry.title"]}`, "u") }).click();
   await landed(page, "/machines");
   await expect(page.getByRole("heading", { name: en["machines.title"], level: 1 })).toBeVisible();
 
@@ -64,7 +64,7 @@ test("Settings to Machines to a machine, its Alerts view, set a CPU alert, back 
   await expect(page.getByRole("img", { name: /^CPU, last hour:/u })).toHaveCount(0);
 
   // The 95% segment of the CPU threshold posts the WHOLE object: the memory rule rides along.
-  await page.getByRole("radiogroup", { name: "CPU alert threshold" }).getByRole("radio", { name: "95%" }).click();
+  await page.getByRole("radiogroup", { name: "CPU above" }).getByRole("radio", { name: "95%" }).click();
   // The card's live line says it; the visible face beside it is the same words with a check.
   await expect(page.getByRole("status").filter({ hasText: en["machines.alerts.saved"] })).toHaveText(en["machines.alerts.saved"]);
   expect(posted).toEqual([
@@ -74,14 +74,14 @@ test("Settings to Machines to a machine, its Alerts view, set a CPU alert, back 
     },
   ]);
   await expect(
-    page.getByRole("radiogroup", { name: "CPU alert threshold" }).getByRole("radio", { name: "95%" }),
+    page.getByRole("radiogroup", { name: "CPU above" }).getByRole("radio", { name: "95%" }),
   ).toHaveAttribute("aria-checked", "true");
 
-  // Back twice: the arrow onto the list (the view switch replaced its entry), the edge swipe onto Settings.
+  // Back twice: the arrow onto the list (the view switch replaced its entry), the edge swipe onto Devices and machines.
   await page.getByRole("button", { name: en["machines.nav.back"] }).click();
   await landed(page, "/machines");
   await page.goBack();
-  await landed(page, "/settings");
+  await landed(page, "/settings/devices");
 });
 
 test("a card's firing line opens the machine on its Alerts view", async ({ page }) => {

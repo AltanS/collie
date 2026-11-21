@@ -24,17 +24,17 @@ describe("router: the pairing forward", () => {
     window.history.replaceState(null, "", "/");
   });
 
-  it("lands a scanned pairing link on System with the whole query intact", async () => {
+  it("lands a scanned pairing link on Devices and machines with the whole query intact", async () => {
     const router = await bootAt("/settings?h=badger&pair=ABCD2345");
-    await waitFor(() => expect(router.state.location.pathname).toBe("/settings/system"));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/settings/devices"));
     expect(router.state.location.search).toBe("?h=badger&pair=ABCD2345");
-    expect(window.location.pathname).toBe("/settings/system");
+    expect(window.location.pathname).toBe("/settings/devices");
   });
 
   it("replaces the entry, so there is no extra history step to bounce back through", async () => {
     const before = window.history.length;
     const router = await bootAt("/settings?pair=ABCD2345");
-    await waitFor(() => expect(router.state.location.pathname).toBe("/settings/system"));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/settings/devices"));
     // bootAt pushed exactly one entry (the scanned URL); the forward replaced it instead of adding one.
     expect(window.history.length).toBe(before + 1);
   });
