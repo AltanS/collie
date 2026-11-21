@@ -8,8 +8,14 @@ import {
   reloadForMissingChunk,
   reloadOnChunkError,
   setChunkReloader,
+  type PreloadErrorEvent,
 } from "./chunk-reload";
 import { __resetReloadGuard, holdReload } from "./reload-guard";
+
+/** The event Vite dispatches for a failed import, carrying `payload`. */
+function preloadError(payload: Error = new TypeError("Failed to fetch dynamically imported module: /assets/x.js")): PreloadErrorEvent {
+  return Object.assign(new Event("vite:preloadError", { cancelable: true }), { payload });
+}
 
 function stubSessionStorage(): Map<string, string> {
   const store = new Map<string, string>();
@@ -56,7 +62,7 @@ describe("the reload on a missing chunk", () => {
   });
 
   it("reloads once, stamps the time, and cancels Vite's rethrow", () => {
-    const event = new Event("vite:preloadError", { cancelable: true });
+    const event = preloadError();
     onPreloadError(event);
     expect(reload).toHaveBeenCalledTimes(1);
     expect(event.defaultPrevented).toBe(true);
@@ -64,24 +70,24 @@ describe("the reload on a missing chunk", () => {
   });
 
   it("does not reload a second time inside 60 s, and leaves the event alone", () => {
-    onPreloadError(new Event("vite:preloadError", { cancelable: true }));
+    onPreloadError(preloadError());
     vi.advanceTimersByTime(PRELOAD_RELOAD_WINDOW_MS - 1);
-    const event = new Event("vite:preloadError", { cancelable: true });
+    const event = preloadError();
     onPreloadError(event);
     expect(reload).toHaveBeenCalledTimes(1);
     expect(event.defaultPrevented).toBe(false);
   });
 
   it("reloads again after 60 s", () => {
-    onPreloadError(new Event("vite:preloadError", { cancelable: true }));
+    onPreloadError(preloadError());
     vi.advanceTimersByTime(PRELOAD_RELOAD_WINDOW_MS);
-    onPreloadError(new Event("vite:preloadError", { cancelable: true }));
+    onPreloadError(preloadError());
     expect(reload).toHaveBeenCalledTimes(2);
   });
 
   it("does not reload over a held draft, and does not stamp", () => {
     holdReload("composer");
-    const event = new Event("vite:preloadError", { cancelable: true });
+    const event = preloadError();
     onPreloadError(event);
     expect(reload).not.toHaveBeenCalled();
     expect(event.defaultPrevented).toBe(false);

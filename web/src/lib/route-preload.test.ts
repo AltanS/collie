@@ -3,16 +3,27 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { PRELOAD_RELOAD_KEY, setChunkReloader } from "./chunk-reload";
 import { lazyChunk, lazyScreen } from "./lazy-route";
-import { __resetPreload, IDLE_FALLBACK_MS, lazyLoadsOf, schedulePreload, type PreloadDocument, type PreloadHost } from "./route-preload";
+import {
+  __resetPreload,
+  IDLE_FALLBACK_MS,
+  lazyLoadsOf,
+  PRELOAD_RETRY_ROUNDS,
+  schedulePreload,
+  type PreloadDocument,
+  type PreloadHost,
+  type PreloadWindow,
+} from "./route-preload";
 
 function Screen() {
   return null;
 }
 
-/** A page whose idle moment and visibility the test drives by hand. */
-function fakeHost(opts: { idle: boolean; hidden?: boolean }) {
+/** A page whose idle moment, visibility and network the test drives by hand. */
+function fakeHost(opts: { idle: boolean; hidden?: boolean; offline?: boolean; saveData?: boolean }) {
   let visibility: DocumentVisibilityState = opts.hidden === true ? "hidden" : "visible";
+  let online = opts.offline !== true;
   const listeners = new Set<() => void>();
+  const onlineListeners = new Set<() => void>();
   const idleCallbacks: (() => void)[] = [];
   const timers: { cb: () => void; ms: number }[] = [];
   const doc: PreloadDocument = {
@@ -22,21 +33,47 @@ function fakeHost(opts: { idle: boolean; hidden?: boolean }) {
     addEventListener: (_type, cb) => void listeners.add(cb),
     removeEventListener: (_type, cb) => void listeners.delete(cb),
   };
+  const win: PreloadWindow = {
+    addEventListener: (_type, cb) => void onlineListeners.add(cb),
+    removeEventListener: (_type, cb) => void onlineListeners.delete(cb),
+  };
   const host: PreloadHost = {
     document: doc,
+    window: win,
     requestIdleCallback: opts.idle ? (cb) => void idleCallbacks.push(cb) : undefined,
     setTimeout: (cb, ms) => void timers.push({ cb, ms }),
+    onLine: () => online,
+    saveData: opts.saveData === true,
+  };
+  /** Run the idle callbacks asked for so far, as the browser would at its next idle moment. */
+  const idle = (): void => {
+    for (const cb of idleCallbacks.splice(0)) cb();
   };
   return {
     host,
     idleCallbacks,
     timers,
+    idle,
     show: () => {
       visibility = "visible";
       for (const cb of listeners) cb();
     },
+    hide: () => {
+      visibility = "hidden";
+      for (const cb of listeners) cb();
+    },
+    goOnline: () => {
+      online = true;
+      for (const cb of onlineListeners) cb();
+    },
     listenerCount: () => listeners.size,
+    onlineListenerCount: () => onlineListeners.size,
   };
+}
+
+/** Let the preload's promise chain run as far as it can without a new idle moment. */
+async function settle(): Promise<void> {
+  for (let i = 0; i < 10; i += 1) await Promise.resolve();
 }
 
 describe("lazyLoadsOf", () => {
@@ -145,11 +182,100 @@ describe("schedulePreload", () => {
     const broken = vi.fn(() => Promise.reject(new TypeError("Failed to fetch dynamically imported module")));
     const next = vi.fn(() => Promise.resolve());
     const run = schedulePreload([broken, next], page.host);
-    page.idleCallbacks[0]?.();
-    await run;
+    page.idle();
+    await settle();
     expect(broken).toHaveBeenCalledTimes(1);
     expect(next).toHaveBeenCalledTimes(1);
+    for (let round = 0; round < PRELOAD_RETRY_ROUNDS; round += 1) {
+      page.idle();
+      await settle();
+    }
+    await run;
     expect(reloader).not.toHaveBeenCalled();
+  });
+
+  it("tries a failed chunk again at the next idle moment, and only that chunk", async () => {
+    const page = fakeHost({ idle: true });
+    const flaky = vi.fn().mockRejectedValueOnce(new TypeError("Failed to fetch dynamically imported module")).mockResolvedValue(undefined);
+    const fine = vi.fn(() => Promise.resolve());
+    const run = schedulePreload([flaky, fine], page.host);
+    page.idle();
+    await settle();
+    expect(flaky).toHaveBeenCalledTimes(1);
+    expect(fine).toHaveBeenCalledTimes(1);
+    // The retry waits for an idle moment of its own.
+    expect(page.idleCallbacks).toHaveLength(1);
+    page.idle();
+    await run;
+    expect(flaky).toHaveBeenCalledTimes(2);
+    expect(fine).toHaveBeenCalledTimes(1);
+    expect(page.idleCallbacks).toHaveLength(0);
+  });
+
+  it("gives up on a chunk after three rounds of retries", async () => {
+    const page = fakeHost({ idle: true });
+    const gone = vi.fn(() => Promise.reject(new TypeError("Failed to fetch dynamically imported module")));
+    const run = schedulePreload([gone], page.host);
+    for (let i = 0; i < 10; i += 1) {
+      page.idle();
+      await settle();
+    }
+    await run;
+    expect(gone).toHaveBeenCalledTimes(1 + PRELOAD_RETRY_ROUNDS);
+    expect(page.idleCallbacks).toHaveLength(0);
+  });
+
+  it("offline, waits for the online event before it tries again", async () => {
+    const page = fakeHost({ idle: true, offline: true });
+    const flaky = vi.fn().mockRejectedValueOnce(new TypeError("Failed to fetch dynamically imported module")).mockResolvedValue(undefined);
+    const run = schedulePreload([flaky], page.host);
+    page.idle();
+    await settle();
+    expect(flaky).toHaveBeenCalledTimes(1);
+    expect(page.onlineListenerCount()).toBe(1);
+    // Idle moments while offline do not spend a round.
+    page.idle();
+    await settle();
+    expect(page.idleCallbacks).toHaveLength(0);
+    page.goOnline();
+    expect(page.onlineListenerCount()).toBe(0);
+    await settle();
+    expect(page.idleCallbacks).toHaveLength(1);
+    page.idle();
+    await run;
+    expect(flaky).toHaveBeenCalledTimes(2);
+  });
+
+  it("stops between two chunks while the page is hidden, and goes on after visibilitychange", async () => {
+    const page = fakeHost({ idle: true });
+    const second = vi.fn(() => Promise.resolve());
+    const first = vi.fn(() => {
+      page.hide();
+      return Promise.resolve();
+    });
+    const run = schedulePreload([first, second], page.host);
+    page.idle();
+    await settle();
+    expect(first).toHaveBeenCalledTimes(1);
+    page.idle();
+    await settle();
+    expect(second).not.toHaveBeenCalled();
+    expect(page.listenerCount()).toBe(1);
+    page.show();
+    expect(page.listenerCount()).toBe(0);
+    page.idle();
+    await run;
+    expect(second).toHaveBeenCalledTimes(1);
+  });
+
+  it("preloads nothing when the person asked for less data (Save-Data)", async () => {
+    const page = fakeHost({ idle: true, saveData: true });
+    const load = vi.fn(() => Promise.resolve());
+    lazyChunk(load);
+    await schedulePreload([load], page.host);
+    expect(page.idleCallbacks).toHaveLength(0);
+    expect(page.timers).toHaveLength(0);
+    expect(load).not.toHaveBeenCalled();
   });
 
   it("takes a lazyChunk door made before the run, one made during it, and one made after it", async () => {
