@@ -39,6 +39,11 @@ const CASES = [
   // The query rides along: a scope, and the pairing code an old QR carries.
   ["/settings/appearance?h=badger", "/settings/look?h=badger", en["settings.page.look.title"]],
   ["/settings/system?pair=ABCD2345", "/settings/devices?pair=ABCD2345", en["settings.page.devices.title"]],
+  // The index with an old fragment: the read-only banner of 1.0 to 1.12, the Changes link before 1.25.
+  ["/settings#paired-devices", "/settings/devices#paired-devices", en["settings.page.devices.title"]],
+  ["/settings#changes", "/settings/dashboard#changes", en["settings.page.dashboard.title"]],
+  // A row's id on an old page opens the page that holds the row now (Tool calls moved from Appearance to Chat).
+  ["/settings/appearance#chat.toolCalls", "/settings/chat#chat.toolCalls", en["settings.page.chat.title"]],
 ] as const;
 
 for (const [from, to, heading] of CASES) {
@@ -65,4 +70,11 @@ test("an old fragment of a row still marks that row on its new page", async ({ p
   await page.goto("/settings/device#changes");
   await expect.poll(() => at(page)).toBe("/settings/dashboard#changes");
   await expect(page.locator('[data-setting~="dashboard.changes.nested"][data-marked="true"]').first()).toBeVisible();
+});
+
+test("on a large screen the index with an old fragment opens that row's page too", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/settings#paired-devices");
+  await expect.poll(() => at(page)).toBe("/settings/devices#paired-devices");
+  await expect(page.locator('[data-setting~="devices.paired"][data-marked="true"]').first()).toBeVisible();
 });

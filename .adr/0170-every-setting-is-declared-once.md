@@ -56,9 +56,14 @@ tests read that list. Settings is eleven pages.**
 - **Marks, not copies.** A page wraps each control in a `SettingSlot` naming the ids it draws. The marks
   are what the tests read and what a search result scrolls to (`/settings/<page>#<id>`, marked for two
   seconds in the focus frame's colour).
-- **Old addresses redirect.** `/settings/appearance`, `harnesses`, `device`, `alerts`, `experiments` and
-  `system` (and the pages below them) open the page that holds most of what they held, with the query
-  and the fragment; an old fragment (`#changes`, `#paired-devices`, `#install-count`) picks its row's page.
+- **Old addresses redirect, for good.** A push already delivered, a crew member on an older Collie, a
+  bookmark and an installed app's history carry them, so the redirects are never removed.
+  `/settings/appearance`, `harnesses`, `device`, `alerts`, `experiments` and `system` (and the pages below
+  them) open the page that holds most of what they held, with the query and the fragment. An old fragment
+  (`#changes`, `#paired-devices`, `#install-count`, the only three the old pages answered to) picks its
+  row's page, on an old page and on `/settings` itself, which the read-only banner and the Changes link
+  used before 1.25. A row's id as the fragment of an old page opens the page that holds the row today.
+  `web/src/routes/settings-redirect.test.tsx` holds every address a release tag emitted, with its target.
   The redirect is an element, because a loader's request carries no fragment.
 - **Experiments are marked on their rows.** The Experiments page and its notice are gone. Each
   experimental row wears the Experimental badge and carries the notice's sentence in its hint.

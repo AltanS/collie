@@ -11665,7 +11665,7 @@ Collie, then enter the code in Settings.</p>
 <p>If you are the operator: point this path at your proxy's sign-in flow. See <em>Serving Collie
 behind your own reverse proxy</em> in the README. If your front door signs in on every path and has
 no page here, set <code>COLLIE_AUTH_RETURN=1</code> and this address sends you back to Collie.</p>
-<p><a href="${base}">Back to Collie</a> · <a href="${base}settings/system">Open Settings</a></p>
+<p><a href="${base}">Back to Collie</a> · <a href="${base}settings/devices">Open Settings</a></p>
 </body>
 </html>
 `;
