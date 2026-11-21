@@ -510,12 +510,16 @@ export function AppHeaderHost({ bridge, error, lastSeenAt, children }: AppHeader
                     aria-label would otherwise replace both lines for a screen reader. The brand word moved out of the button with it, so the tap target
                     is the mark's own 44px box and nothing else — the floor §6 asks for, and the same
                     box the gear at the other end of the row has. */}
+                {/* SPANNED (the large-screen 48px header) the block is CENTRED ON THE ROW, not hung from the mux line:
+                    the eyebrow is in flow, and the mux line is drawn only once a name has arrived, so one line
+                    ("Collie" alone) sits on the mark's middle and two lines sit there as a pair (11 + 2 + 20 = 33px
+                    in 44, 5px or more above and below). The 60px row keeps the hung eyebrow described above. */}
                 <div
                   data-slot="header-identity"
                   hidden={!claim.wordmark}
-                  className="shrink-0 whitespace-nowrap"
+                  className={cn("shrink-0 whitespace-nowrap", spanned && "flex flex-col justify-center gap-0.5")}
                 >
-                  <SectionLabel className="flex h-0 items-end leading-none">
+                  <SectionLabel className={spanned ? "block leading-none" : "flex h-0 items-end leading-none"}>
                     Collie
                   </SectionLabel>
                   {/* The line the freed width is FOR — "on <mux>", the sentence the brand line
@@ -530,8 +534,8 @@ export function AppHeaderHost({ bridge, error, lastSeenAt, children }: AppHeader
                       that makes two stacked runs one sentence rather than two loose labels, and it
                       is the only translated word here — the brand and the multiplexer's own name
                       are names, and names are not translated. */}
-                  {/* In the spanned 48px row the line is 20px (`text-sm`), so the eyebrow above it stays inside the row. */}
-                  <span className={cn("block", spanned ? "min-h-5 text-sm leading-5" : "min-h-6 text-base")}>
+                  {/* In the spanned 48px row the line is 20px (`text-sm`), and absent until a name arrives. */}
+                  <span className={cn("block", spanned ? "text-sm leading-5" : "min-h-6 text-base")} hidden={spanned && mux === ""}>
                     {mux !== "" && (
                       <>
                         {t("nav.mux.onPrefix")}{" "}

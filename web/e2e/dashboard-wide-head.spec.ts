@@ -49,6 +49,43 @@ test("at 1440 x 900 there is no tab bar at the foot, and the header spans the wi
   expect(Math.abs(row.x + 24 - first.x)).toBeLessThanOrEqual(1);
 });
 
+for (const [lines, mux] of [
+  ["one line", undefined],
+  ["two lines", "Herdr"],
+] as const) {
+  test(`the identity beside the mark, ${lines}, is centred on the header's middle and inside its box`, async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    if (mux !== undefined) {
+      await page.route(
+        (url) => url.pathname === "/api/config",
+        (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ push: false, vapidPublicKey: "", mux: { name: mux } }) }),
+      );
+    }
+    await installHeadWorld(page, three());
+    await page.goto("/");
+    const identity = page.locator('[data-slot="header-identity"]');
+    await expect(identity).toBeVisible();
+    if (mux !== undefined) await expect(identity).toContainText(mux);
+    else await expect(identity).toHaveText("Collie");
+    // The ink, not the box: the block's first and last text lines as the engine lays them out.
+    const ink = await identity.evaluate((el) => {
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      const rects = [...range.getClientRects()].filter((r) => r.height > 0);
+      return { top: Math.min(...rects.map((r) => r.top)), bottom: Math.max(...rects.map((r) => r.bottom)) };
+    });
+    const h = await box(header(page));
+    const block = await box(identity);
+    // The header's box less its 1px edge underneath.
+    const middle = h.y + (h.height - 1) / 2;
+    expect(Math.abs(block.y + block.height / 2 - middle)).toBeLessThanOrEqual(1);
+    expect(block.y).toBeGreaterThanOrEqual(h.y);
+    expect(block.y + block.height).toBeLessThanOrEqual(h.y + h.height - 1);
+    expect(ink.top - h.y).toBeGreaterThanOrEqual(4);
+    expect(h.y + h.height - 1 - ink.bottom).toBeGreaterThanOrEqual(4);
+  });
+}
+
 test("the views control switches the view by mouse and by keyboard", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await installHeadWorld(page, three());
