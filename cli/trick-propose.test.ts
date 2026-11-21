@@ -71,7 +71,7 @@ describe("where the card is, from the bridge's answer (package I)", () => {
     expect(proposeWhere({ session: false, hill: true })).toBe("on the Hill, and in Settings, Tricks and the Hill");
     expect(proposeWhere({ session: false, hill: false })).toBe("in Settings, Tricks and the Hill, on the phone");
     expect(proposeWhere(undefined)).toBe(PROPOSE_WHERE);
-    for (const where of [{ session: true, hill: false }, { session: false, hill: false }]) expect(proposeWhere(where)).not.toContain("Hill");
+    for (const where of [{ session: true, hill: false }, { session: false, hill: false }]) expect(proposeWhere(where)).not.toContain("on the Hill");
   });
 });
 
