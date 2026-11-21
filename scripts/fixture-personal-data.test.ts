@@ -12,9 +12,10 @@
 //     is fine.
 //
 // (c) The user segment of a home path (`/home/<x>/`, `/var/home/<x>/`, the flattened `-home-<x>-`),
-//     the user of a shell prompt (`<x>@host:`) and the user of a starship prompt (`<x> in 🌐`) must
-//     come from NEUTRAL_USERS. THIRD_PARTY_LEDGER counts the names of other people that still stand in
-//     a fixture, by file and number, never by value; the count must stay exact, so a scrub empties it.
+//     the user of a shell prompt (`<x>@host:`), the user of a starship prompt (`<x> in 🌐`) and the
+//     user folder of a Windows path (`X:\Users\<x>`, `X:\_ext\<x>`) must come from NEUTRAL_USERS.
+//     This holds for the names of other people as well: a contributor's user name in a captured path
+//     is personal data and is not ours to keep.
 //
 // A new fixture with a real address or a real name fails here: replace the value with a neutral one of
 // the same length (the screens are character grids), or add a domain to ALLOWED_DOMAINS with a reason
@@ -50,6 +51,7 @@ export const NEUTRAL_USERS = {
   a: "a one-letter placeholder",
   ada: "an invented name in a bridge test world",
   alice: "an invented name",
+  casey: "the neutral name that replaced a contributor's user name",
   "collie-user": "the product's own demo account",
   demo: "a demo account",
   dev: "the neutral developer account",
@@ -62,6 +64,7 @@ export const NEUTRAL_USERS = {
   operator1: "a role name",
   ops: "a role name",
   robin: "the neutral name that replaced the account owner's",
+  robins: "`robin` plus the trailing S of the folder name in a Windows path",
   sam: "an invented name",
   someuse: "a clipped `someuser` in a narrow capture",
   someuser: "a placeholder",
@@ -73,21 +76,13 @@ export const NEUTRAL_USERS = {
   you: "a placeholder",
 } satisfies Record<string, string>;
 
-// Names of other people that still stand in a fixture, as `file: number of hits`. No value is kept here.
-// The count must match exactly. A scrub of the file removes its entry.
-export const THIRD_PARTY_LEDGER = {
-  "bridge/mux/durable/fixtures/hello.json": 1,
-  "bridge/mux/durable/fixtures/snapshot.json": 5,
-  "web/src/fixtures/panes/pi--v130-gentle-review-consent-moved.txt": 1,
-} satisfies Record<string, number>;
-
-const LEDGER = new Map(Object.entries(THIRD_PARTY_LEDGER));
 const ESC = "\u001b";
 const HOME_PATH = /\/(?:var\/)?home\/([A-Za-z0-9_][A-Za-z0-9._-]*)/g;
 const FLAT_PATH = /-home-([A-Za-z0-9_.]+)-/g;
 const SHELL_PROMPT = /([A-Za-z0-9._-]+)@[A-Za-z0-9-]+(?::|\s+[~/])/g;
 const STARSHIP_PROMPT = new RegExp(`([A-Za-z0-9_-]+)(?:${ESC}\\[[0-9;]*m)* in (?:${ESC}\\[[0-9;]*m)*🌐`, "g");
-const USER_FORMS: readonly RegExp[] = [HOME_PATH, FLAT_PATH, SHELL_PROMPT, STARSHIP_PROMPT];
+const WINDOWS_PATH = new RegExp(`[A-Za-z]:[\\\\/]{1,2}(?:Users|_ext)[\\\\/]{1,2}([^\\\\/\\s"'${ESC}]+)`, "g");
+const USER_FORMS: readonly RegExp[] = [HOME_PATH, FLAT_PATH, SHELL_PROMPT, STARSHIP_PROMPT, WINDOWS_PATH];
 
 const ADDRESS = /[A-Za-z0-9._%+-]+@((?:[A-Za-z0-9-]+\.)+[A-Za-z]{2,})/g;
 const BANNER = /Welcome back +([A-Za-z]+)!/g;
@@ -164,10 +159,7 @@ export function offences(files: readonly string[], read: (file: string) => strin
     const text = read(file);
     for (const line of foreignAddressLines(text)) found.push(`${file}:${line} (address with a domain that is not allowed)`);
     for (const line of foreignBannerLines(text)) found.push(`${file}:${line} (banner name is not neutral)`);
-    const userLines = foreignUserLines(text);
-    const known = LEDGER.get(file) ?? 0;
-    if (userLines.length === known) continue;
-    for (const line of userLines) found.push(`${file}:${line} (user of a path or prompt is not neutral, ledger says ${known} in this file)`);
+    for (const line of foreignUserLines(text)) found.push(`${file}:${line} (user of a path or prompt is not neutral)`);
   }
   return found;
 }
@@ -186,15 +178,12 @@ describe("the checks themselves", () => {
     expect(foreignUserLines(text)).toEqual([2, 3, 4, 5]);
   });
 
-  test("a neutral user and a dot folder pass, case does not matter", () => {
-    expect(foreignUserLines("/home/Robin/x\n/home/.cache/y\n-home-you-p\nUSER@box:~")).toEqual([]);
+  test("a Windows user folder outside the neutral list fails, a neutral one passes", () => {
+    expect(foreignUserLines("C:\\Users\\zed\\x\nD:\\\\_ext\\\\zed\\\\x\nC:/Users/zed/y\nC:\\Users\\dev\\z")).toEqual([1, 2, 3]);
   });
 
-  test("the ledger holds only files that exist, with a positive count", () => {
-    for (const [file, count] of Object.entries(THIRD_PARTY_LEDGER)) {
-      expect(count).toBeGreaterThan(0);
-      expect(readFileSync(resolve(ROOT, file), "latin1").length).toBeGreaterThan(0);
-    }
+  test("a neutral user and a dot folder pass, case does not matter", () => {
+    expect(foreignUserLines("/home/Robin/x\n/home/.cache/y\n-home-you-p\nUSER@box:~")).toEqual([]);
   });
 
   test("an address with a company domain fails, by line and not by value", () => {
