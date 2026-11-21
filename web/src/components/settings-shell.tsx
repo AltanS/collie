@@ -7,7 +7,7 @@ import { Icon } from "@/components/icons/icon";
 import type { IconKey } from "@/components/icons/keys";
 import { InstallRow } from "@/components/install-control";
 import { StatusLive } from "@/components/status-area";
-import { NAV_EDGE } from "@/components/ui/nav-edge";
+import { NAV_EDGE, RECESS_ACCENT } from "@/components/ui/nav-edge";
 import { Button, FOCUS_RING, HOVER_FILL } from "@/components/ui/button";
 import { useUpdatesStatus } from "@/components/updates-settings-card";
 import { useLocale } from "@/hooks/use-locale";
@@ -208,7 +208,7 @@ function WideSettings() {
             `--accent` is the paper there, so the chosen row and a hovered one stand on the lightest surface. */}
         <aside
           data-slot="settings-list"
-          className={cn("flex shrink-0 flex-col overflow-y-auto border-r bg-surface-recess px-2 py-2 [--accent:var(--surface-paper)]", NAV_EDGE)}
+          className={cn("flex shrink-0 flex-col overflow-y-auto border-r bg-surface-recess px-2 py-2", RECESS_ACCENT, NAV_EDGE)}
           style={{ width: SETTINGS_LIST_PX }}
         >
           <InstallRow className={cn(ROW, "mb-1", HOVER_FILL, FOCUS_RING)} />

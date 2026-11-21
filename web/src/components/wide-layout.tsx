@@ -11,7 +11,7 @@ import { useHostHealth } from "@/components/crew-provider";
 import { StatusDot } from "@/components/status-badge";
 import { TabStrip } from "@/components/tab-strip";
 import { ColumnControls, ColumnHeader, PaneColumnBody, columnFrame } from "@/components/strip-column";
-import { NAV_EDGE } from "@/components/ui/nav-edge";
+import { NAV_EDGE, RECESS_ACCENT } from "@/components/ui/nav-edge";
 import { Button } from "@/components/ui/button";
 import { PaneGlyph } from "@/components/ui/pane-glyph";
 import { BottomSheet } from "@/components/ui/sheet";
@@ -104,7 +104,7 @@ import { setSidebarOpen, setSpaceStrip, spaceStrip, useSidebarOpen, useSpaceStri
 const TAP_SLOP_PX = 10;
 
 /** The sidebar and the rail stand on the recess; see the aside below. */
-const SIDEBAR_PLANE = cn(NAV_EDGE, "bg-surface-recess [--card:var(--surface-recess)] [--accent:var(--surface-paper)]");
+const SIDEBAR_PLANE = cn(NAV_EDGE, RECESS_ACCENT, "bg-surface-recess [--card:var(--surface-recess)]");
 
 /** On a column: its scrollers pass a sideways overscroll up to the strip (important, to win over the
  *  transcript list's own `overscroll-contain`). Vertical overscroll is untouched. */

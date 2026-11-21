@@ -35,7 +35,7 @@ import { SectionLabel } from "@/components/ui/section-label";
 import type { BridgeStatus } from "@/lib/types";
 import type { Scope } from "@/lib/scope";
 import { Icon } from "@/components/icons/icon";
-import { NAV_EDGE } from "@/components/ui/nav-edge";
+import { NAV_EDGE, RECESS_ACCENT } from "@/components/ui/nav-edge";
 
 /** What a route claims about the SHAPE of the shared row, as opposed to the content it portals into
  *  it. These are the three things the shell itself has to draw differently, and every one of them is
@@ -384,7 +384,7 @@ export function AppHeaderHost({ bridge, error, lastSeenAt, children }: AppHeader
           // two regions left to cut apart, so the edge goes transparent; nothing moves by a pixel
           // when it comes back.
           claim.hidden ? "border-transparent" : spanned ? NAV_EDGE : "border-band-rule",
-          spanned && "w-full bg-surface-recess [--accent:var(--surface-paper)] [--band-ground:var(--surface-recess)] [--chrome:var(--surface-recess)]",
+          spanned && ["w-full bg-surface-recess [--band-ground:var(--surface-recess)] [--chrome:var(--surface-recess)]", RECESS_ACCENT],
           dockedRow === null && claim.width === "column" && "mx-auto w-full max-w-screen-sm",
           dockedRow === null && claimedPx !== null && !spanned && "mx-auto w-full",
           dockedRow === null &&

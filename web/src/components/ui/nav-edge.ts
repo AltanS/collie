@@ -8,3 +8,11 @@
  * import the strip's column code to get one class string.
  */
 export const NAV_EDGE = "border-[color-mix(in_oklch,var(--surface-recess)_70%,var(--border))]";
+
+/**
+ * THE RECESS'S ACCENT. On the recess (the sidebar, the Settings list, the dashboard header on a large screen) a
+ * chosen row and a hovered one stand on the paper, so `--accent` points there. Its ink comes with it: a theme's
+ * `--accent-foreground` is chosen for its own `--accent`, and on the paper a dark accent's light ink (or the reverse)
+ * reads 1.04 to 1.18:1 (themes R5, 2026-11-21). The paper takes the page's ink, `--foreground`.
+ */
+export const RECESS_ACCENT = "[--accent:var(--surface-paper)] [--accent-foreground:var(--foreground)]";
