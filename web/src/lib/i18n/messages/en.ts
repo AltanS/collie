@@ -4253,7 +4253,7 @@ export const en = {
   "settings.page.keys.title": "Keys and touch",
   "settings.page.keys.blurb": "Enter sends, the Keys pad, shortcuts, gestures, haptics, zen",
   "settings.page.notifications.title": "Notifications",
-  "settings.page.notifications.blurb": "Push, what notifies you, cache warnings, machine load, do not disturb",
+  "settings.page.notifications.blurb": "Push, cache and load alerts, do not disturb",
   "settings.page.dashboard.title": "Dashboard and projects",
   "settings.page.dashboard.blurb": "Pane order, repo search, worktree folder",
   "settings.page.tricks.title": "Tricks and the Hill",

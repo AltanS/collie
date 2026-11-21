@@ -238,15 +238,17 @@ test("at 390px Settings is the phone's index: the header unchanged, the search f
   }
 });
 
-// THE INDEX LINES (ADR 0170): on a phone a page's line wraps to two lines at 390px and is never cut; at 360px a third
-// line is reported, not failed (the words are approved, a person decides). On a large screen the list rows have no line.
-test("the index lines take at most two lines at 390px and are never cut; 360px is reported", async ({ browser }, testInfo) => {
+// THE INDEX LINES (ADR 0170): on a phone a page's line wraps to at most two lines at 390px and at 360px, and is never
+// cut. The accounts setup offers profiles, so the Profiles row and its line are on the index too. On a large screen the
+// list rows have no line.
+test("the index lines take at most two lines at 390px and 360px and are never cut", async ({ browser }, testInfo) => {
   onlyOnce(testInfo);
   for (const width of [390, 360]) {
     const page = await openAt(browser, testInfo, { width, height: 844 }, true);
     try {
-      await page.goto("/settings");
+      await openIn(page, "accounts", "/settings");
       await expect(page.locator("main [data-slot=list-group] > button").first()).toBeVisible();
+      await expect(row(page, "accounts")).toBeVisible();
       const lines = await page.locator("main [data-slot=list-group] > button p").evaluateAll((els) =>
         els.map((el) => {
           const style = getComputedStyle(el);
@@ -255,11 +257,9 @@ test("the index lines take at most two lines at 390px and are never cut; 360px i
         }),
       );
       testInfo.annotations.push({ type: `index-lines@${String(width)}`, description: JSON.stringify(lines) });
-      if (width === 390) {
-        for (const each of lines.filter((l) => !l.text.startsWith("Up to date") && !/available|Unknown|behind/u.test(l.text))) {
-          expect(each.lines, each.text).toBeLessThanOrEqual(2);
-          expect(each.cut, each.text).toBe(false);
-        }
+      for (const each of lines.filter((l) => !l.text.startsWith("Up to date") && !/available|Unknown|behind/u.test(l.text))) {
+        expect(each.lines, `${each.text} at ${String(width)}px`).toBeLessThanOrEqual(2);
+        expect(each.cut, each.text).toBe(false);
       }
     } finally {
       await page.context().close();

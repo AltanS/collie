@@ -217,7 +217,7 @@ describe("SettingsRoute — the index", () => {
     renderSettings();
     const row = await screen.findByRole("button", { name: /^Notifications/ });
     const caption = row.querySelector("p");
-    expect(caption?.textContent).toBe("Push, what notifies you, cache warnings, machine load, do not disturb");
+    expect(caption?.textContent).toBe("Push, cache and load alerts, do not disturb");
     expect(caption?.classList.contains("truncate")).toBe(false);
     expect(caption?.classList.contains("text-pretty")).toBe(true);
   });
