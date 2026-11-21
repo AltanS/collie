@@ -96,7 +96,6 @@ import { TabStrip } from "@/components/tab-strip";
 import { PaneStrip } from "@/components/pane-strip";
 import { StripsSummary } from "@/components/strips-summary";
 import { PaneMeta } from "@/components/pane-meta";
-import { stripHeadVariant } from "@/lib/strip-head-variant";
 import { BranchLabel } from "@/components/ui/branch-label";
 import { paneGitHead } from "@/lib/git-head";
 import { CacheSheet } from "@/components/cache-sheet";
@@ -959,12 +958,6 @@ export function AgentChat({
   // transparent, so the open tab sits straight on the reading area. With a pane row, that row is
   // the inside of the folder and the mirror's rule stays as its floor.
   const tabLook = useTabLook();
-  // LAB (strip-head B): the phone's proposal. 1 and 3 move the space's door into the tab row as its first
-  // cell, so the pane's name is one 60px target; 2 gives each header line its own 44px row.
-  const labVariant = stripHeadVariant();
-  const labPhone = !inStrip && labVariant !== "today";
-  const labSpaceCell = labPhone && (labVariant === "1" || labVariant === "3");
-  const labTallLines = labPhone && labVariant === "2";
   const folderJoins = tabLook === "folder" && stripsExist && !zen && !folded;
   // Fold state for the "Switch pane" sheet's two long tails, shared with the dashboard so one
   // "hide the long tail" preference means the same thing in both places.
@@ -2695,15 +2688,14 @@ export function AgentChat({
                   bookkeeping, which the conversation list behind the back arrow already lays out. The lines
                   stay; the state is still named by the dot's own label. */}
               {!gridless && (
-              <div data-slot="pane-identity-taps" className={cn("absolute inset-x-0 flex flex-col rounded-lg", labTallLines ? "inset-y-0" : "-inset-y-2")}>
+              <div data-slot="pane-identity-taps" className="absolute inset-x-0 -inset-y-2 flex flex-col rounded-lg">
                 <button
                   type="button"
                   onClick={() => setDrawer("paneSettings")}
                   aria-label={t("chat.header.openPaneSettingsAria", { name })}
                   data-slot="pane-identity-name"
-                  className={cn("min-h-0 flex-1 rounded-t-lg transition-colors active:bg-muted/60", labSpaceCell && "rounded-b-lg", FOCUS_RING_INSET, HOVER_FILL)}
+                  className={cn("min-h-0 flex-1 rounded-t-lg transition-colors active:bg-muted/60", FOCUS_RING_INSET, HOVER_FILL)}
                 />
-                {!labSpaceCell && (
                 <button
                   type="button"
                   onClick={() => openSpace(agent.workspaceId)}
@@ -2725,7 +2717,6 @@ export function AgentChat({
                   data-slot="pane-identity"
                   className={cn("min-h-0 flex-1 rounded-b-lg transition-colors active:bg-muted/60", FOCUS_RING_INSET, HOVER_FILL)}
                 />
-                )}
               </div>
               )}
               {/* TWO lines with 4px between them — see the row's own note in app-header.tsx for why
@@ -2759,7 +2750,7 @@ export function AgentChat({
                 // Above the tap surface, and transparent to it: `relative` puts these lines over the
                 // absolutely-positioned button with no z-index to tune, and `pointer-events-none`
                 // hands every tap on them back to it. Exactly one descendant takes its taps back.
-                className={cn("pointer-events-none relative flex min-w-0 flex-1 flex-col", labTallLines ? "gap-0 [&>div]:h-11 [&>div]:items-center" : "gap-1")}
+                className="pointer-events-none relative flex min-w-0 flex-1 flex-col gap-1"
               >
                 {/* Line 1: the agent's own mark, then the name. The mark used to stand OUTSIDE this
                     column, centred against both lines, which spent the block's entire left edge on it
@@ -2868,7 +2859,7 @@ export function AgentChat({
                     className="min-w-0 shrink-[3] truncate text-[11px] leading-3 text-muted-foreground"
                   >
                     {/* In a strip the space header names the space, so the line keeps only the pane's own. */}
-                    {headerLine ?? (inStrip || labSpaceCell ? null : <CrossfadeText text={workspace} identity={paneSpaceKey(agent)} />)}
+                    {headerLine ?? (inStrip ? null : <CrossfadeText text={workspace} identity={paneSpaceKey(agent)} />)}
                   </span>
                   {/* The branch the pane's folder is on, after the workspace and in the same 12px
                       line box, so the 36px block above holds with or without it. The workspace gives
@@ -3078,23 +3069,6 @@ export function AgentChat({
                     // the space has nothing left to land on. Closing any other tab just revalidates so it
                     // drops out of the strip.
                     onClosed={(tabId) => (agent?.tabId === tabId ? closeCurrentTab(tabId) : revalidator.revalidate())}
-                    leading={
-                      labSpaceCell ? (
-                        <button
-                          type="button"
-                          data-slot="pane-identity"
-                          onClick={() => openSpace(agent.workspaceId)}
-                          aria-label={t("chat.header.openOverviewAria", {
-                            workspace: agent.workspaceLabel,
-                            status: t("chat.header.statusAria", { label: isShell ? t("status.shellBadge") : statusLabel(shownStatus(agent)) }),
-                          })}
-                          className={cn("flex h-11 max-w-[40%] shrink-0 items-center gap-1 rounded-md pr-2 text-[12px] font-semibold text-foreground transition-colors", FOCUS_RING_INSET, HOVER_FILL)}
-                        >
-                          <span className="min-w-0 truncate">{agent.workspaceLabel}</span>
-                          <Icon name="row-go" className="size-3.5 shrink-0 text-muted-foreground" />
-                        </button>
-                      ) : undefined
-                    }
                     // The fold's own control, pinned to the row's trailing end where it costs no height:
                     // a 28px circle centred in the 30px tab row, its hit box the row itself and no
                     // lower (the way every tab's is: a reach below the row steals taps from the content). A transparent
@@ -3108,8 +3082,8 @@ export function AgentChat({
                         aria-expanded={true}
                         aria-label={t(foldLabelKey(stripTabs.length, tabPanes.length))}
                         className={cn(
-                          labPhone ? "size-11 rounded-md" : cn(TAB_ROW_SQUARE_TAP_TARGET, "size-7 rounded-full"),
-                          "flex shrink-0 items-center justify-center border border-transparent text-muted-foreground transition-colors hover:bg-accent active:scale-95",
+                          TAB_ROW_SQUARE_TAP_TARGET,
+                          "flex size-7 shrink-0 items-center justify-center rounded-full border border-transparent text-muted-foreground transition-colors hover:bg-accent active:scale-95",
                           FOCUS_RING,
                         )}
                       >

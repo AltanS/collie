@@ -9,7 +9,6 @@
 
 import { useActiveTheme } from "@/lib/theme/store";
 import type { SurfaceWord } from "@/lib/theme/surface";
-import { stripHeadVariant } from "@/lib/strip-head-variant";
 
 export type TabLook = SurfaceWord<"tabs">;
 
@@ -20,10 +19,5 @@ export function tabLook(word: SurfaceWord<"tabs"> | undefined): TabLook {
 
 /** The look of the theme on screen. */
 export function useTabLook(): TabLook {
-  const word = tabLook(useActiveTheme().theme.surface?.tabs);
-  // LAB (strip-head B): proposal 1 draws the folder in every theme, 2 and 3 draw neither theme look.
-  const lab = stripHeadVariant();
-  if (lab === "1") return "folder";
-  if (lab !== "today") return "plain";
-  return word;
+  return tabLook(useActiveTheme().theme.surface?.tabs);
 }

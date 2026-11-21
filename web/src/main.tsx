@@ -12,7 +12,6 @@ import { currentGlyphSetId, storedGlyphSetId } from "./lib/glyphs";
 import { currentMarkId } from "./lib/mark";
 import { isMathLoadError, loadMathEngine } from "./lib/math/engine";
 import { initTheme } from "./lib/theme/store";
-import { applyStripHeadVariant } from "./lib/strip-head-variant";
 import { resumeTrial } from "./lib/theme/trial";
 import { initOperatorFonts } from "./lib/operator-config";
 import "./index.css";
@@ -31,8 +30,6 @@ import { loadPageZoomPref } from "./hooks/use-dash-prefs";
 // A hidden page runs no animation (issue 748): the root carries an attribute while it is hidden, and
 // index.css pauses every animation under it. First, so a page opened in the background never starts.
 installHiddenPause();
-// LAB (strip-head round B): `?th=1|2|3` picks a proposal of the tab strip and the pane header.
-applyStripHeadVariant();
 // A pinch zooms the page unless this device turned Pinch to zoom off (lib/page-zoom.ts). The setting is
 // read once here and kept in that module, so a pinch reads no storage and a change in Settings needs no reload.
 installPageZoom(loadPageZoomPref);
