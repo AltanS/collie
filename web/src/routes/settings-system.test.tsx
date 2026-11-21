@@ -81,7 +81,9 @@ describe("System — the telemetry row", () => {
 describe("Settings → System → Telemetry", () => {
   it("is registered in the app's router, beside System", () => {
     const hit = matchRoutes(appRouter.routes, "/settings/system/install-count");
-    expect(hit?.at(-1)?.route.path).toBe("settings/system/install-count");
+    // Under the `settings` layout route (components/settings-shell.tsx), so the pattern is the matched routes' paths joined.
+    const pattern = (hit ?? []).map((m) => m.route.path ?? "").filter((part) => part !== "" && part !== "/").join("/");
+    expect(pattern).toBe("settings/system/install-count");
   });
 
   it("holds the whole card: the switch, the machine-only line and the link", async () => {
