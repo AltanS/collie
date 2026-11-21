@@ -59,6 +59,7 @@ import { asWindow } from "./model-window.ts";
 import { type Cursor, NO_CURSOR, type ReadSince } from "./cursor.ts";
 import {
   containedRealpath,
+  firstContained,
   FIRST_TAIL_BYTES,
   head,
   loadTail,
@@ -665,30 +666,12 @@ export class CodexTranscriptSource implements TranscriptSource {
   }
 
   /**
-   * The newest file under `root` whose name `match` accepts: newest date folder first, and the
-   * largest name inside the first folder that has one.
+   * The newest file under `root` whose name `match` accepts and that `root` contains: newest date
+   * folder first, and inside a folder the largest name first. A refused name is skipped for the next
+   * one down, also into older folders (#839, see {@link firstContained}).
    */
-  private async findUnder(root: string, match: (lowerName: string) => boolean): Promise<string | null> {
-    for (const year of await descending(root)) {
-      for (const month of await descending(join(root, year))) {
-        for (const day of await descending(join(root, year, month))) {
-          const dir = join(root, year, month, day);
-          let names: string[];
-          try {
-            names = await readdir(dir);
-          } catch {
-            continue;
-          }
-          const hit = names
-            .filter((n) => n.startsWith("rollout-") && match(n.toLowerCase()))
-            .toSorted()
-            .at(-1);
-          if (hit === undefined) continue;
-          return containedRealpath(join(dir, hit), root);
-        }
-      }
-    }
-    return null;
+  private findUnder(root: string, match: (lowerName: string) => boolean): Promise<string | null> {
+    return firstContained(rolloutsUnder(root, match), root);
   }
 
   /**
@@ -809,6 +792,29 @@ async function firstLineOf(path: string): Promise<string> {
     return firstLineIn(await head(path, META_BYTES));
   } catch {
     return "";
+  }
+}
+
+/**
+ * The rollout files under `root` whose name `match` accepts, in the order {@link
+ * CodexTranscriptSource} tries them: newest date folder first, largest name first inside a folder.
+ * Lazy, so the walk stops at the first one served. An unreadable folder is passed over.
+ */
+async function* rolloutsUnder(root: string, match: (lowerName: string) => boolean): AsyncGenerator<string> {
+  for (const year of await descending(root)) {
+    for (const month of await descending(join(root, year))) {
+      for (const day of await descending(join(root, year, month))) {
+        const dir = join(root, year, month, day);
+        let names: string[];
+        try {
+          names = await readdir(dir);
+        } catch {
+          continue;
+        }
+        const hits = names.filter((n) => n.startsWith("rollout-") && match(n.toLowerCase())).toSorted().toReversed();
+        for (const hit of hits) yield join(dir, hit);
+      }
+    }
   }
 }
 

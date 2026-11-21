@@ -47,7 +47,7 @@ import {
   rememberPending,
   type RowReducer,
 } from "./reduce.ts";
-import { containedRealpath, loadTail, readSinceFile, rootList, statFile } from "./files.ts";
+import { containedRealpath, firstContained, loadTail, readSinceFile, rootList, statFile } from "./files.ts";
 import { MAX_OPEN_FILES_PIDS, openFiles as defaultOpenFiles, type OpenFiles } from "./open-files.ts";
 import { readSqlite } from "./sqlite-read.ts";
 import { clamp, MAX_RESULT_CHARS, MAX_TEXT_CHARS, stripAnsi, summarizeToolInput } from "./text.ts";
@@ -327,7 +327,9 @@ function isoOf(value: JsonValue | undefined): string {
  * not a content read. The manifest is not trusted for identity — the folder name is.
  */
 export class McodeTranscriptSource implements TranscriptSource {
-  private readonly pathCache = new Map<string, string>();
+  // The root travels with the cached path, as in every other source: a cache hit is re-checked
+  // against the root that built it, never against a root guessed from the path itself.
+  private readonly pathCache = new Map<string, { path: string; root: string }>();
 
   private readonly roots: string[];
 
@@ -351,43 +353,28 @@ export class McodeTranscriptSource implements TranscriptSource {
     const sessionId = ref.value;
     const cached = this.pathCache.get(sessionId);
     if (cached !== undefined) {
-      // The cache memoises the scan, not the containment verdict: `exists` follows a symlink, so a
-      // file replaced by an outward link after the first resolve would otherwise be served.
-      const real = await containedRealpath(cached, rootOf(cached, this.roots));
-      if (real !== null) {
-        if (real !== cached) this.pathCache.set(sessionId, real);
-        return real;
-      }
+      // The cache memoises the scan, not the containment verdict: a file replaced by an outward link
+      // after the first resolve must be refused. A root that left the config serves nothing more.
+      const real = this.roots.includes(cached.root) ? await containedRealpath(cached.path, cached.root) : null;
+      if (real !== null) return real;
       this.pathCache.delete(sessionId);
     }
     for (const root of this.roots) {
       const hit = await this.findUnder(root, sessionId);
       if (hit === null) continue;
-      this.pathCache.set(sessionId, hit);
+      this.pathCache.set(sessionId, { path: hit, root });
       return hit;
     }
     return null;
   }
 
-  private async findUnder(root: string, sessionId: string): Promise<string | null> {
-    const suffix = sessionDirSuffix(sessionId);
-    for (const year of await descending(root)) {
-      for (const month of await descending(join(root, year))) {
-        for (const day of await descending(join(root, year, month))) {
-          const dir = join(root, year, month, day);
-          let names: string[];
-          try {
-            names = await readdir(dir);
-          } catch {
-            continue;
-          }
-          const hit = names.find((n) => n.endsWith(suffix));
-          if (hit === undefined) continue;
-          return containedRealpath(join(dir, hit, "messages.jsonl"), root);
-        }
-      }
-    }
-    return null;
+  /**
+   * The session's `messages.jsonl` under `root` that `root` contains: newest date folder first, and
+   * inside a day the largest folder name first (`HH-mm-ss-SSS-session_…`, so the latest start). A
+   * refused log is skipped for the next one, also into older days (#839, see {@link firstContained}).
+   */
+  private findUnder(root: string, sessionId: string): Promise<string | null> {
+    return firstContained(sessionLogsUnder(root, sessionDirSuffix(sessionId)), root);
   }
 
   /**
@@ -512,9 +499,22 @@ export class McodeTranscriptSource implements TranscriptSource {
   readSince = readSinceFile;
 }
 
-/** The root a cached path was resolved through — the one that may still contain it. */
-function rootOf(cached: string, roots: readonly string[]): string {
-  return roots.find((root) => cached.startsWith(root)) ?? cached;
+/**
+ * The `messages.jsonl` of every session folder under `root` whose name ends in `suffix`, in the order
+ * {@link McodeTranscriptSource} tries them: newest day first, largest name first inside a day. Lazy,
+ * so the walk stops at the first one served. An unreadable folder is passed over.
+ */
+async function* sessionLogsUnder(root: string, suffix: string): AsyncGenerator<string> {
+  for (const year of await descending(root)) {
+    for (const month of await descending(join(root, year))) {
+      for (const day of await descending(join(root, year, month))) {
+        const dir = join(root, year, month, day);
+        for (const hit of (await descending(dir)).filter((n) => n.endsWith(suffix))) {
+          yield join(dir, hit, "messages.jsonl");
+        }
+      }
+    }
+  }
 }
 
 /** Directory entries, newest-name first. Empty when the directory doesn't exist. */

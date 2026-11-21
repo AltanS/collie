@@ -37,6 +37,7 @@ import {
   containedRealpath,
   containedRealpathIn,
   exists,
+  firstContained,
   head as fileHead,
   loadTail,
   readSinceFile,
@@ -1654,9 +1655,12 @@ export class PiTranscriptSource implements TranscriptSource {
         } catch {
           continue;
         }
-        const hit = names.find((name) => name.toLowerCase().endsWith(suffix));
-        if (hit === undefined) continue;
-        const contained = await containedRealpath(join(root.path, folder, hit), root.path);
+        // Newest name first inside the folder, and a refused one is skipped for the next (#840).
+        const hits = names.filter((name) => name.toLowerCase().endsWith(suffix)).toSorted(descendingText);
+        const contained = await firstContained(
+          hits.map((hit) => join(root.path, folder, hit)),
+          root.path,
+        );
         if (contained === null) continue;
         this.pathCache.set(id, { path: contained, root: root.path });
         return { kind: "id", value: id };
@@ -1751,7 +1755,15 @@ export class PiTranscriptSource implements TranscriptSource {
     return folder === null ? null : join(folder, name);
   }
 
-  /** The log whose name ends in `suffix` under one sessions root, contained by that root. */
+  /**
+   * The log whose name ends in `suffix` under one sessions root, contained by that root.
+   *
+   * Every project folder is read, and the matches are tried newest name first across all of them:
+   * pi starts a name with the session's start time (`<ISO-ts>_<uuid>.jsonl`), so the name order is
+   * the time order; a tie on the name goes to the folder that sorts first. A refused match is skipped
+   * for the next one (#840, see {@link firstContained}). It used to take the first match in `readdir`
+   * order, which no file system promises, and to answer its refusal as the root's.
+   */
   private async findUnder(root: string, suffix: string): Promise<string | null> {
     let dirs: string[];
     try {
@@ -1759,6 +1771,7 @@ export class PiTranscriptSource implements TranscriptSource {
     } catch {
       return null; // no sessions root at all — nothing to serve
     }
+    const hits: { dir: string; name: string }[] = [];
     for (const dir of dirs) {
       let names: string[];
       try {
@@ -1766,11 +1779,13 @@ export class PiTranscriptSource implements TranscriptSource {
       } catch {
         continue;
       }
-      const hit = names.find((n) => n.toLowerCase().endsWith(suffix));
-      if (hit === undefined) continue;
-      return containedRealpath(join(root, dir, hit), root);
+      for (const name of names) if (name.toLowerCase().endsWith(suffix)) hits.push({ dir, name });
     }
-    return null;
+    hits.sort((a, b) => descendingText(a.name, b.name) || descendingText(b.dir, a.dir));
+    return firstContained(
+      hits.map((hit) => join(root, hit.dir, hit.name)),
+      root,
+    );
   }
 
   stat = statFile;
@@ -1864,6 +1879,11 @@ export interface PiSourceOptions {
  * lost to rounding. A log older than this is a previous run's.
  */
 const START_SLACK_MS = 5000;
+
+/** A sort order on names: the larger first, by code unit, so a time-stamped name sorts newest first. */
+function descendingText(a: string, b: string): number {
+  return a < b ? 1 : a > b ? -1 : 0;
+}
 
 /**
  * When a session log started: the ISO time in its file name (`2026-10-30T10-00-00-000Z_<id>.jsonl`,
