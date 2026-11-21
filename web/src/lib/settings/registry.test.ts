@@ -181,6 +181,31 @@ describe("searchSettings", () => {
     expect(settingPath(hit!.setting)).toBeNull();
   });
 
+  // What a person types to undo or tidy (counsel of 2026-11-21): each verb finds the rows that do it.
+  it.each([
+    ["delete", ["look.theme.remove", "look.math.remove", "voice.model.removePhone", "accounts.remove", "tricks.trick.remove", "privacy.keepChat.clear"]],
+    ["remove", ["look.theme.remove", "look.math.remove", "voice.model.removePhone", "accounts.remove", "tricks.trick.remove"]],
+    ["sign out", ["devices.unpair"]],
+    ["log out", ["devices.unpair"]],
+    ["forget", ["devices.unpair", "accounts.remove"]],
+    ["unpair", ["devices.unpair", "devices.paired"]],
+    ["sign in", ["accounts.signInAgain"]],
+    ["storage", ["voice.model.removePhone", "look.math.remove", "privacy.keepChat"]],
+    ["free space", ["voice.model.removePhone", "look.math.remove", "privacy.keepChat.clear"]],
+    ["clear", ["notifications.clear", "privacy.keepChat.clear"]],
+    ["smaller", ["look.textSize.chat"]],
+    ["zoom", ["keys.pinchZoom"]],
+    ["version", ["updates.version"]],
+    ["help", ["updates.firstScreen", "updates.report"]],
+    ["bug", ["updates.report"]],
+    ["feedback", ["updates.report", "updates.reportOffer"]],
+    ["light mode", ["look.lightDark"]],
+    ["dark mode", ["look.lightDark"]],
+  ])("finds %s", (query, ids) => {
+    const found = new Set<string>(searchSettings(query, 40).map((h) => h.setting.id));
+    expect(ids.filter((id) => !found.has(id))).toEqual([]);
+  });
+
   it("finds nothing for words no row has", () => {
     expect(searchSettings("zzqxv")).toEqual([]);
   });
