@@ -1157,32 +1157,46 @@ The coupling test (§9) and `bun scripts/build-themes.ts --check` fail when they
 
 ## 14. State layers and derived tokens
 
-A theme names 43 colours. Hover, selection, the open look, the focus ring and the large screen's planes are
-not in that list: the app makes them from the theme's tokens. So each one must stay visible on any theme,
-not only on the four shipped ones. The themes set (`E2E_SET=themes`, `web/e2e/themes/`) checks this from
-painted pixels in every bundled look and in 24 generated themes ([ADR 0172](./.adr/0172-derived-state-colours-are-measured-and-collie-is-held.md)).
+A theme names its base colours. Hover, selection, the open look, the focus ring and the large screen's planes are
+not among them: the app makes them from the base colours. Each one must stay visible on any theme, not only on
+the four shipped ones ([ADR 0172](./.adr/0172-derived-state-colours-are-measured-and-collie-is-held.md)).
 
-**The floors.** Text 4.5:1 (3:1 large). An icon that is a control's only label, a field's edge, the focus
-ring on both its sides, and the focus frame 3:1. A hover 0.04 in OKLab from the fill at rest. A selected or
-open state 0.06 in OKLab from its neighbour, or a 3:1 mark beside it.
+**One function makes them.** `deriveTokens(base, half)` in `web/src/lib/theme/derive.ts` takes one half of a
+theme and returns the recess, the paper, a hover, a selected and an open fill for each plane, and the ring. Each
+value is made in two steps.
 
-**Collie is held.** Altan approved Collie's hover fills, rings and planes on 2026-11-21.
-`web/e2e/themes/collie-states.json` holds the 241 state colours that passed in Collie light and dark that day.
-A change that moves one of them by more than 0.02 in OKLab fails the set. A state that broke a floor is not
-held, because fixing it moves it.
+1. Collie's relation: the same expression Collie's stylesheet uses today.
+2. A floor: when the value is too close to its ground, its lightness moves on in the same direction until it meets
+   the floor. When that direction runs out of range, it goes the other way. Hue and chroma stay.
 
-**The rules.**
+`applyTheme` (`lib/theme/store.ts`) runs it for every theme it applies, the three other shipped themes included,
+and sets the result inline beside the base tokens. Collie applies no theme. Its stylesheet holds the same
+relations in `index.css`.
 
-| Rule | What it says | Status | Numbers |
-| --- | --- | --- | --- |
-| D4 | A plane that points `--accent` at the paper points `--accent-foreground` at `--foreground` in the same class: `RECESS_ACCENT` in `ui/nav-edge.ts` | in force | the chosen row's words were 1.04 to 1.18:1 with an accent of the other polarity; now 0 such breaks |
-| D6 | Every focusable control wears `FOCUS_RING` or `FOCUS_RING_INSET`, never the browser's own ring | in force for the pane rows and the palette's rows; open for the sidebar's mark and word and the dashboard's summary button | ring breaks 217 to 168 over all looks, 99 to 67 in the bundled ones |
-| D2 | One hover: the ink at 8% over the ground it stands on | not adopted | keeps 9 of Collie's 72 held hovers within 0.02, worst 0.157 |
-| D3 | One selected and open fill: the ink at 12% | not adopted | keeps 14 of 30 held selected rows and 0 of 5 open triggers, worst 0.187 |
-| D5 | `--ring` held to 3:1 on page, card, recess, paper and a primary button | not adopted | needs two colours' lightness in one expression, which CSS relative colour cannot read |
-| D10 | The recess and the paper held so `--muted-foreground` keeps 4.5:1 on them | not adopted | the same limit as D5; the bundled looks keep 4.81:1 at worst already |
+**The reference test.** `derive.test.ts` puts Collie's own base tokens through the function. The result must be
+Collie as painted, within 0.02 in OKLab, in both halves. The worst value today is 0.0021, the dark recess. This
+test keeps Altan's approved look and the function from drifting apart. The themes set also holds the 241 state
+colours Collie painted on 2026-11-21 (`web/e2e/themes/collie-states.json`), within 0.02.
 
-**Why the state layers do not hold Collie.** In Collie light a row on the recess hovers and selects UP, to
-the paper. An ink layer can only darken a light ground. The open look is the `control-on` sky tint, and an
-ink layer is grey. So a single ink layer moves what Altan approved; a hover on the recess today is a step
-toward the paper, not a layer of ink.
+| Derived token | Collie's relation | Floor |
+| --- | --- | --- |
+| `--surface-recess` | the page 0.05 darker | the muted ink and the foreground keep 4.5:1 on it (or what they have on the page, when the theme gives less), on the page's side of the ink; 0.025 off the page, either way |
+| `--surface-paper` | light: the card 0.05 lighter, at most white; dark: halfway between the page and the card 0.05 lighter | the same inks; 0.025 off the page and the recess, only in its own direction, so a white page keeps a white paper |
+| `--state-hover-<plane>` | the accent on the page and the paper; the paper on the recess | 0.04 off its ground; the foreground and the muted ink as readable as on the page |
+| `--state-on-<plane>` | the same as the hover | 0.06 off its ground; the same inks |
+| `--state-open-<plane>` | `--control-on` | 0.06 off its ground; the on-colour's ink as readable as on the tint |
+| `--ring` | the theme's own ring | 3:1 on the page, the card, the recess, the paper, the band and the muted fill |
+
+A pushed value lands 0.006 past a distance floor and 0.1 past a ratio floor, because the screen rounds it to 8 bits.
+A fill on the page that has to move is also kept off the recess, because a strip of the recess with no plane class
+(the space header) shows the page's fills. The ring has no floor against a filled primary button. It stands 2px off
+the box, so a ground is on both its sides, and Collie's dark ring is 1.9:1 against its white primary.
+
+**The classes read variables.** A hover reads `--state-hover`, a selected item `--state-on`, an open trigger
+`--state-open`. Each plane class points the three at its plane: `RECESS_ACCENT` (ui/nav-edge.ts), `PAPER_PLANE` and
+`PAGE_PLANE` (strip-column.tsx). The root holds the page's. A plane also points `--accent` at its `--state-on`, so a
+`bg-accent` that is not swept yet gets the floor too. `HOVER_FILL`, `TRIGGER_OPEN`, the ghost and outline buttons and
+the pane row read the variables. Never write a new `hover:bg-muted/60` or `bg-accent` for a state.
+
+**A floor on a theme's own text is not built.** A theme whose own text is under 4.5:1 is the schema question. When it
+is decided, it is one more step in `STEPS`, before the planes.
