@@ -404,7 +404,6 @@ interface ComposerProps {
     ref?: (node: HTMLElement | null) => void;
     onClick: () => void;
     label: string;
-    icon?: "pane-switcher";
     open?: boolean;
     /** Another pane needs you: the switcher mark wears a red dot. */
     alert?: boolean;

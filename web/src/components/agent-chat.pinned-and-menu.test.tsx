@@ -3,7 +3,7 @@ import { act, cleanup, render, screen, waitFor, within } from "@testing-library/
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router";
 
-// AgentChat, the new cases of the pinned Actions button, its palette setting and the pane's three dots. They
+// AgentChat, the new cases of the pinned Actions button and the pane's three dots. They
 // sit beside agent-chat.test.tsx, which is over the size cap and may not grow (scripts/test-file-size.test.ts).
 // The helpers are that file's few lines, copied: a test file exports nothing.
 
@@ -27,7 +27,6 @@ vi.mock("@/lib/liveness", async (importOriginal) => ({
 }));
 
 import { __resetActionsPalette, isActionsPaletteOpen, openActionsPalette } from "@/lib/actions-palette/state";
-import { __resetActionsPaletteStore, setActionsPaletteOn } from "@/lib/actions-palette-store";
 import { __resetBeltIntents } from "@/lib/belt-intent";
 import { __resetHarnessPrefs } from "@/lib/harness-prefs";
 import { __resetOperatorCommands } from "@/lib/operator-config";
@@ -53,7 +52,6 @@ beforeEach(() => {
 afterEach(() => {
   __resetBeltIntents();
   __resetActionsPalette();
-  __resetActionsPaletteStore();
 });
 
 function renderChat(overrides: Partial<ComponentProps<typeof AgentChat>> = {}) {
@@ -100,39 +98,6 @@ describe("AgentChat — the pane's three dots", () => {
   });
 });
 
-describe("AgentChat — the Actions palette switched off in Settings", () => {
-  it("pins the Switch pane button again on a phone, and a press opens the pane list, not the palette", async () => {
-    setActionsPaletteOn(false);
-    const user = userEvent.setup();
-    const { container } = renderChat();
-    expect(within(container).queryByRole("button", { name: "Actions" })).toBeNull();
-    const belt = container.querySelector<HTMLElement>('[data-slot="composer-actions"]')!;
-    const button = within(belt).getByRole("button", { name: "Switch pane" });
-    expect(belt.querySelector(".overflow-x-auto")!.contains(button)).toBe(false);
-    expect(belt.className).toContain("touch-pan-x");
-    await user.click(button);
-    expect(isActionsPaletteOpen()).toBe(false);
-    expect(await screen.findByRole("dialog", { name: "Switch pane" })).toBeInTheDocument();
-  });
-
-  it("draws no pinned button in a large screen's strip, where the sidebar is the pane list", () => {
-    setActionsPaletteOn(false);
-    const { container } = renderChat({ inStrip: true });
-    expect(within(container).queryByRole("button", { name: "Actions" })).toBeNull();
-    expect(within(container).queryByRole("button", { name: "Switch pane" })).toBeNull();
-    expect(within(container).getByRole("button", { name: "Keys" })).toBeInTheDocument();
-  });
-
-  it("brings the Actions button back at once when it is turned on again", () => {
-    setActionsPaletteOn(false);
-    const { container } = renderChat();
-    expect(within(container).queryByRole("button", { name: "Actions" })).toBeNull();
-    act(() => setActionsPaletteOn(true));
-    expect(within(container).getByRole("button", { name: "Actions" })).toBeInTheDocument();
-    expect(within(container).queryByRole("button", { name: "Switch pane" })).toBeNull();
-  });
-});
-
 describe("AgentChat — the pinned Actions button says it is open", () => {
   const pinned = (container: HTMLElement, name: string) => within(container.querySelector<HTMLElement>('[data-slot="composer-actions"]')!).getByRole("button", { name });
 
@@ -147,19 +112,6 @@ describe("AgentChat — the pinned Actions button says it is open", () => {
     // Fill and ink only: the open look names no size, border or padding, and the icon takes the open ink.
     expect(button.className).not.toMatch(/aria-expanded:(?:size|w-|h-|p[xy]?-|border|min-)/);
     expect(button.querySelector("svg")!.getAttribute("class")).toContain("text-control-on-foreground");
-  });
-
-  it("with the palette off, the Switch pane button is aria-expanded while the pane list is open", async () => {
-    setActionsPaletteOn(false);
-    const user = userEvent.setup();
-    const { container } = renderChat();
-    expect(pinned(container, "Switch pane")).toHaveAttribute("aria-expanded", "false");
-    await user.click(pinned(container, "Switch pane"));
-    expect(await screen.findByRole("dialog", { name: "Switch pane" })).toBeInTheDocument();
-    expect(pinned(container, "Switch pane")).toHaveAttribute("aria-expanded", "true");
-    await user.keyboard("{Escape}");
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-    expect(pinned(container, "Switch pane")).toHaveAttribute("aria-expanded", "false");
   });
 });
 

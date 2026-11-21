@@ -67,7 +67,7 @@ const wirePane = (paneId: string): PaneWire => ({
   tabId: "ws-notes:research",
   agent: "durable",
   status: "blocked",
-  cwd: "/home/denis/notes/papers",
+  cwd: "/home/casey/notes/papers",
   focused: false,
   kind: "agent",
 });

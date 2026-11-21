@@ -2,8 +2,8 @@
   "rev": 12,
   "epoch": "e4b1c7a09d3f5e826b7a1c0d94f3e582",
   "workspaces": [
-    { "id": "ws-notes", "title": "notes", "cwd": "/home/denis/notes" },
-    { "id": "ws-site", "title": "site", "cwd": "/home/denis/site" }
+    { "id": "ws-notes", "title": "notes", "cwd": "/home/casey/notes" },
+    { "id": "ws-site", "title": "site", "cwd": "/home/casey/site" }
   ],
   "tabs": [
     { "id": "ws-notes:main", "workspaceId": "ws-notes", "title": "main" },
@@ -31,14 +31,14 @@
       "state": "waiting",
       "lastActiveAt": 1760262060000,
       "turnId": "turn-02-a",
-      "cwd": "/home/denis/notes/papers",
+      "cwd": "/home/casey/notes/papers",
       "openAsks": [
         {
           "id": "ask-6f1d0c2a8b3e4d57a9c01e2b3d4f5a6c",
           "kind": "permission",
           "toolCallId": "call-02-1",
           "revision": 1,
-          "title": "write_note wants to write /home/denis/notes/summary.txt",
+          "title": "write_note wants to write /home/casey/notes/summary.txt",
           "itemId": "item-02-7",
           "options": [
             { "id": "allow", "label": "Allow once", "effect": "allow" },
@@ -46,7 +46,7 @@
             { "id": "deny", "label": "Deny", "effect": "deny" }
           ],
           "reason": "The summary is the answer to your last question.",
-          "tool": { "kind": "other", "name": "write_note", "summary": "path=/home/denis/notes/summary.txt" }
+          "tool": { "kind": "other", "name": "write_note", "summary": "path=/home/casey/notes/summary.txt" }
         }
       ]
     },

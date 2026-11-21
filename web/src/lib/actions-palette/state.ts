@@ -5,8 +5,6 @@
 
 import { useSyncExternalStore } from "react";
 
-import { isActionsPaletteOn } from "@/lib/actions-palette-store";
-
 let isOpen = false;
 const listeners = new Set<() => void>();
 
@@ -21,9 +19,7 @@ function subscribe(listener: () => void): () => void {
   return () => listeners.delete(listener);
 }
 
-/** Opens nothing while this device has the palette off (lib/actions-palette-store.ts): no door can open it then. */
 export function openActionsPalette(): void {
-  if (!isActionsPaletteOn()) return;
   setOpen(true);
 }
 

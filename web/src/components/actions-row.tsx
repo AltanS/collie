@@ -476,11 +476,9 @@ export interface ActionsRowProps {
     ref?: (node: HTMLElement | null) => void;
     /** The tap, on the pinned button: the Actions palette. */
     onClick: () => void;
-    /** ALREADY TRANSLATED. The button's accessible name: "Actions", or "Switch pane" with the palette off. */
+    /** ALREADY TRANSLATED. The button's accessible name: "Actions". */
     label: string;
-    /** The mark. Absent is the Actions mark; the pane list's own mark when the palette is off (Settings). */
-    icon?: "pane-switcher";
-    /** The thing the button opens is open now (the Actions palette, or the pane list with the palette off): the pill says
+    /** The thing the button opens is open now (the Actions palette): the pill says
      *  `aria-expanded` and wears the shared open look (ui/button.tsx `TRIGGER_OPEN`). Fill and ink only, so the box
      *  and the pinned block's measured width do not move. */
     open?: boolean;
@@ -1168,7 +1166,7 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, durable, sto
                 aria-haspopup="dialog"
                 aria-expanded={handle.open === true}
                 onClick={handle.onClick}
-                // The pinned button is the Actions key's control; with the palette off it opens the pane list, and the layer shows the key of that stand-in.
+                // The pinned button is the Actions key's control: the key hint layer shows that key on it.
                 {...shortcutTarget("open_actions")}
                 // No padding and no border: what is left of the pill is `STRIP_ROW_PILL`'s own box,
                 // narrowed on this one pill alone. `w-8 min-w-8` drops `min-w-11`'s 44px floor — the
@@ -1184,7 +1182,7 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, durable, sto
                 className={cn(`${STRIP_ROW_PILL} ${PINNED_PILL}`, pinnedReach(!agents && !jobs && !pins && !clear && !changes && !zoom, true, hand), TRIGGER_OPEN)}
               >
                 {/* The Actions mark since ADR 0165: this pill opens the Actions palette, not the pane list. Its ink follows the open fill. */}
-                <Icon name={handle.icon ?? "open-actions"} className={cn(BELT_ICON, handle.open === true ? "text-control-on-foreground" : "text-primary")} />
+                <Icon name="open-actions" className={cn(BELT_ICON, handle.open === true ? "text-control-on-foreground" : "text-primary")} />
                 {/* The needs-you mark (the triangle), on the mark's top-right corner, absolutely placed
                     so it never moves the belt. The chrome-coloured disc and ring cut it out of the
                     glyph it overlaps. 10px since 2026-10-14: at 12px the triangle read as heavy as the
