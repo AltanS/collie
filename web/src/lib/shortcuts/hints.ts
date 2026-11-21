@@ -14,7 +14,7 @@
 import { ACTIONS, type ActionId } from "./actions";
 import { chordKeycaps } from "./parse";
 import { isShortcutActionAvailable } from "./registry";
-import { TARGET_ATTRIBUTE, TARGET_INDEX_ATTRIBUTE } from "./target";
+import { TARGET_ATTRIBUTE, TARGET_CORNER_ATTRIBUTE, TARGET_INDEX_ATTRIBUTE, type HintCorner } from "./target";
 import type { Keymap } from "./types";
 
 /** A rectangle by its four edges, in viewport pixels. */
@@ -65,6 +65,28 @@ export interface PlaceInput {
   readonly viewport: Size;
   /** What the scrolling ancestors leave of the control, or null when nothing clips it. */
   readonly clip: Box | null;
+  /** The first svg or img inside the control, when it has one. */
+  readonly glyph?: Box | null;
+  /** The control draws words of its own. Then the cap goes on its box, never on a glyph among its letters. */
+  readonly hasText?: boolean;
+  /** The corner of the anchor the cap's centre goes on. Default the top right. */
+  readonly corner?: HintCorner;
+}
+
+/** How much larger than its glyph a control's box must be in one direction before the cap goes on the glyph. */
+export const GLYPH_SLACK_PX = 12;
+
+/**
+ * What the cap anchors on. A control with no text whose box is clearly larger than its icon (more than 12px in
+ * either direction) is looked at as its icon: a 44px button around a 20px glyph, a button spread over a whole
+ * row. The cap goes on that glyph's corner, not on the invisible corner of the box. Any other control is its box.
+ */
+export function anchorOf(input: { box: Box; glyph?: Box | null; hasText?: boolean }): Box {
+  const { box, glyph, hasText } = input;
+  if (hasText === true || glyph === null || glyph === undefined) return box;
+  const wider = box.right - box.left - (glyph.right - glyph.left) > GLYPH_SLACK_PX;
+  const taller = box.bottom - box.top - (glyph.bottom - glyph.top) > GLYPH_SLACK_PX;
+  return wider || taller ? glyph : box;
 }
 
 /**
@@ -74,13 +96,14 @@ export interface PlaceInput {
  * part that shows.
  */
 export function placeHint(input: PlaceInput): { left: number; top: number } | "none" {
-  const { box, cap, viewport, clip } = input;
-  const shown = clip === null ? box : intersect(box, clip);
+  const { box, cap, viewport, clip, corner = "top-right" } = input;
+  const anchor = anchorOf(input);
+  const shown = clip === null ? anchor : (intersect(anchor, clip) ?? intersect(box, clip));
   if (shown === null || box.right <= box.left || box.bottom <= box.top) return "none";
   const bounds: Box = { left: 0, top: 0, right: viewport.width, bottom: viewport.height };
   const room = clip === null ? bounds : intersect(bounds, clip);
   if (room === null || !holds(room, { x: (box.left + box.right) / 2, y: (box.top + box.bottom) / 2 })) return "none";
-  const left = shown.right - cap.width / 2;
+  const left = (corner === "top-left" ? shown.left : shown.right) - cap.width / 2;
   const top = shown.top - cap.height / 2;
   return {
     left: Math.max(HINT_MARGIN_PX, Math.min(left, viewport.width - cap.width - HINT_MARGIN_PX)),
@@ -114,7 +137,29 @@ export function hintKeyCaps(input: { keymap: Keymap; id: ActionId; index?: numbe
   if (action === null) return null;
   const bindings = keymap.bindings.get(action) ?? [];
   const binding = bindings.find((candidate) => candidate.prefix && (index === undefined || candidate.index === index));
-  return binding === undefined ? null : chordKeycaps({ chord: binding.chord, mac: keymap.mac });
+  if (binding === undefined) return null;
+  return foldModifiers(chordKeycaps({ chord: binding.chord, mac: keymap.mac }));
+}
+
+const MODIFIER_SYMBOLS = new Map([
+  ["Ctrl", "\u2303"],
+  ["Alt", "\u2325"],
+  ["Option", "\u2325"],
+  ["Shift", "\u21e7"],
+  ["Cmd", "\u2318"],
+  ["Meta", "\u2318"],
+]);
+
+/**
+ * A chord with a modifier as ONE cap with the modifier's symbol (`Shift`, `N` becomes `\u21e7N`). A hint hangs on a
+ * corner of a control, and two bar-width caps side by side reach over the neighbour's label, as `Shift N` did
+ * over the count beside the New space button. The bar keeps the long names; there is room for them.
+ */
+function foldModifiers(caps: string[]): string[] {
+  const key = caps.at(-1);
+  const modifiers = caps.slice(0, -1);
+  if (key === undefined || modifiers.length === 0 || !modifiers.every((cap) => MODIFIER_SYMBOLS.has(cap))) return caps;
+  return [`${modifiers.map((cap) => MODIFIER_SYMBOLS.get(cap)).join("")}${key}`];
 }
 
 /** One cap to draw: which action, the keys, and the top left of its box. */
@@ -144,6 +189,14 @@ function clipOf(element: Element, view: Window): Box | null {
     clip = clip === null ? ancestorBox : (intersect(clip, ancestorBox) ?? { left: 0, top: 0, right: 0, bottom: 0 });
   }
   return clip;
+}
+
+/** The box of the first icon or picture inside the control, or null when it has none or it draws nothing. */
+function glyphBox(element: Element): Box | null {
+  const glyph = element.querySelector("svg, img");
+  if (glyph === null) return null;
+  const rect = glyph.getBoundingClientRect();
+  return rect.right > rect.left && rect.bottom > rect.top ? { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom } : null;
 }
 
 /**
@@ -178,7 +231,10 @@ export function collectHints(input: { doc: Document; keymap: Keymap; viewport: S
     if (caps === null) continue;
     const rect = element.getBoundingClientRect();
     const box: Box = { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom };
-    const place = placeHint({ box, cap: capSize(caps), viewport, clip: clipOf(element, view) });
+    const glyph = glyphBox(element);
+    const corner = element.getAttribute(TARGET_CORNER_ATTRIBUTE) === "top-left" ? "top-left" : "top-right";
+    const hasText = (element.textContent ?? "").trim() !== "";
+    const place = placeHint({ box, cap: capSize(caps), viewport, clip: clipOf(element, view), glyph, hasText, corner });
     if (place === "none") continue;
     const hit = doc.elementFromPoint((box.left + box.right) / 2, (box.top + box.bottom) / 2);
     if (hit === null || !element.contains(hit)) continue;

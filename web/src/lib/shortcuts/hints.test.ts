@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { ACTIONS } from "./actions";
-import { capSize, HINT_MARGIN_PX, hintAction, hintKeyCaps, placeHint, type Box } from "./hints";
+import { anchorOf, capSize, HINT_MARGIN_PX, hintAction, hintKeyCaps, placeHint, type Box } from "./hints";
 import { buildKeymap } from "./keymap";
 import type { UserShortcuts } from "./types";
 
@@ -54,8 +54,8 @@ function keymapOf(user: UserShortcuts = {}, disabled: ReadonlySet<(typeof ACTION
 describe("hintKeyCaps", () => {
   it("shows the first prefix key of the live keymap", () => {
     expect(hintKeyCaps({ keymap: keymapOf(), id: "open_actions" })).toEqual(["g"]);
-    expect(hintKeyCaps({ keymap: keymapOf(), id: "pane_settings" })).toEqual(["m"]);
-    expect(hintKeyCaps({ keymap: keymapOf(), id: "new_space" })).toEqual(["Shift", "N"]);
+    expect(hintKeyCaps({ keymap: keymapOf(), id: "pane_menu" })).toEqual(["m"]);
+    expect(hintKeyCaps({ keymap: keymapOf(), id: "new_space" })).toEqual(["\u21e7N"]);
   });
 
   it("follows a key the person set, and shows its first prefix key when there are several", () => {
@@ -85,5 +85,44 @@ describe("hintKeyCaps", () => {
 
   it("shows nothing for an action that is off with no stand-in", () => {
     expect(hintAction({ keymap: keymapOf({}, new Set(["settings"])), id: "settings" })).toBeNull();
+  });
+});
+
+describe("the anchor of a cap", () => {
+  const button = box(100, 100, 144, 144);
+  const glyph = box(112, 112, 132, 132);
+
+  it("is the glyph of a control with no text whose box is more than 12px larger than its icon", () => {
+    expect(anchorOf({ box: button, glyph })).toEqual(glyph);
+    expect(placeHint({ box: button, glyph, cap: CAP, viewport: VIEWPORT, clip: null })).toEqual({ left: 122, top: 102 });
+  });
+
+  it("is the glyph of a button spread wide around a small icon, the one wide in one direction only", () => {
+    const wide = box(100, 100, 600, 130);
+    expect(anchorOf({ box: wide, glyph: box(100, 105, 120, 125) })).toEqual(box(100, 105, 120, 125));
+    expect(anchorOf({ box: box(100, 100, 144, 120), glyph: box(100, 100, 120, 120) })).toEqual(box(100, 100, 120, 120));
+  });
+
+  it("is the box when it is at most 12px larger than the icon, in both directions", () => {
+    expect(anchorOf({ box: box(100, 100, 132, 132), glyph: box(110, 110, 130, 130) })).toEqual(box(100, 100, 132, 132));
+  });
+
+  it("is the box of a control with words, however small its icon", () => {
+    expect(anchorOf({ box: box(100, 100, 400, 140), glyph: box(104, 110, 120, 126), hasText: true })).toEqual(box(100, 100, 400, 140));
+  });
+
+  it("is the box of a control with no icon", () => {
+    expect(anchorOf({ box: button, glyph: null })).toEqual(button);
+    expect(anchorOf({ box: button })).toEqual(button);
+  });
+
+  it("puts the centre on the top left corner when the control asks, so the cap stays off a label at its right", () => {
+    expect(placeHint({ box: box(100, 100, 400, 140), cap: CAP, viewport: VIEWPORT, clip: null, corner: "top-left" })).toEqual({ left: 90, top: 90 });
+    expect(placeHint({ box: button, glyph, cap: CAP, viewport: VIEWPORT, clip: null, corner: "top-left" })).toEqual({ left: 102, top: 102 });
+  });
+
+  it("clips on the glyph's own box, and falls back to the control's when the glyph is clipped away", () => {
+    const strip = box(0, 0, 300, 40);
+    expect(placeHint({ box: box(100, 0, 144, 40), glyph: box(110, 0, 130, 20), cap: CAP, viewport: VIEWPORT, clip: strip })).toEqual({ left: 120, top: HINT_MARGIN_PX });
   });
 });

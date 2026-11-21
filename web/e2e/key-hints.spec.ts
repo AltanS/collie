@@ -6,7 +6,8 @@ import { installApiStub } from "./fixtures/api";
 
 // THE KEY HINTS (M108). While the prefix waits, each control that an action key would press wears that key on
 // its top right corner (components/shortcut-hint-layer.tsx). The cases hold the layer to what a person sees in
-// a real engine: the cap sits on the control's corner and inside the window, a control that is not seen gets
+// a real engine: the cap sits on the corner of what a person looks at (the icon of a button much larger than
+// its icon, else the button) and inside the window, no cap covers a letter, a control that is not seen gets
 // none, and Esc takes them all away. A phone that never arms the prefix draws nothing.
 
 test.use({ serviceWorkers: "block" });
@@ -37,12 +38,66 @@ async function arm(page: Page) {
 const caps = (page: Page, action: string) => page.locator(`${HINT}[data-action="${action}"]`);
 
 /**
+ * The box a cap anchors on: the first icon or picture of a control with no text whose box is more than 12px
+ * larger than it, else the control's own box (the rule of `anchorOf`, lib/shortcuts/hints.ts).
+ */
+async function anchorBox(control: Locator) {
+  return control.evaluate((node) => {
+    const whole = node.getBoundingClientRect();
+    const glyph = node.querySelector("svg, img")?.getBoundingClientRect();
+    const hasText = (node.textContent ?? "").trim() !== "";
+    const roomy = glyph !== undefined && (whole.width - glyph.width > 12 || whole.height - glyph.height > 12);
+    const r = !hasText && roomy ? glyph : whole;
+    return { x: r.left, y: r.top, width: r.width, height: r.height };
+  });
+}
+
+/**
+ * Every cap on the page against every letter: no cap's box meets the box of a text that a person reads. The
+ * texts are the text nodes outside the layer, the pane's own output aside (a terminal screen is a picture of
+ * text that the keys never aim at).
+ */
+async function expectNoCapOverText(page: Page) {
+  const covered = await page.evaluate((layerSelector) => {
+    const layer = document.querySelector(layerSelector);
+    const hints = [...document.querySelectorAll(`${layerSelector} [data-slot="shortcut-hint"]`)].map((hint) => ({ text: hint.textContent ?? "", box: hint.getBoundingClientRect() }));
+    const found: string[] = [];
+    // The wordmark is a drawing of letters, so its box counts as text.
+    for (const word of document.querySelectorAll("svg.wordmark")) {
+      const r = word.getBoundingClientRect();
+      for (const cap of hints) {
+        if (cap.box.left < r.right && cap.box.right > r.left && cap.box.top < r.bottom && cap.box.bottom > r.top) found.push(`cap ${cap.text} covers the wordmark`);
+      }
+    }
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
+      const parent = node.parentElement;
+      if (parent === null || layer?.contains(parent) || (node.textContent ?? "").trim() === "") continue;
+      if (parent.closest("script, style, [aria-hidden='true'], .sr-only") !== null) continue;
+      const style = getComputedStyle(parent);
+      if (style.visibility === "hidden" || style.display === "none" || style.opacity === "0") continue;
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      for (const r of range.getClientRects()) {
+        if (r.width === 0 || r.height === 0) continue;
+        for (const cap of hints) {
+          const meets = cap.box.left < r.right && cap.box.right > r.left && cap.box.top < r.bottom && cap.box.bottom > r.top;
+          if (meets) found.push(`cap ${cap.text} covers "${(node.textContent ?? "").trim().slice(0, 30)}"`);
+        }
+      }
+    }
+    return found;
+  }, LAYER);
+  expect(covered).toEqual([]);
+}
+
+/**
  * The cap of `action` that sits on `control`: it overlaps the control's box, reaches the control's top right
  * corner (within a cap's reach, since a corner at the window's edge pushes the cap in), and lies wholly inside
  * the window. Returns the key it shows.
  */
 async function capOn(page: Page, action: string, control: Locator): Promise<string> {
-  const box = (await control.boundingBox())!;
+  const box = (await anchorBox(control))!;
   const view = page.viewportSize()!;
   const all = await caps(page, action).evaluateAll((nodes) =>
     nodes.map((node) => {
@@ -64,7 +119,7 @@ async function capOn(page: Page, action: string, control: Locator): Promise<stri
   return cap!.text;
 }
 
-test("the prefix puts the key of the Actions button, the pane settings and the new tab on them", async ({ page }, testInfo) => {
+test("the prefix puts the key of the Actions button, the pane menu's dots and the new tab on them", async ({ page }, testInfo) => {
   desktopOnly(testInfo);
   await openPane(page, "w1:p1");
   await expect(page.locator(HINT)).toHaveCount(0);
@@ -73,12 +128,41 @@ test("the prefix puts the key of the Actions button, the pane settings and the n
   const belt = page.locator('[data-slot="composer-actions"]').getByRole("button", { name: en["actions.open.aria"], exact: true });
   expect(await capOn(page, "open_actions", header)).toBe("g");
   expect(await capOn(page, "open_actions", belt)).toBe("g");
-  expect(await capOn(page, "pane_settings", page.locator('[data-slot="pane-identity-name"]'))).toBe("m");
+  expect(await capOn(page, "pane_menu", page.getByRole("button", { name: en["chat.paneMenu.aria"], exact: true }))).toBe("m");
+  // The name line opens the pane settings, which has no key of its own: it wears no cap.
+  await expect(caps(page, "pane_settings")).toHaveCount(0);
   expect(await capOn(page, "new_tab", page.getByRole("button", { name: en["space.tabStrip.new.aria"] }))).toBe("c");
   // The sidebar's foot (the gear, New) stands under the bar at the window's foot, so the probe finds the bar there and they get no cap.
   await expect(caps(page, "settings")).toHaveCount(0);
   await expect(caps(page, "new_space")).toHaveCount(0);
   expect(await capOn(page, "toggle_sidebar", page.locator('[data-slot="sidebar-toggle"]'))).toBe("b");
+  // The space chevrons are controls too.
+  // The first of two spaces cannot step back, so its previous control is off and wears no cap.
+  await expect(caps(page, "previous_space")).toHaveCount(0);
+  expect(await capOn(page, "next_space", page.getByRole("button", { name: en["wide.space.next"], exact: true }))).toBe("j");
+  await expectNoCapOverText(page);
+});
+
+test("the mark's cap sits on its top left corner and covers no letter of the wordmark", async ({ page }, testInfo) => {
+  desktopOnly(testInfo);
+  await openPane(page, "w1:p1");
+  await arm(page);
+  const word = (await page.locator('[data-slot="sidebar-word"] svg.wordmark').boundingBox())!;
+  const all = await caps(page, "open_dashboard").evaluateAll((nodes) =>
+    nodes.map((node) => {
+      const r = node.getBoundingClientRect();
+      return { left: r.left, top: r.top, right: r.right, bottom: r.bottom, text: node.textContent ?? "" };
+    }),
+  );
+  expect(all).toHaveLength(1);
+  const [cap] = all;
+  expect(cap!.text).toBe("q");
+  const meets = cap!.left < word.x + word.width && cap!.right > word.x && cap!.top < word.y + word.height && cap!.bottom > word.y;
+  expect(meets, "the q cap meets the wordmark").toBe(false);
+  // The cap sits on the mark's own top left corner.
+  const mark = (await page.locator('[data-slot="sidebar-mark"] button').boundingBox())!;
+  expect(Math.abs((cap!.left + cap!.right) / 2 - mark.x)).toBeLessThanOrEqual(14);
+  await expectNoCapOverText(page);
 });
 
 test("a numbered cap sits on each tab, and a tab scrolled out of its strip shows none", async ({ page }, testInfo) => {
@@ -149,9 +233,11 @@ test("a row of two panes hints the focused pane's remove control only", async ({
   const focused = page.locator("section[data-focused]").locator('[data-slot="column-remove"]');
   await expect(caps(page, "remove_from_view")).toHaveCount(1);
   expect(await capOn(page, "remove_from_view", focused)).toBe("x");
-  // One new-tab and one pane-settings control stand in the header, and one cap each.
-  await expect(caps(page, "pane_settings")).toHaveCount(1);
+  // One new-tab control and one pane menu stand in the header, and one cap each. The menu's cap is on its dots.
+  await expect(caps(page, "pane_menu")).toHaveCount(1);
   await expect(caps(page, "new_tab")).toHaveCount(1);
+  expect(await capOn(page, "pane_menu", page.locator("section[data-focused]").getByRole("button", { name: en["chat.paneMenu.aria"], exact: true }))).toBe("m");
+  await expectNoCapOverText(page);
 });
 
 test("with the sidebar folded the rail's controls wear their keys", async ({ page }, testInfo) => {
@@ -161,7 +247,8 @@ test("with the sidebar folded the rail's controls wear their keys", async ({ pag
   await expect(page.locator('[data-slot="rail"]')).toBeVisible();
   await arm(page);
   expect(await capOn(page, "toggle_sidebar", page.locator('[data-slot="sidebar-toggle"]'))).toBe("b");
-  expect(await capOn(page, "new_space", page.locator('[data-slot="new-space"]'))).toBe("ShiftN");
+  expect(await capOn(page, "new_space", page.locator('[data-slot="new-space"]'))).toBe("\u21e7N");
+  await expectNoCapOverText(page);
 });
 
 test("with the Actions palette off the Actions button's cap is the pane list's key", async ({ page }, testInfo) => {
@@ -186,21 +273,82 @@ test("the dashboard hints the Actions button and the gear, and says the pane key
   const actions = page.getByRole("button", { name: en["actions.open.aria"], exact: true });
   expect(await capOn(page, "open_actions", actions)).toBe("g");
   expect(await capOn(page, "settings", page.getByRole("button", { name: en["nav.settings.aria"] }))).toBe("s");
-  await expect(caps(page, "pane_settings")).toHaveCount(0);
+  // The folder with a plus at the head of the Spaces list is the New page's control, and it wears the key of New space.
+  expect(await capOn(page, "new_space", page.getByRole("button", { name: en["space.overview.new.aria"], exact: true }))).toBe("\u21e7N");
+  await expect(caps(page, "pane_menu")).toHaveCount(0);
   await expect(caps(page, "new_tab")).toHaveCount(0);
+  await expectNoCapOverText(page);
   // The pane key does nothing here, and the bar says so.
   await page.keyboard.press("m");
   await expect(page.getByText(en["shortcuts.bar.notHere"])).toBeVisible();
   await expect(page.locator('[data-slot="pane-settings"], [role="dialog"]')).toHaveCount(0);
 });
 
-test("prefix then m opens the pane's settings", async ({ page }, testInfo) => {
+test("prefix then m opens the pane menu beside its dots, and the dots wear their open look", async ({ page }, testInfo) => {
+  desktopOnly(testInfo);
+  await openPane(page, "w2:p1");
+  const dots = page.getByRole("button", { name: en["chat.paneMenu.aria"], exact: true });
+  await expect(dots).toHaveAttribute("aria-expanded", "false");
+  await arm(page);
+  await page.keyboard.press("m");
+  const menu = page.locator('[data-presentation="menu"]');
+  await expect(menu).toBeVisible();
+  await expect(page.locator(LAYER)).toHaveCount(0);
+  await expect(dots).toHaveAttribute("aria-expanded", "true");
+  // Beside the dots, not centred, not a sheet: the box starts at the dots and is 20rem wide, far from the window's middle.
+  const at = (await dots.boundingBox())!;
+  const box = (await menu.boundingBox())!;
+  const view = page.viewportSize()!;
+  expect(box.width).toBeLessThanOrEqual(330);
+  expect(box.x).toBeGreaterThanOrEqual(0);
+  expect(box.x + box.width).toBeLessThanOrEqual(view.width);
+  const gapX = Math.max(box.x - (at.x + at.width), at.x - (box.x + box.width), 0);
+  const gapY = Math.max(box.y - (at.y + at.height), at.y - (box.y + box.height), 0);
+  expect(Math.max(gapX, gapY), "the menu stands against the dots").toBeLessThanOrEqual(16);
+  expect(Math.abs(box.x + box.width / 2 - view.width / 2), "not centred").toBeGreaterThan(100);
+});
+
+test("in the pane menu Down moves between the rows, Enter runs one, and Escape gives the focus back to the dots", async ({ page }, testInfo) => {
+  desktopOnly(testInfo);
+  await openPane(page, "w2:p1");
+  const dots = page.getByRole("button", { name: en["chat.paneMenu.aria"], exact: true });
+  const menu = page.locator('[data-presentation="menu"]');
+  await arm(page);
+  await page.keyboard.press("m");
+  await expect(menu).toBeVisible();
+  const rows = menu.locator("button:not([disabled]):not([tabindex='-1'])");
+  const labels = await rows.allTextContents();
+  expect(labels.length).toBeGreaterThan(2);
+  // The focus starts on the first row.
+  await expect(rows.first()).toBeFocused();
+  await page.keyboard.press("ArrowDown");
+  await expect(rows.nth(1)).toBeFocused();
+  await page.keyboard.press("ArrowUp");
+  await expect(rows.first()).toBeFocused();
+  // Escape closes the menu and the focus is on the dots again.
+  await page.keyboard.press("Escape");
+  await expect(menu).toHaveCount(0);
+  await expect(dots).toBeFocused();
+  await expect(dots).toHaveAttribute("aria-expanded", "false");
+  // Open it again by the key: Down then Enter runs the second row, and the menu closes.
+  await arm(page);
+  await page.keyboard.press("m");
+  await expect(rows.first()).toBeFocused();
+  await page.keyboard.press("ArrowDown");
+  await expect(rows.nth(1)).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(menu).toHaveCount(0);
+});
+
+test("the pane settings keep their row in the pane menu, and no key of their own", async ({ page }, testInfo) => {
   desktopOnly(testInfo);
   await openPane(page, "w2:p1");
   await arm(page);
   await page.keyboard.press("m");
+  const settings = page.locator('[data-presentation="menu"]').getByRole("button", { name: en["paneActions.settings.label"], exact: true });
+  await expect(settings).toBeVisible();
+  await settings.click();
   await expect(page.getByRole("dialog", { name: en["paneSettings.title"] })).toBeVisible();
-  await expect(page.locator(LAYER)).toHaveCount(0);
 });
 
 test("a phone that never arms the prefix draws no hint", async ({ page }, testInfo) => {

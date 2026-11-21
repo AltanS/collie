@@ -619,7 +619,7 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
           {bookPair && <span aria-hidden className="flex-1" />}
           {/* The Actions palette (ADR 0165), the header's door to it; the focused pane's belt pins the same button. */}
           <ActionsButton />
-          <Button variant="ghost" size="lg" className="size-11 px-0" aria-label={t("wide.space.previous")} disabled={spaceAt <= 0} onClick={() => moveSpace(-1)}>
+          <Button variant="ghost" size="lg" className="size-11 px-0" aria-label={t("wide.space.previous")} {...shortcutTarget("previous_space")} disabled={spaceAt <= 0} onClick={() => moveSpace(-1)}>
             <Icon name="space-prev" className="size-5" />
           </Button>
           <Button
@@ -627,6 +627,7 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
             size="lg"
             className="size-11 px-0"
             aria-label={t("wide.space.next")}
+            {...shortcutTarget("next_space")}
             disabled={spaceAt < 0 || spaceAt >= spaces.length - 1}
             onClick={() => moveSpace(1)}
           >

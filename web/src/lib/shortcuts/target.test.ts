@@ -11,6 +11,11 @@ describe("shortcutTarget", () => {
     expect(shortcutTarget("switch_tab", { index: 3 })).toEqual({ "data-shortcut-action": "switch_tab", "data-shortcut-index": 3 });
   });
 
+  it("carries a corner other than the default one", () => {
+    expect(shortcutTarget("open_dashboard", { corner: "top-left" })).toEqual({ "data-shortcut-action": "open_dashboard", "data-shortcut-corner": "top-left" });
+    expect(shortcutTarget("open_dashboard", { corner: "top-right" })).toEqual({ "data-shortcut-action": "open_dashboard" });
+  });
+
   it("accepts only an id of the action table", () => {
     // @ts-expect-error not an action
     expect(shortcutTarget("make_coffee")["data-shortcut-action"]).toBe("make_coffee");

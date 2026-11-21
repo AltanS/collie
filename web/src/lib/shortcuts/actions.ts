@@ -156,8 +156,6 @@ export const NO_CONTROL_ACTIONS = {
   focus_pane_right: "it moves the focus over the row, and a pane has no button that says so",
   cycle_pane_next: "it moves the focus over the row, and a pane has no button that says so",
   cycle_pane_previous: "it moves the focus over the row, and a pane has no button that says so",
-  previous_space: "the header's chevrons each step one way, and the bar names the pair of keys",
-  next_space: "the header's chevrons each step one way, and the bar names the pair of keys",
   navigate_mode: "it opens a mode, and the mode has no button",
   resize_mode: "it opens a mode, and the mode has no button",
   navigate_down: "a key inside Navigate mode, pressed with no prefix",

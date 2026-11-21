@@ -14,14 +14,24 @@ import type { ActionId } from "./actions";
 export const TARGET_ATTRIBUTE = "data-shortcut-action";
 /** The attribute that carries the digit of an indexed action (`switch_tab`: the tab's number). */
 export const TARGET_INDEX_ATTRIBUTE = "data-shortcut-index";
+/** The attribute that moves the cap to the top left corner, for a control whose top right corner has a label beside it. */
+export const TARGET_CORNER_ATTRIBUTE = "data-shortcut-corner";
+
+/** The corner of the control the cap's centre goes on. The top right is the default. */
+export type HintCorner = "top-right" | "top-left";
 
 export interface ShortcutTarget {
   readonly "data-shortcut-action": ActionId;
   readonly "data-shortcut-index"?: number;
+  readonly "data-shortcut-corner"?: HintCorner;
 }
 
+type TargetDraft = { -readonly [K in keyof ShortcutTarget]: ShortcutTarget[K] };
+
 /** The data attributes of a control that an action key would press. `index` is the digit of an indexed action. */
-export function shortcutTarget(id: ActionId, options: { index?: number } = {}): ShortcutTarget {
-  if (options.index === undefined) return { "data-shortcut-action": id };
-  return { "data-shortcut-action": id, "data-shortcut-index": options.index };
+export function shortcutTarget(id: ActionId, options: { index?: number; corner?: HintCorner } = {}): ShortcutTarget {
+  const target: TargetDraft = { "data-shortcut-action": id };
+  if (options.index !== undefined) target["data-shortcut-index"] = options.index;
+  if (options.corner !== undefined && options.corner !== "top-right") target["data-shortcut-corner"] = options.corner;
+  return target;
 }
