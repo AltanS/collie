@@ -62,8 +62,19 @@ export interface Break {
   alpha?: number;
 }
 
+/** One painted state colour, pass or break: what `collie-states.json` holds for the looks Altan approved. */
+export interface Sample {
+  rule: "hover" | "selected" | "open" | "ring" | "plane";
+  el: string;
+  colour: string;
+  /** What the state stands on: the fill at rest (hover), the peer's fill (selected), the band around it (open). */
+  ground?: string;
+}
+
 export interface R5Result {
   breaks: Break[];
+  /** Every state colour as painted: the hover fill, the selected and the open fill, the ring, the recess and the paper. */
+  samples: Sample[];
   /** How many of each were measured, so a green line says what it covered. */
   measured: Record<R5Rule, number>;
   /** Runs of text whose ink the hiding did not reach (no pixel changed): neither a pass nor a break. */
@@ -168,6 +179,7 @@ export async function runContrast(page: Page, opts: R5Options): Promise<R5Result
   const B = await shot(page);
 
   const breaks: Break[] = [];
+  const samples: Sample[] = [];
   const measured = { text: 0, icon: 0, edge: 0, ring: 0, hover: 0, selected: 0, open: 0, "focused-pane": 0 } satisfies Record<R5Rule, number>;
   const unmeasured: string[] = [];
   const dev = (b: Box) => toDevice(b, scale, A);
@@ -244,6 +256,7 @@ export async function runContrast(page: Page, opts: R5Options): Promise<R5Result
         if (theirs < 1.5) mark = Math.max(mark, own);
       });
       measured.selected += 1;
+      samples.push({ rule: "selected", el: p.el, colour: hex(fill), ground: hex(peerFill) });
       if (d < STATE_FLOOR && mark < NON_TEXT_FLOOR) {
         breaks.push({ rule: "selected", el: `${p.el} vs ${p.peer.el}`, ink: hex(fill), ground: hex(peerFill), value: round(d, 3), floor: STATE_FLOOR, text: `fills ${round(contrast(fill, peerFill))}:1, best mark ${round(mark)}:1` });
       }
@@ -255,6 +268,7 @@ export async function runContrast(page: Page, opts: R5Options): Promise<R5Result
       const fill = mode(B, inner);
       const d = deltaE(fill, around);
       measured.open += 1;
+      samples.push({ rule: "open", el: p.el, colour: hex(fill), ground: hex(around) });
       if (d < STATE_FLOOR) breaks.push({ rule: "open", el: p.el, ink: hex(fill), ground: hex(around), value: round(d, 3), floor: STATE_FLOOR, text: `${round(contrast(fill, around))}:1` });
     }
     if (p.kind === "focused-pane" && p.peer !== undefined) {
@@ -269,9 +283,20 @@ export async function runContrast(page: Page, opts: R5Options): Promise<R5Result
       const beside = mode(B, besideBox);
       const ratio = Math.min(contrast(frame, paper), contrast(frame, beside));
       measured["focused-pane"] += 1;
+      samples.push({ rule: "plane", el: "paper", colour: hex(paper) });
       if (ratio < NON_TEXT_FLOOR) breaks.push({ rule: "focused-pane", el: p.el, ink: hex(frame), ground: hex(contrast(frame, paper) < contrast(frame, beside) ? paper : beside), value: round(ratio), floor: NON_TEXT_FLOOR, text: `paper ${hex(paper)} vs page ${hex(mode(B, peerBox))}: ${round(deltaE(paper, mode(B, peerBox)), 3)}` });
     }
   }
+
+  // ── The recess: the sidebar's own ground, below its last row ──
+  const sidebar = await page.evaluate(() => {
+    const el = document.querySelector('[data-slot="wide-sidebar"]');
+    if (el === null) return null;
+    const r = el.getBoundingClientRect();
+    return { x: r.left + 4, y: r.bottom - 40, w: 24, h: 24 };
+  });
+  const recessBox = sidebar === null ? null : dev(sidebar);
+  if (recessBox !== null) samples.push({ rule: "plane", el: "recess", colour: hex(mode(B, recessBox)) });
 
   // ── Hover: the fill under the pointer against the fill at rest (inks still hidden, so only the fill speaks) ──
   if (!opts.touch) {
@@ -284,6 +309,7 @@ export async function runContrast(page: Page, opts: R5Options): Promise<R5Result
       const hovered = mode(await shot(page, h.box), { x: 0, y: 0, w: Math.max(1, Math.round(h.box.w * scale)), h: Math.max(1, Math.round(h.box.h * scale)) });
       const d = deltaE(rest, hovered);
       measured.hover += 1;
+      samples.push({ rule: "hover", el: h.el, colour: hex(hovered), ground: hex(rest) });
       if (d < HOVER_FLOOR) breaks.push({ rule: "hover", el: h.el, ink: hex(hovered), ground: hex(rest), value: round(d, 3), floor: HOVER_FLOOR, text: `${round(contrast(hovered, rest))}:1` });
     }
     const size = page.viewportSize();
@@ -311,6 +337,10 @@ export async function runContrast(page: Page, opts: R5Options): Promise<R5Result
       return el.matches(":focus-visible") ? { outline: getComputedStyle(el).outlineStyle, box: { x: r.x, y: r.y, w: r.width, h: r.height } } : null;
     }, f.index);
     if (focused === null) continue;
+    // A control the focus could not bring into view (a fixed sheet's button below the fold, measured at 390 x 844 on
+    // pane-menu: the menu's "Close" at y 861) has no ring on the screen to read: skip it rather than shoot outside the page.
+    const view = page.viewportSize();
+    if (view !== null && (focused.box.y >= view.height || focused.box.x >= view.width || focused.box.y + focused.box.h <= 0 || focused.box.x + focused.box.w <= 0)) continue;
     const clip = { x: Math.max(0, focused.box.x - pad), y: Math.max(0, focused.box.y - pad), w: focused.box.w + pad * 2, h: focused.box.h + pad * 2 };
     const now = await shot(page, clip);
     // The same focus with its ring taken away: whatever else the focus paints (a fill, a lifted
@@ -371,6 +401,7 @@ export async function runContrast(page: Page, opts: R5Options): Promise<R5Result
       breaks.push({ rule: "ring", el: `${f.el} (no ring shows: hidden, clipped, or the colour under it)`, ink: "-", ground: "-", value: 1, floor: NON_TEXT_FLOOR });
       continue;
     }
+    samples.push({ rule: "ring", el: f.el, colour: hex(worst.ring) });
     if (worst.ratio < NON_TEXT_FLOOR) {
       breaks.push({ rule: "ring", el: f.el, ink: hex(worst.ring), ground: hex(worst.side), value: round(worst.ratio), floor: NON_TEXT_FLOOR, text: `other side ${hex(worst.other)}` });
     }
@@ -380,7 +411,7 @@ export async function runContrast(page: Page, opts: R5Options): Promise<R5Result
     if (active instanceof HTMLElement) active.blur();
   });
 
-  return { breaks, measured, unmeasured, shot: pngA };
+  return { breaks, samples, measured, unmeasured, shot: pngA };
 }
 
 /** Of a region's pixels, the one with the `k`-th highest contrast against `ref`: a switch's thumb against its track. */

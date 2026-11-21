@@ -88,7 +88,7 @@ describe("AgentChat — the pane's three dots", () => {
     const menu = screen.getByRole("button", { name: "Pane actions" });
     expect(menu).toHaveAttribute("aria-haspopup", "dialog");
     expect(menu).toHaveAttribute("aria-expanded", "false");
-    expect(menu.className).toContain("aria-expanded:bg-control-on");
+    expect(menu.className).toContain("aria-expanded:bg-(--state-open)");
     await openPaneMenu(user);
     expect(await screen.findByRole("dialog")).toBeInTheDocument();
     expect(menu).toHaveAttribute("aria-expanded", "true");
@@ -105,7 +105,7 @@ describe("AgentChat — the pinned Actions button says it is open", () => {
     const { container } = renderChat();
     const button = pinned(container, "Actions");
     expect(button).toHaveAttribute("aria-expanded", "false");
-    expect(button.className).toContain("aria-expanded:bg-control-on");
+    expect(button.className).toContain("aria-expanded:bg-(--state-open)");
     expect(button.querySelector("svg")!.getAttribute("class")).toContain("text-primary");
     act(() => openActionsPalette());
     expect(pinned(container, "Actions")).toHaveAttribute("aria-expanded", "true");

@@ -12,6 +12,7 @@ import { installFilledReads, installScreenStubs, SETUPS } from "./screens/setups
 import { generateThemes } from "./themes/generate";
 import { BUNDLED_LOOKS, wearLook, type Look } from "./themes/looks";
 import { runContrast, type Break } from "./themes/r5";
+import { HELD_LOOKS, movedStates } from "./themes/states";
 import { readCeilings, tally, WAIVERS } from "./themes/waivers";
 
 // R5 `contrast`, THE SCREEN LIST IN EVERY THEME (`E2E_SET=themes`, its own set so the screens set stays one minute).
@@ -48,8 +49,8 @@ const ENTRIES: readonly Entry[] = [
   { screen: "dashboard", width: 1440 },
   { screen: "dashboard-not-paired", width: 1440 },
   { screen: "dashboard-new-tab", width: 1440 },
-  { screen: "settings-alerts", width: 1440 },
-  { screen: "settings-alerts", width: 390 },
+  { screen: "settings-notifications", width: 1440 },
+  { screen: "settings-notifications", width: 390 },
   { screen: "settings-trick", width: 1440 },
   { screen: "settings-trick", width: 1440, id: "settings-trick-official", path: "/settings/tricks/kettle-watch" },
 ];
@@ -58,7 +59,7 @@ const ENTRIES: readonly Entry[] = [
 const GENERATED_ENTRIES: readonly Entry[] = [
   { screen: "pane-two-columns", width: 1440 },
   { screen: "pane-menu", width: 1440 },
-  { screen: "settings-alerts", width: 1440 },
+  { screen: "settings-notifications", width: 1440 },
   { screen: "pane-chat", width: 390 },
 ];
 
@@ -157,6 +158,7 @@ function caseFor(entry: Entry, look: Look): void {
           lines.push(`${key} breaks "${w.id}" ${String(found.length)} times, under its ceiling of ${String(ceiling)}: lower it in e2e/themes/ceilings.json (bun e2e/themes/ceilings.ts <out-dir>)`);
         }
       }
+      if (HELD_LOOKS.has(look.id)) lines.push(...movedStates(key, result.samples));
       const total = Object.values(result.measured).reduce((a, b) => a + b, 0);
       testInfo.annotations.push({ type: "measured", description: `${String(total)} measured (${Object.entries(result.measured).map(([k, v]) => `${k} ${String(v)}`).join(", ")}), ${String(result.breaks.length)} breaks, ${String(result.unmeasured.length)} unmeasured` });
       expect(result.measured.text, `${key}: R5 read no text at all`).toBeGreaterThan(5);

@@ -35,7 +35,7 @@ import { SectionLabel } from "@/components/ui/section-label";
 import type { BridgeStatus } from "@/lib/types";
 import type { Scope } from "@/lib/scope";
 import { Icon } from "@/components/icons/icon";
-import { NAV_EDGE } from "@/components/ui/nav-edge";
+import { NAV_EDGE, RECESS_ACCENT } from "@/components/ui/nav-edge";
 
 /** What a route claims about the SHAPE of the shared row, as opposed to the content it portals into
  *  it. These are the three things the shell itself has to draw differently, and every one of them is
@@ -386,7 +386,7 @@ export function AppHeaderHost({ bridge, error, lastSeenAt, children }: AppHeader
           // Docked in a large screen's column the header closes on the firm edge (`--edge-firm`), 3:1 or more against
           // the header and the transcript in every bundled theme: its own band, not a faint rule (2026-11-21).
           claim.hidden ? "border-transparent" : spanned ? NAV_EDGE : dockedRow !== null ? "border-edge-firm" : "border-band-rule",
-          spanned && "w-full bg-surface-recess [--accent:var(--surface-paper)] [--band-ground:var(--surface-recess)] [--chrome:var(--surface-recess)]",
+          spanned && ["w-full bg-surface-recess [--band-ground:var(--surface-recess)] [--chrome:var(--surface-recess)]", RECESS_ACCENT],
           dockedRow === null && claim.width === "column" && "mx-auto w-full max-w-screen-sm",
           dockedRow === null && claimedPx !== null && !spanned && "mx-auto w-full",
           dockedRow === null &&

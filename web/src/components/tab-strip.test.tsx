@@ -350,7 +350,7 @@ describe("TabStrip — long-press actions", () => {
     const other = screen.getByRole("button", { name: "tab 1" });
     expect(open).toHaveAttribute("aria-haspopup", "dialog");
     expect(open).toHaveAttribute("aria-expanded", "false");
-    expect(open.className).toContain("aria-expanded:bg-control-on");
+    expect(open.className).toContain("aria-expanded:bg-(--state-open)");
     expect(other).not.toHaveAttribute("aria-expanded");
     await user.click(open);
     expect(screen.getByRole("button", { name: "Rename" })).toBeInTheDocument();

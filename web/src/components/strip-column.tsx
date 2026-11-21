@@ -327,8 +327,9 @@ export function PaneColumnBody({
  * closes that seam (§4, "A boundary is drawn once"), 4px higher.
  */
 export const PAPER_PLANE =
-  "bg-surface-paper [--band-ground:var(--surface-paper)] [--chrome:var(--surface-paper)] [--muted:var(--background)]";
-export const PAGE_PLANE = "bg-background [--band-ground:var(--background)] [--chrome:var(--background)] dark:[--muted:var(--surface-paper)]";
+  "bg-surface-paper [--band-ground:var(--surface-paper)] [--chrome:var(--surface-paper)] [--muted:var(--background)] [--accent:var(--state-on-paper)] [--state-hover:var(--state-hover-paper)] [--state-on:var(--state-on-paper)] [--state-open:var(--state-open-paper)]";
+export const PAGE_PLANE =
+  "bg-background [--band-ground:var(--background)] [--chrome:var(--background)] dark:[--muted:var(--surface-paper)] [--accent:var(--state-on-page)] [--state-hover:var(--state-hover-page)] [--state-on:var(--state-on-page)] [--state-open:var(--state-open-page)]";
 const IN_EITHER_PLANE =
   "[&_[data-slot=composer-actions]]:bg-muted/20 [&_[data-slot=belt-track]]:bg-transparent [&_[data-slot=pane-reading]]:border-t-transparent";
 

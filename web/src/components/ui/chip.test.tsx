@@ -109,7 +109,7 @@ describe("Chip \u2014 the menu it opens shows on it", () => {
     expect(button()).toHaveAttribute("aria-haspopup", "dialog");
     expect(button()).toHaveAttribute("aria-expanded", "false");
     // The open look is keyed on the attribute (ui/button.tsx `TRIGGER_OPEN`), so the class is always there.
-    expect(button().className).toContain("aria-expanded:bg-control-on");
+    expect(button().className).toContain("aria-expanded:bg-(--state-open)");
     rerender(<Chip label="alpha" active onClick={() => {}} onTapActive={() => {}} menuOpen />);
     expect(button()).toHaveAttribute("aria-expanded", "true");
     // An inactive chip opens nothing, and a chip with no menu wired says nothing about one.

@@ -453,6 +453,24 @@
      ring you can't locate is a real problem. Still worth an on-device look: even at 0.62 the /50
      variant is marginal. */
   --ring: light-dark(oklch(0.5 0 0), oklch(0.76 0 0));
+  /* THE STATE FILLS, per plane (DESIGN.md §14, ADR 0172). A hover, a selected item and an open trigger read
+     `--state-hover`, `--state-on` and `--state-open`; each plane class points the three at its own triple
+     (`RECESS_ACCENT`, `PAPER_PLANE`, `PAGE_PLANE`), and here they hold the page's. These are Collie's relations,
+     the colours Altan approved on 2026-11-21: the accent on the page and the paper, the paper on the recess, the
+     on-colour for an open trigger. A theme that is applied gets the same relations with a floor under each
+     (lib/theme/derive.ts, set inline by applyTheme); derive.test.ts holds the two together within 0.02. */
+  --state-hover-page: var(--accent);
+  --state-hover-recess: var(--surface-paper);
+  --state-hover-paper: var(--accent);
+  --state-on-page: var(--accent);
+  --state-on-recess: var(--surface-paper);
+  --state-on-paper: var(--accent);
+  --state-open-page: var(--control-on);
+  --state-open-recess: var(--control-on);
+  --state-open-paper: var(--control-on);
+  --state-hover: var(--state-hover-page);
+  --state-on: var(--state-on-page);
+  --state-open: var(--state-open-page);
 
   /* Agent lifecycle status palette — the app's primary at-a-glance signal, so both halves are
      tuned against their own ground rather than one set being reused. The dark values glow on

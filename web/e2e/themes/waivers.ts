@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
+import { contrast, parseColour } from "../../src/lib/theme/derive";
 import type { Break, R5Rule } from "./r5";
 
 // THE KNOWN BREAKS OF R5, BY CAUSE. A break of the rule is a defect of the product; one that is not fixed yet is waived
@@ -21,6 +22,11 @@ export interface Waiver {
 }
 
 const el = (re: RegExp) => (b: Break) => re.test(b.el);
+/** A ring's contrast against its other side, the one R5 did not report as the worst (`text: "other side #rrggbb"`). */
+const outerSide = (b: Break): number => {
+  const other = /other side (#[0-9a-f]{6})/u.exec(b.text ?? "")?.[1];
+  return other === undefined ? 0 : contrast(parseColour(b.ink), parseColour(other));
+};
 const gen = (look: string) => look.startsWith("gen-");
 const profile = (look: string, re: RegExp) => gen(look) && re.test(look);
 
@@ -81,10 +87,16 @@ export const WAIVERS: readonly Waiver[] = [
   },
   // ── The focus ring ──
   {
+    id: "ring-on-mark-drawing",
+    rule: "ring",
+    where: (b) => /sidebar-mark/u.test(b.el) && outerSide(b) >= 3,
+    reason: "FINDING: the mark's button is no larger than its drawing, so the house ring's inner side touches the mark's own ink (Collie dark: the white mark, 2.05) while its outer side holds 3:1 on the recess. A pad inside the button would end it; that moves the mark, which waits for Altan's word",
+  },
+  {
     id: "ring-browser-default",
     rule: "ring",
-    where: el(/pane-row|sidebar-mark|sidebar-word|actions-palette-list|wide-command-row/u),
-    reason: "FINDING: a control with no house ring (`FOCUS_RING`) shows the browser's own two-tone ring, which the sidebar's scroller and the palette's list clip on one side, or which sits on the row's own fill",
+    where: el(/wide-command-row/u),
+    reason: "FINDING: a control with no house ring (`FOCUS_RING`) shows the browser's own two-tone ring, which touches the row's own fill. The pane rows, the palette's rows, the sidebar's mark and its word wear the house ring, whose `--ring` is held at 3:1 on every plane by deriveTokens (ADR 0172)",
   },
   {
     id: "ring-clipped",
