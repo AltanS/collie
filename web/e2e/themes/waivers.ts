@@ -83,8 +83,8 @@ export const WAIVERS: readonly Waiver[] = [
   {
     id: "ring-browser-default",
     rule: "ring",
-    where: el(/pane-row|sidebar-mark|sidebar-word|actions-palette-list|wide-command-row/u),
-    reason: "FINDING: a control with no house ring (`FOCUS_RING`) shows the browser's own two-tone ring, which the sidebar's scroller and the palette's list clip on one side, or which sits on the row's own fill",
+    where: el(/sidebar-mark|sidebar-word|wide-command-row/u),
+    reason: "FINDING: a control with no house ring (`FOCUS_RING`) shows the browser's own two-tone ring, which touches the mark's and the word's own ink (Collie dark 1.07). The pane rows and the palette's rows wear the house ring since D6; the house ring on the sidebar's word would trade this for the theme's own `--ring` on the recess (a mid-grey theme 2.74), which waits for D5",
   },
   {
     id: "ring-clipped",

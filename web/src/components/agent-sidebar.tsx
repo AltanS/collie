@@ -1,6 +1,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+import { FOCUS_RING } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { CacheChip } from "@/components/cache-chip";
 import { HostChip } from "@/components/host-chip";
@@ -750,6 +751,8 @@ export function PaneRow({
         // which is the zig-zag every switcher row above and below it would then sit out of line
         // with. This is a gap list, not a divide-y one, so a four-sided edge is the right mark.
         "flex w-full min-w-0 items-center gap-2.5 rounded-lg border border-transparent text-left transition-colors",
+        // The house ring, outside the row: the list's own inset (8px in the sidebar, 4px in the palette) holds it clear of the scroller's edge.
+        FOCUS_RING,
         // The sidebar's 16px inset is the list's 8 plus the row's 8, and its 44px floor a little more air.
         roomy ? "min-h-11 px-2 py-2.5" : "px-2.5 py-2",
         active ? "bg-accent text-accent-foreground" : "hover:bg-muted/60 active:bg-muted",
