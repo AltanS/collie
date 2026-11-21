@@ -362,6 +362,25 @@ function SheetLayer({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
+  // A FORM DIALOG'S TOP EDGE STAYS WHERE THE PERSON FIRST MET IT. It opens centred and re-centres while its content
+  // arrives; from the first release of a press, or a key, inside it, the top is held and a change of its height (another variant
+  // of the form) grows or shrinks it downward, so the field under the pointer does not move. `offsetTop`, not the
+  // box: the entrance zoom is a transform. The frame then stacks from its top. Reset on close and on a resize.
+  const [formTop, setFormTop] = React.useState<number | null>(null);
+  const holdFormTop = () => {
+    if (formTop !== null || size !== "form" || !dialog) return;
+    const panel = panelRef.current;
+    const frame = panel?.parentElement;
+    if (panel == null || frame == null) return;
+    setFormTop(Math.max(0, panel.offsetTop - parseFloat(getComputedStyle(frame).paddingTop)));
+  };
+  React.useEffect(() => {
+    if (!open) setFormTop(null);
+    if (!open || formTop === null) return;
+    const release = () => setFormTop(null);
+    window.addEventListener("resize", release);
+    return () => window.removeEventListener("resize", release);
+  }, [open, formTop]);
   // A form dialog keeps the Tab order inside it: past its last control the focus goes to its first, and back.
   React.useEffect(() => {
     if (!open || size !== "form" || !dialog) return;
@@ -493,6 +512,7 @@ function SheetLayer({
     maxHeight: size === "form" ? `min(720px, ${DIALOG_MAX_H})` : DIALOG_MAX_H,
     "--sheet-body-room": DIALOG_BODY_ROOM,
   };
+  if (formTop !== null) dialogStyle.marginTop = formTop;
   if (size === "viewer") dialogStyle["--sheet-body-width"] = VIEWER_BODY_W;
   // Peeking: no dialog role, no aria-modal, no pointer events on the page underneath. Nothing has
   // opened yet, so nothing about this render should read as a modal to assistive tech or the mouse.
@@ -521,7 +541,7 @@ function SheetLayer({
 
   return (
     <div
-      className={menu ? "fixed inset-0 z-50" : dialog ? cn(MODAL_FRAME, MODAL_CENTER_FRAME) : "fixed inset-x-0 top-0 z-50 flex h-(--app-h) flex-col justify-end"}
+      className={menu ? "fixed inset-0 z-50" : dialog ? cn(MODAL_FRAME, MODAL_CENTER_FRAME, formTop !== null && "justify-start") : "fixed inset-x-0 top-0 z-50 flex h-(--app-h) flex-col justify-end"}
       role={peeking ? undefined : "dialog"}
       aria-modal={peeking ? undefined : true}
       aria-labelledby={!peeking && title ? titleId : undefined}
@@ -562,6 +582,8 @@ function SheetLayer({
         ref={panelRef}
         tabIndex={peeking ? undefined : -1}
         style={panelStyle}
+        onPointerUpCapture={size === "form" ? holdFormTop : undefined}
+        onKeyDownCapture={size === "form" ? holdFormTop : undefined}
         data-presentation={drawing}
         className={menu ? menuPanelClass(className) : dialog ? dialogPanelClass(size, className) : cn(
           // `rounded-t-md` (2px), not `rounded-t-2xl`: 16px was the roundest corner left in the app and it

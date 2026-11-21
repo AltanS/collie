@@ -224,6 +224,21 @@ test.describe("New over the screen, large screen", () => {
         await expect(add).toBeVisible();
         expect(new URL(page.url()).searchParams.get("over")).toMatch(/^\/new\/add\?/u);
         await shot(page, "new-add", w);
+        // The form takes its own height: no reserved gap between the name field and the link under it.
+        const nameBox = await add.getByRole("textbox", { name: en["launcherAdd.name"], exact: true }).boundingBox();
+        const howBox = await add.getByRole("button", { name: en["launcherAdd.how.link"], exact: true }).boundingBox();
+        if (nameBox === null || howBox === null) throw new Error("no name or link box");
+        expect(howBox.y - (nameBox.y + nameBox.height)).toBeLessThan(80);
+        // Another variant of the form changes the height downward: the top edge stays.
+        const panel = add.locator('[data-presentation="dialog"]');
+        const before = await panel.boundingBox();
+        await add.getByRole("radio", { name: en["launcherAdd.mode.text"], exact: true }).click();
+        await page.waitForTimeout(300);
+        const after = await panel.boundingBox();
+        if (before === null || after === null) throw new Error("no panel box");
+        expect(Math.abs(after.y - before.y)).toBeLessThan(1);
+        await shot(page, "new-add-text", w);
+        await add.getByRole("radio", { name: en["launcherAdd.way.recipe"], exact: true }).click();
         // Scrolled to its end, the form's last part ("Added for the crew" and its line) stands whole above the foot.
         await add.locator('[data-slot="new-add-dialog-body"]').evaluate((el) => {
           el.scrollTop = el.scrollHeight;

@@ -1,5 +1,5 @@
 import { Icon } from "@/components/icons/icon";
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState, type ComponentProps } from "react";
 import { Navigate, useLocation } from "react-router";
 
 import { AgentIcon } from "@/components/agent-icon";
@@ -206,7 +206,8 @@ export function NewAddPage({ search, frame = "page", onClose }: { search: string
         ) : null}
 
         {/* Agent has two ways. A command has the written one only, so there is nothing to choose. */}
-        <OneOf
+        <FormSlot
+          natural={frame === "dialog"}
           active={kind === "agent" ? "way" : null}
           className="justify-items-stretch"
           options={[
@@ -228,8 +229,9 @@ export function NewAddPage({ search, frame = "page", onClose }: { search: string
         />
 
         {/* Every form this page can show shares one box, as big as the biggest, so choosing between
-            them moves nothing (DESIGN.md §2). */}
-        <OneOf
+            them moves nothing (DESIGN.md §2). In the dialog the box is the shown form's own height. */}
+        <FormSlot
+          natural={frame === "dialog"}
           active={offReason ? "off" : writing ? "text" : "recipe"}
           className="justify-items-stretch"
           options={[
@@ -424,6 +426,17 @@ export function NewAddPage({ search, frame = "page", onClose }: { search: string
       {tailPart}
     </div>
   );
+}
+
+/**
+ * The page's form boxes: on the page a {@link OneOf}, as big as its biggest form, so the bottom bar never moves; in
+ * the large screen's dialog (`natural`) only the shown form, at its own height, because the dialog's height
+ * follows its content and holds its top edge (ui/sheet.tsx, `size="form"`).
+ */
+function FormSlot({ natural, ...props }: ComponentProps<typeof OneOf> & { natural: boolean }) {
+  if (!natural) return <OneOf {...props} />;
+  const front = props.options.find((option) => option.key === props.active);
+  return front === undefined ? null : <div className={cn("grid", props.className)}>{front.node}</div>;
 }
 
 /** The recipe way: a harness, its option chips, the line they build, and an optional name. */
