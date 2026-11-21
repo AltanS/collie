@@ -530,6 +530,11 @@ includes one a `/model` switch made cold with time still left.
 > second window. A five-minute cache, Codex, OpenCode, pi and omp, warns about two and a half minutes
 > before it goes cold instead.
 
+A push about a session shows that session's project picture as its icon, the small square beside the
+title, when its repository names one. A session with no picture keeps Collie's icon, and so does
+Safari. Chrome on Android and desktop Chrome and Firefox show the picture
+([A project's own picture](configure.md#a-projects-own-picture)).
+
 ### The count on the app icon
 
 The installed app's icon shows how many alerts are waiting on you: every pane blocked on you, and,
