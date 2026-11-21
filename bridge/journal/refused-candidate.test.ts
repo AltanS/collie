@@ -11,7 +11,7 @@
 // for root, so that part runs only where it means something.
 
 import { afterEach, describe, expect, test } from "bun:test";
-import { chmod, mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, realpath, rm, symlink, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -32,7 +32,7 @@ const MCODE_DIR = `session_${Buffer.from(MCODE_ID).toString("base64url")}`;
 const CHMOD_BITES = process.platform !== "win32" && process.getuid?.() !== 0;
 
 interface Layout {
-  /** The candidate tried first (the newest, or the first folder by name). */
+  /** The candidate tried first (the newest name, or the newest file where names carry no time). */
   readonly first: string;
   /** A candidate tried after `first`. */
   readonly second: string;
@@ -154,12 +154,19 @@ async function sandbox(): Promise<Sandbox> {
   await mkdir(root, { recursive: true });
   const outside = join(base, "outside.jsonl");
   await writeFile(outside, '{"secret":"outside the root"}\n');
+  await utimes(outside, T0 + AGE.outside, T0 + AGE.outside);
   return { base, root, outside };
 }
 
-async function readable(path: string): Promise<void> {
+/** A fixed clock for modified times, so a reader that orders by the file (claude, grok, kiro) sees
+ *  the layout's order: the outside file newest, then `blocked`, `first`, `second`, `third`. */
+const T0 = Date.UTC(2026, 10, 1) / 1000;
+const AGE = { outside: 100, blocked: 50, first: 40, second: 30, third: 20 } as const;
+
+async function readable(path: string, age: number = 0): Promise<void> {
   await mkdir(dirname(path), { recursive: true });
   await writeFile(path, "{}\n");
+  await utimes(path, T0 + age, T0 + age);
 }
 
 async function linked(path: string, target: string): Promise<void> {
@@ -180,7 +187,7 @@ for (const source of CASES) {
       const box = await sandbox();
       const at = source.layout(box.root);
       await linked(at.first, box.outside);
-      await readable(at.second);
+      await readable(at.second, AGE.second);
       await linked(at.third, box.outside);
       const result = await source.resolve(box.root);
       expect(result).toBe(at.second);
@@ -190,8 +197,8 @@ for (const source of CASES) {
     test("two readable candidates: the first in order still wins", async () => {
       const box = await sandbox();
       const at = source.layout(box.root);
-      await readable(at.first);
-      await readable(at.second);
+      await readable(at.first, AGE.first);
+      await readable(at.second, AGE.second);
       expect(await source.resolve(box.root)).toBe(at.first);
     });
 
@@ -208,12 +215,12 @@ for (const source of CASES) {
       const box = await sandbox();
       const at = source.layout(box.root);
       await linked(at.first, join(box.root, "gone.jsonl"));
-      await readable(at.blocked.file);
+      await readable(at.blocked.file, AGE.blocked);
       if (CHMOD_BITES) {
         await chmod(at.blocked.folder, 0o000);
         locked.push(at.blocked.folder);
       }
-      await readable(at.second);
+      await readable(at.second, AGE.second);
       const result = await source.resolve(box.root);
       // Where chmod does not bite, the blocked folder's log is readable and comes first in order.
       expect(result).toBe(CHMOD_BITES ? at.second : at.blocked.file);
