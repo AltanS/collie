@@ -295,7 +295,7 @@ These keys are solid in every set: `Icon` fills the lucide and iconoir glyph, an
 | `theme-light` | light theme | `Sun` | `sun` | `sun-light` |
 | `theme-system` | theme follows the system | `MonitorSmartphone` | `devices` | `computer` |
 | `tour` | the guided tour | `Compass` | `compass` | `compass` |
-| `trick-fact-adds` | what a trick adds to the app, on its details page | `Shapes` | `plus-square` | `plus-square` |
+| `trick-fact-adds` | what a trick adds to the app, on its details page | `SquarePlus` | `plus-square` | `plus-square` |
 | `trick-fact-reads` | what a trick may read or do, on its details page | `Eye` | `eye` | `eye` |
 | `trick-fact-runs` | when a trick runs, on its details page | `Timer` | `timer` | `timer` |
 | `trick-fact-shows` | where a trick shows, on its details page | `PanelsTopLeft` | `layout` | `app-window` |

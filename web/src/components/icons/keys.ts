@@ -353,7 +353,7 @@ export const ICON_KEYS = {
   "tool-search": { meaning: "a search tool call", area: "chat", lucide: "Search" },
   "tool-task": { meaning: "a task or subagent tool call", area: "chat", lucide: "Bot" },
   "tour": { meaning: "the guided tour", area: "settings", lucide: "Compass" },
-  "trick-fact-adds": { meaning: "what a trick adds to the app, on its details page", area: "settings", lucide: "Shapes" },
+  "trick-fact-adds": { meaning: "what a trick adds to the app, on its details page", area: "settings", lucide: "SquarePlus" },
   "trick-fact-reads": { meaning: "what a trick may read or do, on its details page", area: "settings", lucide: "Eye" },
   "trick-fact-runs": { meaning: "when a trick runs, on its details page", area: "settings", lucide: "Timer" },
   "trick-fact-shows": { meaning: "where a trick shows, on its details page", area: "settings", lucide: "PanelsTopLeft" },
