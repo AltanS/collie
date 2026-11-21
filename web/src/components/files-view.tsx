@@ -4,6 +4,7 @@ import type { IconKey } from "@/components/icons/keys";
 
 import { ChangesNoMatch, FilterRow, STATUS_FILL, STATUS_WORD, TREE_TONE } from "@/components/changes-view";
 import { LIST_ROW_CORNERS, ListGroup } from "@/components/ui/list-group";
+import { HOVER_FILL } from "@/components/ui/button";
 import { Segmented } from "@/components/ui/segmented";
 import { ToggleButton } from "@/components/ui/toggle-button";
 import { useLocale } from "@/hooks/use-locale";
@@ -33,13 +34,34 @@ export function FilesModeControl({
   changesOnly,
   count,
   onChange,
+  compact = false,
+  className,
 }: {
   changesOnly: boolean;
   count: number;
   /** `true` for the Changes segment, the value the `changesOnly` pref holds. */
   onChange: (changesOnly: boolean) => void;
+  /** The large screen's compact control for views (`ui/segmented`'s `compact`), with no row of its own: the caller places it. */
+  compact?: boolean;
+  className?: string;
 }) {
   useLocale();
+  if (compact) {
+    return (
+      <Segmented
+        label={t("files.mode.aria")}
+        value={changesOnly ? "changes" : "all"}
+        onChange={(mode) => onChange(mode === "changes")}
+        compact
+        className={className}
+        badgeClassName={cn(STATUS_FILL.M, "text-background")}
+        options={[
+          { value: "all", label: t("files.mode.all") },
+          { value: "changes", label: t("files.mode.changes"), badge: count, badgeLabel: tn("files.changed", count) },
+        ]}
+      />
+    );
+  }
   return (
     <div data-slot="files-mode" className="shrink-0 border-b px-4 py-3">
       <Segmented
@@ -215,10 +237,13 @@ function MarkSlot({ mark }: { mark: EntryMark | undefined }) {
 export function FileRows({
   entries,
   marks,
+  current,
   onOpen,
 }: {
   entries: readonly FileEntry[];
   marks?: ReadonlyMap<string, EntryMark>;
+  /** The row's name that is open beside the list (the large screen's two columns): drawn chosen. */
+  current?: string;
   onOpen: (entry: FileEntry) => void;
 }) {
   useLocale();
@@ -229,13 +254,19 @@ export function FileRows({
         const iconKey = mark?.kind === "change" ? changedIcon(entry.kind, mark.status) : KIND_ICON[entry.kind];
         const tone = mark?.kind === "change" ? TREE_TONE[mark.status] : undefined;
         const deleted = mark?.kind === "change" && mark.deleted === true;
+        const here = current !== undefined && entry.name === current;
         return (
           <li key={entry.name}>
             <button
               type="button"
               onClick={() => onOpen(entry)}
               aria-label={rowLabel(entry, mark)}
-              className={cn("flex min-h-11 w-full items-center gap-3 px-3.5 py-2 text-left active:bg-muted/50", LIST_ROW_CORNERS)}
+              aria-current={here ? "page" : undefined}
+              className={cn(
+                "flex min-h-11 w-full items-center gap-3 px-3.5 py-2 text-left active:bg-muted/50",
+                LIST_ROW_CORNERS,
+                current !== undefined && (here ? "bg-accent text-accent-foreground" : HOVER_FILL),
+              )}
             >
               <Icon
                 name={iconKey}
@@ -403,10 +434,13 @@ export function FilesFolderBody({
   onShowIgnored,
   onClearQuery,
   onOpen,
+  current,
 }: {
   entries: readonly FileEntry[];
   /** The change marks of these rows, on the Changes screen's tree. */
   marks?: ReadonlyMap<string, EntryMark>;
+  /** The row open beside the list, on a large screen. */
+  current?: string;
   truncated: boolean;
   query: string;
   showIgnored: boolean;
@@ -424,7 +458,7 @@ export function FilesFolderBody({
   return (
     <>
       {view.rows.length > 0 ? (
-        <FileRows entries={view.rows} marks={marks} onOpen={onOpen} />
+        <FileRows entries={view.rows} marks={marks} current={current} onOpen={onOpen} />
       ) : isNameFilterOn(query) ? (
         <ChangesNoMatch onClear={onClearQuery} />
       ) : (

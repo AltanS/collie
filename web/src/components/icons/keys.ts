@@ -372,6 +372,8 @@ export const ICON_KEYS = {
   "user-turn": { meaning: "a turn or message by the person", area: "chat", lucide: "User" },
   "view-chat": { meaning: "switch to the chat view", area: "sheets", lucide: "MessagesSquare" },
   "view-diff": { meaning: "show the diff view", area: "files", lucide: "GitCompareArrows" },
+  "diff-split": { meaning: "a diff side by side", area: "files", lucide: "Columns2" },
+  "diff-unified": { meaning: "a diff in one column", area: "files", lucide: "Rows2" },
   "view-preview": { meaning: "show the preview view", area: "files", lucide: "Eye" },
   "view-source": { meaning: "show file source", area: "files", lucide: "Code" },
   "view-terminal": { meaning: "switch to the terminal view", area: "sheets", lucide: "SquareTerminal" },

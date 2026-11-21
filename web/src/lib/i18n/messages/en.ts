@@ -2828,6 +2828,8 @@ export const en = {
   "changes.file.renamedFrom": "Renamed from {path}",
   "changes.file.prev": "Previous file",
   "changes.file.next": "Next file",
+  "changes.diffLayout.unified": "Unified",
+  "changes.diffLayout.split": "Side by side",
   "changes.layout.tree": "Show as a tree",
   "changes.tree.folderAria.one": "{name}, {count} file",
   "changes.tree.folderAria.other": "{name}, {count} files",
@@ -2873,6 +2875,7 @@ export const en = {
   "files.breadcrumb.aria": "Folder path",
   "files.root": "Root",
   "files.empty": "This folder is empty.",
+  "files.nothingChosen": "Choose a file to open it here.",
   "files.truncated": "The list hit a limit, so some entries are missing.",
   "files.filter.placeholder": "Filter by name",
   "files.filter.shown": "{shown} of {total} items",
@@ -4407,6 +4410,9 @@ export type Messages = typeof en;
  * key for good: a key stays here only between a feature and its translation pass.
  */
 export const PENDING_TRANSLATION = [
+  "changes.diffLayout.unified",
+  "changes.diffLayout.split",
+  "files.nothingChosen",
   "settings.tricks.fields.refused.gone",
   "settings.tricks.about.code.failed",
   "settings.tricks.about.code.moved",

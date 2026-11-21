@@ -59,14 +59,14 @@ export const SCREENS: readonly Screen[] = [
   { id: "dashboard-many", route: "/", path: "/", title: "Dashboard, twenty-four Spaces", wide: "designed", state: "twenty-four Spaces", setup: "herd24" },
   { id: "dashboard-no-spaces", route: "/", path: "/", title: "Dashboard, no Space", wide: "designed", state: "no Space", setup: "herd0" },
   { id: "dashboard-not-paired", route: "/", path: "/", title: "Dashboard, browser not paired", wide: "designed", state: "not paired", setup: "notPaired" , waive: { "targets@390": PHONE_TARGETS } },
-  { id: "dashboard-files", route: "/", path: "/", title: "Dashboard, the Files view", wide: "column", state: "Files view", setup: "dashboardFiles", note: "a phone column under the large header" },
+  { id: "dashboard-files", route: "/", path: "/", title: "Dashboard, the Files view", wide: "designed", state: "Files view", setup: "dashboardFiles", note: "one line a space, at most 720px from the grid's left edge" },
   { id: "dashboard-tricks", route: "/", path: "/", title: "Dashboard, six trick items in the views switch", wide: "designed", state: "six trick items", setup: "dashboardTricks", widths: [1440, 1100] },
   { id: "dashboard-unreachable", route: "/", path: "/", title: "Dashboard, the bridge unreachable", wide: "designed", state: "unreachable", setup: "unreachable" },
   { id: "dashboard-crew", route: "/", path: "/", title: "Dashboard, a crew of machines", wide: "designed", state: "three machines", setup: "crew" , waive: { "targets@390": PHONE_TARGETS } },
   { id: "dashboard-new-tab", route: "/", path: "/", title: "New tab dialog over the Dashboard", wide: "designed", state: "New tab dialog open", setup: "newTab" , waive: { "targets@390": PHONE_TARGETS } },
   { id: "dashboard-row-menu", route: "/", path: "/", title: "A row's menu over the Dashboard", wide: "designed", state: "row menu open", setup: "rowMenu" , waive: { "targets@390": PHONE_TARGETS } },
   { id: "space", route: "space/:spaceId", path: "/space/w2", title: "One Space with its sessions", wide: "column", setup: "herd12" },
-  { id: "space-changes", route: "space/:spaceId/changes/*", path: "/space/w1/changes", title: "Changes of a Space", wide: "column" },
+  { id: "space-changes", route: "space/:spaceId/changes/*", path: "/space/w1/changes", title: "Changes of a Space", wide: "designed", state: "the folder tree" },
 
   // ── A session ────────────────────────────────────────────────────────────
   { id: "pane-chat", route: "pane/:paneId", path: "/pane/w1%3Ap1", title: "A session as Chat", wide: "designed", setup: "chat" , waive: { "no-sideways-scroll@390": STREAM_9PX, "targets@390": PHONE_TARGETS } },
@@ -79,8 +79,12 @@ export const SCREENS: readonly Screen[] = [
   { id: "pane-tabs-long-names", route: "pane/:paneId", path: "/pane/w1%3Ap1?h=lodge", title: "Tab strip with long names", wide: "designed", state: "long Space and host names, five tabs", setup: "longTabs", widths: [1440, 1100, 390], note: "the tab strip defect: a tab drawn over the Space's name when the names are long" , waive: { "nothing-covers-a-label@390": "by design: the icon in the pane identity row is drawn over the middle of the name button, and nothing is hidden (checked on the shot)" } },
   { id: "pane-history", route: "pane/:paneId/history", path: "/pane/w1%3Ap1/history", title: "A session's History", wide: "column", setup: "chat" , waive: { "targets@390": PHONE_TARGETS } },
   { id: "pane-zoom", route: "pane/:paneId/zoom", path: "/pane/w1%3Ap1/zoom", title: "Zoomed output", wide: "same", state: "output zoomed", setup: "terminal", note: "a full-window reading surface: the output takes the whole window at any width, so one layout serves both" },
-  { id: "pane-changes", route: "pane/:paneId/changes/*", path: "/pane/w1%3Ap1/changes", title: "Changes of a session", wide: "column" },
-  { id: "pane-files", route: "pane/:paneId/changes/*", path: "/pane/w1%3Ap1/changes/files", title: "Files of a session", wide: "column", state: "the folder tree" },
+  // The lazy-screens spec opens each route at its LAST entry here, offline: the tree's root, which draws no diff (a
+  // diff asks for the highlighter, an older door whose shared chunks that spec does not list).
+  { id: "pane-files-file", route: "pane/:paneId/changes/*", path: "/pane/w1%3Ap1/changes/files?path=src%2Fcart.ts", title: "A file open in the tree", wide: "designed", state: "a file open" },
+  { id: "pane-changes-split", route: "pane/:paneId/changes/*", path: "/pane/w1%3Ap1/changes?repo=.&path=src%2Froutes%2Fcheckout.tsx", title: "A changed file side by side", wide: "designed", state: "the diff side by side", setup: "changesSplit", widths: [1440], note: "side by side exists only in the large-screen layout; the phone's diff is pane-changes' own" },
+  { id: "pane-changes", route: "pane/:paneId/changes/*", path: "/pane/w1%3Ap1/changes", title: "Changes of a session", wide: "designed", state: "Changes only, the list", setup: "changesList" },
+  { id: "pane-files", route: "pane/:paneId/changes/*", path: "/pane/w1%3Ap1/changes/files", title: "Files of a session", wide: "designed", state: "the folder tree" },
   { id: "trick-session", route: "trick/:paneId", path: "/trick/trick%3Alodge%3Aci%3Arun", title: "A trick's own session", wide: "column", setup: "tricks" },
 
   // ── The Hill ─────────────────────────────────────────────────────────────

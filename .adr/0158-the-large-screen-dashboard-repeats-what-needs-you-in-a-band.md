@@ -94,3 +94,23 @@ was opened from (the nav trail), else up to the Dashboard. `/settings` replaces 
 waits, else Appearance. Machines stays a page of its own, and its row leaves Settings. Files:
 `web/src/components/settings-shell.tsx`, `web/src/components/settings-page.tsx`, `web/src/hooks/use-settings-rows.ts`,
 `web/e2e/settings-wide.spec.ts`.
+
+## Addendum — 2026-11-21: Files and Changes are two columns under one header
+
+On a large screen (`expanded`, Large-screen layout not Off) Files and Changes are one page of two columns under the
+spanned header (48px, the recess, `NAV_EDGE`): Back, the word Files, the space's label line and branch, the filter and
+Refresh. The left column is 360px on the recess, with the Changes only / All files control on top at its full width
+at every level. It holds the folder tree, which opens folders in place (one tab stop, the arrows walk it, Right opens
+and Left closes or steps to the parent), or, while Changes only is chosen or a changed file is open from it, the list
+of changes drawn as the tree's flat rows. A row is 36px with a mouse and 44px when the primary pointer is coarse, one
+rule in `web/src/components/ui/nav-row.ts`. The right column holds the open file, and while none is open the folder's
+name, the count of changes and "Choose a file to open it here." Only a file is a new history entry: a folder opened in
+the tree moves nothing, Back returns to the file before, and the header's Back steps back past the files of the visit
+to where Files was opened from. A file's row holds Previous file and Next file as two small buttons, and the phone's
+foot bar is not drawn. The same row holds Unified / Side by side. Until a person chooses, a diff is side by side when
+the file's column is at least 1200px wide, so it is one column at 1440 and side by side at 1920; a choice is kept on
+the device (`collie:diff-layout:v1`). A new, deleted or untracked file is always one column and the control is
+disabled. Side by side draws a comment that no line anchors above the first hunk across both halves. The dashboard's
+Files view is one line a space, with the counts at the right, in a column of at most 720px from the grid's left edge;
+the space filter is capped at 320px. A phone and a tablet keep the one column. Files: `web/src/components/files-wide.tsx`,
+`web/src/lib/diff-layout.ts`, `web/src/routes/changes.tsx`, `web/e2e/wide-files.spec.ts`.

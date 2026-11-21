@@ -333,6 +333,8 @@ export const ICONOIR = {
   "user-turn": "user", // a turn or message by the person · lucide User
   "view-chat": "multi-bubble", // switch to the chat view · lucide MessagesSquare
   "view-diff": "git-compare", // show the diff view · lucide GitCompareArrows
+  "diff-split": "view-columns-2", // a diff side by side · lucide Columns2
+  "diff-unified": "table-rows", // a diff in one column · lucide Rows2
   "view-preview": "eye", // show the preview view · lucide Eye
   "view-source": "code", // show file source · lucide Code
   "view-terminal": "terminal", // switch to the terminal view · lucide SquareTerminal
