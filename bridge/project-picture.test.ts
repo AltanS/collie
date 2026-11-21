@@ -19,9 +19,14 @@ afterAll(() => {
   for (const dir of made) rmSync(dir, { recursive: true, force: true });
 });
 
-/** A fresh real folder (its real path, so a symlinked tmp does not confuse the checks). */
+/**
+ * A fresh real folder, spelled as the OS's own real path: the one `locateProjectFile` and the readers
+ * resolve to (`fs/promises` `realpath`). Plain `realpathSync` keeps an 8.3 short name, and the Windows
+ * runner's `tmpdir()` is one (`C:\Users\RUNNER~1\...`), so an expectation built from it named a
+ * path the product rightly never answers (Windows CI, 2026-11-21).
+ */
 function folder(prefix = "collie-project-"): string {
-  const dir = realpathSync(mkdtempSync(join(tmpdir(), prefix)));
+  const dir = realpathSync.native(mkdtempSync(join(tmpdir(), prefix)));
   made.push(dir);
   return dir;
 }
@@ -539,7 +544,12 @@ describe("the async picture reader keeps every check (M1)", () => {
     const path = join(dir, "fifo.png");
     if (!makeFifo(path)) return;
     const started = performance.now();
-    expect(await readProjectPicture(path, [])).toMatchObject({ ok: false, why: "is not a regular file" });
+    const read = await readProjectPicture(path, []);
+    // Windows has no FIFO on disk: Git for Windows' `mkfifo` (on the runner's PATH) makes an MSYS
+    // stand-in that is no regular file the OS can open. It is refused all the same; only the reason
+    // differs.
+    expect(read.ok).toBe(false);
+    if (NAMED_PIPES_ON_DISK) expect(read).toMatchObject({ ok: false, why: "is not a regular file" });
     expect(performance.now() - started).toBeLessThan(1_000);
   });
 
@@ -819,8 +829,8 @@ describe("the descriptor check and the small-file reader (L4)", () => {
     const handle = await open(inside, "r");
     try {
       const stat = await handle.stat();
-      expect(await descriptorIs(handle.fd, realpathSync(inside), stat, "win32")).toBe(true);
-      expect(await descriptorIs(handle.fd, join(realpathSync(dir), "flip", "a.png"), stat, "win32")).toBe(false);
+      expect(await descriptorIs(handle.fd, realpathSync.native(inside), stat, "win32")).toBe(true);
+      expect(await descriptorIs(handle.fd, join(realpathSync.native(dir), "flip", "a.png"), stat, "win32")).toBe(false);
     } finally {
       await handle.close();
     }

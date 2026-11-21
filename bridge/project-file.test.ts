@@ -21,8 +21,9 @@ afterAll(() => {
   for (const dir of made) rmSync(dir, { recursive: true, force: true });
 });
 
+/** A fresh folder by the OS's own real path, the spelling the product answers (an 8.3 temp folder is expanded). */
 function folder(): string {
-  const dir = realpathSync(mkdtempSync(join(tmpdir(), "collie-project-file-")));
+  const dir = realpathSync.native(mkdtempSync(join(tmpdir(), "collie-project-file-")));
   made.push(dir);
   return dir;
 }

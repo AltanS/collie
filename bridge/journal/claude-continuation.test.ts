@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdir, readdir, rm, stat, symlink, utimes } from "node:fs/promises";
+import { mkdir, readdir, realpath, rm, stat, symlink, utimes } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -20,7 +20,10 @@ describe("ClaudeTranscriptSource — continuation scan caching", () => {
     });
 
   async function makeLargeProject(coldCount: number) {
-    const dir = join(tmpdir(), `collie-cont-cache-${Date.now()}-${Math.floor(Math.random() * 1e6)}`);
+    // The temp root by the OS's own real path, the spelling the source reads its folders by: a fake
+    // `readdir` that matches one folder by name must name it the same way (the Windows runner's
+    // `tmpdir()` is an 8.3 short name, `RUNNER~1`, Windows CI 2026-11-21).
+    const dir = join(await realpath(tmpdir()), `collie-cont-cache-${Date.now()}-${Math.floor(Math.random() * 1e6)}`);
     const project = join(dir, "-Users-dev-projects");
     await mkdir(project, { recursive: true });
 
