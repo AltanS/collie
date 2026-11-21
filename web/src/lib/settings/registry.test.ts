@@ -116,6 +116,14 @@ describe("the settings registry", () => {
     expect(settingPath(SETTINGS.find((s) => s.id === "pane.ownColours")!)).toBeNull();
   });
 
+  it("finds the diff layout of Files by its words, says where it is and has no address", () => {
+    const row = SETTINGS.find((s) => s.id === "files.diffLayout")!;
+    expect(row.store).toEqual({ kind: "local", key: "collie:diff-layout:v1" });
+    expect(en[groupHeading(row)]).toBe("In Files: on a changed file's row");
+    expect(settingPath(row)).toBeNull();
+    expect(searchSettings("side by side").map((h) => h.setting.id)).toContain("files.diffLayout");
+  });
+
   it("has the eleven pages in the table's order", () => {
     expect(PAGES.map((p) => p.id)).toEqual(["look", "chat", "keys", "notifications", "voice", "dashboard", "accounts", "tricks", "devices", "privacy", "updates"]);
     expect(PAGES.every((p) => isPageId(p.id) && pageDef(p.id) === p)).toBe(true);

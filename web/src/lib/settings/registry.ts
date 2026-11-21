@@ -220,6 +220,7 @@ const LIST = [
   { id: "files.which", label: "files.mode.aria", kind: "choice", scope: "device", page: "files", group: "view", store: blob(DASH, "changesOnly") },
   { id: "files.showIgnored", label: "files.ignored.toggleAria", kind: "switch", scope: "device", page: "files", group: "view", store: blob(DASH, "filesShowIgnored") },
   { id: "files.layout", label: "files.view.aria", kind: "choice", scope: "device", page: "files", group: "view", store: blob(DASH, "changesLayout"), find: false },
+  { id: "files.diffLayout", label: "files.diffLayout.label", kind: "choice", scope: "device", page: "files", group: "diff", store: local("collie:diff-layout:v1"), words: words("settings.words.diffLayout") },
   { id: "new.kind", label: "newPage.kind.agent", kind: "choice", scope: "device", page: "new", group: "page", store: local("collie:new-page:kind:v1"), find: false },
   { id: "new.again", label: "newPage.again", kind: "info", scope: "device", page: "new", group: "page", store: local("collie:new-sheet:again:v1"), find: false },
   { id: "new.favourite", label: "space.new.folders.star", kind: "action", scope: "machine", page: "new", group: "page", store: route("/api/folders/star"), find: false },

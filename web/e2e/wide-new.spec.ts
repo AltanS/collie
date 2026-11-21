@@ -19,6 +19,8 @@ import { installFilledReads, installScreenStubs } from "./screens/setups";
 // with the new pane. `/space/:id` opens the pane view with the sidebar on the landed row, or the Dashboard for a
 // Space with no pane. At 390x844 the New page, "Add your own" and the space page keep every box they had: the
 // boxes are compared with `e2e/wide-new.phone-boxes.json`, recorded on the build before this change.
+// The `space` boxes were recorded again on 2026-11-21 after ADR 0171 changed the phone's tab row and pane row to
+// 44 px (the tab row grew 8 px and everything under it moved down 8 px); `new` and `new-add` are as first recorded.
 //
 // `WIDE_NEW_SHOTS=<dir>` also writes the screens of each state; `WIDE_NEW_RECORD=1` writes the phone boxes.
 

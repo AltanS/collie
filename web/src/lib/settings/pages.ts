@@ -198,7 +198,7 @@ export const PLACES = {
     menu: "settings.where.paneMenu",
     messages: "settings.where.paneMessages",
   },
-  files: { view: "settings.where.files" },
+  files: { view: "settings.where.files", diff: "settings.where.filesDiff" },
   new: { page: "settings.where.newPage" },
   "dashboard-bar": { bar: "settings.where.dashboardBar", machines: "settings.where.machinesSheet" },
 } as const satisfies Record<PlaceId, Readonly<Record<string, MessageKey>>>;

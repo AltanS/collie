@@ -4362,6 +4362,7 @@ export const en = {
   "settings.where.newPage": "On the New page",
   "settings.where.dashboardBar": "At the foot of the Dashboard",
   "settings.where.machinesSheet": "On the Dashboard: the Machines sheet",
+  "settings.where.filesDiff": "In Files: on a changed file's row",
   "machines.alerts.pushLinkNotifications": "Settings, Notifications",
   "settings.tricks.switch.offLineTricks": "Tricks are switched off on this machine; switch them on in Settings, Tricks and the Hill.",
   "tricks.menu.moreSee.one": "{count} more trick has rows. See Settings, Tricks and the Hill.",
@@ -4394,6 +4395,8 @@ export const en = {
   "settings.words.edge": "Edge Stable",
   "settings.words.tour": "tour welcome",
   "settings.words.bug": "bug issue GitHub",
+  "settings.words.diffLayout": "diff unified side by side split changes",
+  "files.diffLayout.label": "Unified or side by side",
 } as const;
 
 /** Every key that exists, as a union of string literals. The completeness contract. */
@@ -4661,6 +4664,7 @@ export const PENDING_TRANSLATION = [
   "settings.where.newPage",
   "settings.where.dashboardBar",
   "settings.where.machinesSheet",
+  "settings.where.filesDiff",
   "machines.alerts.pushLinkNotifications",
   "settings.tricks.switch.offLineTricks",
   "tricks.menu.moreSee.one",
@@ -4693,6 +4697,8 @@ export const PENDING_TRANSLATION = [
   "settings.words.edge",
   "settings.words.tour",
   "settings.words.bug",
+  "settings.words.diffLayout",
+  "files.diffLayout.label",
   "settings.tricks.about.autoUpdate.label",
 ] as const satisfies readonly MessageKey[];
 
