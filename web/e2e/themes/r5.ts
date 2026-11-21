@@ -337,6 +337,10 @@ export async function runContrast(page: Page, opts: R5Options): Promise<R5Result
       return el.matches(":focus-visible") ? { outline: getComputedStyle(el).outlineStyle, box: { x: r.x, y: r.y, w: r.width, h: r.height } } : null;
     }, f.index);
     if (focused === null) continue;
+    // A control the focus could not bring into view (a fixed sheet's button below the fold, measured at 390 x 844 on
+    // pane-menu: the menu's "Close" at y 861) has no ring on the screen to read: skip it rather than shoot outside the page.
+    const view = page.viewportSize();
+    if (view !== null && (focused.box.y >= view.height || focused.box.x >= view.width || focused.box.y + focused.box.h <= 0 || focused.box.x + focused.box.w <= 0)) continue;
     const clip = { x: Math.max(0, focused.box.x - pad), y: Math.max(0, focused.box.y - pad), w: focused.box.w + pad * 2, h: focused.box.h + pad * 2 };
     const now = await shot(page, clip);
     // The same focus with its ring taken away: whatever else the focus paints (a fill, a lifted

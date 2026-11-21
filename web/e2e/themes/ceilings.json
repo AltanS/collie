@@ -456,7 +456,12 @@
   "pane-actions@1440 daylight-light": 1,
   "pane-actions@1440 harbour-dark": 1,
   "pane-actions@1440 harbour-light": 1,
-  "pane-actions@1440 nightwatch-light": 2
+  "pane-actions@1440 nightwatch-light": 2,
+  "pane-menu@390 collie-dark": 1,
+  "pane-menu@390 collie-light": 1,
+  "pane-menu@390 harbour-light": 1,
+  "pane-menu@390 nightwatch-dark": 1,
+  "pane-menu@390 nightwatch-light": 1
  },
  "frame-on-mid-ground": {
   "pane-two-columns@1440 gen-04-mid-grey": 1,
