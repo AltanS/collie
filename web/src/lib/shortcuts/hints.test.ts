@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { ACTIONS } from "./actions";
-import { anchorOf, capSize, HINT_MARGIN_PX, hintAction, hintKeyCaps, placeHint, type Box } from "./hints";
+import { anchorOf, capSize, HINT_MARGIN_PX, hintKeyCaps, placeHint, type Box } from "./hints";
 import { buildKeymap } from "./keymap";
 import type { UserShortcuts } from "./types";
 
@@ -47,8 +47,8 @@ describe("capSize", () => {
   });
 });
 
-function keymapOf(user: UserShortcuts = {}, disabled: ReadonlySet<(typeof ACTIONS)[number]["id"]> = new Set()) {
-  return buildKeymap({ defaults: ACTIONS, user, mac: false, disabled });
+function keymapOf(user: UserShortcuts = {}) {
+  return buildKeymap({ defaults: ACTIONS, user, mac: false });
 }
 
 describe("hintKeyCaps", () => {
@@ -74,17 +74,6 @@ describe("hintKeyCaps", () => {
     expect(hintKeyCaps({ keymap, id: "switch_tab", index: 1 })).toEqual(["1"]);
     expect(hintKeyCaps({ keymap, id: "switch_tab", index: 9 })).toEqual(["9"]);
     expect(hintKeyCaps({ keymap, id: "switch_tab", index: 10 })).toBeNull();
-  });
-
-  it("shows the key of the stand-in while the Actions palette is off, as the keymap resolves it", () => {
-    const keymap = keymapOf({}, new Set(["open_actions"]));
-    expect(hintAction({ keymap, id: "open_actions" })).toBe("switch_pane");
-    expect(hintKeyCaps({ keymap, id: "open_actions" })).toEqual(["g"]);
-    expect(keymap.prefixed.get("g")).toMatchObject({ action: "switch_pane" });
-  });
-
-  it("shows nothing for an action that is off with no stand-in", () => {
-    expect(hintAction({ keymap: keymapOf({}, new Set(["settings"])), id: "settings" })).toBeNull();
   });
 });
 

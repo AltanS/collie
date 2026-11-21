@@ -26,7 +26,7 @@ describe("parseListing", () => {
                 {
                   id: 101,
                   title: "π",
-                  cwd: "/home/denis",
+                  cwd: "/home/casey",
                   program: "/bin/zsh",
                   args: [],
                   focused: true,

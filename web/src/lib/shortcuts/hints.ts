@@ -161,26 +161,13 @@ function actionById(id: string): ActionId | undefined {
 }
 
 /**
- * The action whose key a control of `id` shows: itself, or while a setting has switched it off (the Actions
- * palette), its stand-in, which answers its keys. Null when it is off and nothing stands in.
- */
-export function hintAction(input: { keymap: Keymap; id: ActionId }): ActionId | null {
-  const { keymap, id } = input;
-  if (keymap.disabled?.has(id) !== true) return id;
-  const def = ACTIONS.find((action) => action.id === id);
-  return def !== undefined && "standIn" in def ? def.standIn : null;
-}
-
-/**
  * The caps an action shows: its first key behind the prefix in the keymap in force (a key a person set in
  * `shortcuts.toml` shows), or null when it has none. An indexed action (`switch_tab`) shows the key of the
  * digit `index`; a digit it has no key for shows nothing.
  */
 export function hintKeyCaps(input: { keymap: Keymap; id: ActionId; index?: number | undefined }): string[] | null {
   const { keymap, id, index } = input;
-  const action = hintAction({ keymap, id });
-  if (action === null) return null;
-  const bindings = keymap.bindings.get(action) ?? [];
+  const bindings = keymap.bindings.get(id) ?? [];
   const binding = bindings.find((candidate) => candidate.prefix && (index === undefined || candidate.index === index));
   if (binding === undefined) return null;
   return foldModifiers(chordKeycaps({ chord: binding.chord, mac: keymap.mac }));
@@ -320,8 +307,7 @@ export function collectHints(input: { doc: Document; keymap: Keymap; viewport: S
     if (id === undefined || isInUnfocusedColumn(element)) continue;
     const rawIndex = element.getAttribute(TARGET_INDEX_ATTRIBUTE);
     const index = rawIndex === null ? undefined : Number(rawIndex);
-    const action = hintAction({ keymap, id });
-    if (action === null || !isShortcutActionAvailable(action)) continue;
+    if (!isShortcutActionAvailable(id)) continue;
     const caps = hintKeyCaps({ keymap, id, index });
     if (caps === null) continue;
     const rect = element.getBoundingClientRect();

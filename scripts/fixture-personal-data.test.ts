@@ -11,6 +11,12 @@
 // (b) A "Welcome back <word>!" banner must carry a name from NEUTRAL_NAMES. The bare "Welcome back!"
 //     is fine.
 //
+// (c) The user segment of a home path (`/home/<x>/`, `/var/home/<x>/`, the flattened `-home-<x>-`),
+//     the user of a shell prompt (`<x>@host:`), the user of a starship prompt (`<x> in 🌐`) and the
+//     user folder of a Windows path (`X:\Users\<x>`, `X:\_ext\<x>`) must come from NEUTRAL_USERS.
+//     This holds for the names of other people as well: a contributor's user name in a captured path
+//     is personal data and is not ours to keep.
+//
 // A new fixture with a real address or a real name fails here: replace the value with a neutral one of
 // the same length (the screens are character grids), or add a domain to ALLOWED_DOMAINS with a reason
 // a reviewer accepts. Recordings under `web/e2e/rig/cassettes*/` are out of scope: their text is part
@@ -39,6 +45,44 @@ export const ALLOWED_DOMAINS = {
 const RESERVED_TLDS = new Set(["example", "invalid", "localhost", "test"]);
 
 export const NEUTRAL_NAMES: readonly string[] = ["alex", "charlie", "jordan", "robin", "sam"];
+
+// Users of home paths and prompts that carry no person. Each entry says why it is neutral.
+export const NEUTRAL_USERS = {
+  a: "a one-letter placeholder",
+  ada: "an invented name in a bridge test world",
+  alice: "an invented name",
+  casey: "the neutral name that replaced a contributor's user name",
+  "collie-user": "the product's own demo account",
+  demo: "a demo account",
+  dev: "the neutral developer account",
+  devel: "a short developer account",
+  lab01: "a lab machine account",
+  labuser: "a lab machine account",
+  linuxbrew: "Homebrew's own account on Linux",
+  m: "a path split across two JSON strings: the user is an invented name",
+  operator: "a role name",
+  operator1: "a role name",
+  ops: "a role name",
+  robin: "the neutral name that replaced the account owner's",
+  robins: "`robin` plus the trailing S of the folder name in a Windows path",
+  sam: "an invented name",
+  someuse: "a clipped `someuser` in a narrow capture",
+  someuser: "a placeholder",
+  tester: "a role name",
+  user: "a placeholder",
+  user0: "a placeholder",
+  x: "a one-letter placeholder",
+  xuser: "a placeholder",
+  you: "a placeholder",
+} satisfies Record<string, string>;
+
+const ESC = "\u001b";
+const HOME_PATH = /\/(?:var\/)?home\/([A-Za-z0-9_][A-Za-z0-9._-]*)/g;
+const FLAT_PATH = /-home-([A-Za-z0-9_.]+)-/g;
+const SHELL_PROMPT = /([A-Za-z0-9._-]+)@[A-Za-z0-9-]+(?::|\s+[~/])/g;
+const STARSHIP_PROMPT = new RegExp(`([A-Za-z0-9_-]+)(?:${ESC}\\[[0-9;]*m)* in (?:${ESC}\\[[0-9;]*m)*🌐`, "g");
+const WINDOWS_PATH = new RegExp(`[A-Za-z]:[\\\\/]{1,2}(?:Users|_ext)[\\\\/]{1,2}([^\\\\/\\s"'${ESC}]+)`, "g");
+const USER_FORMS: readonly RegExp[] = [HOME_PATH, FLAT_PATH, SHELL_PROMPT, STARSHIP_PROMPT, WINDOWS_PATH];
 
 const ADDRESS = /[A-Za-z0-9._%+-]+@((?:[A-Za-z0-9-]+\.)+[A-Za-z]{2,})/g;
 const BANNER = /Welcome back +([A-Za-z]+)!/g;
@@ -74,6 +118,22 @@ export function foreignBannerLines(text: string): number[] {
   return lines;
 }
 
+export function userNeutral(user: string): boolean {
+  return Object.hasOwn(NEUTRAL_USERS, user.toLowerCase());
+}
+
+/** Line numbers of every home path or prompt whose user is not neutral. The user is never returned. */
+export function foreignUserLines(text: string): number[] {
+  const lines: number[] = [];
+  for (const form of USER_FORMS) {
+    for (const match of text.matchAll(form)) {
+      if (userNeutral(match[1] ?? "")) continue;
+      lines.push(lineOf(text, match.index));
+    }
+  }
+  return lines.toSorted((a, b) => a - b);
+}
+
 export function inScope(file: string): boolean {
   if (file.startsWith("web/src/fixtures/")) return true;
   return file.startsWith("bridge/") && file.split("/").some((part) => part.includes("fixtures"));
@@ -99,6 +159,7 @@ export function offences(files: readonly string[], read: (file: string) => strin
     const text = read(file);
     for (const line of foreignAddressLines(text)) found.push(`${file}:${line} (address with a domain that is not allowed)`);
     for (const line of foreignBannerLines(text)) found.push(`${file}:${line} (banner name is not neutral)`);
+    for (const line of foreignUserLines(text)) found.push(`${file}:${line} (user of a path or prompt is not neutral)`);
   }
   return found;
 }
@@ -112,6 +173,19 @@ describe.skipIf(!inGit())("personal data in fixtures", () => {
 });
 
 describe("the checks themselves", () => {
+  test("a home path, a flattened path and a prompt with a user outside the neutral list fail, by line", () => {
+    const text = ["ok /home/dev/x", "bad /var/home/zed/x", "-var-home-zed-proj", "zed@box:~$", "\u001b[1mzed\u001b[0m in \u001b[2m🌐 host", "dev@box:~$ and pkg@latest"].join("\n");
+    expect(foreignUserLines(text)).toEqual([2, 3, 4, 5]);
+  });
+
+  test("a Windows user folder outside the neutral list fails, a neutral one passes", () => {
+    expect(foreignUserLines("C:\\Users\\zed\\x\nD:\\\\_ext\\\\zed\\\\x\nC:/Users/zed/y\nC:\\Users\\dev\\z")).toEqual([1, 2, 3]);
+  });
+
+  test("a neutral user and a dot folder pass, case does not matter", () => {
+    expect(foreignUserLines("/home/Robin/x\n/home/.cache/y\n-home-you-p\nUSER@box:~")).toEqual([]);
+  });
+
   test("an address with a company domain fails, by line and not by value", () => {
     const text = "one\ntwo someone@acme-widgets.de's Organization\nthree";
     expect(foreignAddressLines(text)).toEqual([2]);

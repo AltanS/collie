@@ -118,7 +118,6 @@ export interface DurableComposerProps {
     ref?: (node: HTMLElement | null) => void;
     onClick: () => void;
     label: string;
-    icon?: "pane-switcher";
     open?: boolean;
     alert?: boolean;
   };

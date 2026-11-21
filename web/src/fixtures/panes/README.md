@@ -3504,7 +3504,7 @@ lab folder stands as OMP shortened it (`…-running-turn/state/harness/omp/proje
 
 ## A stale bottom frame below the live editor (captured 2026-10-25, OMP 18.6.1 under Herdr, 120 columns)
 
-One screen of Altan's own OMP pane on the dev lane, read through Herdr's pane read with its SGR bytes
+One screen of Robin's own OMP pane on the dev lane, read through Herdr's pane read with its SGR bytes
 (`~/.cache/collie-lab/omp-gang/09-stale-frame/w78p5-stale-frame.ansi`). The file is byte-faithful in
 layout, not in content: every row, column, SGR sequence and frame character is as captured, and the
 conversation text, the project names and the folder in the status row are replaced with neutral text

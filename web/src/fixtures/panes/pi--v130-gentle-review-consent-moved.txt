@@ -16,7 +16,7 @@
  tela de novo, um job em background aperta só a seta ↓ (o que não responde nada), captura e volta com ↑. A resposta continua sendo sua.                                                                
  Primeiro vejo o que cada portão exige.                                                                                                                                                                
                                                                                                                                                                                                        
- [0m[38;2;153;153;153m$ cd /home/vinicios/Projects/collie/web/src && sed -n 1,40p lib/harness/walk-pairs.ts | head -40; gre…[0m                                                                                                
+ [0m[38;2;153;153;153m$ cd /home/operator/Projects/collie/web/src && sed -n 1,40p lib/harness/walk-pairs.ts | head -40; gre…[0m                                                                                                
  [0m[38;2;127;127;127m└[0m [0m[38;2;157;157;157m✓[0m [0m[38;2;127;127;127m55 lines[0m                                                                                                                                                                                          
                                                                                                                                                                                                        
  [0m[3m[38;2;149;149;149mThinking...[0m                                                                                                                                                                                           
