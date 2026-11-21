@@ -23,7 +23,7 @@ import {
   TOKENS,
   VERSIONS,
 } from "../web/src/lib/theme/catalogue.ts";
-import { ALL_THEME_TOKENS, THEME_MAX_BYTES, THEME_VERSIONS_READ, TOP_KEYS, isColour, parseTheme } from "../web/src/lib/theme/schema.ts";
+import { ALL_THEME_TOKENS, DERIVED_THEME_TOKENS, THEME_MAX_BYTES, THEME_VERSIONS_READ, TOP_KEYS, isColour, isDerivedThemeToken, parseTheme } from "../web/src/lib/theme/schema.ts";
 import { ANSI_KEYS, GROUND_KEYS, GROUND_PATTERN_WORDS, GROUND_SIZE_WORDS, GROUND_STRENGTH_WORDS, SURFACE, SURFACE_DEFAULTS, SURFACE_TOKENS } from "../web/src/lib/theme/surface.ts";
 import { REFERENCE_COMMAND, REFERENCE_PAGE, renderReference } from "./themes-reference.ts";
 
@@ -127,6 +127,12 @@ describe("every example passes the real parser", () => {
 
   test("every colour the catalogue gives as a default is a colour the parser takes", () => {
     for (const token of TOKENS) {
+      // A derived token's default is the expression the stylesheet derives it with, not a colour a file holds.
+      if (isDerivedThemeToken(token.token)) {
+        expect(token.light).toBe(DERIVED_THEME_TOKENS[token.token]);
+        expect(token.dark).toBe(DERIVED_THEME_TOKENS[token.token]);
+        continue;
+      }
       expect(isColour(token.light), `${token.token} light`).toBe(true);
       expect(isColour(token.dark), `${token.token} dark`).toBe(true);
     }
