@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { lstat, mkdir, readdir, rename, rm, rmdir, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, join, posix } from "node:path";
 
 import { CODE_DIRS_MAX, CODE_FILES_MAX, codeHashOfFiles, diskTrickFs, skippedName, trickCodeHash, walkTrickCode, type EntryKind } from "./code-hash.ts";
 import { ORIGIN_FILE, renderProposalOrigin, type ProposalOrigin } from "./origin.ts";
@@ -315,7 +315,7 @@ export async function replaceCode(root: string, id: string, files: readonly Prop
       // A folder of old code only, where the new version puts a file: its code is gone, so it is empty.
       if (entries.get(file.rel)?.kind === "dir") await rm(path, { recursive: true, force: true });
       const fileDir = dirname(path);
-      await makeFoldersUnder(target, dirname(file.rel));
+      await makeFoldersUnder(target, posix.dirname(file.rel));
       // A dot name beside the file: the code hash never reads it, so a crash leaves no code behind.
       const tmp = join(fileDir, `.collie-new-${randomBytes(6).toString("hex")}`);
       await writeFile(tmp, file.bytes, { flag: "wx", mode: file.executable ? 0o755 : 0o644 });
