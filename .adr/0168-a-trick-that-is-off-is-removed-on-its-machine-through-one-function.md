@@ -1,12 +1,14 @@
 # 0168: A trick that is off is removed on its machine, through one function
 
-- **Status:** Proposed (2026-11-21)
+- **Status:** Accepted (2026-11-21), security read by the lead, 2026-11-21
 - **Date:** 2026-11-21
 - **Trail:** The desktop pass of 2026-11-21 asked for a Remove section on a trick's details page.
   Before it, only `collie trick remove <id>` removed a trick, from a shell on the machine. Files:
   `bridge/tricks/remove.ts`, `bridge/tricks/remove-receipts.ts`, `bridge/tricks/service.ts`
   (`remove`, `busy`, the run marks in `begin`), `bridge/tricks/routes.ts`, `bridge/server.ts`,
-  `cli/trick-add.ts`, `web/src/components/trick-remove-section.tsx`, `web/src/routes/settings-trick.tsx`
+  `cli/trick-add.ts`, `web/src/components/trick-remove-section.tsx`, `web/src/routes/settings-trick.tsx`.
+  The lead's security read changed four points: the sweep's names (5), the confirm as a modal (Consequences),
+  a broken trick (2) and one request id per confirm (7).
 
 ## Context
 
@@ -29,7 +31,9 @@ holds, and whose four folders are real folders in their own places.**
    `.collie-approved/<id>` and `.collie-pending/<id>` must each be a real folder whose real path is the
    real path of its base joined with the id. A link, a file or a path elsewhere refuses the whole
    remove, and nothing is deleted. A tricks root that is itself a link is followed, as every reader does.
-   The route also refuses an id the service does not hold after a fresh scan (404, nothing touched).
+   The route also refuses an id the service does not hold after a fresh scan (404, nothing touched). A
+   broken trick is held: a folder the scan refuses (a `trick.toml` that is not TOML, a refused right) is
+   still found, with its refusals, so it is listed as skipped, has its details page and can be removed.
 3. **Off, and no run going.** Inside the switch file's lock (`updateSwitches`) the function checks the
    places again, then that the trick is not on, then `busy(id)`. The bridge's `busy` is a run going, a
    run queued or a Hill answer waiting for that trick. The command reads run marks: each run writes
@@ -43,7 +47,8 @@ holds, and whose four folders are real folders in their own places.**
    `.gone-<id>-<random>` names, as `forgetLeftovers` does; a failed rename puts back what moved. The
    deletes run after the unlock. A crash in between leaves only dotted names: no scan, no add and no
    approval reads them, and `sweepGone` at the bridge's start deletes them, now also in the tricks
-   folder itself. A later add of the same id finds no folder and starts clean.
+   folder itself. It deletes only a name of exactly that shape, `.gone-<a trick id>-<12 hex>`
+   (`isGoneName`, beside `moveAside`), so a person's own folder that only starts with `.gone-` stays. A later add of the same id finds no folder and starts clean.
 6. **What goes.** The four places, the trick's agent views and its Hill keys (the route hands the
    bridge's live stores, the command a disk-only forget), then at the next scan its row, its parts, its
    open Decisions and its run tokens. An official trick shows again as one to add. Nothing else.
@@ -52,7 +57,8 @@ holds, and whose four folders are real folders in their own places.**
    call it. A request id keys one receipt in `<stateDir>/tricks/remove-receipts.json` (the trick id,
    the device label, the outcome, no content), written before anything moves. A replay answers the
    first answer and removes nothing, also after a restart; a marker a crash left answers `unknown`. An
-   old `rid` never touches a later trick of the same id. The newest 200 receipts are kept.
+   old `rid` never touches a later trick of the same id. The newest 200 receipts are kept. Because a
+   refusal is stored too, the app mints a new id for every confirm tap, never one per page.
 8. **One audit line.** `trick.remove` with the device label and the trick id, at the time of the line.
 9. **This machine only.** A request for a crew member is refused (400). A crew member's tricks are
    removed on the member, from its own Collie or its own shell. The app offers Remove only on the
@@ -66,8 +72,9 @@ holds, and whose four folders are real folders in their own places.**
 - The command now refuses a link, and refuses while a run of the trick goes. It did neither before.
 - The route refuses while tricks are off on the machine and on Windows, as its sibling routes do. The
   command does not: it works on the files.
-- `sweepGone` also clears `.gone-*` names in the tricks folder. A person's own folder whose name
-  starts with `.gone-` there would go too.
 - The details page's Remove section and its confirm are in the screen list (`settings-trick-remove`,
-  `settings-trick-remove-confirm`). The confirm is a `BottomSheet`, which a wide window draws centred
-  (0167, addendum); its focus starts on Cancel through the sheet's new `initialFocus`.
+  `settings-trick-remove-confirm`). The confirm blocks until it is answered, so it is a `Modal` over a
+  scrim (0167), not a sheet; its focus starts on Cancel, and Escape and the scrim close it except while
+  the write flies.
+- Settings draws no status line, so it carries `StatusLive`, a live region a person does not see: a
+  screen reader hears "Removed <name>." The trick leaving the list is the visible sign.
