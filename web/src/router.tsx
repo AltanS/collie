@@ -18,6 +18,7 @@ import { HistoryRoute } from "@/routes/history";
 import { ConversationRoute, ConversationsRoute } from "@/routes/conversations";
 import { ChangesRoute } from "@/routes/changes";
 import { SettingsRoute } from "@/routes/settings";
+import { SettingsLayout } from "@/components/settings-shell";
 import {
   SettingsAlertsRoute,
   SettingsAppearanceRoute,
@@ -121,56 +122,65 @@ export const router = createBrowserRouter([
       { path: "new", element: <NewRoute /> },
       // "Add your own" (ADR 0094): a page below New, for a launcher this phone adds on one machine.
       { path: "new/add", element: <NewAddRoute /> },
-      // Settings is an INDEX of four sections (routes/settings.tsx). Its only loader is the pairing
-      // forward: the QR `collie pair` prints still names `/settings?pair=<code>`, and the form now
-      // lives on System. `replace`, as for `/pack` below, so Back does not land on the index and
-      // bounce forward again. No `pair`, no redirect, and the registry stays on System's loader.
+      // SETTINGS, one layout route around every address below it (components/settings-shell.tsx). On a phone, a tablet
+      // and with Large-screen layout Off it draws only its outlet; on the large screen it draws the header, the section
+      // list and the chosen section beside it (ADR 0158, addendum 2026-11-21). The addresses are what they were.
       {
         path: "settings",
-        loader: ({ request }) => {
-          const target = pairLandingPath(new URL(request.url).search);
-          return target === null ? null : replace(target);
-        },
-        element: <SettingsRoute />,
+        element: <SettingsLayout />,
+        children: [
+          // Settings is an INDEX of four sections (routes/settings.tsx). Its only loader is the pairing
+          // forward: the QR `collie pair` prints still names `/settings?pair=<code>`, and the form now
+          // lives on System. `replace`, as for `/pack` below, so Back does not land on the index and
+          // bounce forward again. No `pair`, no redirect, and the registry stays on System's loader.
+          {
+            index: true,
+            loader: ({ request }) => {
+              const target = pairLandingPath(new URL(request.url).search);
+              return target === null ? null : replace(target);
+            },
+            element: <SettingsRoute />,
+          },
+          { path: "appearance", element: <SettingsAppearanceRoute /> },
+          // One level below Appearance, like Voice's two pages: which character the header draws.
+          { path: "appearance/character", element: <SettingsCharacterRoute /> },
+          { path: "harnesses", element: <SettingsHarnessesRoute /> },
+          // Accounts (M101): a second login for an agent. The list, the Add form and one account's page. The row in
+          // the index is offered only while GET /api/accounts answers 200; the pages are routable always and
+          // say so when the machine offers none.
+          { path: "accounts", element: <SettingsAccountsRoute /> },
+          { path: "accounts/add", element: <SettingsAccountAddRoute /> },
+          { path: "accounts/:id", element: <SettingsAccountRoute /> },
+          { path: "accounts/:id/login", element: <SettingsChangeLoginRoute /> },
+          { path: "device", element: <SettingsDeviceRoute /> },
+          { path: "voice", element: <SettingsVoiceRoute /> },
+          // Two pages below Voice: the host's option for every device, and the Whistle model's copies.
+          { path: "voice/host", element: <SettingsVoiceHostRoute /> },
+          { path: "voice/model", element: <SettingsVoiceModelRoute /> },
+          { path: "alerts", element: <SettingsAlertsRoute /> },
+          // The fifth section. It is routable whether or not the index offers a row for it — a page
+          // reachable only by URL is the ordinary case for a section that comes and goes, and it is
+          // what an operator who bookmarked it gets after the last experiment graduates: an empty page
+          // rather than a 404.
+          { path: "experiments", element: <SettingsExperimentsRoute /> },
+          // Tricks (M94): routable always; the index offers its row only while the phone holds a tricks reply.
+          { path: "tricks", element: <SettingsTricksRoute /> },
+          // One trick's details (2026-11-21, a bottom sheet before): `<host>:<id>`, or an official entry's bare id
+          // (lib/nav.ts `trickDetailPath`). No loader: it reads the tricks store and the official list, as the list does.
+          { path: "tricks/:key", element: <SettingsTrickRoute /> },
+          // The System section carries the paired-device registry, so it gets the loader Settings used
+          // to hold — a revoke or a pair is then the app's standard mutation shape (api call →
+          // revalidate), with no second data path.
+          { path: "system", loader: devicesLoader, element: <SettingsSystemRoute /> },
+          // One level below System, like Voice's two pages: the install count's switch and its explanation.
+          { path: "system/install-count", element: <SettingsInstallCountRoute /> },
+          // The Updates page, a sibling of settings and crew. No loader of its own: everything on it is
+          // either the snapshot (root loader) or the card's own read of /api/update/check. It is
+          // deliberately ON the poll loop for `crew`'s stated reason — a run in progress and a member
+          // going quiet are exactly what this page exists to show without a reload.
+          { path: "updates", element: <UpdatesRoute /> },
+        ],
       },
-      { path: "settings/appearance", element: <SettingsAppearanceRoute /> },
-      // One level below Appearance, like Voice's two pages: which character the header draws.
-      { path: "settings/appearance/character", element: <SettingsCharacterRoute /> },
-      { path: "settings/harnesses", element: <SettingsHarnessesRoute /> },
-      // Accounts (M101): a second login for an agent. The list, the Add form and one account's page. The row in
-      // the index is offered only while GET /api/accounts answers 200; the pages are routable always and
-      // say so when the machine offers none.
-      { path: "settings/accounts", element: <SettingsAccountsRoute /> },
-      { path: "settings/accounts/add", element: <SettingsAccountAddRoute /> },
-      { path: "settings/accounts/:id", element: <SettingsAccountRoute /> },
-      { path: "settings/accounts/:id/login", element: <SettingsChangeLoginRoute /> },
-      { path: "settings/device", element: <SettingsDeviceRoute /> },
-      { path: "settings/voice", element: <SettingsVoiceRoute /> },
-      // Two pages below Voice: the host's option for every device, and the Whistle model's copies.
-      { path: "settings/voice/host", element: <SettingsVoiceHostRoute /> },
-      { path: "settings/voice/model", element: <SettingsVoiceModelRoute /> },
-      { path: "settings/alerts", element: <SettingsAlertsRoute /> },
-      // The fifth section. It is routable whether or not the index offers a row for it — a page
-      // reachable only by URL is the ordinary case for a section that comes and goes, and it is
-      // what an operator who bookmarked it gets after the last experiment graduates: an empty page
-      // rather than a 404.
-      { path: "settings/experiments", element: <SettingsExperimentsRoute /> },
-      // Tricks (M94): routable always; the index offers its row only while the phone holds a tricks reply.
-      { path: "settings/tricks", element: <SettingsTricksRoute /> },
-      // One trick's details (2026-11-21, a bottom sheet before): `<host>:<id>`, or an official entry's bare id
-      // (lib/nav.ts `trickDetailPath`). No loader: it reads the tricks store and the official list, as the list does.
-      { path: "settings/tricks/:key", element: <SettingsTrickRoute /> },
-      // The System section carries the paired-device registry, so it gets the loader Settings used
-      // to hold — a revoke or a pair is then the app's standard mutation shape (api call →
-      // revalidate), with no second data path.
-      { path: "settings/system", loader: devicesLoader, element: <SettingsSystemRoute /> },
-      // One level below System, like Voice's two pages: the install count's switch and its explanation.
-      { path: "settings/system/install-count", element: <SettingsInstallCountRoute /> },
-      // The Updates page, a sibling of settings and crew. No loader of its own: everything on it is
-      // either the snapshot (root loader) or the card's own read of /api/update/check. It is
-      // deliberately ON the poll loop for `crew`'s stated reason — a run in progress and a member
-      // going quiet are exactly what this page exists to show without a reload.
-      { path: "settings/updates", element: <UpdatesRoute /> },
       // The crew census, likewise on its own loader — and deliberately ON the poll loop: the payload
       // is one small object per machine, and the whole point of the page is that a member going
       // quiet shows up here without the operator reloading. (History opts out; this one wants in.)

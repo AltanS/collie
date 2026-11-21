@@ -98,7 +98,7 @@ function TrickPage({ store = tricksStore, onOfficialList, readOnly, timeZone, ..
   if (row.kind === "official") {
     const entry = row.entry;
     return (
-      <SettingsPage title="tricks.session.details" parent={list} headingBelow>
+      <SettingsPage title="tricks.session.details" parent={list} headingBelow crumbs={[entry.name]}>
         <TrickBoundary fallback="none" resetKey={entry}>
           <OfficialTrickDetail entry={entry} busy={writes.adding.has(entry.id) || entry.state !== "absent"} canWrite={canWrite} onAdd={() => void writes.addOfficial(entry, "add")} timeZone={timeZone} />
         </TrickBoundary>
@@ -108,7 +108,7 @@ function TrickPage({ store = tricksStore, onOfficialList, readOnly, timeZone, ..
 
   const trick = row.trick;
   return (
-    <SettingsPage title="tricks.session.details" parent={list} headingBelow>
+    <SettingsPage title="tricks.session.details" parent={list} headingBelow crumbs={[trick.name]}>
       {/* Its own boundary: a page that throws draws nothing below the header, and the list stays a step back. */}
       <TrickBoundary fallback="none" resetKey={trick}>
         <TrickDetail
