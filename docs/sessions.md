@@ -5,14 +5,14 @@ Collie shows each session on your phone in a pane. Chat reads the session from t
 record, so you can read it and answer it from your phone. The terminal view is one more way
 to look at the same pane.
 
-tmux and zellij call their own top-level group a session. Collie shows it as a space. This page
+tmux, zellij and Rex call their own top-level group a session. Collie shows it as a space. This page
 uses "session" only for the conversation.
 
 ## Where sessions come from
 
 Sessions come from two places:
 
-- **A terminal.** Herdr, the Herdr core, tmux, zellij, tuios or Tern holds your shells, and an agent runs in one of
+- **A terminal.** Herdr, the Herdr core, tmux, zellij, tuios, Tern or Rex holds your shells, and an agent runs in one of
   them. Collie reads the panes from it and finds the agent's session. This is how most people use
   Collie. [Terminals](multiplexers.md) says how to point Collie at yours.
 - **A durable agent.** One that you wrote or run has no screen, and each of its
@@ -35,17 +35,36 @@ The words are in [Terminology](terminology.md).
 ## Find a session
 
 On a list of more than five sessions, the pane switcher starts with a **Filter sessions** field. The
-switcher is the sheet that the Switch button at the belt's right end opens, and the sidebar on a large
+switcher is the Switch pane sheet that a drag up on the belt opens, and the sidebar on a large
 screen. Type a few letters and the list narrows. A loose match finds a session by its name, space, tab,
 branch, folder, agent or machine, and the matched letters are marked. The list keeps its order and its
 sections. When a session matched in a field its row does not show, such as its branch, the row's
 second line shows that field. Enter opens the first session shown. The field is empty again the next
 time the switcher opens.
+[Actions](#actions) searches the same panes, with commands.
 
 The Dashboard has the same filter. With more than five sessions, a magnifier at the right end of its
 controls opens the field. The filter works together with the workspace choice and the needs-you
 switch, and says how many rows are left, such as `3 of 14`. The query stays while you visit a session
 and come back. It is never stored on the device.
+
+## Actions
+
+Actions is one list that you search for what Collie can do on this screen, and for the panes to go to.
+Open it with the Actions button, or with `Ctrl+B` and then `g` on a keyboard. The button stands at
+the right end of the belt, in the header of the dashboard, and in the space header of a large
+screen. The list opens at the top of the screen, so the soft keyboard does not cover it.
+
+Before you type, Actions shows three groups. **Recent** is the last four panes you opened on this
+device. **Suggested** is four commands for this screen. **All panes** is the same list that the Switch
+pane sheet shows, so you can scroll to any pane. When you type, one list ranks commands, spaces and
+panes together. Enter runs the first row, or the one you moved to with the arrow keys.
+
+A command shows only where it works, so the list on the dashboard is not the list in a pane. Close
+pane and Close tab never come first, and running one opens the menu with Close ready: nothing closes
+until one more tap. Every command is also a keyboard action, so you can give it a key
+([Keyboard shortcuts](keyboard-shortcuts.md#the-actions)). There is no setting for Actions: it is
+always on.
 
 ## One machine, or several
 

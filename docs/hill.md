@@ -22,8 +22,9 @@ The Hill is an experiment. It is off until you switch it on in Settings → Tric
 
 ## What the Hill shows
 
-The Hill is the fourth item of the Dashboard's bottom bar. It opens a page of cards, grouped by how
-soon each one needs you.
+The Hill is the fourth item of the Dashboard's bottom bar. On a large screen the bar is gone, and the
+Hill is a button in the dashboard's header, beside Actions, with the count of Decisions that need you
+on it. It opens a page of cards, grouped by how soon each one needs you.
 
 | Group | Meaning |
 | --- | --- |

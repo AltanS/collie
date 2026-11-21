@@ -112,6 +112,9 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Docs
 
 - **Contributors get one quick check before a push.** It runs the type checks, the lint and the tests near the change in a few minutes, and the full suites run in CI.
+- **The docs cover the keyboard shortcuts, Actions, Rex and the large-screen layout.** The Keyboard shortcuts page matches the keys, the hint card and the modes. Terminals says what works on Rex, the experimental terminal, and what does not yet. Large screens covers the new dashboard header, Settings in two columns and the sheets in the middle of the window. Sessions explains Actions. The crew page says what a redirect and a very large answer do.
+- **`collie docs` names the Herdr core.** The line for the Terminals page lists every terminal the page covers.
+- **The Tricks reference says where a bottom bar item stands on a large screen.** There the bar is gone, and the item follows the views in the Dashboard's header.
 
 ## [1.29.1] - 2026-11-19
 

@@ -16,14 +16,14 @@ In a crew, the instances of one host show as one machine
 One run of an agent, with its own history. A pane shows it, and Chat reads it from the harness
 ([Sessions](sessions.md)). In the app and in these docs, "session" alone means this and nothing else.
 
-Herdr, tmux and zellij call their own top-level group a session too. Collie shows that group as a
+Herdr, tmux, zellij and Rex call their own top-level group a session too. Collie shows that group as a
 [space](#space), and older versions of the app said "session" for it. A trick's own screen is a
 [page](#page), never a session.
 
 ## Space
 
 A group of tabs, with a folder. It is the top level on the phone. A Herdr workspace is a space, a
-tmux session is a space, a zellij session is a space, and a [durable agent](#durable-agent) is a space.
+tmux session is a space, a zellij session is a space, a Rex session is a space, and a [durable agent](#durable-agent) is a space.
 The switcher in the header says **Spaces** and **All spaces**. A space is not a [session](#session).
 
 ## Tab
@@ -77,6 +77,12 @@ The list of every keyboard action with its keys, opened with the [prefix key](#p
 `?`. It also names each line of `shortcuts.toml` that Collie dropped, and why
 ([Keyboard shortcuts](keyboard-shortcuts.md#the-actions)).
 
+## Key cap
+
+The small label that shows a key on a control while the [prefix key](#prefix-key) waits, for example
+`g` on the Actions button. It shows the key you set in `shortcuts.toml`, and only on a control you
+can see ([Keyboard shortcuts](keyboard-shortcuts.md#the-prefix)).
+
 ## Actions
 
 The searchable list of everything Collie can do on this screen, and of the panes to go to. An action
@@ -99,7 +105,7 @@ pane narrower or wider in the [row of panes](#row-of-panes)
 
 ## Terminal (mux)
 
-Herdr, the Herdr core (`herdr-core`), tmux, zellij, tuios or Tern, the program that holds your
+Herdr, the Herdr core (`herdr-core`), tmux, zellij, tuios, Tern or Rex, the program that holds your
 shells and agents. Other tools call it a multiplexer, or a mux. You choose it with `COLLIE_MUX`
 ([Terminals](multiplexers.md#pointing-collie-at-a-multiplexer)).
 
@@ -450,7 +456,7 @@ you add one by its address, and its row says "ColliePWA did not check this code.
 
 A spot on the phone where a trick can show (a surface). A program trick draws in seven: `belt`,
 `session` (shown as Page), `dashboard`, `status`, `tabbar`, `menu` (rows in a session's settings) and
-`float` (a small moving picture over the app, "Moving pictures from tricks" in Settings).
+`float` (a small moving picture over the app, "Moving pictures from tricks" in Settings → Look and feel).
 An agent view is the eighth, `agent-view`. The Hill is built in, and a trick posts there without
 naming it. A place is not a [space](#space). Each place is
 described in [Places](tricks-reference.md#places).
@@ -544,7 +550,8 @@ and the code is replaced only on your yes ([A trick an agent proposes](hill.md#a
 ## Hill
 
 The page of Decisions that wait for you, grouped Now, Today and Later, with the answered ones below.
-It is the fourth item of the Dashboard's bottom bar. One crew has one Hill, on the lead. "Hill" is the
+It is the fourth item of the Dashboard's bottom bar, and on a large screen a button beside Actions in
+the dashboard's header. One crew has one Hill, on the lead. "Hill" is the
 view's name and stays the same in every language ([The Hill](hill.md)).
 
 ## Event

@@ -245,9 +245,16 @@ not `true` or `false` drops that one row, the same way a bad `confirm` does.
 The row sends while the agent is busy, the same as the command palette. The checkmark appears only
 when the pane took the text.
 
-A Switch button sits at the belt's right end and opens the pane switcher. It draws the layers mark
-alone, behind a hairline, and carries no word. A drag up, anywhere on the belt, opens the same
-switcher. A sideways drag scrolls the belt instead.
+An Actions button sits at the belt's right end and opens [Actions](sessions.md#actions). It draws
+its mark alone, behind a hairline, and carries no word. It takes the blue of an open dock while Actions
+is open. A drag up, anywhere on the belt, opens the pane switcher, the Switch pane sheet. A sideways
+drag scrolls the belt instead.
+
+A mouse scrolls the belt three ways. Over its scrolling part, a wheel turn, a sideways swipe or Shift
+with the wheel moves the pills while there is room, and at the end the page scrolls as before. A drag
+with the mouse moves them too, and the drag never taps the pill under it. An arrow button over each
+fade edge that still hides pills scrolls the belt by most of its width. A phone's touch scrolling
+does not change, and no arrow shows there.
 
 The agents mark left of the Files button counts the pane's running subagents. For omp and Gentle
 Shell it counts their background jobs only while the pane's Chat is open on a phone; the Screen view
@@ -273,21 +280,21 @@ block when it is loaded. After the last Unpin the sheet closes and the mark goes
 on the mark of another column focuses that pane and opens the sheet.
 
 While the text box holds text or an attachment, an X sits at the belt's right end too, left of the
-Switch button. One tap empties the box and its saved draft, and sends nothing to the pane. The X then
+Actions button. One tap empties the box and its saved draft, and sends nothing to the pane. The X then
 becomes Undo, which puts the text and the attachments back. Undo stays until your next act: a
 keystroke, an attachment, a send, a tap on another belt button, or leaving the pane. Scrolling the
 belt keeps it.
 
-A Zoom button, a magnifier with a plus, sits just left of the Switch button. It opens the pane's
+A Zoom button, a magnifier with a plus, sits just left of the Actions button. It opens the pane's
 output alone, over the whole screen. The text keeps updating while the view is open.
 
 Pinch with two fingers to make the text bigger, up to six times. Drag with one finger to move around
 it. Double-tap a line to zoom in on it, and double-tap again to return to the normal size. The minus
 and plus buttons at the top do the same in steps, and the number between them resets the zoom.
 
-The zoomed output never wraps, whatever **Wrap** says. Each terminal line stays one line, so a pinch
+The zoomed output never wraps, whatever **Wrap lines** says. Each terminal line stays one line, so a pinch
 only makes the text bigger and never reflows it. Drag sideways to read past the edge of the screen.
-The pane view keeps your Wrap setting.
+The pane view keeps your **Wrap lines** setting.
 
 The X at the top, the Back button at the bottom on a phone, and the phone's own back gesture all
 close the zoomed output. Zooming changes nothing on the computer. The pane keeps its size in the
@@ -485,15 +492,16 @@ unbinds the action. The example file lists every default as a commented line.
 - The prefix is `ctrl+b` by default. Press it twice to send `ctrl+b` to the pane.
 - A binding is `prefix+<key>`, or a direct chord such as `ctrl+alt+c`. A direct chord needs a
   modifier.
-- The browser owns `ctrl+w`, `ctrl+t`, `ctrl+n`, `ctrl+tab`, `ctrl+shift+n` and `ctrl+l`. A direct
-  binding on one of them is refused.
+- The browser owns a few chords, such as `ctrl+w`, `ctrl+t`, `ctrl+n`, `ctrl+tab` and `ctrl+l`. A
+  direct binding on one of them is refused. The full list is in
+  [Keyboard shortcuts](keyboard-shortcuts.md#keys-the-browser-keeps).
 - A bad line is dropped and the rest of the file loads. The shortcut list names each dropped line and
   the reason, in a note at its foot. `collie config check` and `collie doctor` name the dropped lines too.
 - A Herdr name that Collie spells differently, such as `new_workspace`, is dropped too. The list
   says which Collie name to write.
 
 The bridge re-reads the file when it changes. Reload the page to pick it up. Open the
-[shortcut list](terminology.md#shortcut-list) with the prefix, then `?`, or on a wide window from
+[shortcut list](terminology.md#shortcut-list) with the prefix, then `?`, or from
 Settings, Keys and touch, Keyboard shortcuts. [Keyboard shortcuts](keyboard-shortcuts.md) has every action
 with its default keys, the key grammar and the Herdr names.
 
@@ -1360,8 +1368,8 @@ The context figure needs no setting. For pi, OMP, Codex and OpenCode, Collie rea
 
 > **Note.** Collie follows your phone's appearance by default.
 
-To pin it, open **Settings → Look and feel**, find the **Light or dark** card under the **Theme** card, and pick
-**System**, **Light** or **Dark**. The [Theme](themes.md) card picks the colours; this card picks the light or
+To pin it, open **Settings → Look and feel**, find **Light or dark** under **Theme**, and pick
+**System**, **Light** or **Dark**. The [Theme](themes.md) setting picks the colours; this one picks the light or
 the dark half of them. The setting is
 stored **per device** in the browser rather than on the bridge. Your phone can remain on Dark while
 a laptop tracks the OS. The preference persists across reloads and PWA reinstalls on the same
@@ -1485,26 +1493,35 @@ To switch it off, open **Settings → Look and feel → Large-screen layout** an
 the default, turns it on where the screen is big enough. The choice is stored per device.
 
 The dashboard follows the same switch, from 900 pixels wide. The Spaces stand side by side in
-columns 384 pixels wide, as many as fit (two at 900 pixels, three at 1280, four at 1920, six at most),
-and the tab bar at the foot is as wide as the columns. A band at the top repeats every session that
+columns 384 pixels wide, as many as fit (two at 900 pixels, three at 1280, four at 1920, six at most).
+The tab bar at the foot is gone. A header spans the window, at the height of a pane's top strip, and
+the views are a control in it: Crew when you have a crew, Dashboard, Files, and then your tricks'
+items. The Hill is a button beside Actions, and **New** is the last button of the row with the counts
+and the filters, a row that stays in view while you scroll. A band at the top repeats every session that
 needs you or finished unseen, as a card with its question. A session in the band also keeps its row
 in its Space, so nothing moves out of place. The band closes when nothing waits, and the
 **needs you** switch hides it, because the columns then show only those sessions. Narrower than 900
-pixels, and with **Off**, the dashboard is the one narrow list.
+pixels, and with **Off**, the dashboard is the one narrow list, with its tab bar at the foot. When
+there is nothing to show yet, for example before pairing or before the first agent, the screen is
+one centred block.
 
 The layout has three parts.
 
 - **The sidebar.** It lists your panes, the same list the pane switcher shows. The button in its top
   row folds it to a narrow rail of icons, and the choice is kept on this device. The ColliePWA mark
-  in the top row goes home. **New space** and **Settings** sit at its foot.
+  in the top row goes home. Under it, one block stays at the top while the list scrolls: the filter
+  field, and a row with the count of what needs you and the three list views. While you filter, the
+  field shows how many rows match, such as `3 of 14`. **New space** and **Settings** sit at its foot.
 - **The row of panes.** Each space keeps its own row, and the row scrolls sideways. Tap a pane in
   the sidebar to show it. Hold it (right-click with a mouse) for **Open here**, which replaces the
   pane you are in, or **Open beside**, which adds it next to that pane. You can also drag a pane
   into the row. **Remove from view** takes a pane out of the row. The agent keeps running.
-- **The space header.** It holds the space's name, its tabs and a **+** for a new tab. Hold a tab
+- **The space header.** It holds the space's name, its tabs and a **+** for a new tab. A long name
+  takes at most a third of the bar and ends in an ellipsis, and the tabs start a small gap after it;
+  point at it to read the whole name. Hold a tab
   (right-click with a mouse) to **Rename** it or **Close tab**, as on the phone. Closing the tab you
-  work in moves you to a pane of the tab beside it. Its two buttons, or a vertical swipe, move to the space
-  above or below.
+  work in moves you to a pane of the tab beside it. The Actions button opens [Actions](sessions.md#actions).
+  Two arrow buttons, or a vertical swipe, move to the space above or below.
 
 Each pane has a width: **1/2**, **4/5** or **Full** of the row. A pane is never narrower than 440
 pixels, so a width that would make it narrower is not offered. When the row cannot hold two panes at
@@ -1515,11 +1532,50 @@ with **Open here** (the pane becomes the last one in the row). It also offers **
 space**, which opens the New page on that pane's machine and folder and adds the agent as a new tab
 of this space, next to the pane you are in, and **New agent in a new space**.
 
+A tap on **1/2**, **4/5** or **Full**, or on the Narrower pane and Wider pane shortcuts, grows or
+shrinks the pane on a spring that starts fast and settles in about a third of a second. The panes
+beside it and the row's scroll move with it in the same motion, and a second tap during the motion
+carries it on. The pane ends at the same width and in the same place as with no motion. A device set
+to reduce motion, and a foldable held as a book, change at once.
+
 Every pane has its own belt, except when you hold a foldable like a laptop (see below). The pane you
 work in has a frame and the reply box. A tap on another pane's belt acts on that pane and moves you
 there. Tap the pane to move without acting.
 
+The sidebar and the tab strip sit one step darker than the page. A pane without focus stays on the
+page, and the pane you work in is the lightest surface, with a soft frame, also when it is the only
+pane. A theme may set the two grounds, `surface-recess` and `surface-paper`, and gets them from its
+own colours when it does not ([Themes](themes.md)). The phone looks as before.
+
 The layout is kept on this device only, and Back and shared links work as before.
+
+**Sheets.** From 900 pixels wide, with the screen flat, a sheet opens as a panel in the middle of the
+window with four round corners, not as a strip at the bottom edge. That holds for a session's menu,
+the Attachment view, the Rename box and every other sheet. Close one with Escape, its close button or a
+click beside it. There is no handle to pull. A picture opens as wide as it is, up to most of the
+window. A menu that opens from its button, the three dots of a session, a tab or a space, opens
+beside that button and does not darken the page. A phone, a small tablet, a folded foldable and
+**Off** keep the sheet from the bottom.
+
+**Settings.** From 900 pixels wide the eleven pages of Settings stand in a list at the left edge of
+the window, like the sidebar beside your panes, with the search above them, and the page you chose
+opens beside it. The list stays in view while you change a setting, and the arrow keys walk it. One
+header spans the window: Back leaves Settings for the page you opened it from, and on a page one
+level down or more the header names the path, such as Tricks / CI. Every address keeps working, and
+the browser's Back returns to the page before. Settings itself opens Updates and about while a
+release waits, and Look and feel otherwise. A phone, a tablet and **Off** keep Settings as one page
+with the index of its pages.
+
+**Search Settings.** The field at the top of Settings, on the index and above the list, finds a
+setting by its name. A setting on a page opens that page at the setting and marks it. A setting
+that lives in a pane, in the Files and Changes views or on the New page is found too, and the
+result says where it is, for example "In a pane: the ⋮ menu, then Pane settings". A setting that
+shows only in some states, such as the Hands-free voice switch, says what it waits for. Enter opens
+the first result, and Escape clears the field. With a keyboard, `/` puts the cursor in the field while no
+text field has the focus.
+
+**Keyboard.** A desktop browser can drive all of this from the keyboard, the way Herdr is driven:
+`Ctrl+B`, then one key ([Keyboard shortcuts](keyboard-shortcuts.md)).
 
 **Foldables.** On a foldable held half open, Chrome and Samsung Internet split the screen at the fold.
 Held like a laptop, the conversation stays above the fold, and the belt and a taller reply box sit
@@ -1582,7 +1638,7 @@ When Collie can no longer tell where a queued message went, the card says **Not 
 of disappearing. That happens when the agent sits idle with an empty box twice in a row, or after 30
 minutes without a running turn. Its **Discard** button removes the card and sends nothing.
 
-The display gear has a **Stretchtext replies** switch, off by default. With it on, Chat, the full reply card and History show a reply written with the cc-stretch plugin as its short form, and a tap on a phrase opens it. A `{{name}}` without a bar shows as `name`.
+The **Short form of long replies** switch, in the pane's Display sheet and in **Settings → Chat and terminal**, is off by default. With it on, Chat, the full reply card and History show a reply written with the cc-stretch plugin as its short form, and a tap on a phrase opens it. A `{{name}}` without a bar shows as `name`.
 
 **Pinned messages.** Tap a message, a reply, a thinking block or a tool card in Chat, then its **⋯**,
 **Message actions**, which shows at the block's top right. The **⋯** opens a sheet with **Pin** (or

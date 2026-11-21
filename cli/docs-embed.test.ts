@@ -47,6 +47,16 @@ describe("the embedded docs registry", () => {
     }
   });
 
+  test("the multiplexers purpose names every terminal the page's COLLIE_MUX row lists", () => {
+    const page = DOC_PAGES.find((p) => p.name === "multiplexers");
+    const row = page?.text.split("\n").find((l) => l.startsWith("| `COLLIE_MUX` |"));
+    expect(row).toBeDefined();
+    const values = [...row!.matchAll(/`([a-z-]+)`/g)].map((m) => m[1]!).filter((v) => v !== "COLLIE_MUX");
+    expect(values).toContain("herdr-core");
+    // The core reads "the Herdr core" in prose, never `herdr-core`.
+    for (const value of values) expect(page!.purpose.toLowerCase()).toContain(value === "herdr-core" ? "herdr core" : value);
+  });
+
   test("the generated table names every registry key and every title", () => {
     const table = docsTable().join("\n");
     for (const page of DOC_PAGES) {

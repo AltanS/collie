@@ -33,8 +33,9 @@
 # Unbind an action with `""` or `[]`.
 #
 # The browser owns a few chords, and a page cannot take them: `ctrl+w`, `ctrl+t`, `ctrl+n`,
-# `ctrl+tab`, `ctrl+shift+n` and `ctrl+l`. A direct binding on one of them is refused. Put them
-# behind the prefix instead.
+# `ctrl+tab`, `ctrl+shift+tab`, `ctrl+shift+n`, `ctrl+shift+t`, `ctrl+shift+w` and `ctrl+l`, and on
+# a Mac `cmd+w`, `cmd+t`, `cmd+n`, `cmd+l`, `cmd+shift+n`, `cmd+shift+t` and `cmd+shift+w`. A direct
+# binding on one of them is refused. Put them behind the prefix instead.
 #
 # A bad line is dropped, and the rest of the file still loads. A bad `prefix` falls back to
 # `ctrl+b`. When two of your lines claim the same key, the first one wins. The shortcut list shows
