@@ -108,6 +108,8 @@ export const SCREENS: readonly Screen[] = [
   { id: "settings-experiments", route: "settings/experiments", path: "/settings/experiments", title: "Settings, Experiments", wide: "designed" , waive: { "targets@390": PHONE_TARGETS } },
   { id: "settings-tricks", route: "settings/tricks", path: "/settings/tricks", title: "Settings, Tricks", wide: "designed", setup: "tricks" , waive: { "targets@390": PHONE_TARGETS } },
   { id: "settings-trick", route: "settings/tricks/:key", path: "/settings/tricks/lodge%3Akettle", title: "Settings, one trick's details", wide: "designed", setup: "tricks", waive: { "targets@390": PHONE_TARGETS } },
+  { id: "settings-trick-remove", route: "settings/tricks/:key", path: "/settings/tricks/lodge%3Akettle", title: "A trick that is off, Remove", wide: "designed", state: "trick off, Remove section in view", setup: "trickRemove", waive: { "targets@390": PHONE_TARGETS } },
+  { id: "settings-trick-remove-confirm", route: "settings/tricks/:key", path: "/settings/tricks/lodge%3Akettle", title: "The Remove confirm open", wide: "designed", state: "Remove confirm open", setup: "trickRemoveConfirm" },
   { id: "settings-system", route: "settings/system", path: "/settings/system", title: "Settings, System", wide: "designed" , waive: { "targets@390": PHONE_TARGETS } },
   { id: "settings-install-count", route: "settings/system/install-count", path: "/settings/system/install-count", title: "Settings, the install count", wide: "designed" },
   { id: "settings-updates", route: "settings/updates", path: "/settings/updates", title: "Updates", wide: "designed" , waive: { "targets@390": PHONE_TARGETS } },
