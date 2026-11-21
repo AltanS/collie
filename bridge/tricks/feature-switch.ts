@@ -141,7 +141,7 @@ export class TricksFeatureSwitch implements TricksFeaturePort {
     const wasOn = this.current === "on";
     // A re-read of the same write (in the racy window) says a problem once, not on every look.
     const again = facts !== null && this.seen !== "none" && sameStat(this.seen, facts);
-    this.seen = facts === null ? "none" : holdStat(facts, readAt);
+    this.seen = facts === null ? "none" : holdStat(facts, readAt, { path, kind: "the tricks switch", warn: this.warn });
     if (facts === null) {
       this.current = "unset";
     } else {

@@ -1376,7 +1376,7 @@ export class TricksService implements TricksSurface {
       }
       if (!check.ok) return this.copyFailed(rt, check.missing ? NOT_APPROVED_LINE : check.link === true ? LINK_LINE : TAMPERED_LINE, check.reason, check.missing ? null : approval);
       await syncConfig(rt.found.dir, dir);
-      const found = await scanTrickDir(diskTrickFs, dir, id, undefined);
+      const found = await scanTrickDir(diskTrickFs, dir, id);
       const run: ApprovedRun = { hash: want, dir, found, listing: check.listing };
       if (this.rightsMovedOf(rt, run) !== null) return this.stopForRights(rt, run, approval);
       rt.approved = run;
@@ -1394,7 +1394,7 @@ export class TricksService implements TricksSurface {
   private async syncConfigOf(rt: TrickRuntime, run: ApprovedRun): Promise<void> {
     if (rt.found.configHash === run.found.configHash) return;
     if (!(await syncConfig(rt.found.dir, run.dir))) return;
-    run.found = await scanTrickDir(diskTrickFs, run.dir, rt.found.id, undefined);
+    run.found = await scanTrickDir(diskTrickFs, run.dir, rt.found.id);
     this.restart(rt);
     this.publish(rt.found.id);
   }
@@ -1507,7 +1507,7 @@ export class TricksService implements TricksSurface {
    * line of a kind the approved copy already had says nothing the person did not see at the switch.
    */
   private async pendingInfo(rt: TrickRuntime, dir: string, hash: string): Promise<Omit<PendingVersion, "hash" | "dir">> {
-    const next = await scanTrickDir(diskTrickFs, dir, rt.found.id, undefined);
+    const next = await scanTrickDir(diskTrickFs, dir, rt.found.id);
     const base = rt.approved !== null && rt.copyProblem === null ? rt.approved : null;
     const files = await fileCounts(base?.dir ?? null, dir);
     const was = base?.found.manifest;
@@ -1611,7 +1611,7 @@ export class TricksService implements TricksSurface {
     const placed = await promoteCopy(pending.dir, target, hash);
     if (!placed) return { ok: false, code: "copy-failed", message: "The waiting version could not be moved into place." };
     await syncConfig(fresh.dir, target);
-    const powers = (await scanTrickDir(diskTrickFs, target, id, undefined)).manifest;
+    const powers = (await scanTrickDir(diskTrickFs, target, id)).manifest;
     const at = new Date(this.now()).toISOString();
     // The folder must still be there inside the lock: a remove that renamed it meanwhile leaves no switch on (ADR 0168).
     const written = await updateSwitchesFor(this.deps.stateDir, fresh.dir, (now) => withApproval(now, id, { at, hash, by, powers: powers === undefined ? null : powersOf(powers), instructs: powers?.rules !== undefined }));
@@ -2754,7 +2754,7 @@ export class TricksService implements TricksSurface {
     const src = join(tricksConfigDir(this.deps.configDir), id);
     const snap = await snapshotTrick({ src, parent: approvedTrickDir(this.deps.configDir, id), expect: codeHash, platform: this.deps.platform });
     if (!snap.ok) return { ok: false, message: `${failed} ${snap.reason}` };
-    const read = await scanTrickDir(diskTrickFs, snap.dir, id, undefined);
+    const read = await scanTrickDir(diskTrickFs, snap.dir, id);
     const at = new Date(this.now()).toISOString();
     const approval = { at, hash: snap.hash, by: "proposal", powers: read.manifest === undefined ? null : powersOf(read.manifest) };
     const written = await updateSwitchesFor(this.deps.stateDir, src, (now) => (opts.fresh === true ? withFreshApproval(now, id, approval) : withApproval(now, id, approval)));

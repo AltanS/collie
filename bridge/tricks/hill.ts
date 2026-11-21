@@ -173,7 +173,7 @@ export function imageFileDigest(path: string, look: { now?: () => number; lstat?
     const oldest = fileDigests.keys().next().value;
     if (oldest !== undefined) fileDigests.delete(oldest);
   }
-  fileDigests.set(path, { held: holdStat(statFactsOf(st), readAt), digest });
+  fileDigests.set(path, { held: holdStat(statFactsOf(st), readAt, { path, kind: "a Hill picture" }), digest });
   return digest;
 }
 

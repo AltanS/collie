@@ -712,7 +712,7 @@ export function filePairingIo(stateDir: string, look: RegistryLook = {}): Pairin
         if (err instanceof RegistryUnreadableError) throw err;
         throw new RegistryUnreadableError(`${DEVICES_FILENAME} is not valid JSON`, { cause: err });
       }
-      cache = { held: holdStat(facts, readAt), value };
+      cache = { held: holdStat(facts, readAt, { path: registryPath, kind: "the paired-device list" }), value };
       return value;
     },
   };
