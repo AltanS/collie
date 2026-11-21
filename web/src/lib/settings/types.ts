@@ -82,7 +82,8 @@ export type StorageKey = `collie:${string}` | `collie.${string}`;
 
 /**
  * How a value is stored today: a declaration, not an adapter. The completeness test reads every saved key of the
- * app and fails one that no setting names and no entry of `NOT_SETTINGS` explains.
+ * app and fails one that no setting names and no entry of `NOT_SETTINGS` explains, and each field of a typed blob
+ * (`BLOB_FIELDS` in registry.ts) that no setting names and `NOT_SETTING_FIELDS` does not explain.
  */
 export type Store =
   /** A whole localStorage key holds this one value. */

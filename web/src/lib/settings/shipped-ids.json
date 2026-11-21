@@ -138,6 +138,7 @@
   "tricks.trick.autoUpdate",
   "tricks.trick.code",
   "tricks.trick.fields",
+  "tricks.trick.remove",
   "tricks.trick.repo",
   "tricks.trick.rules",
   "tricks.trick.undo",

@@ -1,3 +1,7 @@
+import type { DashPrefs } from "@/hooks/use-dash-prefs";
+import type { DisplayPrefs } from "@/hooks/use-display-prefs";
+import type { DesignPrefs } from "@/lib/design";
+import type { HarnessPref } from "@/lib/harness-prefs";
 import type { MessageKey } from "@/lib/i18n";
 
 import type { SettingDef, Store, StorageKey } from "./types";
@@ -162,6 +166,7 @@ const LIST = [
   { id: "tricks.trick.code", label: "settings.tricks.about.code.title", kind: "action", scope: "machine", page: "tricks", below: ":key", group: "trick", store: route("/api/tricks", "trick"), each: "trick", find: false },
   { id: "tricks.trick.rules", label: "settings.tricks.about.rulesOpen", kind: "action", scope: "machine", page: "tricks", below: ":key", group: "trick", store: none, each: "trick", find: false },
   { id: "tricks.trick.repo", label: "settings.tricks.about.repoOpen", kind: "link", scope: "machine", page: "tricks", below: ":key", group: "trick", store: none, each: "trick", find: false },
+  { id: "tricks.trick.remove", label: "settings.tricks.remove.button", hint: "settings.tricks.remove.line", kind: "action", scope: "machine", page: "tricks", below: ":key", group: "trick", store: route("/api/tricks", "trick"), each: "trick", find: false },
 
   // ── 9. Devices and machines ───────────────────────────────────────────────────────────────────────
   { id: "devices.pair", label: "settings.devices.pair.title", hint: "settings.devices.pair.hint", kind: "action", scope: "device", page: "devices", group: "device", store: route("/api/pair"), words: words("settings.words.pairing") },
@@ -285,4 +290,66 @@ export const NOT_SETTINGS: ReadonlyMap<string, string> = new Map([
   ["collie:last-snapshot:", "dropped at boot by an older build's cleanup"],
   ["collie:last-pane:", "dropped at boot by an older build's cleanup"],
   ["collie:send-again:", "dropped at boot by an older build's cleanup"],
+]);
+
+/**
+ * Every field of each JSON blob a setting stores into, from the blob's own type (ADR 0170). A key of the blob is one
+ * storage key holding many values, so the storage-key check alone would pass a new field undeclared. `satisfies`
+ * makes a field added to the type fail typecheck here until it is listed; `registry.test.ts` then fails a listed
+ * field that no row stores into and `NOT_SETTING_FIELDS` does not explain. Types only: nothing of the hooks loads.
+ */
+export const BLOB_FIELDS = {
+  [DISPLAY]: {
+    wrap: true,
+    fontSize: true,
+    draftFontSize: true,
+    chatFontSize: true,
+    fontFamily: true,
+    rawTerminal: true,
+    tapToFocus: true,
+    expandClippedReply: true,
+    stretchText: true,
+    keepChat: true,
+    hand: true,
+    sentSuggestions: true,
+    paneNav: true,
+    reportOffer: true,
+  } satisfies Record<keyof DisplayPrefs, true>,
+  [DASH]: {
+    spacesOpen: true,
+    shellsOpen: true,
+    launchOpen: true,
+    recentDir: true,
+    isolatedSpaces: true,
+    hiddenSpaces: true,
+    changesNested: true,
+    changesDepth: true,
+    changesLayout: true,
+    filesShowIgnored: true,
+    changesOnly: true,
+    beltScale: true,
+    dashView: true,
+    needsYouOnly: true,
+    showToolCalls: true,
+    showCompactions: true,
+    paneOrder: true,
+    paneView: true,
+    zoomPill: true,
+    pageZoom: true,
+    usageRow: true,
+    floatingThings: true,
+  } satisfies Record<keyof DashPrefs, true>,
+  [DESIGN]: { font: true, operatorFont: true, theme: true, math: true, mark: true, markMoves: true } satisfies Record<keyof DesignPrefs, true>,
+  "collie:harness-prefs:v1": { statusLine: true } satisfies Record<keyof HarnessPref, true>,
+} as const satisfies Partial<Record<StorageKey, Readonly<Record<string, true>>>>;
+
+/** Fields of a blob that are no setting, by `<key>#<field>`, and why. */
+export const NOT_SETTING_FIELDS: ReadonlyMap<string, string> = new Map([
+  [`${DASH}#spacesOpen`, "whether the Spaces section is open, remembered from its header's tap"],
+  [`${DASH}#shellsOpen`, "whether the Shells section of the pane switcher is open, remembered from its header's tap"],
+  [`${DASH}#launchOpen`, "whether the Launch section is open, remembered from its header's tap"],
+  [`${DASH}#recentDir`, "no screen sets or reads it now; the field stays so an older device's blob still parses"],
+  [`${DASH}#isolatedSpaces`, "the dashboard's workspace filter, chosen in its own sheet: what the list shows now, not a preference"],
+  [`${DASH}#hiddenSpaces`, "workspaces an older build hid; the workspace filter's sheet shows them and clears them"],
+  [`${DESIGN}#operatorFont`, "a cache of the machine's own font faces (/api/config), never a choice on this device"],
 ]);

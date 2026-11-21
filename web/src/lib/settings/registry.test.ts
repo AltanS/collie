@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import { en } from "@/lib/i18n/messages/en";
 import { ALIASES, currentRowId, groupHeading, isPageId, NOT_SETTINGS, PLACES, OLD_FRAGMENTS, PAGES, pageDef, searchSettings, settingById, settingOfFragment, SETTINGS, settingPath } from "./index";
 import { OLD_FRAGMENT_ROWS } from "./pages";
+import { BLOB_FIELDS, NOT_SETTING_FIELDS } from "./registry";
 import type { Store } from "./types";
 
 // THE REGISTRY IS COMPLETE AND TRUE (ADR 0170). A saved key of the app that no setting stores into and no line of
@@ -62,6 +63,18 @@ describe("the settings registry", () => {
   it("declares every saved key: a setting stores into it, or NOT_SETTINGS says why it is none", () => {
     const loose = [...savedKeys()].filter(([key]) => !STORED.has(key) && !NOT_SETTINGS.has(key)).map(([key, file]) => `${key} (${file})`);
     expect(loose).toEqual([]);
+  });
+
+  // A blob is one storage key holding many values, so the check above passes a new field of it undeclared.
+  // BLOB_FIELDS lists each blob's fields from its type (a field added to the type fails typecheck there).
+  it("declares every field of a typed blob: a row stores into it, or NOT_SETTING_FIELDS says why it is none", () => {
+    const declared = new Set(SETTINGS.flatMap((s) => (s.store.kind === "blob" ? [`${s.store.key}#${s.store.field}`] : [])));
+    const listed = Object.entries(BLOB_FIELDS).flatMap(([key, fields]) => Object.keys(fields).map((field) => `${key}#${field}`));
+    expect(listed.filter((f) => !declared.has(f) && !NOT_SETTING_FIELDS.has(f))).toEqual([]);
+    expect(listed.filter((f) => declared.has(f) && NOT_SETTING_FIELDS.has(f))).toEqual([]);
+    expect([...declared, ...NOT_SETTING_FIELDS.keys()].filter((f) => !listed.includes(f))).toEqual([]);
+    const blobKeys = new Set(SETTINGS.flatMap((s) => (s.store.kind === "blob" ? [s.store.key] : [])));
+    expect([...blobKeys].filter((key) => !Object.hasOwn(BLOB_FIELDS, key))).toEqual([]);
   });
 
   it("names only keys the app still has", () => {
