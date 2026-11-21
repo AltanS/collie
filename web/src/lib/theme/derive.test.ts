@@ -9,6 +9,7 @@ import {
   rgbToLab,
   DERIVED_TOKENS,
   deriveTokens,
+  EDGE_FLOOR,
   distance,
   HOVER_FLOOR,
   parseColour,
@@ -43,6 +44,21 @@ const PAINTED = {
   dark: { "surface-recess": "#060605", "surface-paper": "#1d1c1b" },
 } as const;
 
+/**
+ * CSS `color-mix(in oklch, x <share>, y)`, written out here on its own (not derive.ts's), for the firm edge's expected
+ * value: L and C weighted, the hue from x toward y the short way, a hue with no chroma taking the other's.
+ */
+function cssMixOklch(x: Lab, y: Lab, share: number): Lab {
+  const cx = Math.hypot(x[1], x[2]);
+  const cy = Math.hypot(y[1], y[2]);
+  const hx = cx < 1e-4 ? Math.atan2(y[2], y[1]) : Math.atan2(x[2], x[1]);
+  const hy = cy < 1e-4 ? hx : Math.atan2(y[2], y[1]);
+  const d = Math.atan2(Math.sin(hy - hx), Math.cos(hy - hx));
+  const h = hx + d * (1 - share);
+  const c = cx * share + cy * (1 - share);
+  return [x[0] * share + y[0] * (1 - share), c * Math.cos(h), c * Math.sin(h)];
+}
+
 describe("Collie is the reference", () => {
   for (const half of ["light", "dark"] as const) {
     it(`${half}: every derived token is Collie's own value, within 0.02`, () => {
@@ -65,6 +81,7 @@ describe("Collie is the reference", () => {
         "state-open-recess": token("control-on"),
         "state-open-paper": token("control-on"),
         ring: token("ring"),
+        "edge-firm": cssMixOklch(token("foreground"), page, 0.58),
       } satisfies Record<keyof DerivedHalf, Lab>;
       for (const name of DERIVED_TOKENS) expect(distance(at(name), expected[name]), `${half} ${name}`).toBeLessThanOrEqual(REFERENCE_TOLERANCE);
     });
@@ -86,6 +103,7 @@ describe("index.css holds the relations derive.ts mirrors", () => {
     "--state-open-page: var(--control-on);",
     "--state-open-recess: var(--control-on);",
     "--state-open-paper: var(--control-on);",
+    "--edge-firm: color-mix(in oklch, var(--foreground) 58%, var(--background));",
   ]) {
     it(line.slice(0, line.indexOf(":")), () => {
       expect(css).toContain(`  ${line}\n`);
@@ -131,6 +149,10 @@ function brokenFloors(tokens: Half, d: DerivedHalf): string[] {
     if (hover < HOVER_FLOOR - 1e-3) out.push(`hover on the ${plane} ${hover.toFixed(3)}`);
     if (on < STATE_FLOOR - 1e-3) out.push(`selected on the ${plane} ${on.toFixed(3)}`);
     if (open < STATE_FLOOR - 1e-3) out.push(`open on the ${plane} ${open.toFixed(3)}`);
+  }
+  const edge = at("edge-firm");
+  for (const [name, g] of [["page", page], ["recess", ground.recess], ["paper", ground.paper]] as const) {
+    if (contrast(edge, g) < EDGE_FLOOR - 0.01) out.push(`firm edge on the ${name} ${contrast(edge, g).toFixed(2)}`);
   }
   const ring = at("ring");
   for (const [name, g] of [

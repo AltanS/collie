@@ -26,6 +26,10 @@ export const HOVER_FLOOR = 0.04;
 export const STATE_FLOOR = 0.06;
 /** The focus ring against every ground it can stand on (WCAG 1.4.11). */
 export const RING_FLOOR = 3;
+/** The firm edge against the grounds it separates (WCAG 1.4.11, ADR 0171). */
+export const EDGE_FLOOR = 3;
+/** The ink's share in the firm edge, index.css's `--edge-firm` (58%). */
+const EDGE_SHARE = 0.58;
 /** Text on a plane (WCAG 1.4.3). */
 export const TEXT_FLOOR = 4.5;
 /**
@@ -39,7 +43,7 @@ export const PLANE_GAP = 0.025;
  * a relation): the first frame (`public/theme-init.js`) then ignores the values an older version stored. The golden
  * values in `derive.golden.test.ts` show such a change as a diff.
  */
-export const DERIVE_VERSION = 1;
+export const DERIVE_VERSION = 2;
 
 /** The planes a state fill is made for. */
 export const PLANES = ["page", "recess", "paper"] as const;
@@ -59,6 +63,7 @@ export const DERIVED_TOKENS = [
   "state-open-recess",
   "state-open-paper",
   "ring",
+  "edge-firm",
 ] as const;
 export type DerivedToken = (typeof DERIVED_TOKENS)[number];
 
@@ -165,8 +170,8 @@ export function withLightness(c: Lab, L: number): Lab {
   return [clamp01(L), c[1], c[2]];
 }
 
-/** `color-mix(in oklch, x, y)` at an even split: lightness and chroma halfway, the hue the short way round. */
-function mixOklchHalf(x: Lab, y: Lab): Lab {
+/** `color-mix(in oklch, x <share>, y)`: lightness and chroma `share` of the way from y to x, the hue the short way round. */
+function mixOklch(x: Lab, y: Lab, share: number): Lab {
   const cx = Math.hypot(x[1], x[2]);
   const cy = Math.hypot(y[1], y[2]);
   // A hue with no chroma is powerless in CSS: the other colour's hue is taken.
@@ -175,9 +180,10 @@ function mixOklchHalf(x: Lab, y: Lab): Lab {
   let d = hy - hx;
   if (d > Math.PI) d -= 2 * Math.PI;
   if (d < -Math.PI) d += 2 * Math.PI;
-  const h = hx + d / 2;
-  const c = (cx + cy) / 2;
-  return [(x[0] + y[0]) / 2, c * Math.cos(h), c * Math.sin(h)];
+  const t = 1 - share;
+  const h = hx + d * t;
+  const c = cx * share + cy * t;
+  return [x[0] * share + y[0] * t, c * Math.cos(h), c * Math.sin(h)];
 }
 
 // ── The floor ─────────────────────────────────────────────────────────────────────────────────
@@ -280,7 +286,7 @@ function planes(w: Work): void {
   const recess = placePlane(recessStart, awayFrom(recessStart, page), inks, [(c, m) => off(c, page, PLANE_GAP, m)], muted, true);
   w.out["surface-recess"] = recess;
 
-  const paperStart = own("surface-paper") ?? (w.half === "light" ? withLightness(card, Math.min(1, card[0] + 0.05)) : mixOklchHalf(page, withLightness(card, card[0] + 0.05)));
+  const paperStart = own("surface-paper") ?? (w.half === "light" ? withLightness(card, Math.min(1, card[0] + 0.05)) : mixOklch(page, withLightness(card, card[0] + 0.05), 0.5));
   const paperDir = distance(paperStart, page) > 1e-3 ? awayFrom(paperStart, page) : awayFrom(paperStart, recess);
   w.out["surface-paper"] = placePlane(paperStart, paperDir, inks, [(c, m) => off(c, page, PLANE_GAP, m), (c, m) => off(c, recess, PLANE_GAP, m)], muted, false);
 }
@@ -383,7 +389,20 @@ function ring(w: Work): void {
   w.out.ring = pushLightness(start, awayFrom(start, page), (c, m) => worst(c) >= RING_FLOOR + (m ? MARGIN.ratio : 0), worst);
 }
 
-const STEPS: readonly ((w: Work) => void)[] = [planes, states, ring];
+/**
+ * THE FIRM EDGE (ADR 0171): the line the large screen's tab bar and a pane's header stand on. Collie's relation is
+ * index.css's own, `color-mix(in oklch, var(--foreground) 58%, var(--background))`. Floor: 3:1 against the grounds it
+ * separates, the recess (the bar), the page (the open tab) and the paper (a column's header), pushed toward the ink.
+ */
+function edgeFirm(w: Work): void {
+  const page = w.colour("background");
+  const start = mixOklch(w.colour("foreground"), page, EDGE_SHARE);
+  const grounds = [page, made(w, "surface-recess"), made(w, "surface-paper")];
+  const worst = (c: Lab) => Math.min(...grounds.map((g) => contrast(c, g)));
+  w.out["edge-firm"] = pushLightness(start, awayFrom(start, page), (c, m) => worst(c) >= EDGE_FLOOR + (m ? MARGIN.ratio : 0), worst);
+}
+
+const STEPS: readonly ((w: Work) => void)[] = [planes, states, ring, edgeFirm];
 
 /**
  * The derived tokens of one half of a theme, each an `oklch()` value. `tokens` is the half filled from Collie
