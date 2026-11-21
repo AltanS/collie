@@ -21,6 +21,9 @@ import { installFilledReads, installScreenStubs } from "./screens/setups";
 // boxes are compared with `e2e/wide-new.phone-boxes.json`, recorded on the build before this change.
 // The `space` boxes were recorded again on 2026-11-21 after ADR 0171 changed the phone's tab row and pane row to
 // 44 px (the tab row grew 8 px and everything under it moved down 8 px); `new` and `new-add` are as first recorded.
+// Both `space` recordings were made on a `-dev` build, whose stamp carries a second line; since 2026-11-21 the
+// stamp under `main` is pinned (`pinBuildStamp`: the release build's one line, in the bundled face), and `space` was
+// recorded once more so.
 //
 // `WIDE_NEW_SHOTS=<dir>` also writes the screens of each state; `WIDE_NEW_RECORD=1` writes the phone boxes.
 
@@ -437,6 +440,30 @@ const PHONE_PAGES = [
   { id: "space", path: "/space/w11" },
 ] as const;
 
+/**
+ * THE BUILD STAMP, PINNED. The stamp (components/build-stamp.tsx) sits under `main`, which fills the rest of
+ * the scroller, so the stamp's height is taken off `main`. Two inputs of the machine set that height, and
+ * neither is the layout this test guards:
+ * - The build. A build off an untagged commit stamps its version `-dev` (vite.config.ts, `channelFor`), and
+ *   the stamp then adds a second line, the viewport sizes (`ViewportStamp`, a diagnostic of dev builds
+ *   only, 16 px). A clone with tags builds `-dev` until the release tag exists; the CI checkout holds no
+ *   tags and builds a release. The line is taken out of the layout, as a release build draws the stamp.
+ * - The installed fonts. The stamp's label is set in the mono stack, whose first faces are system fonts; a
+ *   fallback face with other ascent and descent makes the line box about a pixel taller or shorter. The
+ *   label takes the stamp's own bundled face while the boxes are read.
+ * The stamp's own boxes are left out of the list (`boxes`); this only fixes the room it takes.
+ */
+async function pinBuildStamp(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    for (const stamp of document.querySelectorAll<HTMLElement>(".text-center.text-\\[11px\\]")) {
+      for (const line of stamp.querySelectorAll<HTMLElement>(":scope > div")) {
+        if (/^vp \d/.test(line.textContent ?? "")) line.style.display = "none";
+      }
+      for (const mono of stamp.querySelectorAll<HTMLElement>(".font-mono")) mono.style.fontFamily = "inherit";
+    }
+  });
+}
+
 /** Every drawn element's tag and box, in document order. The build stamp (`components/build-stamp.tsx`) names the build, so it is left out. */
 async function boxes(page: Page): Promise<string[]> {
   return page.evaluate(() => {
@@ -465,6 +492,7 @@ test("at 390x844 the New page, Add your own and the space page keep every box", 
       await settle(page);
       await page.waitForTimeout(600);
       await expect(page.locator('[role="dialog"]')).toHaveCount(0);
+      await pinBuildStamp(page);
       recorded[id] = await boxes(page);
       if (expected !== null) expect(recorded[id], id).toEqual(expected[id]);
     } finally {
