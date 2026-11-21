@@ -227,6 +227,8 @@ function withGitBuildFixture<T>(
     writeFileSync(join(root, "cli", "main.ts"), "export {};\n");
     copyFileSync(join(sourceRoot, "web", "vite.config.ts"), join(web, "vite.config.ts"));
     copyFileSync(join(sourceRoot, "web", "vite-icons.ts"), join(web, "vite-icons.ts"));
+    // The config imports the bundle guard (ineffective imports, the main chunk's budget).
+    copyFileSync(join(sourceRoot, "web", "vite-bundle-guard.ts"), join(web, "vite-bundle-guard.ts"));
     // The config imports the glyph sets' build plugin, which imports the two family maps (their
     // only import, the key type, is erased).
     copyFileSync(join(sourceRoot, "web", "vite-glyphs.ts"), join(web, "vite-glyphs.ts"));
@@ -837,6 +839,31 @@ describe("build: real Git identity", () => {
     ).toThrow();
     expect(root).not.toBe("");
     expect(existsSync(root)).toBe(false);
+  });
+
+  test("loads web/vite.config.ts with no react-router installed, and only a real build asks for it", () => {
+    withGitBuildFixture(({ root, env }) => {
+      // The scratch checkout holds the stub packages the config's plugin list needs and nothing else:
+      // no react-router. Loading the config must not throw; the build's own start names what is missing.
+      expect(existsSync(join(root, "web", "node_modules", "react-router"))).toBe(false);
+      writeFileSync(
+        join(root, "load-host.ts"),
+        `import config from "./web/vite.config.ts";
+const plugin = config.plugins.find((candidate) => candidate?.name === "collie-react-router-production");
+if (plugin === undefined || typeof plugin.buildStart !== "function") throw new Error("no react-router plugin");
+try {
+  plugin.buildStart.call({});
+  console.log("buildStart passed");
+} catch (error) {
+  console.log(String(error instanceof Error ? error.message : error));
+}
+`,
+      );
+      const run = Bun.spawnSync([process.execPath, join(root, "load-host.ts")], { cwd: join(root, "web"), env });
+      expect(run.stderr.toString()).toBe("");
+      expect(run.exitCode).toBe(0);
+      expect(run.stdout.toString()).toContain("needs react-router installed: run `bun install` in web/ first");
+    });
   });
 
   test("contains compiler cwd scratch before release build-info samples a clean checkout", () => {
