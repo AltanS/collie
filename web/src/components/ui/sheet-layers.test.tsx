@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { BottomSheet } from "./sheet";
 
-// Stacked sheets (ADR 0158, addendum 2026-11-21): Escape closes only the top one. The `form` dialog's Tab trap
+// Stacked sheets (ADR 0173): Escape closes only the top one. The `form` dialog's Tab trap
 // needs real layout (jsdom has none); e2e/wide-new.spec.ts walks it.
 
 afterEach(() => {

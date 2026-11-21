@@ -8,7 +8,7 @@ import { overOf, setNewOverScreen } from "@/lib/new-over";
 import { lazyChunk } from "@/lib/lazy-route";
 import { useHoldReload } from "@/lib/reload-guard";
 
-// NEW OVER THE SCREEN IT WAS CALLED FROM, ON A LARGE SCREEN (ADR 0158, addendum 2026-11-21). Mounted once in the
+// NEW OVER THE SCREEN IT WAS CALLED FROM, ON A LARGE SCREEN (ADR 0173). Mounted once in the
 // root layout. In the `expanded` width class (Large-screen layout not Off) the New page and "Add your own" are a
 // centred dialog over the Dashboard or the pane view, in the look every sheet has as a dialog (`BottomSheet`,
 // `size="form"`). The screen under it keeps its address with `over=<the New address>` added (lib/new-over.ts):

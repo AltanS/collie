@@ -10,7 +10,7 @@ import { __resetWideLayoutStore } from "@/lib/wide-layout-store";
 import { withHeaderHost } from "@/test/header-host";
 import { SpaceRoute } from "./space";
 
-// THE SPACE ADDRESS ON A LARGE SCREEN (ADR 0158, addendum 2026-11-21): `/space/:id` opens the pane view of the
+// THE SPACE ADDRESS ON A LARGE SCREEN (ADR 0173): `/space/:id` opens the pane view of the
 // Space's open tab, at that tab's pane, with the sidebar reveal queued; a Space with no pane opens the
 // Dashboard. On a phone the space page stays. The real sidebar scroll is in e2e/wide-new.spec.ts.
 

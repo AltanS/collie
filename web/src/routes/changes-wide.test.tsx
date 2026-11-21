@@ -14,7 +14,7 @@ import { withHeaderHost } from "@/test/header-host";
 
 import { ChangesRoute } from "./changes";
 
-// FILES AND CHANGES ON A LARGE SCREEN (ADR 0158, addendum 2026-11-21): two columns under one header. The left column
+// FILES AND CHANGES ON A LARGE SCREEN (ADR 0173): two columns under one header. The left column
 // holds the tree, which opens folders in place, or the list of changes; the right column holds the open file. Only a
 // file is a new history entry, and the header's arrow leaves the screen.
 

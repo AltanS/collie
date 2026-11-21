@@ -402,7 +402,7 @@ function ChangesScreen() {
   // The thumb side of the bottom Back (display pref `hand`, as the pane screen reads it).
   const hand = handOf(useDisplayPrefs().prefs);
   const phone = useMediaQuery(PHONE_QUERY);
-  // Files and Changes on a large screen (ADR 0158, addendum 2026-11-21): two columns under one header. A phone, a
+  // Files and Changes on a large screen (ADR 0173): two columns under one header. A phone, a
   // tablet and Large-screen layout Off keep the one column below.
   const wide = useWidthClass() === "expanded";
   const layout = prefs.changesLayout;
@@ -1476,7 +1476,7 @@ function ChangesScreen() {
     </>
   );
 
-  // ── The large screen: two columns under one header (ADR 0158, addendum 2026-11-21) ──
+  // ── The large screen: two columns under one header (ADR 0173) ──
   if (wide) {
     const modeControl = <FilesModeControl compact changesOnly={leftList} count={changedFiles} onChange={changeChangesOnly} className="w-full" />;
     const diffLayout: WideDiff = { layout: diffLayoutFor(diffChoice, rightWidth), onLayout: setDiffLayout };

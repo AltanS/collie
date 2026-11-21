@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { isNewAddress, overOf, queueSidebarReveal, takeSidebarReveal, withOver, withoutOver } from "./new-over";
 
-// New over the screen (ADR 0158, addendum 2026-11-21): the `over=` address and the one-shot sidebar reveal.
+// New over the screen (ADR 0173): the `over=` address and the one-shot sidebar reveal.
 
 describe("the over= address", () => {
   it("knows the two New addresses, with or without a query", () => {

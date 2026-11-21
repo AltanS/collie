@@ -12,7 +12,7 @@ import { installWideChatWorld } from "./fixtures/wide-chat";
 import { wideSnapshot } from "./fixtures/wide-herd";
 import { installFilledReads, installScreenStubs } from "./screens/setups";
 
-// NEW OVER THE SCREEN, AND THE SPACE ADDRESS, ON A LARGE SCREEN (ADR 0158, addendum 2026-11-21). At 1440x900 and
+// NEW OVER THE SCREEN, AND THE SPACE ADDRESS, ON A LARGE SCREEN (ADR 0173). At 1440x900 and
 // 1920x1080: New is a dialog over the Dashboard and over the pane view, Start is in view with no scroll, Escape,
 // Back and the close button close it and give the focus back to the control that opened it, the Tab key walks
 // the form in order and stays inside it, `/new` opened directly is New over the Dashboard, a start replaces New
