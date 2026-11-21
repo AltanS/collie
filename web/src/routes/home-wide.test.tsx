@@ -7,6 +7,8 @@ import { ROOT_ROUTE_ID, type HomeData } from "@/lib/loaders";
 import { __resetWideLayoutStore, setWideLayoutMode } from "@/lib/wide-layout-store";
 import { fixtureAgents, fixtureShellPanes, fixtureTabs, fixtureWorkspaces } from "@/test/handlers";
 import { withHeaderHost } from "@/test/header-host";
+import { t } from "@/lib/i18n";
+import { __resetPairing, markNotPaired } from "@/lib/pairing";
 import { HomeRoute } from "./home";
 
 // THE HOME ROUTE ON A LARGE SCREEN (ADR 0158): the expanded width class with Large-screen layout not Off
@@ -75,6 +77,7 @@ afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   __resetWideLayoutStore();
+  __resetPairing();
 });
 
 describe("which dashboard the home route mounts", () => {
@@ -148,5 +151,94 @@ describe("the band on the large screen", () => {
       expect(band()).not.toBeNull();
       expect(band()!.closest('[data-slot="collapse"]')!.getAttribute("data-state")).toBe("open");
     });
+  });
+});
+
+// THE HEADER, THE COMMAND ROW AND THE EMPTY STATES ON A LARGE SCREEN (ADR 0158, addendum 2026-11-21): no tab bar
+// at the foot, the views in the header, New at the end of the sticky command row, and every empty state one
+// centred column with nothing beside it. The geometry (centred within 1px, the 48px header, the sticky row) is
+// in e2e/dashboard-wide-head.spec.ts.
+const views = () => document.querySelector<HTMLElement>('[data-slot="dashboard-views"]');
+const footBar = () => screen.queryByRole("navigation", { name: t("home.tabs.aria") });
+const commandRow = () => document.querySelector<HTMLElement>('[data-slot="wide-command-row"]');
+const centredMain = () => document.querySelector("main.justify-center");
+const spacesSection = () => screen.queryByRole("button", { name: /^Spaces/u });
+
+describe("the large-screen dashboard's header and command row", () => {
+  it("draws the views in the header and New at the end of the command row, with no tab bar and no floating button", async () => {
+    windowOf(1280, 800);
+    renderHome(homeData());
+    await waitFor(() => expect(commandRow()).not.toBeNull());
+    expect(views()).not.toBeNull();
+    expect(views()!.closest('[data-slot="app-header"]')).not.toBeNull();
+    const tabs = within(views()!).getAllByRole("tab");
+    expect(tabs.map((tab) => tab.textContent)).toEqual([expect.stringContaining(t("home.tabs.dashboard")), t("files.title")]);
+    expect(footBar()).toBeNull();
+    expect(within(commandRow()!).getByRole("button", { name: t("home.new.label") })).toBeInTheDocument();
+    expect(document.querySelector('[data-slot="fab-layer"]')).toBeNull();
+    // The header spans the window on the recess; only its row keeps the grid's width.
+    const header = document.querySelector<HTMLElement>('[data-slot="app-header"]')!;
+    expect(header.className).toContain("bg-surface-recess");
+    expect(header.style.maxWidth).toBe("");
+    expect(document.querySelector<HTMLElement>('[data-slot="header-row"]')!.className).toContain("min-h-12");
+  });
+
+  it("keeps the phone's tab bar, its floating New button and its 60px header on a phone", async () => {
+    windowOf(390, 844);
+    renderHome(homeData());
+    await screen.findByRole("heading", { name: "webapp" });
+    expect(views()).toBeNull();
+    expect(commandRow()).toBeNull();
+    expect(footBar()).not.toBeNull();
+    expect(document.querySelector('[data-slot="fab-layer"]')).not.toBeNull();
+    expect(document.querySelector<HTMLElement>('[data-slot="header-row"]')!.className).toContain("min-h-15");
+  });
+});
+
+describe("the large-screen dashboard's empty states", () => {
+  it("not paired: one centred block, no strip that says it again, no Spaces section", async () => {
+    windowOf(1280, 800);
+    act(() => markNotPaired());
+    renderHome(homeData({ agents: [], shellPanes: [], workspaces: [], tabs: [], error: true }));
+    await screen.findByText(t("settings.devices.pair.title"));
+    expect(screen.getByText("collie pair")).toBeInTheDocument();
+    expect(centredMain()).not.toBeNull();
+    expect(screen.queryByText(t("space.readOnly.notPaired"))).toBeNull();
+    expect(spacesSection()).toBeNull();
+    expect(footBar()).toBeNull();
+  });
+
+  it("paired with no Spaces: the first-start card is the one way in, centred, with no New beside it", async () => {
+    windowOf(1280, 800);
+    renderHome(homeData({ agents: [], shellPanes: [], workspaces: [], tabs: [] }));
+    await screen.findByText(t("newPage.first.title"));
+    expect(centredMain()).not.toBeNull();
+    expect(screen.queryByRole("button", { name: t("home.new.label") })).toBeNull();
+    expect(document.querySelector('[data-slot="fab-layer"]')).toBeNull();
+    expect(spacesSection()).toBeNull();
+  });
+
+  it("offline with nothing saved: one centred line, no Spaces section", async () => {
+    windowOf(1280, 800);
+    renderHome(homeData({ agents: [], shellPanes: [], workspaces: [], tabs: [], error: true, bridge: undefined }));
+    await screen.findByText(t("home.empty.disconnected"));
+    expect(centredMain()).not.toBeNull();
+    expect(spacesSection()).toBeNull();
+  });
+
+  it("waiting for the first answer: one centred line", async () => {
+    windowOf(1280, 800);
+    renderHome(homeData({ agents: [], shellPanes: [], workspaces: [], tabs: [], bridge: undefined }));
+    await screen.findByText(t("home.empty.waiting"));
+    expect(centredMain()).not.toBeNull();
+  });
+
+  it("keeps the phone's empty dashboard on a phone: the strip, the Spaces section, the top-weighted block", async () => {
+    windowOf(390, 844);
+    act(() => markNotPaired());
+    renderHome(homeData({ agents: [], shellPanes: [], workspaces: [], tabs: [], error: true }));
+    await screen.findByText(t("settings.devices.pair.title"));
+    expect(screen.getByText(t("space.readOnly.notPaired"))).toBeInTheDocument();
+    expect(centredMain()).toBeNull();
   });
 });
