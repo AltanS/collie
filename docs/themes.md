@@ -540,11 +540,33 @@ may leave them out.
 | `surface-recess` | On a large screen, the ground of the sidebar and the tab strip: one step below the page. |
 | `surface-paper` | On a large screen, the ground of the pane you are working in: the lightest surface on the screen. |
 
-Collie draws `pane-active` as a quiet line: it mixes the colour into the page, 70% in light and 60% in dark.
-When a theme leaves out `pane-active` in a half, that half uses its own "on" ink (`control-on-foreground`) in
-the mix. Collie keeps the frame at 3:1 or more against the grounds it touches, so it may make the mix lighter
-or darker. When it
-leaves out `tab-active`, that half takes its own text colour, so a folder tab draws its top edge in ink.
+#### How Collie draws `pane-active`
+
+The colour you set for `pane-active` is where Collie starts, not the colour you see. Collie draws the frame in
+two steps:
+
+1. It mixes your colour into your `background`. In the light half the line is 70% your colour and 30% your
+   background. In the dark half it is 60% your colour and 40% your background. The mix is in OKLab.
+2. It then makes the mixed colour lighter or darker, and keeps its hue and chroma, until it has a contrast of 3:1
+   against the three grounds the line touches: `surface-recess` at its left, `background` at its right and
+   `surface-paper` inside it.
+
+For a stronger line, set a stronger start colour: darker in a light half, or more saturated.
+
+If no lightness reaches 3:1 on all three grounds, Collie uses the lightness that comes closest. The line can then
+stay under 3:1, and Collie does not tell you.
+
+When a half leaves out `pane-active`, the start colour is that half's own `control-on-foreground`. In Collie
+1.29 and earlier, a theme that left the token out took Collie's ink. A theme exported from an older Collie can carry Collie's
+old near-black (light) or near-white (dark) `pane-active`, and it draws a grey line. To get the coloured line,
+remove `pane-active` from the file, or set the colour you want.
+
+A `pane-active` with alpha is first laid over your `background`, and the result is used as the start colour. The
+line itself is always solid.
+
+The line is 1px wide in every theme. The `border` word of `surface` does not change it.
+
+When a theme leaves out `tab-active`, that half takes its own text colour, so a folder tab draws its top edge in ink.
 When it leaves out `find`, that half takes the amber of the theme Collie. A theme may set `surface-recess` and
 `surface-paper` but need not: a half that leaves them out takes its own page 0.05 darker for the recess, and for
 the paper its own card 0.05 lighter in light, halfway between the page and that in dark, so the pane you work

@@ -128,6 +128,17 @@ describe("the pane frame (ADR 0174)", () => {
     expect(filled(read("nightwatch")).dark["pane-active"]).toBe(read("nightwatch").dark?.["pane-active"]);
   });
 
+  it("lays a pane-active with alpha over the page first, then mixes it: the frame comes out opaque", () => {
+    const tokens = filled(read("nightwatch")).dark;
+    const page = parseColour(tokens.background ?? "");
+    const translucent = "oklch(0.88 0.06 75 / 0.5)";
+    const composite = formatColour(parseColour(translucent, page));
+    const withAlpha = deriveTokens({ ...tokens, "pane-active": translucent }, "dark")["pane-active"];
+    const opaque = deriveTokens({ ...tokens, "pane-active": composite }, "dark")["pane-active"];
+    expect(withAlpha).not.toContain("/");
+    expect(distance(parseColour(withAlpha), parseColour(opaque))).toBeLessThanOrEqual(0.001);
+  });
+
   it("mixes a theme's own pane-active into the page by the half's share, as Collie's on ink is", () => {
     for (const half of ["light", "dark"] as const) {
       const tokens = filled(read("nightwatch"))[half];

@@ -4,9 +4,10 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { SHIPPED_FONTS } from "@/lib/design";
-import { ALL_THEME_TOKENS, DERIVED_THEME_TOKENS, OPTIONAL_THEME_TOKENS, derivedRootValue, SHIPPED_THEME_IDS, THEME_TOKENS, contrast, contrastReport, parseTheme, type Theme } from "@/lib/theme/schema";
+import { ALL_THEME_TOKENS, DERIVED_THEME_TOKENS, OPTIONAL_THEME_TOKENS, derivedRootValue, paneFrameMix, SHIPPED_THEME_IDS, THEME_TOKENS, contrast, contrastReport, parseTheme, type Theme } from "@/lib/theme/schema";
 import { SHIPPED_FONTS as FACES } from "@/lib/shipped-fonts";
 import { SURFACE_DEFAULTS, SURFACE_TOKENS, ansiDeclarations, displayDeclarations, fullSurfaceDeclarations, wordDeclarations } from "@/lib/theme/surface";
+import { DERIVED_TOKENS } from "@/lib/theme/derive";
 import { buildThemesCss } from "@/lib/theme/themes-css";
 
 // The default theme is data now, and the stylesheet is still the thing that paints it. These tests
@@ -56,6 +57,17 @@ describe("the theme collie equals index.css", () => {
   // test below, not as a colour pair the file for `collie` repeats.
   const tokens = rootTokens().filter((t) => !DERIVED.has(t.token));
   const collie = shipped("collie");
+
+  it("holds no derived token in collie.json", () => {
+    // Every theme is filled from collie.json before deriveTokens runs, so a derived value there would reach every
+    // theme as if the theme had set it: it would become every theme's start colour (ADR 0174, the pane frame).
+    // The ring is a base token too, and Collie's ring is the start a theme without its own takes: that is meant.
+    for (const token of DERIVED_TOKENS) {
+      if (token === "ring") continue;
+      expect(Object.hasOwn(collie.light ?? {}, token), `collie.json light holds ${token}: it would become every theme's start colour`).toBe(false);
+      expect(Object.hasOwn(collie.dark ?? {}, token), `collie.json dark holds ${token}: it would become every theme's start colour`).toBe(false);
+    }
+  });
 
   it("finds all 43 tokens in index.css, in the order of the token list, and the optional one", () => {
     expect(tokens.map((t) => t.token).filter((t) => !OPTIONAL.has(t))).toEqual([...THEME_TOKENS]);
@@ -313,6 +325,13 @@ describe("themes.css", () => {
     const result = buildThemesCss(files);
     expect(result.ok ? "" : result.errors.join("\n")).toBe("");
     expect(result.ok && result.css).toBe(read("src/themes.css"));
+  });
+
+  it("writes a shipped theme's own pane-active mixed into the page, as the first frame must draw it (ADR 0174)", () => {
+    const nightwatch = shipped("nightwatch");
+    const own = { light: nightwatch.light?.["pane-active"] ?? "", dark: nightwatch.dark?.["pane-active"] ?? "" };
+    expect(own.light).not.toBe("");
+    expect(read("src/themes.css")).toContain(`  --pane-active: light-dark(${paneFrameMix(own.light, "light")}, ${paneFrameMix(own.dark, "dark")});\n`);
   });
 
   it("writes no block for the default theme", () => {

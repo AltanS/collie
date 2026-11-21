@@ -104,7 +104,7 @@
       for (var k = 0; k < TOKENS.length; k++) {
         var l = t.light && t.light[TOKENS[k]];
         var d = t.dark && t.dark[TOKENS[k]];
-        if (ok(l) && ok(d)) root.style.setProperty("--" + TOKENS[k], "light-dark(" + l + ", " + d + ")");
+        if (ok(l) && ok(d)) root.style.setProperty("--" + TOKENS[k], TOKENS[k] === "pane-active" ? "light-dark(color-mix(in oklab, " + l + " 70%, var(--background)), color-mix(in oklab, " + d + " 60%, var(--background)))" : "light-dark(" + l + ", " + d + ")"); // a theme's pane-active is a start, drawn mixed (schema.ts paneFrameMix, ADR 0174)
       }
       var s = t.surface && typeof t.surface === "object" ? t.surface : {};
       for (var n = 0; n < SURFACE.length; n++) for (var w = 0; w < SURFACE[n][1].length; w++) if (s[SURFACE[n][0]] === SURFACE[n][1][w][0]) set(SURFACE[n][1][w][1]);
