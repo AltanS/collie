@@ -27,9 +27,8 @@
 #     member name here comes from the playground's own fake outbuilding roster (lodge,
 #     workshop, attic, …) — never a real Tailscale hostname; that leaked into this script
 #     once already (`workshop`, on the rolled-back peer, fixed 2026-09-10).
-#   - `update-band-release-offered` (a), `update-band-in-flight` (b) and `update-band-peers-following` (d)
-#     → the top band's states. Only (a) is shot: the band no longer draws a run in flight, a peer that
-#     is still moving or a bundle to reload (see the note before the Install card below).
+#   - `update-band-release-offered` → the top band with a release on offer. The band draws no other
+#     state a doc shows: a run in flight is the Updates page's, a bundle to reload is the header mark's.
 #
 # The programs set (docs/durable-agents-on-the-phone.md) comes from the playground's "Programs
 # home" section (web/src/playground/sections/programs.tsx), reached at #programs. Each shot is one
@@ -275,11 +274,6 @@ scroll_shot_to_top band-a
 AB screenshot "$TMP/full.png"
 read -r x y w h < <(box_of band-a)
 crop "$TMP/full.png" "$w" "$h" "$x" "$y" "$OUT_DIR/band-available.png"
-
-# band-updating.png, band-peers.png and band-updated-reload.png are not retaken: the band no longer
-# draws a run in flight, a peer that is still moving, or a bundle to reload (a run is the Updates
-# page's, the bundle is the mark's; `update-band-in-flight` renders nothing now and the first row
-# of `update-band-peers-following` is the rolled-back peer). No doc shows those three files.
 
 # The Install card (lib/install.ts) renders only while the browser holds an install offer, or —
 # on an Apple touch device — its share-sheet hint. Neither is a fixture, so both are faked here
