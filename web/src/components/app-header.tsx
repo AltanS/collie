@@ -34,7 +34,7 @@ import { SectionLabel } from "@/components/ui/section-label";
 import type { BridgeStatus } from "@/lib/types";
 import type { Scope } from "@/lib/scope";
 import { Icon } from "@/components/icons/icon";
-import { NAV_EDGE } from "@/components/strip-column";
+import { NAV_EDGE } from "@/components/ui/nav-edge";
 
 /** What a route claims about the SHAPE of the shared row, as opposed to the content it portals into
  *  it. These are the three things the shell itself has to draw differently, and every one of them is
@@ -79,7 +79,10 @@ interface HeaderClaim {
   /** An agent is starting on this screen: the mark turns with most of its beads in the info colour
    *  (`CollieHome`'s `starting`). A claim, not a prop on the mark, because the shell owns the mark. */
   starting: boolean;
-  /** LAB (wide-home, `?dw`): the bar spans the window on the recess, and only its row keeps the numeric width. */
+  /** The large-screen dashboard (ADR 0158, addendum 2026-11-21): the bar spans the window on the navigation's
+   *  recess with the `NAV_EDGE` under it, and only its ROW keeps the numeric `width`, so the mark stays over the
+   *  grid's first column. The row is 48px, the pane view's top strip, so the top edge does not move between the
+   *  dashboard and a pane, and the mark is drawn at {@link NAV_MARK_PX}, the sidebar head's size. */
   span: boolean;
 }
 
@@ -116,6 +119,10 @@ interface HeaderSlots {
 }
 
 const HeaderSlotContext = createContext<HeaderSlots | null>(null);
+
+/** The Collie mark's drawing on the large screen's navigation rows, in px: the pane view's sidebar head and the
+ *  dashboard's spanned header. Its tap box stays 44px. */
+export const NAV_MARK_PX = 32;
 
 /**
  * WHERE THE ONE HEADER STANDS ON A LARGE SCREEN (ADR 0120). On the pane route at 600px and up the
@@ -422,9 +429,12 @@ export function AppHeaderHost({ bridge, error, lastSeenAt, children }: AppHeader
               `py-2` would now read identically and would hand a future taller-than-44px child its 8px
               back. That is a PROPOSAL, not a change — the number is left exactly where it was measured,
               one variable at a time. */}
+          {/* Spanned (the large-screen dashboard): 48px, the pane view's top strip, with 2px above and below the
+              44px tap boxes; `pl-[18px]` puts the 32px drawing in its 44px box (6px of air) on the grid's 24px edge.
+              `relative`: the views control is placed in this row (`DashboardViews`). */}
           <div
             data-slot="header-row"
-            className={cn("flex min-h-15 items-center gap-2 pl-4 pr-2 py-1", spanned && "relative mx-auto w-full")}
+            className={cn("flex items-center gap-2 pr-2", spanned ? "relative mx-auto min-h-12 w-full py-0.5 pl-[18px]" : "min-h-15 py-1 pl-4")}
             style={spanned && claimedPx !== null ? { maxWidth: claimedPx } : undefined}
           >
             {!claim.override && (
@@ -435,7 +445,7 @@ export function AppHeaderHost({ bridge, error, lastSeenAt, children }: AppHeader
                     the route's own thing (space → dashboard, pane → dashboard, history → the pane)
                     without the callback's identity re-rendering anything. */}
                 {/* Docked on a large screen, the mark stands in the sidebar instead (HeaderDock). */}
-                {dockedRow === null && homeMark()}
+                {dockedRow === null && (spanned ? homeMark(undefined, NAV_MARK_PX) : homeMark())}
                 {/* THE IDENTITY, STACKED: the brand over the multiplexer this collie drives, both
                     beside the mark. It was ONE 18px line — "Collie on <mux>" — and on a phone that
                     line ran out of room inside the multiplexer's NAME, the one word here the reader
@@ -520,7 +530,8 @@ export function AppHeaderHost({ bridge, error, lastSeenAt, children }: AppHeader
                       that makes two stacked runs one sentence rather than two loose labels, and it
                       is the only translated word here — the brand and the multiplexer's own name
                       are names, and names are not translated. */}
-                  <span className="block min-h-6 text-base">
+                  {/* In the spanned 48px row the line is 20px (`text-sm`), so the eyebrow above it stays inside the row. */}
+                  <span className={cn("block", spanned ? "min-h-5 text-sm leading-5" : "min-h-6 text-base")}>
                     {mux !== "" && (
                       <>
                         {t("nav.mux.onPrefix")}{" "}
@@ -639,7 +650,7 @@ interface RouteHeaderProps {
   /** An agent is starting on this screen (the bridge has not read its first screen yet). The mark
    *  turns at the loading pace with three beads in four in the info colour. See `HeaderClaim.starting`. */
   starting?: boolean;
-  /** LAB (wide-home): see `HeaderClaim.span`. */
+  /** Span the window on the recess, 48px tall, the row at `width` (the large-screen dashboard). See `HeaderClaim.span`. */
   span?: boolean;
 }
 

@@ -64,13 +64,10 @@ import { cn } from "@/lib/utils";
 import { contentWidth, SPACE_WIDTH, spaceColumns, WIDE_GUTTER } from "@/lib/wide-dashboard";
 import { isReadOnly, type AgentView, type ServerSummary, type SessionSummary } from "@/lib/types";
 import { useRootData } from "@/lib/route-data";
-import { wideHomeLab, type WideHomeLab } from "@/lib/wide-home-lab";
-import { Segmented, type SegmentedOption } from "@/components/ui/segmented";
 import { Button } from "@/components/ui/button";
 import { FabButton } from "@/components/ui/fab";
 import { Icon } from "@/components/icons/icon";
-import { NAV_EDGE } from "@/components/strip-column";
-import type { DashView } from "@/lib/dash-view";
+import { DashboardViews } from "@/components/dashboard-views";
 
 const NO_TRICK_SESSIONS: readonly AgentView[] = [];
 
@@ -345,16 +342,15 @@ export function HomeRoute() {
   );
   const columns = spaceColumns(scrollerWidth);
   const columnWidth = contentWidth(columns);
-  // LAB (wide-home, `?dw=1|2|3`): three proposals for the dashboard on a large screen. 0 is today.
-  const lab: WideHomeLab = wide ? wideHomeLab() : 0;
-  const labOn = lab !== 0;
-  // The foot tab bar is drawn only off the lab: a proposal moves the views into the header.
-  const footBar = tabsShown && !labOn;
+  // ON A LARGE SCREEN THERE IS NO TAB BAR AT THE FOOT (ADR 0158, addendum 2026-11-21). The views, and the tricks'
+  // items after them, are the views control in the header, and the New button is the last control of the
+  // command row over the grid, so nothing floats. The phone, the tablet and Off keep the bar and the button.
+  const footBar = tabsShown && !wide;
   const herdEmpty = data.agents.length === 0 && data.shellPanes.length === 0;
-  const emptyHome = labOn && herdEmpty && view === "dashboard" && !screenless;
-  // P2 puts the New button at the end of the summary row; the others keep it floating.
-  // An empty home's own first-start card is the New action there, so no button floats in the corner.
-  const fabFloat = fabOffered && lab !== 2 && !emptyHome;
+  // An empty dashboard on a large screen is one column, centred both ways: the pairing words, the outage, or the
+  // first-start card, which is then the one way to the New page.
+  const emptyHome = wide && herdEmpty && view === "dashboard" && !screenless;
+  const fabFloat = fabOffered && !wide;
   // The install-count notice's one read: a device that has not spent the notice keeps the list unseen for
   // at most 400 ms while it answers, so the notice never opens above a list that has painted (calm load).
   const telemetry = useTelemetryNoticeRead();
@@ -426,70 +422,34 @@ export function HomeRoute() {
       onOpenSession={openTrickSession}
     />
   );
-  // LAB: the views as the compact segmented control the pane view's sidebar head uses (ui/segmented), in the header.
-  const viewOptions: SegmentedOption<DashView>[] = [
-    ...(multi ? [{ value: "crew" as const, label: t("crew.title"), icon: <Icon name="crew" /> }] : []),
-    {
-      value: "dashboard",
-      label: t("home.tabs.dashboard"),
-      icon: <Icon name="tab-dashboard" />,
-      badge: blockedCount,
-      badgeLabel: tn("home.tabs.blocked", blockedCount),
-    },
-    ...(!screenless ? [{ value: "changes" as const, label: t("files.title"), icon: <Icon name="files" /> }] : []),
-  ];
-  const worded = lab === 2;
-  const viewsControl = labOn && tabsShown && viewOptions.length > 1 && (
-    <Segmented<DashView>
-      semantics="tabs"
-      compact
-      options={
-        worded
-          ? viewOptions.map(({ icon: _icon, ...o }) => o)
-          : // An icon segment has no room for a count over its glyph: the blocked count is a mark beside it, said in words.
-            viewOptions.map(({ badge, badgeLabel, ...o }) => (badge !== undefined && badge > 0 && badgeLabel !== undefined ? { ...o, mark: badgeLabel } : o))
-      }
-      value={view}
-      onChange={setDashView}
-      label={t("home.tabs.aria")}
-      className="w-full"
-    />
-  );
-  const viewsBox = viewsControl && (
-    <div data-slot="lab-views" className="shrink-0" style={{ width: viewOptions.length * (worded ? 144 : 52) }}>
-      {viewsControl}
-    </div>
-  );
-  const hillButton = labOn && bar.hill !== null && (
-    <Button variant="ghost" size="lg" className="relative size-11 px-0" aria-label={t("hill.title")} onClick={() => nav.down(hillPath(data.scope))}>
+  // The Hill's way in on a large screen: an icon button in the header's right cluster, with the bar's red count.
+  const hillButton = wide && bar.hill !== null && (
+    <Button
+      variant="ghost"
+      size="lg"
+      data-slot="header-hill"
+      className="relative size-11 px-0"
+      aria-label={bar.hill > 0 ? `${t("hill.title")}, ${tn("home.tabs.hill", bar.hill)}` : t("hill.title")}
+      onClick={() => nav.down(hillPath(data.scope))}
+    >
       <Icon name={bar.hillNow ? "hill-now" : "hill"} className={cn("size-5", bar.hillNow && "text-status-working")} />
       {bar.hill > 0 && (
-        <span aria-hidden className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-sm bg-status-blocked px-1 text-[10px] font-semibold text-white">
+        <span aria-hidden className="absolute right-0.5 top-0.5 flex h-4 min-w-4 items-center justify-center rounded-sm bg-status-blocked px-1 text-[10px] leading-none font-semibold tabular-nums text-white">
           {bar.hill}
         </span>
       )}
     </Button>
   );
-  const sheet = lab === 3;
-  const scrollBody = (node: ReactNode) =>
-    sheet ? (
-      <div data-slot="lab-sheet" className={cn("mx-auto flex w-full flex-1 flex-col border-x bg-background", NAV_EDGE)} style={{ maxWidth: columnWidth + 2 }}>
-        {node}
-      </div>
-    ) : (
-      node
-    );
   return (
-    <div className={wide ? cn("mx-auto flex min-h-0 w-full flex-1 flex-col", sheet && "bg-surface-recess") : "mx-auto flex min-h-0 w-full max-w-screen-sm flex-1 flex-col"}>
+    <div className={wide ? "mx-auto flex min-h-0 w-full flex-1 flex-col" : "mx-auto flex min-h-0 w-full max-w-screen-sm flex-1 flex-col"}>
       {/* The dashboard header: wordmark + the session switcher (dashboard-only), then the shared pill
           and the Settings gear. The switcher self-hides on a single-session install. */}
       <RouteHeader
         wordmark
         width={wide ? columnWidth : "column"}
-        span={labOn}
+        span={wide}
         rightLead={
           <>
-            {lab === 3 && viewsBox && <div className="mr-2 flex items-center">{viewsBox}</div>}
             {hillButton}
             {/* Host first, then session — outer dimension first, and the two are deliberately
                 different shapes (bordered server pill vs filled layers capsule) so a glance can tell
@@ -502,29 +462,39 @@ export function HomeRoute() {
         }
         rightTrail={<SettingsGear scope={data.scope} />}
       >
-        {lab === 1 && viewsBox && <div className="ml-4 flex items-center">{viewsBox}</div>}
-        {lab === 2 && viewsBox && <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">{viewsBox}</div>}
+        {wide && tabsShown && (
+          <DashboardViews
+            view={view}
+            onSelect={setDashView}
+            crew={multi}
+            files={!screenless}
+            blockedCount={blockedCount}
+            tabbarParts={bar.tabbarParts}
+            sessions={bar.sessions}
+            onOpenSession={openTrickSession}
+          />
+        )}
       </RouteHeader>
 
       {/* Content region below the header: a viewport-clipped internal scroller. `relative` is
           load-bearing: it makes this scroller the containing block for its absolutely-positioned
           descendants. Tailwind's `sr-only` is `position: absolute`, so every status label in the
           list would otherwise escape this scroller's clip and grow the document's own scrollbar. */}
-      <div ref={setScroller} className={cn("relative flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto", telemetry.held && "invisible")}>
-        {scrollBody(
-          <>
+      <div ref={setScroller} data-slot="home-scroller" className={cn("relative flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto", telemetry.held && "invisible")}>
         {/* A notice BELOW the header is content, not viewport chrome: it is an inset box on the
             page gutter, not a full-bleed strip. Full-bleed it ran its left edge 16px outside the
             list it sat on top of — two left edges stacked, the loudest misalignment on the page. */}
         {inColumn(
           <PhoneParts on={wide}>
-            {!(labOn && notPaired && data.error) && <ReadOnlyBanner device={data.device} />}
+            {/* Not paired on a large screen: the centred block below says it, with the command and the phone card,
+                so the strip would say it twice. The pane and Space screens keep the strip. */}
+            {!(wide && notPaired && data.error) && <ReadOnlyBanner device={data.device} />}
             {/* Once per device: the install count is on by default (M86 spec 02). Self-hides. */}
             <TelemetryNotice read={telemetry} />
           </PhoneParts>,
         )}
 
-        <main className={cn("flex-1", emptyHome && lab !== 1 && "flex flex-col justify-center")}>
+        <main className={cn("flex-1", emptyHome && "flex flex-col justify-center")}>
           {inColumn(
             <>
           {/* THE TRICKS' TILES (the `dashboard` place, 2026-11-10): one per trick, in a strip at the top
@@ -617,13 +587,12 @@ export function HomeRoute() {
                   ? {
                       columns,
                       tail:
-                        lab === 2 && fabOffered ? (
+                        fabOffered ? (
                           <FabButton size="compact" label={t("home.new.label")} busy={creatingSpace || launching.size > 0} onClick={openNew} />
                         ) : undefined,
                     }
                   : undefined
               }
-              emptyLook={labOn ? (lab === 2 ? "card" : lab === 3 ? "middle" : undefined) : undefined}
             />,
             )
           )}
@@ -638,7 +607,8 @@ export function HomeRoute() {
               {/* Above Launch, so Launch keeps its place directly over the Spaces it creates into. */}
               {programsFirst && <ProgramSection programs={programs} servers={data.servers} onOpen={openProgram} />}
               <LaunchStrip open={launchOpen} onOpenChange={setLaunchOpen} scope={data.scope} />
-              {!(labOn && herdEmpty && data.workspaces.length === 0) && (
+              {/* With no Space and no session the centred empty state is the whole page: no "Spaces (0)" beside it. */}
+              {!(wide && herdEmpty && data.workspaces.length === 0) && (
               <SpaceOverview
                 workspaces={isolateSpaces(data.workspaces, isolatedSpaces)}
                 agents={navPanes.agents}
@@ -664,14 +634,14 @@ export function HomeRoute() {
 
         {wide ? (
           <WideColumn width={columnWidth}>
-            <div className={cn((emptyHome || (labOn && !gridList)) && "mx-auto")} style={{ width: SPACE_WIDTH }}>
+            {/* Under the grid the foot lines stand in the first Space's column; under a centred column (Files, Crew,
+                the durable home, an empty dashboard) they centre with it. */}
+            <div className={cn((emptyHome || !gridList) && "mx-auto")} style={{ width: SPACE_WIDTH }}>
               <PhoneParts on>{footer}</PhoneParts>
             </div>
           </WideColumn>
         ) : (
           footer
-        )}
-          </>,
         )}
       </div>
 
@@ -679,16 +649,10 @@ export function HomeRoute() {
           it holds. Crew first while a crew is configured, then Dashboard, the default, then Files, then
           the Hill, a fixed item that opens its own route, and the tricks' items after it. It sits OUTSIDE
           the scroller, so the content scrolls above it and a switch moves neither it nor the strip and
-          summary line at the top of the list. At every width: the dashboard has no sidebar on a wide
-          screen (the grid of Spaces and this bar are as wide as each other, ADR 0158), so nothing else offers these views. Its height is the same
-          56px row in both of its modes, so the sums below hold. */}
-      {wide && tabBar !== false ? (
-        <div className="mx-auto w-full" style={{ maxWidth: columnWidth }}>
-          {tabBar}
-        </div>
-      ) : (
-        tabBar
-      )}
+          summary line at the top of the list. Not on a large screen, where the views control in the header
+          offers the same views and items (ADR 0158, addendum 2026-11-21). Its height is the same 56px row in both of its
+          modes, so the sums below hold. */}
+      {tabBar}
 
       {/* Status overlay, anchored to the bottom of the viewport (no input here) — same slim line,
           floating so it never shifts the list. Stays outside the scroller so it never scrolls away.

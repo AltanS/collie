@@ -319,12 +319,6 @@ export const PAGE_PLANE = "bg-background [--band-ground:var(--background)] [--ch
 const IN_EITHER_PLANE =
   "[&_[data-slot=composer-actions]]:bg-muted/20 [&_[data-slot=belt-track]]:bg-transparent [&_[data-slot=pane-reading]]:border-t-transparent";
 
-/**
- * THE NAVIGATION'S EDGE: the sidebar's right edge and the tab strip's bottom edge. The step from the recess
- * to the page is the cut, so the edge is only the recess drawn 30% toward `--border`: quieter than that
- * step, and still a faint line where the step is nil (a black page, which clamps the recess to it).
- */
-export const NAV_EDGE = "border-[color-mix(in_oklch,var(--surface-recess)_70%,var(--border))]";
 
 /**
  * THE FOCUS FRAME: the theme's `--pane-active` mixed 65% into the page. At full strength it was the

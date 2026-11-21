@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 
 import { clockTime } from "@/lib/format";
 import { useMuxCapability } from "@/lib/mux-capability";
@@ -212,9 +212,6 @@ interface AgentListProps {
    * measured width (`spaceColumns`). Absent, the list is the phone's column, byte for byte.
    */
   wide?: { columns: number; tail?: ReactNode };
-  /** LAB (wide-home, `?dw`): how an empty state stands on a large screen. `card` sets it on the paper in a
-   *  bordered card; `middle` drops the phone's tall padding so the route can centre it in the window. */
-  emptyLook?: "card" | "middle";
 }
 
 /** What a workspace heading's "+" needs from the route (AgentListProps.newTab). */
@@ -364,7 +361,6 @@ export function AgentList({
   filterHidden = PANE_FILTER.hidden,
   filter: filterOwn,
   wide,
-  emptyLook,
 }: AgentListProps) {
   useLocale();
   // THE FILTER'S QUERY (M97): the module store by default, so it outlives this route (a session opens by
@@ -425,18 +421,29 @@ export function AgentList({
     const target = document.getElementById(rowDomId(reveal.rowKey)) ?? document.getElementById(SUMMARY_ID);
     if (target) revealElement(target);
   }, [reveal]);
+  // The large screen's sticky command row hands its height to the scroller as `scroll-padding-top`, so focus and
+  // `scrollIntoView` stop below it. Read above the early return, like every hook here.
+  const [commandRow, setCommandRow] = useState<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const scroller = commandRow?.closest<HTMLElement>('[data-slot="home-scroller"]');
+    if (commandRow === null || scroller === null || scroller === undefined) return;
+    const write = () => {
+      scroller.style.scrollPaddingTop = `${commandRow.offsetHeight}px`;
+    };
+    write();
+    if (globalThis.ResizeObserver === undefined) return;
+    const observer = new ResizeObserver(write);
+    observer.observe(commandRow);
+    return () => {
+      observer.disconnect();
+      scroller.style.scrollPaddingTop = "";
+    };
+  }, [commandRow]);
   // A herd with nothing but bare shells in it is still something to show, and "No agents running."
   // is then true rather than empty — so the placeholder waits for BOTH lists to be empty.
-  // LAB (wide-home): the empty state's frame on a large screen. Nothing changes without `emptyLook`.
-  const emptyPad = emptyLook === undefined ? "py-24" : emptyLook === "middle" ? "py-6" : "py-8";
-  const labEmpty = (node: ReactNode) =>
-    emptyLook === "card" ? (
-      <div data-slot="lab-empty-card" className="mx-auto w-full max-w-md rounded-md border border-border bg-surface-paper shadow-sm">
-        {node}
-      </div>
-    ) : (
-      node
-    );
+  // On a large screen the route centres an empty state in the window (ADR 0158, addendum 2026-11-21), so the
+  // phone's tall top air would only push it off the middle.
+  const emptyPad = wide === undefined ? "py-24" : "py-6";
   if (agents.length === 0 && shellPanes.length === 0) {
     if (!emptyState) return null;
     // "No agents running." is a claim about the herd, and only the bridge can make it. A stale render
@@ -446,18 +453,18 @@ export function AgentList({
     if (error && notPaired) {
       // The strip above the list is the link to the pair form; this names what to run on the host
       // first. The command stays literal, never translated, as on the pair form itself.
-      return labEmpty(
+      return (
         <div className={cn("flex flex-col items-center justify-center gap-3 px-4 text-muted-foreground", emptyPad)}>
           <Icon name="pairing" className="size-7" />
           <span className="text-sm font-medium text-foreground">{t("settings.devices.pair.title")}</span>
           <code className="font-mono text-[13px]">collie pair</code>
           {/* Or, with no terminal at hand, a paired phone lets this browser in (ADR 0139). */}
           <PhonePairingCard />
-        </div>,
+        </div>
       );
     }
     if (error) {
-      return labEmpty(
+      return (
         <div className={cn("flex flex-col items-center justify-center gap-3 px-4 text-muted-foreground", emptyPad)}>
           <Icon name="offline" className="size-7" />
           <span className="text-sm">
@@ -469,12 +476,12 @@ export function AgentList({
               too. When the bridge refuses this browser before pairing, the block says pairing cannot
               fix it rather than leaving the operator to guess (ADR 0139). */}
           {refused && <PhonePairingCard />}
-        </div>,
+        </div>
       );
     }
     if (bridge === "connected" && onFirstStart !== undefined) {
       return (
-        <div className={cn("flex flex-col gap-3 px-4 py-6", wide !== undefined && "mx-auto w-96 pt-16")}>
+        <div className={cn("flex flex-col gap-3 px-4 py-6", wide !== undefined && "mx-auto w-96")}>
           <button
             type="button"
             onClick={onFirstStart}
@@ -494,7 +501,7 @@ export function AgentList({
         </div>
       );
     }
-    return labEmpty(
+    return (
       <div className={cn("flex flex-col items-center justify-center gap-3 px-4 text-muted-foreground", emptyPad)}>
         <Icon name="empty-state" className="size-7" />
         <span className="text-sm">
@@ -821,8 +828,13 @@ export function AgentList({
     const bandOpen = waiting.length > 0;
     const place = !ranked && bestRows === null && !renderBody;
     return (
-      <div ref={listRoot} data-slot="wide-dashboard" className="flex flex-col pb-4 pt-1">
-        <div className="flex flex-col gap-1 pb-5">
+      <div ref={listRoot} data-slot="wide-dashboard" className="flex flex-col pb-4">
+        {/* THE COMMAND ROW STAYS (ADR 0158, addendum 2026-11-21): the summary, the filter, the order, the switch, the
+            magnifier and New, sticky under the header on the page plane, so New and the filter are always in reach.
+            It wears the page's own ground (the theme's grain, fixed to the window like the page's, which never scrolls),
+            so it is no band of its own. It reaches over the gutters so a focus ring at a card's edge passes under it, and it tells the scroller
+            its height (`scroll-padding-top`), so a row brought into view by focus or a jump stops below it. */}
+        <div ref={setCommandRow} data-slot="wide-command-row" className="sticky top-0 z-10 -mx-6 flex flex-col gap-1 bg-background px-6 pb-3 pt-1 [background-attachment:fixed] [background-image:var(--ground-image)] [background-size:var(--ground-size)]">
           <div className="flex min-h-11 items-center gap-3">
             {summary}
             {filterSelect("w-72 shrink-0")}
@@ -835,6 +847,7 @@ export function AgentList({
           </div>
           {fieldSlot}
         </div>
+        <div aria-hidden className="h-2 shrink-0" />
 
         <Collapse open={bandOpen}>
           {bandOpen ? (
