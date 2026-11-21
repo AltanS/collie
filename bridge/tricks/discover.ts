@@ -146,15 +146,19 @@ function statStamp(st: FsStat | null): string {
 }
 
 /**
- * The reads made while one of the folder's files was within the racy window of the read (stat-held.ts): such a
- * read is never reused, even when the fingerprint did not move, so a same-size rewrite inside one timestamp tick
- * is read on the next scan. A WeakSet, so the record itself (compared and sent whole elsewhere) is unchanged.
+ * One folder's read as the scanner keeps it: the trick, and whether the read may be reused while the fingerprint
+ * holds. A read made while one of the folder's files was within the racy window of it (stat-held.ts) is not, so a
+ * same-size rewrite inside one timestamp tick is read on the next scan. The flag lives in the cache entry, never on
+ * the record, so a copy of the record cannot carry or drop it.
  */
-const unsettled = new WeakSet<FoundTrick>();
+interface CachedTrick {
+  found: FoundTrick;
+  settled: boolean;
+}
 
-/** Read one trick folder: reuse `known` when the fingerprint did not move. */
-async function scanFolder(fs: TrickFs, root: string, id: string, known: FoundTrick | undefined, now?: () => number): Promise<FoundTrick> {
-  return await scanTrickDir(fs, join(root, id), id, known, now);
+/** Read one trick folder: reuse `known` when the fingerprint did not move and its read was settled. */
+async function scanFolder(fs: TrickFs, root: string, id: string, known: CachedTrick | undefined, now: () => number = Date.now): Promise<CachedTrick> {
+  return await readTrickDir(fs, join(root, id), id, known, now);
 }
 
 /**
@@ -162,7 +166,11 @@ async function scanFolder(fs: TrickFs, root: string, id: string, known: FoundTri
  * its manifest, its code hash, its `config.toml` hash and its origin record. Reuses `known` when the
  * fingerprint did not move.
  */
-export async function scanTrickDir(fs: TrickFs, dir: string, id: string, known: FoundTrick | undefined, now: () => number = Date.now): Promise<FoundTrick> {
+export async function scanTrickDir(fs: TrickFs, dir: string, id: string): Promise<FoundTrick> {
+  return (await readTrickDir(fs, dir, id, undefined, Date.now)).found;
+}
+
+async function readTrickDir(fs: TrickFs, dir: string, id: string, known: CachedTrick | undefined, now: () => number): Promise<CachedTrick> {
   const readAt = now();
   const walk = await walkTrickCode(fs, dir);
   const config = await fs.lstat(join(dir, CONFIG_FILE));
@@ -170,7 +178,7 @@ export async function scanTrickDir(fs: TrickFs, dir: string, id: string, known: 
   // The origin record is outside the code hash, but its stamp is in the fingerprint, so a rewrite shows.
   const configStamp = `${statStamp(config)}|${statStamp(origin)}`;
   const fingerprint = walk.ok ? walkFingerprint(walk.entries, configStamp) : `refused:${walk.reason}:${configStamp}`;
-  if (known !== undefined && known.fingerprint === fingerprint && !unsettled.has(known)) return known;
+  if (known !== undefined && known.settled && known.found.fingerprint === fingerprint) return known;
 
   const read = await readManifestFile(fs, dir, id);
   const refusals = [...read.refusals];
@@ -187,8 +195,7 @@ export async function scanTrickDir(fs: TrickFs, dir: string, id: string, known: 
   if (proposed !== null) found.proposal = proposed;
   if (read.manifest !== undefined && walk.ok && configRead.kind !== "refused") found.manifest = read.manifest;
   const stats = [...(walk.ok ? walk.entries : []), ...[config, origin].filter((st) => st !== null)];
-  if (!settledWalk(stats, readAt)) unsettled.add(found);
-  return found;
+  return { found, settled: settledWalk(stats, readAt) };
 }
 
 /** A folder past {@link TRICKS_MAX}: listed with its reason, never read. */
@@ -241,7 +248,7 @@ export function createTrickScanner(root: string, opts: TrickScannerOptions = {})
   const fs = opts.fs ?? diskTrickFs;
   const timeoutMs = opts.timeoutMs ?? SCAN_TIMEOUT_MS;
   const warn = opts.warn ?? (() => {});
-  const cache = new Map<string, FoundTrick>();
+  const cache = new Map<string, CachedTrick>();
   /** The folders read, in the order they were first admitted: never pushed out while present. */
   let admitted = new Set<string>();
   let last: TricksScan | null = null;
@@ -272,9 +279,9 @@ export function createTrickScanner(root: string, opts: TrickScannerOptions = {})
         tricks.push(overflowTrick(root, id));
         continue;
       }
-      const found = await scanFolder(fs, root, id, cache.get(id), opts.now);
-      cache.set(id, found);
-      tricks.push(found);
+      const held = await scanFolder(fs, root, id, cache.get(id), opts.now);
+      cache.set(id, held);
+      tricks.push(held.found);
     }
     for (const id of cache.keys()) if (!read.has(id)) cache.delete(id);
     admitted = read;
@@ -304,9 +311,9 @@ export function createTrickScanner(root: string, opts: TrickScannerOptions = {})
       const work = (async () => {
         const st = await fs.lstat(join(root, id));
         if (st === null || st.kind !== "dir") return null;
-        const found = await scanFolder(fs, root, id, cache.get(id), opts.now);
-        cache.set(id, found);
-        return found;
+        const read = await scanFolder(fs, root, id, cache.get(id), opts.now);
+        cache.set(id, read);
+        return read.found;
       })().catch(() => null);
       return await within(work, timeoutMs);
     },

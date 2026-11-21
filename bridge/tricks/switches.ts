@@ -567,7 +567,7 @@ export function createSwitchReader(stateDir: string, warn: (line: string) => voi
     // A re-read of the same write (in the racy window) says a problem once, not on every look.
     if (problem !== null && !(seen !== "none" && sameStat(seen, facts))) warn(problem);
     // Kept only after the read went through: a read that throws leaves the last good answer and asks again.
-    seen = holdStat(facts, readAt);
+    seen = holdStat(facts, readAt, { path, kind: "the switch file", warn });
     current = switches;
     return current;
   };

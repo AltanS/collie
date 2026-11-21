@@ -131,7 +131,7 @@ export class TrickValues {
     } catch {
       read = { values: {}, unread: true };
     }
-    this.cache.set(id, { held: holdStat(facts, readAt), read });
+    this.cache.set(id, { held: holdStat(facts, readAt, { path, kind: "a trick's values" }), read });
     return read;
   }
 

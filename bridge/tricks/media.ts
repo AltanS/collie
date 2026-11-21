@@ -115,7 +115,7 @@ export class TrickMediaVersions {
       const kept = stillHolds(known?.held, stat.facts) ? known : undefined;
       const version = kept?.version ?? versionOfFile(root, rel);
       if (version === null) continue;
-      now.set(rel, kept ?? { held: holdStat(stat.facts, readAt), version });
+      now.set(rel, kept ?? { held: holdStat(stat.facts, readAt, { path: join(root, rel), kind: "a trick's picture" }), version });
       out[rel] = version;
     }
     this.seen.set(dir, now);
@@ -235,7 +235,7 @@ export class TrickMediaSync {
       const changed = known === undefined ? this.firstLook(copyRoot, rel, hash, stat.mtimeMs) : known.hash !== hash;
       if (changed && !putPicture(copyRoot, rel, read.bytes)) continue;
       if (changed) written += 1;
-      now.set(rel, { held: holdStat(stat.facts, readAt), hash });
+      now.set(rel, { held: holdStat(stat.facts, readAt, { path: join(srcRoot, rel), kind: "a trick's picture" }), hash });
     }
     this.synced.set(srcDir, now);
     return written;
