@@ -496,6 +496,16 @@ navigator, the footer lines) stand on the grid's left edge through a `-mx-4` wra
 The band of what needs you opens and closes through `Collapse`: that is the one movement of the grid that
 a state causes, accepted by the operator (2026-11-19), and a cold open draws the band in the first frame.
 
+**The large screen's sidebar has two edges: boxes on 8px, ink on 16px.** Every box in it (the filter
+field, the views control, a row's fill) stands 8px inside the sidebar on both sides, and every text and
+icon (the mark's drawing, the summary line, a heading, a row's icon) starts 16px in; the field's 16px
+magnifier sits on the rows' icon axis and its text starts on the rows' names. Under the 48px brand row
+(as tall as the tab strip beside it, the 32px mark 8px from each edge) one sticky block holds the filter
+field and the summary row with the three views, two 36px rows in 8px steps that each reach 44px, closed
+by the head's one rule, 24px above the first heading. The filter's count stands inside the field, beside
+the clear button, and the selected view is filled with the current-row `bg-accent` in full ink, never
+outlined (`e2e/wide-sidebar-head.spec.ts` measures all of it).
+
 ### Chat's thread: steps, code, your turn, spacing (1.29.0)
 
 **A run of tool steps in Chat is ONE ground.** The run stands on `bg-muted/40` with one radius and
