@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, renameSync, writeFileSync, type Stats } from "node:fs";
 import { join } from "node:path";
 
 import type { DecisionMedia } from "../../web/src/lib/tricks/schema.ts";
@@ -12,6 +12,7 @@ import { DEFAULT_DECISION_PRIORITY, DEFAULT_DECISION_TEXT, pointer, type Refusal
 import { BY_THE_TRICK, TRICK_OFF, type HillOneAnswer, type HillPostAnswer, type HillPostOptions, type HillTrickSender } from "../hill/service.ts";
 import { hillDir } from "../hill/store.ts";
 import type { JsonObject } from "../json.ts";
+import { holdStat, statFactsOf, stillHolds, type StatHeld } from "./stat-held.ts";
 
 // A TRICK POSTS INTO THE HILL (M94, M96): after a run that succeeded, the runner hands the document's
 // decisions here, and this module makes the hill agree with them.
@@ -138,25 +139,28 @@ export interface DecisionImageDigest {
 /** How many file digests the cache keeps. Twenty decisions of four images is 80 per trick. */
 const FILE_DIGESTS_MAX = 512;
 
-/** A file's digest by path, with the inode, size and mtime it was read at. For the bridge's lifetime. */
-const fileDigests = new Map<string, { readonly ino: number; readonly size: number; readonly mtimeMs: number; readonly digest: string }>();
+/** A file's digest by path, with the stat it was read at (stat-held.ts). For the bridge's lifetime. */
+const fileDigests = new Map<string, { readonly held: StatHeld; readonly digest: string }>();
 
 /**
- * A SHA-256 of one image file's bytes, read once while its inode, size and mtime stay. A file the hill
+ * A SHA-256 of one image file's bytes, read once while its inode, size, mtime and change time stay, and again
+ * while its mtime is within the racy window of the read (stat-held.ts), so a same-size rewrite inside one
+ * timestamp tick is seen. `look` holds the clock of the read and the `lstat`, for a test. A file the hill
  * would refuse unread (missing, not a regular file, a path through a symlink, over the cap) is a short
  * marker instead, so the hash still moves when it changes and nothing past the cap is read.
  */
-export function imageFileDigest(path: string): string {
-  let st: ReturnType<typeof lstatSync>;
+export function imageFileDigest(path: string, look: { now?: () => number; lstat?: (path: string) => Stats } = {}): string {
+  const readAt = (look.now ?? Date.now)();
+  let st: Stats;
   try {
-    st = lstatSync(path);
+    st = look.lstat === undefined ? lstatSync(path) : look.lstat(path);
   } catch {
     return "missing";
   }
   if (!st.isFile()) return "not-a-file";
   if (st.size > HILL_MEDIA_BYTES_MAX) return `too-large:${String(st.size)}`;
   const held = fileDigests.get(path);
-  if (held !== undefined && held.ino === st.ino && held.size === st.size && held.mtimeMs === st.mtimeMs) return held.digest;
+  if (held !== undefined && stillHolds(held.held, statFactsOf(st))) return held.digest;
   let digest: string;
   try {
     if (realpathSync(path) !== path) return "not-the-real-path";
@@ -169,7 +173,7 @@ export function imageFileDigest(path: string): string {
     const oldest = fileDigests.keys().next().value;
     if (oldest !== undefined) fileDigests.delete(oldest);
   }
-  fileDigests.set(path, { ino: st.ino, size: st.size, mtimeMs: st.mtimeMs, digest });
+  fileDigests.set(path, { held: holdStat(statFactsOf(st), readAt), digest });
   return digest;
 }
 

@@ -10,6 +10,7 @@ import { CODE_BYTES_MAX, CONFIG_FILE, diskTrickFs, hashCodeEntries, isPictureNam
 import { readManifestFile, readSmallFile } from "./discover.ts";
 import { ORIGIN_FILE } from "./origin.ts";
 import { APPROVED_DIR, approvedCopyDir, approvedTrickDir, hash16, PENDING_DIR, pendingTrickDir, switchesPath, tricksConfigDir, trickStateDir } from "./paths.ts";
+import { settledWalk } from "./stat-held.ts";
 import { MIGRATED, parseSwitches, readSwitchesNow, SWITCHES_VERSION, updateSwitches, updateSwitchesFor, withApproval, withSwitch, withSwitchLock, writeSwitches, type SwitchEntry, type Switches } from "./switches.ts";
 import { commitAside, finishAside, moveAside, newAsideToken, putBack, type Moved } from "./aside.ts";
 
@@ -188,8 +189,18 @@ export async function copyListing(dir: string, fs: TrickFs = diskTrickFs): Promi
 /** A copy checked against its hash: its listing when it holds, or why not (`missing` when there is no copy). */
 export type CopyCheck = { ok: true; listing: string } | { ok: false; missing: boolean; reason: string; link?: true };
 
-/** Hash a copy again and compare it with the hash it is filed under. */
-export async function verifyCopy(dir: string, hash: string, fs: TrickFs = diskTrickFs): Promise<CopyCheck> {
+/**
+ * The listing a check answers when one of the copy's files was within the racy window of the hash (stat-held.ts):
+ * no walk's fingerprint is ever this word, so the next check hashes the copy again.
+ */
+export const UNSETTLED_LISTING = "unsettled";
+
+/**
+ * Hash a copy again and compare it with the hash it is filed under. Its listing is what a later pass compares
+ * before it hashes again; a copy written within the racy window of this hash answers {@link UNSETTLED_LISTING}.
+ */
+export async function verifyCopy(dir: string, hash: string, fs: TrickFs = diskTrickFs, now: () => number = Date.now): Promise<CopyCheck> {
+  const readAt = now();
   const st = await fs.lstat(dir);
   if (st === null) return { ok: false, missing: true, reason: "The approved copy is not there." };
   if (st.kind !== "dir") return { ok: false, missing: false, reason: "The approved copy is not a folder." };
@@ -198,7 +209,7 @@ export async function verifyCopy(dir: string, hash: string, fs: TrickFs = diskTr
   if (!walk.ok) return walk.code === "link" ? { ok: false, missing: false, reason: walk.reason, link: true } : { ok: false, missing: false, reason: walk.reason };
   const got = await hashCodeEntries(fs, dir, walk.entries);
   if (got !== hash) return { ok: false, missing: false, reason: "The approved copy changed on disk." };
-  return { ok: true, listing: walkFingerprint(walk.entries, "") };
+  return { ok: true, listing: settledWalk(walk.entries, readAt) ? walkFingerprint(walk.entries, "") : UNSETTLED_LISTING };
 }
 
 /** Put a staged copy in its place, or keep a copy already there that hashes right. */

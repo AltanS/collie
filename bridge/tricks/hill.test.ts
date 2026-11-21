@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -697,13 +697,35 @@ describe("images", () => {
     // A whole second, so putting it back below is exact.
     const mtime = new Date(1_794_130_000_000);
     utimesSync(path, mtime, mtime);
-    const first = imageFileDigest(path);
-    // The same size, new bytes in place, and the old mtime put back: the cache answers, nothing is read.
+    // A fake `lstat` holds the stat still (same size, mtime, inode, change time), so only the clock decides.
+    const real = lstatSync(path);
+    const still = (at: string) => Object.assign(lstatSync(at), { mtimeMs: real.mtimeMs, ctimeMs: real.mtimeMs, ino: real.ino });
+    const settled = { now: () => real.mtimeMs + 5000, lstat: still };
+    const first = imageFileDigest(path, settled);
+    // Read safely after its last write: the same stat answers from the cache, nothing is read.
     writeFileSync(path, png(390, 240, 5));
+    expect(imageFileDigest(path, settled)).toBe(first);
+    // On the real stat the change time moved with the write: read again.
     utimesSync(path, mtime, mtime);
-    expect(imageFileDigest(path)).toBe(first);
-    utimesSync(path, mtime, new Date(mtime.getTime() + 5000));
     expect(imageFileDigest(path)).not.toBe(first);
+    expect(imageFileDigest(join(r.trick.dir, "none.png"))).toBe("missing");
+  });
+
+  test("imageFileDigest reads a same-size rewrite again while the mtime is within the racy window of the read", () => {
+    const r = rig();
+    const path = shot(r, "racy.png", png(390, 240, 4));
+    const real = lstatSync(path);
+    const still = (at: string) => Object.assign(lstatSync(at), { mtimeMs: real.mtimeMs, ctimeMs: real.mtimeMs, ino: real.ino });
+    const racy = { now: () => real.mtimeMs + 500, lstat: still };
+    const first = imageFileDigest(path, racy);
+    writeFileSync(path, png(390, 240, 5));
+    const second = imageFileDigest(path, racy);
+    expect(second).not.toBe(first);
+    // Once settled the next read is kept.
+    const later = { now: () => real.mtimeMs + 5000, lstat: still };
+    expect(imageFileDigest(path, later)).toBe(second);
+    writeFileSync(path, png(390, 240, 6));
+    expect(imageFileDigest(path, later)).toBe(second);
     expect(imageFileDigest(join(r.trick.dir, "none.png"))).toBe("missing");
   });
 });

@@ -6,6 +6,7 @@ import { MANIFEST_TRIGGERS, parseManifest, RULES_MAX_BYTES, rulesTextProblems, t
 import { CONFIG_FILE, diskTrickFs, hashCodeEntries, walkFingerprint, walkTrickCode, type FsStat, type TrickFs } from "./code-hash.ts";
 import { ORIGIN_FILE, readOrigin, readProposalOrigin, type ProposalOrigin, type TrickOrigin } from "./origin.ts";
 import { MANIFEST_FILE } from "./paths.ts";
+import { settledWalk } from "./stat-held.ts";
 
 // FINDING TRICKS (M94 slice 01): every folder under `<configDir>/tricks/` is a trick, named by the folder.
 // A folder whose `trick.toml` is missing or refused is still listed, with its refusals, and never run.
@@ -144,9 +145,16 @@ function statStamp(st: FsStat | null): string {
   return st === null ? "none" : `${st.kind}:${String(st.size)}:${String(st.mtimeMs)}:${String(st.ino)}`;
 }
 
+/**
+ * The reads made while one of the folder's files was within the racy window of the read (stat-held.ts): such a
+ * read is never reused, even when the fingerprint did not move, so a same-size rewrite inside one timestamp tick
+ * is read on the next scan. A WeakSet, so the record itself (compared and sent whole elsewhere) is unchanged.
+ */
+const unsettled = new WeakSet<FoundTrick>();
+
 /** Read one trick folder: reuse `known` when the fingerprint did not move. */
-async function scanFolder(fs: TrickFs, root: string, id: string, known: FoundTrick | undefined): Promise<FoundTrick> {
-  return await scanTrickDir(fs, join(root, id), id, known);
+async function scanFolder(fs: TrickFs, root: string, id: string, known: FoundTrick | undefined, now?: () => number): Promise<FoundTrick> {
+  return await scanTrickDir(fs, join(root, id), id, known, now);
 }
 
 /**
@@ -154,14 +162,15 @@ async function scanFolder(fs: TrickFs, root: string, id: string, known: FoundTri
  * its manifest, its code hash, its `config.toml` hash and its origin record. Reuses `known` when the
  * fingerprint did not move.
  */
-export async function scanTrickDir(fs: TrickFs, dir: string, id: string, known: FoundTrick | undefined): Promise<FoundTrick> {
+export async function scanTrickDir(fs: TrickFs, dir: string, id: string, known: FoundTrick | undefined, now: () => number = Date.now): Promise<FoundTrick> {
+  const readAt = now();
   const walk = await walkTrickCode(fs, dir);
   const config = await fs.lstat(join(dir, CONFIG_FILE));
   const origin = await fs.lstat(join(dir, ORIGIN_FILE));
   // The origin record is outside the code hash, but its stamp is in the fingerprint, so a rewrite shows.
   const configStamp = `${statStamp(config)}|${statStamp(origin)}`;
   const fingerprint = walk.ok ? walkFingerprint(walk.entries, configStamp) : `refused:${walk.reason}:${configStamp}`;
-  if (known !== undefined && known.fingerprint === fingerprint) return known;
+  if (known !== undefined && known.fingerprint === fingerprint && !unsettled.has(known)) return known;
 
   const read = await readManifestFile(fs, dir, id);
   const refusals = [...read.refusals];
@@ -177,6 +186,8 @@ export async function scanTrickDir(fs: TrickFs, dir: string, id: string, known: 
   const proposed = origin === null || record !== null ? null : await readProposalOrigin(dir, fs);
   if (proposed !== null) found.proposal = proposed;
   if (read.manifest !== undefined && walk.ok && configRead.kind !== "refused") found.manifest = read.manifest;
+  const stats = [...(walk.ok ? walk.entries : []), ...[config, origin].filter((st) => st !== null)];
+  if (!settledWalk(stats, readAt)) unsettled.add(found);
   return found;
 }
 
@@ -209,6 +220,8 @@ export interface TrickScannerOptions {
   fs?: TrickFs;
   timeoutMs?: number;
   warn?: (line: string) => void;
+  /** The clock a folder's read is timed with, for the racy window (stat-held.ts). */
+  now?: () => number;
 }
 
 /** `work` within `ms`, or `null` when it ran over. The work goes on, unawaited. */
@@ -259,7 +272,7 @@ export function createTrickScanner(root: string, opts: TrickScannerOptions = {})
         tricks.push(overflowTrick(root, id));
         continue;
       }
-      const found = await scanFolder(fs, root, id, cache.get(id));
+      const found = await scanFolder(fs, root, id, cache.get(id), opts.now);
       cache.set(id, found);
       tricks.push(found);
     }
@@ -291,7 +304,7 @@ export function createTrickScanner(root: string, opts: TrickScannerOptions = {})
       const work = (async () => {
         const st = await fs.lstat(join(root, id));
         if (st === null || st.kind !== "dir") return null;
-        const found = await scanFolder(fs, root, id, cache.get(id));
+        const found = await scanFolder(fs, root, id, cache.get(id), opts.now);
         cache.set(id, found);
         return found;
       })().catch(() => null);

@@ -17,6 +17,7 @@ import {
   type WireTrickInfo,
 } from "../../web/src/lib/tricks/schema.ts";
 import { trickStateDir } from "./paths.ts";
+import { holdStat, statFactsOf, stillHolds, type StatFacts, type StatHeld } from "./stat-held.ts";
 
 // THE VALUES A PERSON KEEPS FOR A TRICK (contract 3, `[[field]]`, decided 2026-11-17).
 //
@@ -91,13 +92,18 @@ export function collieFolderProblem(dir: string): string | null {
 }
 
 /**
- * The values store of one bridge. Reads go through a small cache keyed on the file's size, change time and
- * inode, so a row publish (every scan) costs one `stat`; a write by anyone else is read on the next look.
+ * The values store of one bridge. Reads go through a small cache keyed on the file's size, modified time, inode
+ * and change time, and a read within the racy window of the file's last write is not kept (stat-held.ts), so a
+ * row publish (every scan) costs one `stat`; a write by anyone else is read on the next look.
  */
 export class TrickValues {
-  private readonly cache = new Map<string, { stamp: string; read: StoredValues }>();
+  private readonly cache = new Map<string, { held: StatHeld; read: StoredValues }>();
 
-  constructor(private readonly stateDir: string) {}
+  /** `look`: the clock of a read (the racy window, stat-held.ts) and the `stat`, for a test. */
+  constructor(
+    private readonly stateDir: string,
+    private readonly look: { now?: () => number; stat?: (path: string) => { size: number; mtimeMs: number; ino?: number; ctimeMs?: number } } = {},
+  ) {}
 
   /** One trick's stored values. A missing file is empty and read; a bad one is empty and `unread`. */
   read(id: string): StoredValues {
@@ -108,16 +114,16 @@ export class TrickValues {
       this.cache.delete(id);
       return { values: {}, unread: true };
     }
-    let stamp: string;
+    const readAt = (this.look.now ?? Date.now)();
+    let facts: StatFacts;
     try {
-      const st = statSync(path);
-      stamp = `${String(st.size)}:${String(st.mtimeMs)}:${String(st.ino)}`;
+      facts = statFactsOf(this.look.stat === undefined ? statSync(path) : this.look.stat(path));
     } catch {
       this.cache.delete(id);
       return { values: {}, unread: false };
     }
     const held = this.cache.get(id);
-    if (held?.stamp === stamp) return held.read;
+    if (held !== undefined && stillHolds(held.held, facts)) return held.read;
     let read: StoredValues;
     try {
       const values = parseValuesFile(readFileSync(path, "utf8"));
@@ -125,7 +131,7 @@ export class TrickValues {
     } catch {
       read = { values: {}, unread: true };
     }
-    this.cache.set(id, { stamp, read });
+    this.cache.set(id, { held: holdStat(facts, readAt), read });
     return read;
   }
 
