@@ -70,6 +70,16 @@ export const MASK = {
   both: "[mask-image:linear-gradient(to_right,transparent,black_1.5rem,black_calc(100%-1.5rem-var(--edge-inset-right,0px)),transparent_calc(100%-var(--edge-inset-right,0px)))]",
 } satisfies Record<OverflowEdge, string>;
 
+/**
+ * The same fades while a left arrow stands on the left edge (a mouse only): the content stays fully hidden under
+ * the arrow, 1.5rem, and fades in over the next 1.5rem, so a label is faded out before the arrow's round edge and
+ * never cut by it. Full literals, for the same reason as {@link MASK}.
+ */
+const MASK_UNDER_ARROW = {
+  left: "[mask-image:linear-gradient(to_right,transparent_1.5rem,black_3rem)]",
+  both: "[mask-image:linear-gradient(to_right,transparent_1.5rem,black_3rem,black_calc(100%-1.5rem-var(--edge-inset-right,0px)),transparent_calc(100%-var(--edge-inset-right,0px)))]",
+} as const;
+
 function edgeOf(left: boolean, right: boolean): OverflowEdge {
   if (left && right) return "both";
   if (left) return "left";
@@ -322,11 +332,12 @@ interface OverflowEdgesProps {
   /**
    * Whether a mouse gets an arrow button over each edge that still hides content, to scroll about 80% of the
    * width. Drawn only where the pointer hovers and is fine (`(hover: hover) and (pointer: fine)`), never on
-   * a touch screen. Absolute over the edge, so no pill moves when one comes or goes. The numbers are the px
-   * each arrow stands in from its edge, for a caller that pins something there (the actions belt's Switch
-   * block). Off by default.
+   * a touch screen. Absolute over the edge, so no pill moves when one comes or goes. `left` and `right` are the
+   * CSS lengths each arrow stands in from the wrapper's edge: `0px` puts its side on the scroller's own edge,
+   * and a caller that pins something at an end gives the width of what it pins, so the arrow stands at the
+   * scroller's visible edge and not at the end of the pinned block (the actions belt's Switch block). Off by default.
    */
-  arrows?: { readonly left: number; readonly right: number; readonly leftLabel: string; readonly rightLabel: string };
+  arrows?: { readonly left: string; readonly right: string; readonly leftLabel: string; readonly rightLabel: string };
 }
 
 /** The arrows each measured edge calls for: left while content hides on the left, right while it hides on the right. */
@@ -341,7 +352,7 @@ const REDUCED_MOTION = "(prefers-reduced-motion: reduce)";
 const ARROW_STEP = 0.8;
 
 const ARROW_CLASS =
-  "absolute top-1/2 z-[5] grid size-6 -translate-y-1/2 place-items-center rounded-full border border-border bg-chrome text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring";
+  "absolute top-1/2 z-20 grid size-6 -translate-y-1/2 place-items-center rounded-full border border-border bg-chrome text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring";
 
 const CUE_GLYPH = {
   soft: "size-3 text-muted-foreground",
@@ -413,17 +424,17 @@ export function OverflowEdges({
         // Unset it entirely at 0 rather than writing `0px`: the fallback in the `var()` is then the
         // one definition of "no inset", and the default caller's DOM is byte-identical to before.
         style={maskStyle}
-        className={cn("flex min-w-0 flex-1", MASK[paintEdge])}
+        className={cn("flex min-w-0 flex-1", shownArrows.left && (paintEdge === "left" || paintEdge === "both") ? MASK_UNDER_ARROW[paintEdge] : MASK[paintEdge])}
       >
         {children(ref)}
       </div>
       {arrows !== undefined && shownArrows.left && (
-        <button type="button" data-slot="scroll-arrow" data-side="left" aria-label={arrows.leftLabel} onClick={() => scrollBy(-1)} style={{ left: `${arrows.left + 4}px` }} className={ARROW_CLASS}>
+        <button type="button" data-slot="scroll-arrow" data-side="left" aria-label={arrows.leftLabel} onClick={() => scrollBy(-1)} style={{ left: arrows.left }} className={ARROW_CLASS}>
           <Icon name="scroll-hint-left" className="size-4" />
         </button>
       )}
       {arrows !== undefined && shownArrows.right && (
-        <button type="button" data-slot="scroll-arrow" data-side="right" aria-label={arrows.rightLabel} onClick={() => scrollBy(1)} style={{ right: `${arrows.right + 4}px` }} className={ARROW_CLASS}>
+        <button type="button" data-slot="scroll-arrow" data-side="right" aria-label={arrows.rightLabel} onClick={() => scrollBy(1)} style={{ right: arrows.right }} className={ARROW_CLASS}>
           <Icon name="scroll-hint-right" className="size-4" />
         </button>
       )}
