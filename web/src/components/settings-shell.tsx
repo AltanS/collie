@@ -203,7 +203,7 @@ function WideSettings() {
           style={{ width: SETTINGS_LIST_PX }}
         >
           <InstallRow className={cn(ROW, "mb-1", HOVER_FILL, FOCUS_RING)} />
-          <nav ref={listRef} aria-label={t("settings.title")} onKeyDown={onKeyDown} className="flex flex-col gap-0.5">
+          <nav ref={listRef} aria-label={t("settings.title")} className="flex flex-col gap-0.5">
             {hold
               ? [...ROWS.map((row) => row.id), ...(withTricks ? [TRICKS_ROW.id] : []), "updates"].map((id) => (
                   <div key={id} aria-hidden="true" data-slot="settings-list-hold" className="h-11" />
@@ -219,6 +219,7 @@ function WideSettings() {
                       aria-current={here ? "page" : undefined}
                       title={row.caption}
                       onFocus={() => setStop(row.id)}
+                      onKeyDown={onKeyDown}
                       onClick={() => open(row)}
                       className={cn(ROW, FOCUS_RING, here ? "bg-accent text-accent-foreground" : HOVER_FILL)}
                     >

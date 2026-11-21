@@ -80,7 +80,7 @@ for (const size of WIDTHS) {
       });
       const before = await list(page).evaluate((el) => el.scrollTop);
       const ids = await page.locator("[data-settings-row]").evaluateAll((els) => els.map((el) => el.getAttribute("data-settings-row") ?? ""));
-      for (const id of ids.filter((id) => id !== "machines")) {
+      for (const id of ids.filter((each) => each !== "machines")) {
         await row(page, id).click();
         await expect(page).toHaveURL(new RegExp(`/settings/${id}$`, "u"));
         await expect(row(page, id)).toHaveAttribute("aria-current", "page");
@@ -176,6 +176,8 @@ const PHONE_BOXES = {
   ],
 } as const;
 
+const round = (b: { x: number; y: number; width: number; height: number } | null) => b && { x: Math.round(b.x), y: Math.round(b.y), width: Math.round(b.width), height: Math.round(b.height) };
+
 test("at 390px Settings is the phone's index, box for box", async ({ browser }, testInfo) => {
   onlyOnce(testInfo);
   const page = await openAt(browser, testInfo, { width: 390, height: 844 }, true);
@@ -185,7 +187,6 @@ test("at 390px Settings is the phone's index, box for box", async ({ browser }, 
     const rows = page.locator("main [data-slot=list-group] > button");
     await expect(rows.first()).toBeVisible();
     await expect(list(page)).toHaveCount(0);
-    const round = (b: { x: number; y: number; width: number; height: number } | null) => b && { x: Math.round(b.x), y: Math.round(b.y), width: Math.round(b.width), height: Math.round(b.height) };
     expect(round(await page.locator("header").boundingBox())).toEqual(PHONE_BOXES.header);
     expect([round(await rows.nth(0).boundingBox()), round(await rows.nth(1).boundingBox()), round(await rows.nth(2).boundingBox())]).toEqual(PHONE_BOXES.rows);
   } finally {
