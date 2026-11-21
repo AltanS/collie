@@ -737,8 +737,8 @@ Besides the daily ping, the one unprompted outbound call is the update check: an
 tags API (`bridge/update.ts`) that compares your version to the newest tag. It carries no data about
 you or your machine, only the static user-agent `collie-update-check`.
 
-A trick's About sheet adds one more read, made by the bridge and never by the phone. When a trick came
-from a repository on `github.com`, the sheet shows its stars and the date of its last commit. The bridge
+A trick's details page adds one more read, made by the bridge and never by the phone. When a trick came
+from a repository on `github.com`, the page shows its stars and the date of its last commit. The bridge
 asks GitHub's public API once per repository with an anonymous HTTPS `GET`, with the user-agent
 `collie-trick-facts` and nothing about you:
 

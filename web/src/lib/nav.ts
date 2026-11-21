@@ -320,6 +320,36 @@ export function accountPath(id: string, scope?: Scope): string {
   return `/settings/accounts/${encodeURIComponent(id)}${scopeSearch(scope)}`;
 }
 
+/**
+ * A trick's details page, below Settings → Tricks: what the trick does, where it comes from, its code and its
+ * settings. The key is `<host>:<id>` for a trick on a machine, the same two parts its own page's id names
+ * (`trick:<host>:<id>`), and the bare `<id>` for an entry of this machine's official list that is not added
+ * yet. Neither a host nor a trick id holds a colon (lib/tricks/schema.ts `HOST`, `TRICK_ID`), so the key splits
+ * back. Encoded: the colon is written `%3A`, as a pane id's is. A CHILD of the list, and of the trick's own page
+ * it may be opened from. Carries the scope like the others.
+ */
+export function trickDetailPath(key: string, scope?: Scope): string {
+  return `/settings/tricks/${encodeURIComponent(key)}${scopeSearch(scope)}`;
+}
+
+/** The details page key of a trick on a machine: `<host>:<id>`. */
+export function trickDetailKey(host: string, id: string): string {
+  return `${host}:${id}`;
+}
+
+/** A details page key read back: the host and the id of a trick on a machine, or the id of an official entry. */
+export type TrickDetailAddress = { kind: "trick"; host: string; id: string } | { kind: "official"; id: string };
+
+/** Read a details page key (already decoded by the router). Undefined for a key of neither shape. */
+export function readTrickDetailKey(key: string): TrickDetailAddress | undefined {
+  const parts = key.split(":");
+  if (parts.length === 1 && parts[0] !== "") return { kind: "official", id: parts[0] ?? "" };
+  if (parts.length !== 2) return undefined;
+  const [host = "", id = ""] = parts;
+  if (host === "" || id === "") return undefined;
+  return { kind: "trick", host, id };
+}
+
 /** One account's Change login page, below the account's page (M101). */
 export function changeLoginPath(id: string, scope?: Scope): string {
   return `/settings/accounts/${encodeURIComponent(id)}/login${scopeSearch(scope)}`;
@@ -514,7 +544,7 @@ const ANY_TRICK = "/trick/*";
  *   L1 `/space/:id`, `/settings` (opened from the screen it was left, ADR 0163), `/crew`, `/hill`, `/new` (from the dashboard, a space or a pane)
  *   L1 `/trick/:id`, a trick session (M94 slice 03)
  *   L2 `/pane/:id`, `/new/add` (below the New page), `/space/:id/changes`, `/settings/:section`, `/settings/updates`, `/machines`
- *   L3 `/settings/accounts/add`, `/settings/accounts/:id`, `/settings/voice/host`, `/settings/voice/model`, `/settings/system/install-count`, `/settings/appearance/character`, `/pane/:id/history`, `/pane/:id/zoom`, `/pane/:id/changes` (a file view is the same path with `?repo=&path=`),
+ *   L3 `/settings/accounts/add`, `/settings/accounts/:id`, `/settings/tricks/:key` (also below `/trick/:id`), `/settings/voice/host`, `/settings/voice/model`, `/settings/system/install-count`, `/settings/appearance/character`, `/pane/:id/history`, `/pane/:id/zoom`, `/pane/:id/changes` (a file view is the same path with `?repo=&path=`),
  *      `/space/:id/changes/commit`, `/space/:id/changes/files` (a folder or a file of the tree, with
  *      `?dir=` or `?path=`)
  *   L4 `/pane/:id/changes/commit` (the commit's file view adds `&path=`), `/pane/:id/changes/files`,
@@ -589,6 +619,11 @@ export function ancestorsOf(pathname: string): string[] {
   // The Character page sits one level below Appearance.
   if (head === "settings" && seg.length === 3 && id === "appearance" && leaf === "character") {
     return ["/settings/appearance", "/settings", "/"];
+  }
+  // A trick's details page sits one level below Tricks. Its own page (`/trick/:id`, the header's details button)
+  // opens it too, so a step back onto that page is a step up and not a push.
+  if (head === "settings" && seg.length === 3 && id === "tricks") {
+    return ["/settings/tricks", ANY_TRICK, "/settings", "/"];
   }
   // The Add form and one account's page sit one level below Accounts.
   if (head === "settings" && seg.length === 3 && id === "accounts") {

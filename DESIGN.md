@@ -517,11 +517,12 @@ the cut: the sidebar and the tab strip close with a faint edge (the recess 30% t
 between two columns is a `--border`, not a `--rule`, and the rule under a pane header is drawn once.
 
 **The focus has a frame as well as a plane.** The focused column wears a 2px frame, the theme's
-`--pane-active` mixed 65% into the page, at 3:1 or more against the paper and against the plane beside it,
+`--pane-active` mixed 65% into the page (in light no lighter than L 0.55, so a light accent such as
+Nightwatch's amber still holds), at 3:1 or more against the paper and against the plane beside it,
 with one column in the strip too. It carries the focus where the paper cannot: the Terminal view, whose
 mirror stays dark, and a theme whose page is black, where the recess clamps to the page. The frame is
 reserved on every column, so a focus change recolours and moves nothing (§2). `e2e/wide-planes.spec.ts`
-holds the order, the frame and the still boxes in six theme halves.
+holds the order, the frame and the still boxes in every bundled theme, both halves.
 
 ### One left edge per route
 

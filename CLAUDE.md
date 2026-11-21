@@ -515,6 +515,8 @@ uploads both under `if: failure()`. Open the HTML report (`playwright-report/`, 
 **Two prohibitions.** Never assert a pixel, no `toHaveScreenshot`, no baseline images, a screenshot
 is evidence for a person, not a comparison. And never point Tier 2 at anything but the dev lane.
 
+**The screen list** (`web/e2e/screens/list.ts`). A new route of `router.tsx` needs an entry there, or `src/screens-list.test.ts` fails and names it; `wide` is a person's look at the 1440x900 shot ("column" is the phone's column pulled wide, and when in doubt it is "column"), never derived by a test. Run it with `cd web && E2E_SET=screens bun run e2e --workers=4` (4 layout rules on every entry at 1440 and 390; its own set, in no other tier); add `SCREENS_SHOTS=<dir>` for the shots and `bun e2e/screens/sheet.ts <dir>` for contact sheets. The ceilings for column screens and waivers in the test only go down; a waiver that starts `FINDING:` is a defect to fix, and its removal lowers the ceiling.
+
 The pre-push hook (`scripts/git-hooks/pre-push`) runs `bun run gate`, the typechecks, the lint and
 the tests near the change. It does not run the browser suite, a browser download does not belong in
 a hook that fires on every push. `cd web && bun run typecheck` covers `e2e/`; the root `bun run typecheck` does not.

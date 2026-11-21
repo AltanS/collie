@@ -418,7 +418,7 @@ agent the words you saw on the screen
 ## Rules file
 
 The plain text file, named by `rules` in an agent view's manifest, that tells the agent how to draw.
-The agent reads it with the command at the end of the first message a view sends. The About sheet
+The agent reads it with the command at the end of the first message a view sends. The details page
 shows it whole, and a change to it always asks you again
 ([How an agent learns the rules](tricks.md#how-an-agent-learns-the-rules)).
 
@@ -473,7 +473,7 @@ others ([The parts](tricks.md#the-parts), [Parts](tricks-reference.md#parts)).
 What a trick may reach beyond its own code: the environment names it asks for (`env`), the places it
 draws in (`places`), the files it reads from your agent sessions (`inputs`), and when it runs on its
 own (`on`, `watch`), how much of the local API it reads (`access`), and whether its buttons may put text
-into your reply box (`drafts`). The About sheet lists them. A new version that changes a power always waits for your yes. Settings and `collie trick on`
+into your reply box (`drafts`). The details page lists them. A new version that changes a power always waits for your yes. Settings and `collie trick on`
 sometimes say "rights" for the same thing ([What a trick may and may not do](tricks.md#powers-the-environment-and-the-warnings)).
 
 ## Access (of a trick)
@@ -495,17 +495,18 @@ another program's memory, and read Collie's local secret file and use it on the 
 which still answers the routes that return a session's text. Collie does not stop that
 ([The local API](commands.md#the-local-api-experimental)).
 
-## About sheet
+## Details page
 
-The sheet that opens when you tap a trick's name in Settings → Tricks. It shows the trick's description
+The page that opens when you tap a trick's name in Settings → Tricks, or the info button in the header of
+the trick's own page. It used to be a sheet, the About sheet. It shows the trick's description
 and its own text, then the facts Collie knows: where it draws, what it reads, which environment names it
 asks for, what a text search of its code found, and where it came from
-([The About sheet](tricks.md#the-about-sheet)).
+([The details page](tricks.md#the-details-page)).
 
 ## Trick setting
 
 A value a trick asks you for, such as a repository or a branch. The trick lists its settings in
-`trick.toml` as `[[field]]`; you set them on the phone, in the trick's About sheet. A
+`trick.toml` as `[[field]]`; you set them on the phone, on the trick's details page. A
 setting is your data: the trick gets it, Collie runs nothing with it
 ([Settings a trick asks you for](tricks-authoring.md#settings-a-trick-asks-you-for)).
 

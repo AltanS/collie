@@ -12,7 +12,7 @@ import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 
 import { HillSwitchCard } from "@/components/hill-switch-card";
 import { TokenUseLookProvider, type TokenUseLook } from "@/components/token-use-label";
-import { TrickAboutSheet } from "@/components/trick-about-sheet";
+import { TrickDetail } from "@/components/trick-detail";
 import { TricksSettingsCard } from "@/components/tricks-settings-card";
 import { WalkyOffSwitch } from "@/components/walky-sheet";
 import { useTheme } from "@/hooks/use-theme";
@@ -169,12 +169,12 @@ function HillPlace() {
   return <HillSwitchCard on={on} disabled={false} onToggle={setOn} />;
 }
 
-/** An About sheet, open, in a phone box that is its own containing block. */
+/** A trick's details page in a phone box that scrolls. */
 function AboutPlace({ trick, width }: { trick: WireTrickInfo; width: WidthId }) {
-  const style: CSSProperties & { "--app-h"?: string } = { width: Number(width), height: 640, transform: "translate(0)", "--app-h": "640px" };
+  const style: CSSProperties = { width: Number(width), height: 640 };
   return (
-    <div data-pg-frame="" data-pg-place={`about-${trick.id}`} className="relative isolate max-w-full overflow-hidden rounded-sm bg-background ring-1 ring-rule" style={style}>
-      <TrickAboutSheet trick={trick} open onClose={() => {}} />
+    <div data-pg-frame="" data-pg-place={`about-${trick.id}`} className="max-w-full overflow-y-auto rounded-sm bg-background p-4 ring-1 ring-rule" style={style}>
+      <TrickDetail trick={trick} />
     </div>
   );
 }

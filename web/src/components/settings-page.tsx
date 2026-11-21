@@ -1,8 +1,9 @@
-import type { ReactNode, UIEventHandler } from "react";
+import { useRef, type ReactNode, type UIEventHandler } from "react";
 import { Icon } from "@/components/icons/icon";
 
 import { RouteHeader } from "@/components/app-header";
 import { Button } from "@/components/ui/button";
+import { useEntryScroll } from "@/hooks/use-entry-scroll";
 import { useLocale } from "@/hooks/use-locale";
 import { useNav } from "@/hooks/use-nav";
 import { t, type MessageKey } from "@/lib/i18n";
@@ -26,6 +27,8 @@ export function SettingsPage({
   parent,
   onScroll,
   foot,
+  keepScroll = false,
+  headingBelow = false,
   children,
 }: {
   title: MessageKey;
@@ -36,9 +39,15 @@ export function SettingsPage({
   onScroll?: UIEventHandler<HTMLElement>;
   /** A band under the scrolling column that holds the page's own button (the Add form's), above the keyboard. */
   foot?: ReactNode;
+  /** Keep the column's scroll for this history entry, so a step back from a page below lands where it was (Tricks). */
+  keepScroll?: boolean;
+  /** The page draws its own `h1` in its column (a trick's details: the trick's name), so the header's title is a plain label. */
+  headingBelow?: boolean;
   children: ReactNode;
 }) {
   const nav = useNav();
+  const scroller = useRef<HTMLElement | null>(null);
+  useEntryScroll(scroller, keepScroll);
   const scope = useScope();
   useLocale();
 
@@ -58,14 +67,20 @@ export function SettingsPage({
             >
               <Icon name="back" className="size-5" />
             </Button>
-            <h1 className="min-w-0 truncate text-lg font-semibold tracking-tight">{heading ?? t(title)}</h1>
+            {headingBelow ? (
+              <p data-slot="settings-page-title" className="min-w-0 truncate text-lg font-semibold tracking-tight">
+                {heading ?? t(title)}
+              </p>
+            ) : (
+              <h1 className="min-w-0 truncate text-lg font-semibold tracking-tight">{heading ?? t(title)}</h1>
+            )}
           </>
         }
       />
       {/* `relative` for the same reason the home scroller carries it: an `sr-only` (position:
           absolute) deep in the page would otherwise escape the scroller and grow the document's
           own scrollbar. */}
-      <BandMain base={16} onScroll={onScroll} className="relative flex min-h-0 flex-1 flex-col space-y-4 overflow-y-auto p-4">
+      <BandMain base={16} onScroll={onScroll} scrollRef={scroller} className="relative flex min-h-0 flex-1 flex-col space-y-4 overflow-y-auto p-4">
         {children}
       </BandMain>
       {foot}

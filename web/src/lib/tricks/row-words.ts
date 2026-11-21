@@ -1,5 +1,5 @@
 // THE WORDS OF A TRICK'S ROW, shared by Settings → Tricks (components/tricks-settings-card.tsx) and a trick's
-// About sheet (components/trick-about-sheet.tsx), so the two say a place, a read, a warning and an origin in the
+// details page (components/trick-detail.tsx), so the two say a place, a read, a warning and an origin in the
 // same words. Pure: the phone's own English (or the person's language), and the wire's facts.
 
 import { t, type MessageKey } from "@/lib/i18n";

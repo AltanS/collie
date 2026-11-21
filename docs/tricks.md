@@ -513,7 +513,7 @@ Collie sees it, within a few seconds while a phone is open. A run that is going 
 its output is dropped. Two runs of one trick never overlap. A version that waits for your yes changes
 nothing: the old approved copy keeps running.
 
-"Take changes without asking" is a switch in the trick's About sheet, under Updates. The command is
+"Take changes without asking" is a switch on the trick's details page, under Updates. The command is
 `collie trick auto <id> on`. With it on, a new version is taken without a card only when its powers
 did not change and a text search of its code finds no new kind of warning. A trick with rules never
 takes one this way. A trick that took a change shows when, with Undo, which brings back the version
@@ -527,13 +527,13 @@ you can do.
 
 **Powers.** A power is something a trick may reach beyond its own code: the environment names it asks
 for (`env`), the places it draws in (`places`), the files it reads from your agent sessions
-(`inputs`), and whether its buttons may put text into your reply box (`drafts`). The About sheet
+(`inputs`), and whether its buttons may put text into your reply box (`drafts`). The details page
 lists them. A new version that changes one always asks you again. The
 `menu` place is a power like any other place, and a Belt mark that names `sessions` only shows in fewer
 sessions, so it needs no new yes. Collie's own text also calls a power a right.
 
 **The environment.** A program gets only the variables a shell tool needs, such as `PATH` and `HOME`.
-A trick lists any more by name, and the About sheet shows each name. Collie never passes a `COLLIE_`
+A trick lists any more by name, and the details page shows each name. Collie never passes a `COLLIE_`
 or `HERDR_` variable, or any name that ends in `_SOCK` or `_SOCKET`, even when a trick lists it.
 
 **The warnings.** Before you switch a trick on, Collie searches its code for six things: calling an
@@ -551,13 +551,15 @@ version, a change to `config.toml`, switching it on again, or a tap starts it ag
 > from a stranger and from an agent that follows the rules. Your user account is the real wall
 > ([What a program running as you can still do](security.md#what-a-program-running-as-you-can-still-do)).
 
-### The About sheet
+### The details page
 
-The About sheet is what you read before you switch a trick on. Tap the trick's name in Settings →
-Tricks to open it.
+The details page is what you read before you switch a trick on. Tap the trick's name in Settings →
+Tricks to open it, or the info button at the end of the header on the trick's own page. Back returns
+to where you came from.
 
-- **The top** holds the trick's name, its one-line description and its longer text, then "Written by
-  the trick's author. Collie did not check it."
+- **The top** holds the trick's icon, its name, its labels and its switch, with the state in words.
+- **About** holds the trick's one-line description and its longer text, then "Written by the trick's
+  author. Collie did not check it."
 - **What it does** holds only facts Collie knows: "It shows in: ...", the files it reads, the
   environment names it asks for, the warnings of the text search, and a view's rules, shown whole.
 - **Where it comes from** says "From owner/repo @ 3f2a91c" for a trick added from a repository, or

@@ -337,8 +337,17 @@ export const NAV_EDGE = "border-[color-mix(in_oklch,var(--surface-recess)_70%,va
  * or the recess beside it in every shipped theme (`e2e/wide-planes.spec.ts` measures it), so the focus
  * still reads where the paper cannot show it: the Terminal view, whose mirror stays dark, and a theme whose
  * page is black.
+ *
+ * IN LIGHT THE MIX IS CLAMPED AT L 0.55. A light `--pane-active` (Nightwatch's amber, L 0.56) mixed into a
+ * near-white page came out at L 0.70, 2.0:1 against the recess, under the 3:1 rule. The clamp darkens only
+ * the frame, never the theme's own tokens, and leaves a frame already darker than 0.55 (Collie's ink) as it
+ * is. L 0.55 holds 3:1 against any light recess down to L 0.88 (`e2e/wide-planes.spec.ts` measures every
+ * bundled light half, from the painted pixels). Dark needs no clamp: the mix sits far above the page
+ * there, so `dark:` takes the plain mix. Not one `light-dark()` around both: Chromium computed that value
+ * but painted the border in the paper's colour, so the frame vanished while `getComputedStyle` said 3.6:1.
  */
-export const FOCUS_FRAME = "border-[color-mix(in_oklch,var(--pane-active)_65%,var(--background))]";
+export const FOCUS_FRAME =
+  "border-[oklch(from_color-mix(in_oklch,var(--pane-active)_65%,var(--background))_min(l,0.55)_c_h)] dark:border-[color-mix(in_oklch,var(--pane-active)_65%,var(--background))]";
 
 /**
  * The class a column's frame takes: the plane, and the 2px frame, reserved on every column and drawn on the

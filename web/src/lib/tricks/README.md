@@ -474,7 +474,7 @@ in memory and in `<stateDir>/tricks/repo-facts.json`: a good answer 6 h, a faile
 repository at a time, and at most 20 reads in a rolling hour for the whole bridge. GitHub allows 60
 unauthenticated requests an hour per IP address; one read costs one of them. A failed or missing read
 shows nothing. There is no switch for it; the install ping's off switches do not gate it. On the phone
-(`components/trick-about-sheet.tsx`) the facts are a second small line inside the repository's link row in
+(`components/trick-detail.tsx`) the facts are a second small line inside the repository's link row in
 "Where it comes from". The row is 44 px with or without them, so their arrival moves nothing in a sheet
 anchored at the bottom. The link row follows the Hill Decision link (`isWebLink`, `linkHost`), with the host
 in full (`HostWords`), and shows only for an https source URL. Settings, Tricks reads the official list once

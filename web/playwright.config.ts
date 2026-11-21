@@ -77,19 +77,26 @@ const WEBKIT =
  *  `e2e/fixtures/builds.ts`. Both use `SWAP_BASE_URL` (4174) and no other server. */
 const SWAP_SPECS = ["**/service-worker.spec.ts", "**/update-screen.spec.ts"];
 
-/** Which specs this run collects: `swap`, `rest`, or (unset) both. Anything else is a typo, and a
+/** The screen list's own spec (`e2e/screens.spec.ts`): one page per entry of `e2e/screens/list.ts`. It is in
+ *  no other set, so only `E2E_SET=screens` runs it. */
+const SCREENS_SPEC = "**/screens.spec.ts";
+
+/** Which specs this run collects: `swap`, `rest`, `screens`, or (unset) swap and rest. Anything else is a typo, and a
  *  typo that silently ran nothing would read as a green run. */
 const E2E_SET = process.env.E2E_SET;
-if (E2E_SET !== undefined && E2E_SET !== "" && E2E_SET !== "swap" && E2E_SET !== "rest") {
-  throw new Error(`E2E_SET must be "swap", "rest" or unset, got "${E2E_SET}"`);
+if (E2E_SET !== undefined && E2E_SET !== "" && E2E_SET !== "swap" && E2E_SET !== "rest" && E2E_SET !== "screens") {
+  throw new Error(`E2E_SET must be "swap", "rest", "screens" or unset, got "${E2E_SET}"`);
 }
-const RUN_SWAP = E2E_SET !== "rest";
-const RUN_REST = E2E_SET !== "swap";
+const RUN_SCREENS = E2E_SET === "screens";
+const RUN_SWAP = E2E_SET !== "rest" && !RUN_SCREENS;
+const RUN_REST = E2E_SET !== "swap" && !RUN_SCREENS;
 
 /** The spec selection every project shares: never the tier-2 specs, plus the set filter. */
-const SPECS = RUN_REST
-  ? { testIgnore: RUN_SWAP ? LIVE_TEST_IGNORE : [...LIVE_TEST_IGNORE, ...SWAP_SPECS] }
-  : { testIgnore: LIVE_TEST_IGNORE, testMatch: SWAP_SPECS };
+const SPECS = RUN_SCREENS
+  ? { testIgnore: LIVE_TEST_IGNORE, testMatch: [SCREENS_SPEC] }
+  : RUN_REST
+    ? { testIgnore: RUN_SWAP ? [...LIVE_TEST_IGNORE, SCREENS_SPEC] : [...LIVE_TEST_IGNORE, SCREENS_SPEC, ...SWAP_SPECS] }
+    : { testIgnore: LIVE_TEST_IGNORE, testMatch: SWAP_SPECS };
 
 type WebServer = Exclude<PlaywrightTestConfig["webServer"], unknown[] | undefined>;
 
@@ -155,7 +162,7 @@ export default defineConfig({
   ],
   // Each entry starts only for the set that has a client; see the note on `E2E_SET` at the top.
   webServer: [
-    ...(RUN_REST
+    ...(RUN_REST || RUN_SCREENS
       ? [
         {
           // The SHIPPED bundle off disk, not `vite dev`: the service worker exists only in a real build
@@ -177,6 +184,11 @@ export default defineConfig({
           stderr: "pipe",
           timeout: 60_000,
         },
+      ] satisfies WebServer[]
+      : []),
+    // The screen list's set needs the app on 4173 and nothing else.
+    ...(RUN_REST
+      ? [
         {
           // M57, the MOUNTED bundle server on 4175: `web/dist` through the bridge's own `serveStatic`
           // under `COLLIE_BASE_PATH=/collie/`. `e2e/theme-first-paint.spec.ts` is its one client. No

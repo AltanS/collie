@@ -232,7 +232,7 @@ default = 10
 ```
 
 There are four kinds: `text` (one line), `choice` (`options`, 2 to 8), `switch` and `number` (`min`
-and `max`, whole numbers). The person sets them on the phone, in the trick's About sheet, under
+and `max`, whole numbers). The person sets them on the phone, on the trick's details page, under
 Settings. Collie keeps the values on the machine that runs the trick, in its state folder, as
 `.collie/values.json`. A person or an agent who edits that file by hand is the same case as an edit of
 `config.toml`: it is accepted, and Collie reads the file through the field rules on the next look.

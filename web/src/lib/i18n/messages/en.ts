@@ -3618,6 +3618,8 @@ export const en = {
   "tricks.mark.open": "Open {trick}",
   "tricks.session.back": "Back",
   "tricks.session.gone": "This trick's page is not here any more.",
+  // The header button of a trick's page that opens its details page (2026-11-21).
+  "tricks.session.details": "Trick details",
   "tricks.link.gone": "That pane is not here any more.",
   // --- Settings → Tricks (M94 slice 04) ---
   "settings.tricks.none": "No tricks yet",
@@ -3675,7 +3677,13 @@ export const en = {
   // What a contract 2 trick reads (M99). The same words as schema.ts `inputsSentence`, held there by a test.
   "settings.tricks.reads.solo": "Reads {globs} in your agent sessions' folders.",
   "settings.tricks.reads.crew": "Reads {globs} in your agent sessions' folders on every machine of the crew.",
-  // A trick's About sheet.
+  // A trick's details page (its About sheet until 2026-11-21): the head's switch state, the label of the author's
+  // words, and the page of a trick that is gone.
+  "settings.tricks.detail.on": "On",
+  "settings.tricks.detail.off": "Off",
+  "settings.tricks.detail.about": "About",
+  "settings.tricks.detail.gone": "This trick is not here any more.",
+  "settings.tricks.detail.toList": "Show all tricks",
   "settings.tricks.about.open": "About {name}",
   "settings.tricks.about.none": "This trick has no description.",
   "settings.tricks.about.does": "What it does",
@@ -3711,7 +3719,7 @@ export const en = {
   "settings.tricks.fields.refused.text": "Use one line of at most {max} characters.",
   "settings.tricks.fields.refused.number": "Use a whole number from {min} to {max}.",
   "settings.tricks.fields.refused.option": "Pick one of the options.",
-  "settings.tricks.fields.refused.gone": "This setting is gone from the trick. Close the sheet and open it again.",
+  "settings.tricks.fields.refused.gone": "This setting is gone from the trick. Go back and open this page again.",
   "settings.tricks.needsSetup": "Needs setup: open it to fill in its settings.",
   "settings.tricks.valuesUnread": "Its saved settings could not be read. Open it to set them again.",
   // An agent view and its rules (contract 2). The rights lines are schema.ts's own words
@@ -3767,8 +3775,8 @@ export const en = {
   "settings.tricks.about.code.note": "The marks come from a text search. It is not a proof: code can hide more than a search finds. Docs, data and tests are not searched.",
   "settings.tricks.about.code.flagged": "{n} flagged",
   "settings.tricks.about.code.loading": "Loading the code.",
-  "settings.tricks.about.code.failed": "The code could not be read. Close this sheet and open it again.",
-  "settings.tricks.about.code.moved": "The code changed while it was read. Close this sheet and open it again.",
+  "settings.tricks.about.code.failed": "The code could not be read. Go back and open this page again.",
+  "settings.tricks.about.code.moved": "The code changed while it was read. Go back and open this page again.",
   "settings.tricks.about.code.otherMachine": "This trick is on another machine. Its code is not shown here.",
   "settings.tricks.about.code.binary": "Not text. Only the name and the size are shown.",
   "settings.tricks.about.code.leftOut": "{size} more is not shown. Read the rest on the machine.",
@@ -4298,6 +4306,15 @@ export type Messages = typeof en;
  * key for good: a key stays here only between a feature and its translation pass.
  */
 export const PENDING_TRANSLATION = [
+  "settings.tricks.fields.refused.gone",
+  "settings.tricks.about.code.failed",
+  "settings.tricks.about.code.moved",
+  "tricks.session.details",
+  "settings.tricks.detail.on",
+  "settings.tricks.detail.off",
+  "settings.tricks.detail.about",
+  "settings.tricks.detail.gone",
+  "settings.tricks.detail.toList",
   "settings.tricks.about.drafts",
   "tricks.draft.noSession",
   "tricks.draft.holdsWords",

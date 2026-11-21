@@ -5,13 +5,14 @@ import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
-import { OfficialTrickAboutSheet, TrickAboutSheet, aboutParagraphs, repoFactsLine } from "@/components/trick-about-sheet";
+import { OfficialTrickDetail, TrickDetail, aboutParagraphs, repoFactsLine } from "@/components/trick-detail";
 import { readOfficialTricksReply, readTrick } from "@/lib/tricks/wire";
 import { en, type MessageKey } from "@/lib/i18n/messages/en";
 import { ABOUT_MAX, AGENT_VIEW_TAP_WORDS, AGENT_VIEW_WORDS, FLOAT_OPENS_WORDS, FLOAT_WORDS, MENU_TAP_WORDS, MENU_WORDS, PLACE_KINDS, RULES_WORDS, SHOWS_IN_AGENT_VIEW, SHOWS_IN_LEAD, SHOWS_IN_WORDS, showsInLine, type WireOfficialTrick, type WireTrickInfo } from "@/lib/tricks/schema";
 
-// A trick's About sheet: the name as the title, the description and the about paragraphs, then two groups
-// built only from what the bridge already sends for the row.
+// A trick's details page (its About sheet until 2026-11-21, these cases ported from that sheet's): the head, the
+// description and the about paragraphs with the author's note, then the groups built only from what the bridge
+// already sends for the row.
 
 const BASE: WireTrickInfo = {
   host: "lodge",
@@ -34,8 +35,21 @@ const FULL: WireTrickInfo = {
   provenance: { via: "repo", at: "2026-11-08T09:38:00Z", repo: "owner/gates-trick", sha: "3f2a91c0d4e5" },
 };
 
-function open(trick: WireTrickInfo, extra: { runsOn?: { lead?: string }; onClose?: () => void } = {}) {
-  return render(<TrickAboutSheet trick={trick} runsOn={extra.runsOn} open onClose={extra.onClose ?? vi.fn()} />);
+function open(trick: WireTrickInfo, extra: { runsOn?: { lead?: string } } = {}) {
+  return render(<TrickDetail trick={trick} runsOn={extra.runsOn} />);
+}
+
+/** The details page that is drawn. */
+function detail(): HTMLElement {
+  const el = document.querySelector<HTMLElement>('[data-slot="trick-detail"]');
+  if (el === null) throw new Error("no details page");
+  return el;
+}
+
+/** The trust facts in the order the page draws them: each element's section or line name, in document order. */
+function trustOrder(): (string | null)[] {
+  const names = new Set(["description", "about", "author-note", "does", "from"]);
+  return [...detail().querySelectorAll("[data-section], [data-line]")].map((el) => el.getAttribute("data-section") ?? el.getAttribute("data-line")).filter((name) => name !== null && names.has(name));
 }
 
 describe("aboutParagraphs", () => {
@@ -46,10 +60,11 @@ describe("aboutParagraphs", () => {
   });
 });
 
-describe("TrickAboutSheet", () => {
-  it("is a dialog named by the trick, with the description and one paragraph element per paragraph", () => {
+describe("TrickDetail", () => {
+  it("is headed by the trick's name, with the description and one paragraph element per paragraph", () => {
     open(FULL);
-    const dialog = screen.getByRole("dialog", { name: "Release Gates" });
+    const dialog = detail();
+    expect(dialog.querySelector('[data-slot="trick-detail-name"]')).toHaveTextContent("Release Gates");
     expect(dialog.querySelector('[data-line="description"]')).toHaveTextContent("Which release checks are green.");
     const paragraphs = [...dialog.querySelectorAll('[data-section="about"] p')].map((p) => p.textContent);
     expect(paragraphs).toEqual(["It shows each check of the release branch.", "It never changes anything."]);
@@ -57,20 +72,21 @@ describe("TrickAboutSheet", () => {
 
   it("says under the text that the author wrote it and Collie did not check it, with an about or a description", () => {
     const { unmount } = open(FULL);
-    const note = screen.getByRole("dialog").querySelector('[data-line="author-note"]');
+    const note = detail().querySelector('[data-line="author-note"]');
     expect(note).toHaveTextContent("Written by the trick's author. Collie did not check it.");
     expect(note?.className).toContain("text-muted-foreground");
     // It sits after the about paragraphs and before the bridge's own facts.
-    const body = screen.getByRole("dialog").querySelector('[data-slot="trick-about-body"]');
-    const order = [...(body?.children ?? [])].map((el) => el.getAttribute("data-section") ?? el.getAttribute("data-line"));
-    expect(order).toEqual(["description", "about", "author-note", "does", "from"]);
+    expect(trustOrder()).toEqual(["description", "about", "author-note", "does", "from"]);
+    // In the same box as the author's words, right under them (the About group's list group).
+    const box = note?.closest('[data-slot="list-group"]');
+    expect(box?.querySelector('[data-line="description"]')).not.toBeNull();
+    expect(box?.lastElementChild).toBe(note);
     unmount();
     // A description alone is the text: its line, then the note, and no "no description" line.
     open({ ...BASE, description: "Only a line." });
     expect(screen.getByText("Written by the trick's author. Collie did not check it.")).toBeInTheDocument();
     expect(screen.queryByText("This trick has no description.")).toBeNull();
-    const alone = screen.getByRole("dialog").querySelector('[data-slot="trick-about-body"]');
-    expect([...(alone?.children ?? [])].map((el) => el.getAttribute("data-section") ?? el.getAttribute("data-line"))).toEqual(["description", "author-note", "does", "from"]);
+    expect(trustOrder()).toEqual(["description", "author-note", "does", "from"]);
   });
 
   it("says no description only when the trick has neither an about nor a description", () => {
@@ -85,19 +101,19 @@ describe("TrickAboutSheet", () => {
     open(BASE);
     expect(screen.getByText("This trick has no description.")).toBeInTheDocument();
     expect(screen.queryByText("Written by the trick's author. Collie did not check it.")).toBeNull();
-    expect(screen.getByRole("dialog").querySelector('[data-line="description"]')).toBeNull();
+    expect(detail().querySelector('[data-line="description"]')).toBeNull();
   });
 
   it("draws about as plain text: markup and links in it are text, not elements", () => {
     open({ ...BASE, about: "Use <b>bold</b> and [a link](https://example.com) and https://example.com" });
-    const body = screen.getByRole("dialog").querySelector('[data-section="about"]');
+    const body = detail().querySelector('[data-section="about"]');
     expect(body?.querySelector("b, a")).toBeNull();
     expect(body).toHaveTextContent("Use <b>bold</b> and [a link](https://example.com) and https://example.com");
   });
 
   it("lists what it does from the wire alone, in the card's own words", () => {
     open(FULL);
-    const does = within(screen.getByRole("dialog")).getByRole("list", { name: "What it does" });
+    const does = within(detail()).getByRole("list", { name: "What it does" });
     const rows = within(does).getAllByRole("listitem").map((li) => li.textContent);
     expect(rows).toEqual([
       "It shows in: the end of the Belt in each session, a tile in the strip at the top of the Dashboard.",
@@ -109,7 +125,7 @@ describe("TrickAboutSheet", () => {
 
   it("says `on` and `watch` as rights, in the two lines of the proposal card, after the environment names", () => {
     open({ ...FULL, warnings: undefined, events: ["turn.end", "ask.open"], watch: ["~/notes/todo.md", "/etc/hosts"] });
-    const does = within(screen.getByRole("dialog")).getByRole("list", { name: "What it does" });
+    const does = within(detail()).getByRole("list", { name: "What it does" });
     const rows = within(does).getAllByRole("listitem").map((li) => li.textContent);
     expect(rows.slice(-2)).toEqual(["Runs when a session changes state.", "Runs when these files change: ~/notes/todo.md, /etc/hosts."]);
   });
@@ -118,7 +134,7 @@ describe("TrickAboutSheet", () => {
     const line = "It keeps running with no phone open.";
     const rowsOf = (trick: WireTrickInfo): (string | null)[] => {
       const { unmount } = open(trick);
-      const does = within(screen.getByRole("dialog")).getByRole("list", { name: "What it does" });
+      const does = within(detail()).getByRole("list", { name: "What it does" });
       const rows = within(does).getAllByRole("listitem").map((li) => li.textContent);
       unmount();
       return rows;
@@ -142,7 +158,7 @@ describe("TrickAboutSheet", () => {
       const trick: WireTrickInfo = { ...FULL, warnings: undefined };
       if (access !== undefined) trick.access = access;
       const { unmount } = open(trick);
-      const does = within(screen.getByRole("dialog")).getByRole("list", { name: "What it does" });
+      const does = within(detail()).getByRole("list", { name: "What it does" });
       const rows = within(does).getAllByRole("listitem").map((li) => li.textContent);
       unmount();
       return rows;
@@ -168,7 +184,7 @@ describe("TrickAboutSheet", () => {
     const line = "Its buttons can put text into the reply box of the session you are in. You read it and send it yourself.";
     const rowsFor = (trick: WireTrickInfo): (string | null)[] => {
       const { unmount } = open(trick);
-      const does = within(screen.getByRole("dialog")).getByRole("list", { name: "What it does" });
+      const does = within(detail()).getByRole("list", { name: "What it does" });
       const rows = within(does).getAllByRole("listitem").map((li) => li.textContent);
       unmount();
       return rows;
@@ -209,13 +225,13 @@ describe("TrickAboutSheet", () => {
     expect(screen.getByText("Tricks run on the lead of this crew (desk). This machine runs none.")).toBeInTheDocument();
   });
 
-  it("holds a long about at the cap in the sheet without a control of its own", () => {
+  it("holds a long about at the cap on the page without a control of its own", () => {
     const paragraph = "word ".repeat(59).trim();
     const about = Array.from({ length: 4 }, () => paragraph).join("\n\n").slice(0, ABOUT_MAX);
     open({ ...BASE, about });
-    expect(screen.getByRole("dialog").querySelectorAll('[data-section="about"] p').length).toBe(4);
-    // The only buttons are the sheet's own Close and its scrim.
-    expect(screen.getAllByRole("button").map((b) => b.getAttribute("aria-label"))).toEqual(["Close"]);
+    expect(detail().querySelectorAll('[data-section="about"] p').length).toBe(4);
+    // No fold, no More: the page draws no button at all for the text (the sheet's only one was its own Close).
+    expect(screen.queryAllByRole("button")).toEqual([]);
   });
 
   describe("the Updates group", () => {
@@ -223,10 +239,10 @@ describe("TrickAboutSheet", () => {
     const HINT = "A change that asks for new rights, or does something new such as reaching the network, still asks.";
 
     it("is the last group, with the switch at the wire's position and the hint under it", () => {
-      render(<TrickAboutSheet trick={{ ...ON, auto: true }} open onClose={vi.fn()} onAuto={vi.fn()} />);
-      const groups = [...screen.getByRole("dialog").querySelectorAll("[data-section]")].map((g) => g.getAttribute("data-section"));
+      render(<TrickDetail trick={{ ...ON, auto: true }} onAuto={vi.fn()} />);
+      const groups = [...detail().querySelectorAll("[data-section]")].map((g) => g.getAttribute("data-section"));
       expect(groups.at(-1)).toBe("updates");
-      const group = screen.getByRole("dialog").querySelector<HTMLElement>('[data-section="updates"]');
+      const group = detail().querySelector<HTMLElement>('[data-section="updates"]');
       if (group === null) throw new Error("no Updates group");
       expect(within(group).getByRole("switch", { name: "Take changes without asking" })).toBeChecked();
       expect(within(group).getByText(HINT)).toBeInTheDocument();
@@ -235,39 +251,33 @@ describe("TrickAboutSheet", () => {
     it("writes the position asked for, on and off", async () => {
       const user = userEvent.setup();
       const onAuto = vi.fn();
-      const { rerender } = render(<TrickAboutSheet trick={ON} open onClose={vi.fn()} onAuto={onAuto} auto={false} />);
+      const { rerender } = render(<TrickDetail trick={ON} onAuto={onAuto} auto={false} />);
       await user.click(screen.getByRole("switch", { name: "Take changes without asking" }));
       expect(onAuto).toHaveBeenLastCalledWith(true);
-      rerender(<TrickAboutSheet trick={ON} open onClose={vi.fn()} onAuto={onAuto} auto />);
+      rerender(<TrickDetail trick={ON} onAuto={onAuto} auto />);
       await user.click(screen.getByRole("switch", { name: "Take changes without asking" }));
       expect(onAuto).toHaveBeenLastCalledWith(false);
     });
 
     it("is not drawn for a trick that is off, on a bridge that runs none, or with no write given", () => {
-      const { unmount } = render(<TrickAboutSheet trick={{ ...ON, on: false, state: "off" }} open onClose={vi.fn()} onAuto={vi.fn()} />);
+      const { unmount } = render(<TrickDetail trick={{ ...ON, on: false, state: "off" }} onAuto={vi.fn()} />);
       expect(screen.queryByText("Updates")).toBeNull();
       unmount();
-      const crew = render(<TrickAboutSheet trick={ON} runsOn={{ lead: "desk" }} open onClose={vi.fn()} onAuto={vi.fn()} />);
+      const crew = render(<TrickDetail trick={ON} runsOn={{ lead: "desk" }} onAuto={vi.fn()} />);
       expect(screen.queryByText("Updates")).toBeNull();
       crew.unmount();
-      render(<TrickAboutSheet trick={ON} open onClose={vi.fn()} />);
+      render(<TrickDetail trick={ON} />);
       expect(screen.queryByRole("switch")).toBeNull();
     });
 
     it("is a switch that may not be flipped on a device that may only read", () => {
-      render(<TrickAboutSheet trick={ON} open onClose={vi.fn()} onAuto={vi.fn()} canWrite={false} />);
+      render(<TrickDetail trick={ON} onAuto={vi.fn()} canWrite={false} />);
       expect(screen.getByRole("switch", { name: "Take changes without asking" })).toBeDisabled();
     });
   });
 
-  it("closes from the close button and from Escape", async () => {
-    const user = userEvent.setup();
-    const onClose = vi.fn();
-    open(FULL, { onClose });
-    await user.click(screen.getByRole("button", { name: "Close" }));
-    await user.keyboard("{Escape}");
-    expect(onClose).toHaveBeenCalledTimes(2);
-  });
+  // The sheet's "closes from the close button and from Escape" has no page to hold: the page closes by Back, which
+  // routes/settings-trick.test.tsx holds.
 });
 
 describe("an agent view and its rules (contract 2)", () => {
@@ -290,7 +300,7 @@ describe("an agent view and its rules (contract 2)", () => {
   const toggle = () => screen.getByRole("button", { name: "Read the instructions" });
 
   it("lists the two rights lines and the rules line under What it does, with no later note, in the schema's words", () => {
-    render(<TrickAboutSheet trick={VIEW_TRICK} open onClose={vi.fn()} />);
+    render(<TrickDetail trick={VIEW_TRICK} />);
     const does = screen.getByRole("list", { name: "What it does" });
     expect([...does.querySelectorAll("li")].map((li) => li.textContent)).toEqual([
       "Your agent reads this trick's instructions and draws its answers. That uses tokens.",
@@ -306,12 +316,12 @@ describe("an agent view and its rules (contract 2)", () => {
 
   it("holds the rules behind a closed fold, and opens them whole: the text on the screen is the file's bytes", async () => {
     const user = userEvent.setup();
-    render(<TrickAboutSheet trick={VIEW_TRICK} open onClose={vi.fn()} />);
+    render(<TrickDetail trick={VIEW_TRICK} />);
     expect(toggle()).toHaveAttribute("aria-expanded", "false");
-    expect(screen.getByRole("dialog").querySelector('[data-line="rules-text"]')).toBeNull();
+    expect(detail().querySelector('[data-line="rules-text"]')).toBeNull();
     await user.click(toggle());
     expect(screen.getByRole("button", { name: "Hide the instructions" })).toHaveAttribute("aria-expanded", "true");
-    const pre = screen.getByRole("dialog").querySelector('[data-line="rules-text"]');
+    const pre = detail().querySelector('[data-line="rules-text"]');
     expect(pre?.tagName).toBe("PRE");
     expect(pre?.className).toContain("font-mono");
     expect(pre?.className).toContain("whitespace-pre-wrap");
@@ -332,24 +342,25 @@ describe("an agent view and its rules (contract 2)", () => {
   it("a markdown-looking line stays text", async () => {
     const user = userEvent.setup();
     const text = "# Not a heading\n**not bold** [not a link](https://example.com)\n<b>not html</b>\n";
-    render(<TrickAboutSheet trick={{ ...VIEW_TRICK, rules: { file: "rules.md", text } }} open onClose={vi.fn()} />);
+    render(<TrickDetail trick={{ ...VIEW_TRICK, rules: { file: "rules.md", text } }} />);
     await user.click(toggle());
-    const pre = screen.getByRole("dialog").querySelector('[data-line="rules-text"]');
+    const pre = detail().querySelector('[data-line="rules-text"]');
     expect(pre?.textContent).toBe(text);
-    expect(screen.getByRole("dialog").querySelector("a, b, h1, strong")).toBeNull();
+    // The one h1 is the page's own heading, the trick's name (2026-11-21); the rules draw none.
+    expect([...detail().querySelectorAll("a, b, h1, strong")].filter((el) => el.getAttribute("data-slot") !== "trick-detail-name")).toEqual([]);
   });
 
   it("draws no Take changes without asking switch for a trick with rules, even with the write given", () => {
-    render(<TrickAboutSheet trick={{ ...VIEW_TRICK, auto: true }} open onClose={vi.fn()} onAuto={vi.fn()} />);
+    render(<TrickDetail trick={{ ...VIEW_TRICK, auto: true }} onAuto={vi.fn()} />);
     expect(screen.queryByText("Updates")).toBeNull();
     expect(screen.queryByRole("switch", { name: "Take changes without asking" })).toBeNull();
   });
 
   it("the not-added sheet says the trick gives instructions and to read them after the add: nothing is fetched before Add (review 8 V-N3)", () => {
     const entry: WireOfficialTrick = { id: "morph", name: "Morph", description: "Your agent answers by drawing one screen.", repo: "https://example.com/tricks.git", repoName: "owner/tricks", commit: "a".repeat(40), state: "absent", givesRules: true };
-    render(<OfficialTrickAboutSheet entry={entry} open onClose={vi.fn()} busy={false} canWrite onAdd={vi.fn()} />);
+    render(<OfficialTrickDetail entry={entry} busy={false} canWrite onAdd={vi.fn()} />);
     expect(screen.getByText(RULES_WORDS)).toBeInTheDocument();
-    expect(screen.getByRole("dialog").querySelector('[data-line="rules-after-add"]')).toHaveTextContent("Read the instructions after you add it. It stays off until you switch it on.");
+    expect(detail().querySelector('[data-line="rules-after-add"]')).toHaveTextContent("Read the instructions after you add it. It stays off until you switch it on.");
     expect(screen.queryByRole("button", { name: "Read the instructions" })).toBeNull();
     // The wire keeps the flag, never a text the list does not carry.
     const wired = readOfficialTricksReply(JSON.parse(JSON.stringify({ tricks: [{ ...entry, rules: { file: "rules.md", text: RULES_TEXT } }] })));
@@ -362,14 +373,14 @@ describe("review 8 V-N5: rules the phone cannot show, and no auto switch on any 
   const VIEW: WireTrickInfo = { host: "lodge", id: "morph", name: "Morph", icon: "eye", on: true, state: "ok", places: [], agentView: true, provenance: { via: "folder" } };
 
   it("says the instructions cannot be shown here, draws no fold, and no Updates switch", () => {
-    render(<TrickAboutSheet trick={{ ...VIEW, rulesUnshown: true, auto: false }} open onClose={vi.fn()} onAuto={vi.fn()} />);
-    expect(screen.getByRole("dialog").querySelector('[data-line="rules-unshown"]')).toHaveTextContent("This phone cannot show these agent instructions, so the trick cannot be switched on here. Read them and switch it on on the machine.");
+    render(<TrickDetail trick={{ ...VIEW, rulesUnshown: true, auto: false }} onAuto={vi.fn()} />);
+    expect(detail().querySelector('[data-line="rules-unshown"]')).toHaveTextContent("This phone cannot show these agent instructions, so the trick cannot be switched on here. Read them and switch it on on the machine.");
     expect(screen.queryByRole("button", { name: "Read the instructions" })).toBeNull();
     expect(screen.queryByText("Updates")).toBeNull();
   });
 
   it("an agent view never shows the Updates switch, even when its rules did not arrive", () => {
-    render(<TrickAboutSheet trick={VIEW} open onClose={vi.fn()} onAuto={vi.fn()} />);
+    render(<TrickDetail trick={VIEW} onAuto={vi.fn()} />);
     expect(screen.queryByText("Updates")).toBeNull();
   });
 });
@@ -377,12 +388,12 @@ describe("review 8 V-N5: rules the phone cannot show, and no auto switch on any 
 describe("the menu place's two lines (contract 2)", () => {
   it("an installed trick with session settings rows and an Official entry that adds them say the same two lines, the schema's", () => {
     const trick: WireTrickInfo = { host: "lodge", id: "ci", name: "CI", icon: "flask", on: true, state: "ok", places: ["menu"], provenance: { via: "folder" } };
-    render(<TrickAboutSheet trick={trick} open onClose={vi.fn()} />);
+    render(<TrickDetail trick={trick} />);
     const does = screen.getByRole("list", { name: "What it does" });
     expect([...does.querySelectorAll("li")].map((li) => li.textContent)).toEqual(["It shows in: rows in each session's settings.", MENU_WORDS, MENU_TAP_WORDS]);
     cleanup();
     const entry: WireOfficialTrick = { id: "ci", name: "CI", description: "Reruns CI.", repo: "https://example.com/tricks.git", repoName: "owner/tricks", commit: "a".repeat(40), state: "absent", addsMenu: true };
-    render(<OfficialTrickAboutSheet entry={entry} open onClose={vi.fn()} busy={false} canWrite onAdd={vi.fn()} />);
+    render(<OfficialTrickDetail entry={entry} busy={false} canWrite onAdd={vi.fn()} />);
     const official = screen.getByRole("list", { name: "What it does" });
     expect([...official.querySelectorAll("li")].map((li) => li.textContent)).toEqual([MENU_WORDS, MENU_TAP_WORDS]);
     expect(readOfficialTricksReply(JSON.parse(JSON.stringify({ tricks: [entry] })))?.tricks[0]?.addsMenu).toBe(true);
@@ -400,7 +411,7 @@ describe("where it comes from: the repository's link, its facts and the version 
   };
 
   it("links the repository in the Hill Decision link's shape, the host whole, in a new tab with no opener", () => {
-    render(<TrickAboutSheet trick={FROM_REPO} open onClose={vi.fn()} timeZone="UTC" />);
+    render(<TrickDetail trick={FROM_REPO} timeZone="UTC" />);
     const link = within(from()).getByRole("link", { name: /Open the repository/ });
     expect(link.getAttribute("href")).toBe(URL);
     expect(link.getAttribute("target")).toBe("_blank");
@@ -412,11 +423,11 @@ describe("where it comes from: the repository's link, its facts and the version 
   });
 
   it("puts the stars and the last commit's date inside the link row, in a pinned zone", () => {
-    const view = render(<TrickAboutSheet trick={{ ...FROM_REPO, repoFacts: FACTS }} open onClose={vi.fn()} timeZone="UTC" />);
+    const view = render(<TrickDetail trick={{ ...FROM_REPO, repoFacts: FACTS }} timeZone="UTC" />);
     expect(from().querySelector('[data-line="repo-facts"]')).toHaveTextContent("1,234 stars, last commit Nov 10, 2026");
     expect(from().querySelector('[data-slot="trick-repo-link"] [data-line="repo-facts"]')).not.toBeNull();
     view.unmount();
-    render(<TrickAboutSheet trick={{ ...FROM_REPO, repoFacts: { stars: 1, pushedAt: FACTS.pushedAt } }} open onClose={vi.fn()} timeZone="Pacific/Auckland" />);
+    render(<TrickDetail trick={{ ...FROM_REPO, repoFacts: { stars: 1, pushedAt: FACTS.pushedAt } }} timeZone="Pacific/Auckland" />);
     expect(from().querySelector('[data-line="repo-facts"]')).toHaveTextContent("1 star, last commit Nov 11, 2026");
   });
 
@@ -430,23 +441,23 @@ describe("where it comes from: the repository's link, its facts and the version 
 
   it("shows no facts for a host other than github.com, and no link for a trick not from a repository or a bad URL", () => {
     const other = "https://codeberg.org/owner/gates-trick";
-    const view = render(<TrickAboutSheet trick={{ ...FROM_REPO, provenance: { ...FROM_REPO.provenance, via: "repo", url: other }, repoFacts: FACTS }} open onClose={vi.fn()} />);
+    const view = render(<TrickDetail trick={{ ...FROM_REPO, provenance: { ...FROM_REPO.provenance, via: "repo", url: other }, repoFacts: FACTS }} />);
     expect(within(from()).getByRole("link").getAttribute("href")).toBe(other);
     expect(from().querySelector("[data-trick-link-host]")?.getAttribute("title")).toBe("codeberg.org");
     expect(from().querySelector('[data-line="repo-facts"]')).toBeNull();
     view.unmount();
     for (const provenance of [{ via: "folder" as const, url: URL }, { via: "repo" as const, repo: "owner/x", url: "http://github.com/owner/x" }, { via: "repo" as const, repo: "owner/x" }]) {
-      const again = render(<TrickAboutSheet trick={{ ...FULL, provenance, repoFacts: FACTS }} open onClose={vi.fn()} />);
+      const again = render(<TrickDetail trick={{ ...FULL, provenance, repoFacts: FACTS }} />);
       expect(within(from()).queryByRole("link")).toBeNull();
       again.unmount();
     }
   });
 
   it("shows the version when the manifest names one, and no row when it does not", () => {
-    const view = render(<TrickAboutSheet trick={{ ...FROM_REPO, version: "1.2.0" }} open onClose={vi.fn()} />);
+    const view = render(<TrickDetail trick={{ ...FROM_REPO, version: "1.2.0" }} />);
     expect(from().querySelector('[data-line="version"]')).toHaveTextContent("Version 1.2.0");
     view.unmount();
-    render(<TrickAboutSheet trick={FROM_REPO} open onClose={vi.fn()} />);
+    render(<TrickDetail trick={FROM_REPO} />);
     expect(from().querySelector('[data-line="version"]')).toBeNull();
   });
 
@@ -461,7 +472,7 @@ describe("where it comes from: the repository's link, its facts and the version 
 
   it("the not-added sheet links the list's repository with its facts", () => {
     const entry: WireOfficialTrick = { id: "morph", name: "Morph", description: "One screen.", repo: "https://github.com/AltanS/collie-tricks", repoName: "AltanS/collie-tricks", commit: "0d80399aa", state: "absent", repoFacts: FACTS };
-    render(<OfficialTrickAboutSheet entry={entry} open onClose={vi.fn()} busy={false} canWrite onAdd={vi.fn()} timeZone="UTC" />);
+    render(<OfficialTrickDetail entry={entry} busy={false} canWrite onAdd={vi.fn()} timeZone="UTC" />);
     const rows = [...from().querySelectorAll("li")].map((li) => li.textContent);
     expect(rows[0]).toBe("From AltanS/collie-tricks @ 0d80399");
     expect(within(from()).getByRole("link").getAttribute("href")).toBe("https://github.com/AltanS/collie-tricks");
@@ -482,47 +493,48 @@ describe("why a trick uses agent tokens: the first row of What it does (2026-11-
   };
   const firstRow = (): string | null | undefined => screen.getByRole("list", { name: "What it does" }).querySelector("li")?.textContent;
 
-  it("says the sentence of its reason first, and draws no chip in the sheet", () => {
+  it("says the sentence of its reason first, and draws the chip in the head only, never in What it does", () => {
     const rows: [WireTrickInfo, string][] = [
       [{ ...PROGRAM, rules: { file: "rules.md", text: "Draw one screen.\n" } }, "Your agent reads this trick's instructions. That uses tokens."],
       [{ ...PROGRAM, decidesReply: true }, "Your answers to its Decisions go to an agent as messages. That uses tokens."],
     ];
     for (const [trick, sentence] of rows) {
-      render(<TrickAboutSheet trick={trick} open onClose={vi.fn()} />);
+      render(<TrickDetail trick={trick} />);
       expect(firstRow()).toBe(sentence);
-      expect(screen.getByRole("dialog").querySelector('[data-slot="token-use"]')).toBeNull();
+      expect(screen.getByRole("list", { name: "What it does" }).querySelector('[data-slot="token-use"]')).toBeNull();
+      expect(detail().querySelector('[data-section="head"] [data-slot="token-use"]')).not.toBeNull();
       cleanup();
     }
   });
 
   it("says nothing of tokens for a program trick, even one whose last run listed Decisions", () => {
-    render(<TrickAboutSheet trick={{ ...PROGRAM, decides: true }} open onClose={vi.fn()} />);
+    render(<TrickDetail trick={{ ...PROGRAM, decides: true }} />);
     expect(firstRow()).toBe("It shows in: the end of the Belt in each session.");
-    expect(screen.getByRole("dialog").textContent).not.toContain("tokens");
+    expect(detail().textContent).not.toContain("tokens");
   });
 
   it("an official entry says it before Add, from the pin alone", () => {
-    render(<OfficialTrickAboutSheet entry={{ ...ENTRY, decidesReply: true }} open onClose={vi.fn()} busy={false} canWrite onAdd={vi.fn()} />);
+    render(<OfficialTrickDetail entry={{ ...ENTRY, decidesReply: true }} busy={false} canWrite onAdd={vi.fn()} />);
     expect(firstRow()).toBe("Your answers to its Decisions go to an agent as messages. That uses tokens.");
     cleanup();
-    render(<OfficialTrickAboutSheet entry={{ ...ENTRY, givesRules: true, agentView: true }} open onClose={vi.fn()} busy={false} canWrite onAdd={vi.fn()} />);
+    render(<OfficialTrickDetail entry={{ ...ENTRY, givesRules: true, agentView: true }} busy={false} canWrite onAdd={vi.fn()} />);
     expect([...screen.getByRole("list", { name: "What it does" }).querySelectorAll("li")].map((li) => li.textContent)).toEqual([
       "Your agent reads this trick's instructions and draws its answers. That uses tokens.",
       RULES_WORDS,
     ]);
     cleanup();
-    render(<OfficialTrickAboutSheet entry={ENTRY} open onClose={vi.fn()} busy={false} canWrite onAdd={vi.fn()} />);
+    render(<OfficialTrickDetail entry={ENTRY} busy={false} canWrite onAdd={vi.fn()} />);
     expect(screen.queryByRole("list", { name: "What it does" })).toBeNull();
   });
 });
 
 // THE VALUES STAND ON CHIPS: the label and the plain sentence stay muted, the one thing a row is read for sits on a
 // chip (the foreground at medium weight, `muted`, a uniform hairline). The words around it are the dictionary's.
-describe("TrickAboutSheet where it shows (2026-11-17)", () => {
+describe("TrickDetail where it shows (2026-11-17)", () => {
   it("says it in the schema's words, the same line the approval cards carry, one phrase per place and the agent view last", () => {
     const trick: WireTrickInfo = { ...BASE, places: ["belt", "status", "session", "dashboard", "tabbar", "menu"], agentView: true };
     open(trick);
-    const line = screen.getByRole("dialog").querySelector('[data-line="shows"]')?.textContent;
+    const line = detail().querySelector('[data-line="shows"]')?.textContent;
     expect(line).toBe(showsInLine({ places: ["belt", "status", "session", "dashboard", "tabbar", "menu"], agentView: true }));
     expect(line).toContain("the left end of the usage row of each session");
     expect(line).toContain("a page of its own (a row under Tricks on the Dashboard)");
@@ -530,7 +542,7 @@ describe("TrickAboutSheet where it shows (2026-11-17)", () => {
 
   it("draws no line for a trick with no place and no agent view", () => {
     open({ ...BASE, places: [] });
-    expect(screen.getByRole("dialog").querySelector('[data-line="shows"]')).toBeNull();
+    expect(detail().querySelector('[data-line="shows"]')).toBeNull();
   });
 
   it("keeps every phone phrase equal to the bridge's, in schema.ts", () => {
@@ -544,13 +556,13 @@ describe("TrickAboutSheet where it shows (2026-11-17)", () => {
     expect(en["settings.tricks.about.floatOpens"]).toBe(FLOAT_OPENS_WORDS);
     expect(FLOAT_WORDS).toBe("It can draw a small moving picture over the app. It never covers a question and never blocks a tap.");
     open({ ...BASE, places: ["float"] });
-    const text = screen.getByRole("dialog").textContent;
+    const text = detail().textContent;
     expect(text).toContain(FLOAT_WORDS);
     expect(text).not.toContain(FLOAT_OPENS_WORDS);
   });
 });
 
-describe("TrickAboutSheet values on chips", () => {
+describe("TrickDetail values on chips", () => {
   const WITH_FACTS: WireTrickInfo = {
     ...FULL,
     places: ["belt", "status"],
@@ -561,11 +573,13 @@ describe("TrickAboutSheet values on chips", () => {
   };
   const chips = (row: Element | null) => [...(row?.querySelectorAll('[data-slot="trick-value"]') ?? [])].map((el) => el.textContent);
 
-  it("draws the places, the file paths, the names, the globs, the version and the timer's spans each on a chip, and the sentence stays plain", () => {
+  it("draws the file paths, the names, the globs, the version and the timer's spans each on a chip, the places as emphasised text, and the sentence stays plain", () => {
     open(WITH_FACTS);
-    const dialog = screen.getByRole("dialog");
+    const dialog = detail();
     const rowOf = (text: string) => within(dialog).getByText((_, el) => el?.tagName === "LI" && (el.textContent ?? "").includes(text));
-    expect(chips(rowOf("It shows in:"))).toEqual(["the end of the Belt in each session, the left end of the usage row of each session"]);
+    // The places are a phrase, not a short literal (2026-11-21): no chip, the same words at the emphasised weight.
+    expect(chips(rowOf("It shows in:"))).toEqual([]);
+    expect(rowOf("It shows in:").querySelector('[data-slot="trick-value-text"]')?.textContent).toBe("the end of the Belt in each session, the left end of the usage row of each session");
     expect(rowOf("It shows in:")).toHaveTextContent("It shows in: the end of the Belt in each session, the left end of the usage row of each session.");
     expect(chips(rowOf("Asks for the environment names"))).toEqual(["GH_TOKEN"]);
     expect(chips(rowOf("Runs when these files change"))).toEqual(["~/notes/todo.md"]);
@@ -577,17 +591,17 @@ describe("TrickAboutSheet values on chips", () => {
 
   it("draws the run line whole on a chip that wraps, and a trick with no timer keeps its plain line", () => {
     open({ ...WITH_FACTS, everyMs: undefined });
-    const run = screen.getByRole("dialog").querySelector('[data-line="run"]');
+    const run = detail().querySelector('[data-line="run"]');
     expect(run).toHaveTextContent("bun run gates.ts --repo owner/name");
     expect(run?.getAttribute("data-slot")).toBe("trick-value");
     expect(run?.className).toMatch(/\bbreak-all\b/);
     expect(run?.className).toMatch(/\bwhitespace-pre-wrap\b/);
-    expect(chips(screen.getByRole("dialog").querySelector('[data-line="timer"]'))).toEqual([]);
+    expect(chips(detail().querySelector('[data-line="timer"]'))).toEqual([]);
   });
 
   it("a chip is the foreground at medium weight on a muted ground with one border on all four sides, and wraps instead of scrolling", () => {
     open(WITH_FACTS);
-    const chip = screen.getByRole("dialog").querySelector('[data-slot="trick-value"]');
+    const chip = detail().querySelector('[data-line="timer"] [data-slot="trick-value"]');
     const classes = (chip?.className ?? "").split(/\s+/);
     expect(classes).toEqual(expect.arrayContaining(["bg-muted", "text-foreground", "border", "border-border", "font-medium", "whitespace-normal", "break-words"]));
     expect(classes.some((c) => /^border-(l|r|t|b|x|y)(-|$)/.test(c))).toBe(false);
@@ -596,8 +610,8 @@ describe("TrickAboutSheet values on chips", () => {
 
   it("never lets a value break the chip marks: a value with the private marks in it is drawn without them", () => {
     open({ ...WITH_FACTS, env: ["A\uE000B", "C\uE001D"] });
-    const row = screen.getByRole("dialog").querySelector('[data-slot="trick-value"]');
+    const row = detail().querySelector('[data-slot="trick-value"]');
     expect(row).not.toBeNull();
-    expect(screen.getByRole("dialog")).toHaveTextContent("Asks for the environment names AB, CD.");
+    expect(detail()).toHaveTextContent("Asks for the environment names AB, CD.");
   });
 });

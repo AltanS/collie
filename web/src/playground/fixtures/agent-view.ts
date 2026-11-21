@@ -1,6 +1,6 @@
 // THE AGENT VIEW FIXTURE TRICK (contract 2), named Morph: an agent view and its rules, for the Trick
 // settings, Hill and Agent view cases.
-// The rules are the same fifteen lines as bridge/tricks/fixtures/morph/rules.md; trick-about-sheet.test.tsx
+// The rules are the same fifteen lines as bridge/tricks/fixtures/morph/rules.md; trick-detail.test.tsx
 // holds the two equal, byte for byte.
 
 import { parseAgentView, type ViewScreen } from "@/lib/agent-view/wire";
