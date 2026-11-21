@@ -4,6 +4,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
 import { App } from "./App";
+import { startRoutePreload } from "./router";
 import { preloadMark } from "./components/brand-mark";
 import { glyphSetSettled, preloadGlyphSet } from "./components/icons/glyphs";
 import { onPreloadError } from "./lib/chunk-reload";
@@ -92,5 +93,8 @@ function paint(): void {
       <App />
     </StrictMode>,
   );
+  // After the first paint is asked for: the screens that load on demand are fetched once the browser
+  // is idle, so a tab open for a few seconds holds every screen, as before the split (ADR 0169).
+  startRoutePreload();
 }
 void firstGlyphs.finally(paint);
