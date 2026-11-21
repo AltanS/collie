@@ -12,6 +12,7 @@ import { partKey, type MenuRow, type WireTrickInfo, type WireTrickPart } from "@
 
 import { actionsButton } from "../fixtures/actions";
 import { installApiStub, installCrewWorld, installLauncherWorld, installMachinesWorld } from "../fixtures/api";
+import { installHeadWorld } from "../fixtures/wide-head";
 import { installWideChatWorld, openColumns } from "../fixtures/wide-chat";
 import { wideSnapshot } from "../fixtures/wide-herd";
 import { installWorld } from "../hitbox/world";
@@ -295,6 +296,47 @@ export const SETUPS = {
   herd0: async (page, screen) => {
     await serveSnapshot(page, { ...fixtureSnapshot, agents: [], shellPanes: [], workspaces: [], tabs: [] });
     await visit(page, screen);
+  },
+  /** The Dashboard's Files view: the views switch of the header on a large screen, the foot's tab on a phone. */
+  dashboardFiles: async (page, screen) => {
+    await serveSnapshot(page, wideSnapshot({ spaces: 3, blocked: ["w2:p1"], unseen: ["w3:p2"] }));
+    await visit(page, screen);
+    const wide = (page.viewportSize()?.width ?? 0) >= 900;
+    const files = wide ? page.getByRole("tab", { name: en["files.title"] }) : page.getByRole("navigation", { name: en["home.tabs.aria"] }).getByRole("button", { name: en["files.title"] });
+    await files.first().click();
+    await page.getByRole("heading", { name: "space-01" }).waitFor({ state: "detached", timeout: 8000 });
+  },
+  /** Six tricks with an item in the views switch of the Dashboard's header. */
+  dashboardTricks: async (page, screen) => {
+    await installApiStub(page);
+    await installHeadWorld(page, wideSnapshot({ spaces: 3, blocked: ["w2:p1"], unseen: ["w3:p2"] }), { tricks: 6 });
+    await visit(page, screen);
+  },
+  /** The bridge does not answer at all: the Dashboard's unreachable state. */
+  unreachable: async (page, screen) => {
+    await page.route("**/api/**", (route) => route.abort("connectionrefused"));
+    await visit(page, screen, false);
+  },
+  /** The prefix is armed in two columns: every control wears the key of its action. Only a large screen arms it. */
+  keysArmed: async (page) => {
+    await chatWorld(page);
+    await installScreenStubs(page);
+    await installFilledReads(page);
+    await openColumns(page, ["w1:p1", "w1:p2"], "w1:p1");
+    if ((page.viewportSize()?.width ?? 0) < 900) return;
+    await page.keyboard.press("Control+b");
+    await page.locator('[data-slot="shortcut-hint-layer"]').waitFor({ state: "attached", timeout: 8000 });
+  },
+  /** The pane menu opened with the prefix and `m`. Only a large screen has the key. */
+  menuByKey: async (page, screen) => {
+    await chatWorld(page);
+    await visit(page, screen);
+    if ((page.viewportSize()?.width ?? 0) < 900) return;
+    await page.locator('[data-slot="wide-layout"]').waitFor({ state: "visible", timeout: 8000 });
+    await page.keyboard.press("Control+b");
+    await page.locator('[data-slot="shortcut-hint-layer"]').waitFor({ state: "attached", timeout: 8000 });
+    await page.keyboard.press("m");
+    await page.locator('[data-presentation="menu"]').waitFor({ state: "visible", timeout: 8000 });
   },
   /** A browser the bridge does not know: every read answers "device not paired". */
   notPaired: async (page, screen) => {
