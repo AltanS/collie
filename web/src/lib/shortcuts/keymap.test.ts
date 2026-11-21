@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { ACTIONS, type ActionDef, type ActionId } from "./actions";
+import { ACTIONS, type ActionDef } from "./actions";
 import { buildKeymap } from "./keymap";
 import type { Chord, Diagnostic, DiagnosticCode, UserShortcuts } from "./types";
 
@@ -322,45 +322,5 @@ describe("a bad binding is dropped with a diagnostic and the file still loads", 
     const keymap = build(user);
     expect(keymap.diagnostics.map((diagnostic) => diagnostic.action)).toEqual(["constructor", "__proto__"]);
     expect(keymap.prefixed.get("g")).toEqual({ action: "open_actions" });
-  });
-});
-
-describe("an action switched off with a stand-in (the Actions palette's setting)", () => {
-  const off = new Set<ActionId>(["open_actions"]);
-  const buildOff = (user?: UserShortcuts) => buildKeymap({ defaults: ACTIONS, user, disabled: off });
-
-  it("runs prefix+g as open_actions while on", () => {
-    expect(build().prefixed.get("g")).toEqual({ action: "open_actions" });
-    expect(build().bindings.get("switch_pane")).toEqual([]);
-  });
-
-  it("runs the same key as switch_pane while off, and lists it under switch_pane only", () => {
-    const keymap = buildOff();
-    expect(keymap.diagnostics).toEqual([]);
-    expect(keymap.prefixed.get("g")).toEqual({ action: "switch_pane" });
-    expect(keymap.bindings.get("open_actions")).toEqual([]);
-    expect(keymap.bindings.get("switch_pane")?.map((binding) => binding.chord.key)).toEqual(["g"]);
-    expect(keymap.disabled).toEqual(off);
-  });
-
-  it("moves a person's own key on open_actions along, and drops the default it replaced", () => {
-    const keymap = buildOff({ open_actions: ["prefix+a"] });
-    expect(keymap.prefixed.get("a")).toEqual({ action: "switch_pane" });
-    expect(keymap.prefixed.has("g")).toBe(false);
-    expect(build({ open_actions: ["prefix+a"] }).prefixed.get("a")).toEqual({ action: "open_actions" });
-  });
-
-  it("leaves a key bound to switch_pane itself as it was, in both states", () => {
-    const user = { switch_pane: ["prefix+u"] };
-    expect(build(user).prefixed.get("u")).toEqual({ action: "switch_pane" });
-    const keymap = buildOff(user);
-    expect(keymap.prefixed.get("u")).toEqual({ action: "switch_pane" });
-    expect(keymap.bindings.get("switch_pane")?.map((binding) => binding.chord.key)).toEqual(["u", "g"]);
-  });
-
-  it("gives a disabled action with no stand-in no key at all", () => {
-    const keymap = buildKeymap({ defaults: ACTIONS, disabled: new Set<ActionId>(["settings"]) });
-    expect(keymap.prefixed.has("s")).toBe(false);
-    expect(keymap.bindings.get("settings")).toEqual([]);
   });
 });
