@@ -49,8 +49,8 @@ const ENTRIES: readonly Entry[] = [
   { screen: "dashboard", width: 1440 },
   { screen: "dashboard-not-paired", width: 1440 },
   { screen: "dashboard-new-tab", width: 1440 },
-  { screen: "settings-alerts", width: 1440 },
-  { screen: "settings-alerts", width: 390 },
+  { screen: "settings-notifications", width: 1440 },
+  { screen: "settings-notifications", width: 390 },
   { screen: "settings-trick", width: 1440 },
   { screen: "settings-trick", width: 1440, id: "settings-trick-official", path: "/settings/tricks/kettle-watch" },
 ];
@@ -59,7 +59,7 @@ const ENTRIES: readonly Entry[] = [
 const GENERATED_ENTRIES: readonly Entry[] = [
   { screen: "pane-two-columns", width: 1440 },
   { screen: "pane-menu", width: 1440 },
-  { screen: "settings-alerts", width: 1440 },
+  { screen: "settings-notifications", width: 1440 },
   { screen: "pane-chat", width: 390 },
 ];
 
