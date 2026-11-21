@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { http, HttpResponse } from "msw";
 
-import { asJsonObject, type JsonValue } from "@/lib/json";
+import { asJsonObject, asJsonString, type JsonValue } from "@/lib/json";
 import { clearStatus, currentStatus } from "@/lib/status";
 import type { OfficialTricksReply, TricksReply, WireTrickInfo } from "@/lib/tricks/schema";
 import { createTricksStore, type TricksStore } from "@/lib/tricks/store";
@@ -57,6 +57,12 @@ describe("the Remove section", () => {
     expect(section()).not.toHaveTextContent("Delete this trick from this machine.");
   });
 
+  it("a broken trick (skipped by the scan) has its page and an enabled Remove", async () => {
+    renderTricksPages({ store: await storeWith([{ ...LEGS, state: "skipped", refusals: [{ code: "type", path: "", reason: "trick.toml is not TOML" }] }]), page: { onOfficialList: noOfficial }, entries: [PAGE] });
+    await screen.findByRole("heading", { name: "Browser leg" });
+    expect(within(section()!).getByRole("button", { name: "Remove trick" })).toBeEnabled();
+  });
+
   it("a device that may not write sees the button disabled", async () => {
     renderTricksPages({ store: await storeWith([LEGS]), page: { onOfficialList: noOfficial, readOnly: true }, entries: [PAGE] });
     await screen.findByRole("heading", { name: "Browser leg" });
@@ -94,6 +100,9 @@ describe("the Remove section", () => {
     await user.click(go);
     await user.click(go);
     expect(onRemove).toHaveBeenCalledTimes(1);
+    // While the write flies, Escape does not close the confirm.
+    await user.keyboard("{Escape}");
+    expect(confirmPanel()).not.toBeNull();
     expect(onRemove.mock.calls[0]?.slice(0, 2)).toEqual(["lodge", "legs"]);
     expect(onRemove.mock.calls[0]?.[2]).toMatch(/^[0-9a-f-]{36}$/u);
     finish();
@@ -101,6 +110,29 @@ describe("the Remove section", () => {
     expect(currentStatus()?.text).toBe("Removed Browser leg.");
     // Back does not return to the page of the trick that is gone: the page's entry was left, not pushed over.
     expect(router.state.historyAction).not.toBe("PUSH");
+  });
+
+  it("each confirm sends its own request id: a refusal, then a second confirm, posts a different rid", async () => {
+    const user = userEvent.setup();
+    const rids: string[] = [];
+    server.use(
+      http.post("/api/tricks/lodge/legs/remove", async ({ request }) => {
+        // SAFETY: the body the app posts is JSON by construction (lib/api.ts `removeTrick` sends `JSON.stringify`).
+        const rid = asJsonString(asJsonObject((await request.json()) as JsonValue)?.rid) ?? "";
+        rids.push(rid);
+        return HttpResponse.json({ error: "running", rid }, { status: 409 });
+      }),
+    );
+    renderTricksPages({ store: await storeWith([LEGS]), page: { onOfficialList: noOfficial }, entries: [PAGE] });
+    await screen.findByRole("heading", { name: "Browser leg" });
+    for (let tap = 0; tap < 2; tap += 1) {
+      await user.click(within(section()!).getByRole("button", { name: "Remove trick" }));
+      await user.click(within(await screen.findByRole("dialog", { name: "Remove Browser leg?" })).getByRole("button", { name: "Remove trick" }));
+      await vi.waitFor(() => expect(section()?.querySelector('[data-line="remove"]')).toHaveTextContent("A run of this trick is still going."));
+    }
+    expect(rids).toHaveLength(2);
+    for (const rid of rids) expect(rid).toMatch(/^[0-9a-f-]{36}$/u);
+    expect(rids[0]).not.toBe(rids[1]);
   });
 
   it("a refusal stays on the page and says the reason in the row, through the real route call", async () => {

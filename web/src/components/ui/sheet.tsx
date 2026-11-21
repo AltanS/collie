@@ -251,11 +251,6 @@ interface BottomSheetProps {
    * focus on the panel, as before. The arrow keys move between the rows of any menu, with this or without.
    */
   focusFirstRow?: boolean;
-  /**
-   * The control the focus starts on as the sheet opens, in place of the panel: a confirm that removes something
-   * starts on its Cancel, so an Enter carried over from the button that opened it never confirms. Absent: the panel.
-   */
-  initialFocus?: React.RefObject<HTMLElement | null>;
 }
 
 export function BottomSheet(props: BottomSheetProps) {
@@ -279,7 +274,6 @@ function SheetLayer({
   presentation: only = "auto",
   anchor,
   focusFirstRow = false,
-  initialFocus,
 }: BottomSheetProps) {
   useLocale();
   const panelRef = React.useRef<HTMLDivElement>(null);
@@ -307,10 +301,6 @@ function SheetLayer({
   // translateY(100%) — the sheet dropped out of view and slid back in.
   const openedFromPeek = React.useRef(false);
   useDialogFocus(open, panelRef);
-  // Declared after `useDialogFocus`, so it runs after that one's focus of the panel and wins.
-  React.useEffect(() => {
-    if (open) initialFocus?.current?.focus({ preventScroll: true });
-  }, [open, initialFocus]);
   // A menu gives the focus back to its button, also where the browser did not focus it on the tap
   // (Safari): declared after `useDialogFocus`, so this cleanup runs after that one's restore.
   React.useEffect(() => {
