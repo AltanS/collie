@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
+import { useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { useLocation } from "react-router";
 
 import { ActionRow, DestructiveActionRow } from "@/components/action-sheet-rows";
@@ -15,7 +15,6 @@ import { useNav } from "@/hooks/use-nav";
 import { openForCount, useDashPrefs } from "@/hooks/use-dash-prefs";
 import { availableCommands, isDestructive, suggestedCommands, type PaletteCommand } from "@/lib/actions-palette/commands";
 import { hitKey, searchPalette, type CommandEntry, type Hit } from "@/lib/actions-palette/rank";
-import { useActionsPaletteOn } from "@/lib/actions-palette-store";
 import { closeActionsPalette, openActionsPalette, useActionsPaletteOpen } from "@/lib/actions-palette/state";
 import { shortcutTarget } from "@/lib/shortcuts/target";
 import type { Range } from "@/lib/fuzzy";
@@ -419,12 +418,7 @@ export function ActionsPaletteDoor({ scope, openPane }: { scope: Scope; openPane
   const nav = useNav();
   const { pathname } = useLocation();
   const { multi } = useCrew();
-  // Off for this device (Settings): nothing answers `open_actions`, and a palette that was open closes.
-  const on = useActionsPaletteOn();
-  useShortcutHandler("open_actions", on ? openActionsPalette : undefined);
-  useEffect(() => {
-    if (!on) closeActionsPalette();
-  }, [on]);
+  useShortcutHandler("open_actions", openActionsPalette);
   useShortcutHandler("open_crew", multi && !pathname.startsWith("/crew") ? () => nav.down(crewPath(scope)) : undefined);
   // A route change closes it: a person who moved by the back gesture is not still choosing.
   const shownAt = useRef(pathname);
@@ -433,16 +427,14 @@ export function ActionsPaletteDoor({ scope, openPane }: { scope: Scope; openPane
     shownAt.current = pathname;
     closeActionsPalette();
   }, [pathname]);
-  if (!open || !on) return null;
+  if (!open) return null;
   return <ActionsPalette openPane={openPane} onClose={closeActionsPalette} />;
 }
 
 /** The header's Actions button: the dashboard's right cluster and the large screen's space header. */
 export function ActionsButton({ className }: { className?: string }) {
   useLocale();
-  const on = useActionsPaletteOn();
   const open = useActionsPaletteOpen();
-  if (!on) return null;
   return (
     <button
       type="button"

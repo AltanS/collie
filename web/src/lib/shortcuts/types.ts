@@ -77,8 +77,6 @@ export interface Keymap<Id extends string = ActionId> {
   /** The live bindings of every action in the table, in table order. Unbound is an empty list. */
   readonly bindings: ReadonlyMap<Id, readonly Binding[]>;
   readonly diagnostics: readonly Diagnostic[];
-  /** The actions switched off when the keymap was built (`BuildInput.disabled`). They hold no key, and the list leaves their rows out. */
-  readonly disabled?: ReadonlySet<Id>;
   /** Whether `mod` meant Cmd when the keymap was built. */
   readonly mac: boolean;
 }

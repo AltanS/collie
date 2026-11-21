@@ -76,3 +76,10 @@ takes effect at once, without a reload.
 
 The same pinned button also stays in the large screen's Belt while the palette is on, without the drag
 up to the pane list, which is a phone gesture. The space header's Actions button stays too.
+
+## Addendum, 2026-11-21: the setting is withdrawn
+
+The Actions palette setting is withdrawn, and the `standIn` and `disabled` machinery with it. It never
+shipped. There is one way to do it: the palette is always on, `switch_pane` stays an action with no
+default key that opens the pane list, and a mod can bring the old pane list back for a person who
+wants it.

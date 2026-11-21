@@ -70,9 +70,9 @@ export interface ShortcutRow {
   readonly combos: readonly Combo[];
 }
 
-/** Every action of the table as a row, in table order, but those a setting switched off (the Actions palette's). */
+/** Every action of the table as a row, in table order. */
 export function shortcutRows(keymap: Keymap): ShortcutRow[] {
-  return DEFS.filter((def) => keymap.disabled?.has(def.id) !== true).map((def) => ({
+  return DEFS.map((def) => ({
     id: def.id,
     group: def.group,
     label: t(def.labelKey),
