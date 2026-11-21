@@ -9,7 +9,7 @@ import { renderTricksPages } from "@/test/tricks-pages";
 // SETTINGS → TRICKS → ONE TRICK (2026-11-21): the details page at its own address. A reload or a deep link draws
 // it from the store and the official list alone; a key that names no trick says so calmly with a way back; Back
 // comes up one level, to the list or to the trick's own page; tricks switched off as a whole send it to
-// Settings, Experiments; and the page holds no Remove (the bridge has no route for one, see the report).
+// Settings, Experiments. The Remove section has its own file (settings-trick-remove.test.tsx, ADR 0168).
 
 const NOW = Date.parse("2026-11-11T09:41:00Z");
 const LEGS: WireTrickInfo = {
@@ -102,12 +102,5 @@ describe("the details page at its own address", () => {
   it("sends a deep link to Settings, Experiments while tricks are switched off on the machine", async () => {
     const router = renderTricksPages({ store: await storeWith([LEGS]), loader: () => ({ tricksOff: true }), page: { onOfficialList: officialOf([]) }, entries: ["/settings/tricks/lodge%3Alegs"] });
     await vi.waitFor(() => expect(router.state.location.pathname).toBe("/settings/experiments"));
-  });
-
-  it("holds no Remove: the bridge has no route that removes a trick", async () => {
-    renderTricksPages({ store: await storeWith([LEGS]), page: { onOfficialList: officialOf([]) }, entries: ["/settings/tricks/lodge%3Alegs"] });
-    await screen.findByRole("heading", { name: "Browser leg" });
-    expect(screen.queryByRole("button", { name: /Remove/ })).toBeNull();
-    expect(detail()?.querySelector('[data-section="remove"]')).toBeNull();
   });
 });

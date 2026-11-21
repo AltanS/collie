@@ -83,3 +83,17 @@ export function StatusArea({ className }: { className?: string }) {
     </div>
   );
 }
+
+/**
+ * The status line for a screen reader only, on a screen that draws no status of its own (the Settings layout). Always
+ * mounted, so the live region exists before its words do and a reader hears each new status ("Removed <name>." after
+ * a trick's Remove, ADR 0168). Nothing shows: `sr-only`, no box, no tap.
+ */
+export function StatusLive() {
+  const status = useStatus();
+  return (
+    <output aria-live="polite" data-slot="status-live" className="sr-only">
+      {status?.text ?? ""}
+    </output>
+  );
+}

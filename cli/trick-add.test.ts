@@ -12,6 +12,7 @@ import { trickCodeHash } from "../bridge/tricks/code-hash.ts";
 import { ORIGIN_FILE, parseOrigin } from "../bridge/tricks/origin.ts";
 import { APPROVED_DIR, approvedCopyDir, approvedTrickDir, PENDING_DIR, switchesPath, trickStateDir } from "../bridge/tricks/paths.ts";
 import { parseSwitches, withSwitch, writeSwitches } from "../bridge/tricks/switches.ts";
+import { markRun, REMOVE_RUNNING_LINE, unmarkRun } from "../bridge/tricks/remove.ts";
 import { EXIT, type Io } from "./io.ts";
 import { realFiles } from "./sys.ts";
 import { hostFor } from "../bridge/host.ts";
@@ -626,6 +627,43 @@ describe.if(posix)("collie trick remove", () => {
     expect(await stat(trickStateDir(r.stateDir, "legs")).catch(() => null)).toBeNull();
     expect(await stat(approvedTrickDir(r.configDir, "legs")).catch(() => null)).toBeNull();
     expect(await cmdTrickRemove(r, ["legs"])).toBe(EXIT.FAIL);
+  });
+
+  // ADR 0168: the command calls the bridge route's function (bridge/tricks/remove.ts), with the bridge's run marks.
+  test("refuses while a bridge marks a run of the trick as going, and deletes nothing", async () => {
+    const repo = await fixtureRepo([{ "trick.toml": txt(MANIFEST("legs")), "program.sh": PROGRAM }]);
+    const r = await rig();
+    expect(await cmdTrickAdd(r, [repo.bare])).toBe(EXIT.OK);
+    await mkdir(trickStateDir(r.stateDir, "legs"), { recursive: true });
+    markRun(r.stateDir, "legs", r.now());
+    expect(await cmdTrickRemove(r, ["legs"])).toBe(EXIT.FAIL);
+    expect(r.err.join("\n")).toContain(REMOVE_RUNNING_LINE);
+    expect((await stat(trickDir(r, "legs"))).isDirectory()).toBe(true);
+    expect((await stat(trickStateDir(r.stateDir, "legs"))).isDirectory()).toBe(true);
+    unmarkRun(r.stateDir, "legs");
+    expect(await cmdTrickRemove(r, ["legs"])).toBe(EXIT.OK);
+    expect(await stat(trickDir(r, "legs")).catch(() => null)).toBeNull();
+  });
+
+  test("refuses a symlinked state folder, deletes nothing, and forgets the views and Hill keys on a remove", async () => {
+    const repo = await fixtureRepo([{ "trick.toml": txt(MANIFEST("legs")), "program.sh": PROGRAM }]);
+    const r = await rig();
+    expect(await cmdTrickAdd(r, [repo.bare])).toBe(EXIT.OK);
+    const elsewhere = join(dirname(r.stateDir), "elsewhere");
+    await mkdir(elsewhere, { recursive: true });
+    await writeFile(join(elsewhere, "keep.txt"), "keep\n");
+    await mkdir(dirname(trickStateDir(r.stateDir, "legs")), { recursive: true });
+    await symlink(elsewhere, trickStateDir(r.stateDir, "legs"));
+    expect(await cmdTrickRemove(r, ["legs"])).toBe(EXIT.FAIL);
+    expect(r.err.join("\n")).toContain("Nothing was removed.");
+    expect(await readFile(join(elsewhere, "keep.txt"), "utf8")).toBe("keep\n");
+    expect((await stat(trickDir(r, "legs"))).isDirectory()).toBe(true);
+    await rm(trickStateDir(r.stateDir, "legs"));
+    // A view of the trick on disk goes with it.
+    const views = new AgentViewStore(trickViewsDir(r.stateDir), r.now, () => {});
+    views.put(viewEntry({ trick: "legs", session: "lodge/%1", on: true, shows: 0, changedAt: 1 }));
+    expect(await cmdTrickRemove(r, ["legs"])).toBe(EXIT.OK);
+    expect(new AgentViewStore(trickViewsDir(r.stateDir), r.now, () => {}).dropTrick("legs")).toBe(0);
   });
 });
 

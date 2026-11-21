@@ -420,6 +420,10 @@ export const ACK_MANIFEST = {
     channel: "silent",
     why: "Undo under a trick that took a change without asking (components/tricks-settings-card.tsx): the line itself goes once the bridge's list shows the earlier version, so the row is the receipt; a refused or lost post says so in the status line, because the reason is about that one trick.",
   },
+  removeTrick: {
+    channel: "status",
+    why: "Remove trick in the confirm on a trick's details page (components/trick-remove-section.tsx) goes busy until the answer; a removal leaves the page for the list, which no longer holds the trick, and says Removed <name> in the status line, because the page that asked is gone (ADR 0168); a refusal stays on the page and says why in the Remove row, because the reason is about that one trick.",
+  },
   addOfficialTrick: {
     channel: "echo",
     why: "Add (or Update) on an official row in Settings → Tricks swaps its word for Collie's spinner on the spot and stays busy until the trick shows among the installed ones, off (components/tricks-settings-card.tsx); a refused or lost post says why in the status line (offline, a code mismatch, another add running), because the reason is about that one trick.",

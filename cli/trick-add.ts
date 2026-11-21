@@ -24,9 +24,10 @@ import {
 } from "../bridge/tricks/fetch.ts";
 import { ORIGIN_FILE, readOrigin, renderOrigin, sameRepo, type TrickOrigin } from "../bridge/tricks/origin.ts";
 import { AgentViewStore, trickViewsDir } from "../bridge/agent-view/store.ts";
-import { forgetLeftovers, removeTrickCopies } from "../bridge/tricks/approved.ts";
+import { forgetLeftovers } from "../bridge/tricks/approved.ts";
 import { forgetMapRecord } from "../bridge/tricks/hill.ts";
-import { MANIFEST_FILE, switchesPath, trickStateDir, tricksConfigDir, tricksStateDir } from "../bridge/tricks/paths.ts";
+import { MANIFEST_FILE, switchesPath, tricksConfigDir, tricksStateDir } from "../bridge/tricks/paths.ts";
+import { removeTrick, runMarked } from "../bridge/tricks/remove.ts";
 import { trickWarnings, warningLines, WARNINGS_HONESTY, type CheckWarning } from "../bridge/tricks/scan.ts";
 import { parseSwitches, withSwitchLock } from "../bridge/tricks/switches.ts";
 import { isTrickId } from "../web/src/lib/tricks/schema.ts";
@@ -545,24 +546,37 @@ async function swapFolder(stateDir: string, root: string, id: string, dir: strin
 
 // ── remove ───────────────────────────────────────────────────────────────────
 
-/** `collie trick remove <id>`: only while it is off. The folder, its state folder and its approved and pending copies go; nothing is kept. */
+/**
+ * `collie trick remove <id>`: only while it is off and no run of it is going. The folder, its state folder and its
+ * approved and pending copies go, and its agent views and Hill keys off the disk (a running bridge drops its own at
+ * the next scan); nothing is kept. The one function the bridge's route calls too (bridge/tricks/remove.ts). A run
+ * going is read from the bridge's run marks, since this process cannot see the bridge's memory.
+ */
 export async function cmdTrickRemove(deps: TrickDeps, args: readonly string[]): Promise<number> {
   const id = args.find((a) => !a.startsWith("-"));
   if (id === undefined || !isTrickId(id) || args.length !== 1) {
     deps.io.err("usage: collie trick remove <id>   (the trick must be off)");
     return EXIT.USAGE;
   }
-  const dir = join(tricksConfigDir(deps.ctx.configDir), id);
-  const st = await lstat(dir).catch(() => null);
-  if (st === null) return refuse(deps, `there is no trick folder ${dir}`);
-  if (!st.isDirectory()) return refuse(deps, `${dir} is not a folder (a link or a file), so it is left alone`);
-  if (parseSwitches(deps.files.read(switchesPath(deps.ctx.stateDir))).switches.on.has(id)) {
-    return refuse(deps, `${id} is on. Switch it off first: collie trick off ${id}`);
+  const { configDir, stateDir } = deps.ctx;
+  const dir = join(tricksConfigDir(configDir), id);
+  const forget = (gone: string): void => {
+    new AgentViewStore(trickViewsDir(stateDir), deps.now, () => {}).dropTrick(gone);
+    forgetMapRecord(stateDir, gone);
+  };
+  const out = await removeTrick({ configDir, stateDir, id, busy: (one) => runMarked(stateDir, one, deps.now()), forget });
+  if (out.ok) {
+    deps.io.out(`Removed ${id}: ${out.folder}, its state folder ${out.state} and its approved copies.`);
+    return EXIT.OK;
   }
-  const state = trickStateDir(deps.ctx.stateDir, id);
-  await rm(dir, { recursive: true, force: true });
-  await rm(state, { recursive: true, force: true });
-  await removeTrickCopies(deps.ctx.configDir, id);
-  deps.io.out(`Removed ${id}: ${dir}, its state folder ${state} and its approved copies.`);
-  return EXIT.OK;
+  switch (out.code) {
+    case "unknown-trick":
+      return refuse(deps, `there is no trick folder ${dir}`);
+    case "on":
+      return refuse(deps, `${id} is on. Switch it off first: collie trick off ${id}`);
+    case "running":
+      return refuse(deps, out.message);
+    case "link":
+      return refuse(deps, `${dir}, its state folder or a copy of it is a link, a file or outside the tricks folders, so it is left alone. Nothing was removed.`);
+  }
 }
