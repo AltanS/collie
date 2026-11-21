@@ -786,7 +786,7 @@ export function MarkdownText({
 }) {
   const withImages = resolveImage !== undefined;
   const drawsStretches = useContext(StretchTextContext);
-  // Math is the device's choice (Settings → Appearance). Off, `$` is a dollar and the parse is the
+  // Math is the device's choice (Settings → Look and feel). Off, `$` is a dollar and the parse is the
   // one before math existed.
   const math = mathEngineOf(useDesignPrefs()) !== "off";
   const { blocks, control } = useStretchBlocks(

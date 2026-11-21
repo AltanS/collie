@@ -51,7 +51,7 @@ export type ChatItem =
   | { id: string; ts?: string; kind: "thinking"; text: string; partial?: true }
   | { id: string; ts?: string; kind: "notice"; text: string; note?: true; partial?: true }
   // A compaction. `text` is the agent's recap of its own history and is present only when the reader
-  // asked for it (Settings → Appearance → Compaction summaries); without it the item is a one-line
+  // asked for it (Settings → Look and feel → Compaction summaries); without it the item is a one-line
   // marker, so the recap's thousands of characters are never built into a block at all.
   | { id: string; ts?: string; kind: "compacted"; text?: string }
   // `image`: a picture the call returned (a `Read` of an image, a screenshot), drawn under its card.

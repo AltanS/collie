@@ -1,6 +1,8 @@
-import { createBrowserRouter, replace } from "react-router";
+import { createBrowserRouter, replace, type RouteObject } from "react-router";
 
 import { basePath } from "@/lib/base-path";
+import { lazyScreen } from "@/lib/lazy-route";
+import { lazyLoadsOf, schedulePreload } from "@/lib/route-preload";
 import { pairLandingPath } from "@/lib/nav";
 import { listenForInAppOpen, markBooted, openPendingTarget, probeStandalone, seedColdEntry, type OpenGate } from "@/lib/nav-entry";
 import { isReloadInFlight } from "@/lib/pwa";
@@ -11,37 +13,8 @@ import { HomeRoute } from "@/routes/home";
 import { SlotRoute } from "@/routes/slot";
 import { SpaceRoute } from "@/routes/space";
 import { TrickSessionRoute } from "@/routes/trick-session";
-import { NewRoute } from "@/routes/new";
-import { NewAddRoute } from "@/routes/new-add";
 import { DetailRoute } from "@/routes/detail";
-import { HistoryRoute } from "@/routes/history";
-import { ConversationRoute, ConversationsRoute } from "@/routes/conversations";
-import { ChangesRoute } from "@/routes/changes";
-import { SettingsRoute } from "@/routes/settings";
-import { SettingsLayout } from "@/components/settings-shell";
-import {
-  SettingsAlertsRoute,
-  SettingsAppearanceRoute,
-  SettingsHarnessesRoute,
-  SettingsExperimentsRoute,
-  SettingsTricksRoute,
-  SettingsDeviceRoute,
-  SettingsVoiceRoute,
-  SettingsVoiceHostRoute,
-  SettingsVoiceModelRoute,
-  SettingsSystemRoute,
-  SettingsCharacterRoute,
-  SettingsInstallCountRoute,
-} from "@/routes/settings-sections";
-import { SettingsAccountAddRoute, SettingsAccountRoute, SettingsAccountsRoute } from "@/routes/settings-accounts";
-import { SettingsTrickRoute } from "@/routes/settings-trick";
-import { SettingsChangeLoginRoute } from "@/routes/settings-change-login";
-import { CrewRoute } from "@/routes/crew";
-import { MachineRoute } from "@/routes/machine";
-import { MachinesRoute } from "@/routes/machines";
-import { UpdatesRoute } from "@/routes/updates";
-import { HillRoute } from "@/routes/hill";
-import { TrickCardRoute } from "@/routes/trick-card";
+import { OldSettingsRedirect } from "@/routes/settings-redirect";
 import { PairApproveRoute } from "@/routes/pair-approve";
 import {
   devicesLoader,
@@ -86,9 +59,9 @@ function safeSessionStorage(): Storage | undefined {
   }
 }
 
-// Created once at module scope so the idle-lock in App can unmount/remount RouterProvider without
-// losing the current location (the router instance retains it; loaders re-run fresh on remount).
-export const router = createBrowserRouter([
+// The route table. A screen a first paint does not need loads on demand through `lazyScreen` (ADR 0169):
+// one line per route, the loader stays here. `startRoutePreload` below fetches them all once the app is idle.
+export const routes: RouteObject[] = [
   {
     id: ROOT_ROUTE_ID,
     path: "/",
@@ -111,86 +84,94 @@ export const router = createBrowserRouter([
       // Where it was opened from rides in the query (`?machine=`, `?pane=`, `?s=`), so a reload keeps it.
       // The hill (M96): the Decisions agents posted, one level below the Dashboard. No loader: its
       // lists live in lib/hill/store.ts, kept current by the root loader.
-      { path: "hill", element: <HillRoute /> },
+      { path: "hill", lazy: lazyScreen(() => import("@/routes/hill"), (m) => m.HillRoute) },
       // One card of Collie's own about a trick (M96 spec 14), with the Hill on or off. No loader: the card
       // lives in lib/hill/store.ts, kept current by the root loader.
-      { path: "trick-card/:decisionId", element: <TrickCardRoute /> },
+      { path: "trick-card/:decisionId", lazy: lazyScreen(() => import("@/routes/trick-card"), (m) => m.TrickCardRoute) },
       // A paired browser answers another device's pairing request here (ADR 0139). Reached only from the
       // QR the new device shows (`?r=<public id>`); nothing in the app links to it. No loader: the page
       // reads the request itself, and a browser that is not paired is told so without a read.
       { path: "pair/approve", element: <PairApproveRoute /> },
-      { path: "new", element: <NewRoute /> },
+      { path: "new", lazy: lazyScreen(() => import("@/routes/new"), (m) => m.NewRoute) },
       // "Add your own" (ADR 0094): a page below New, for a launcher this phone adds on one machine.
-      { path: "new/add", element: <NewAddRoute /> },
+      { path: "new/add", lazy: lazyScreen(() => import("@/routes/new-add"), (m) => m.NewAddRoute) },
       // SETTINGS, one layout route around every address below it (components/settings-shell.tsx). On a phone, a tablet
       // and with Large-screen layout Off it draws only its outlet; on the large screen it draws the header, the section
       // list and the chosen section beside it (ADR 0158, addendum 2026-11-21). The addresses are what they were.
       {
         path: "settings",
-        element: <SettingsLayout />,
+        lazy: lazyScreen(() => import("@/components/settings-shell"), (m) => m.SettingsLayout),
         children: [
-          // Settings is an INDEX of four sections (routes/settings.tsx). Its only loader is the pairing
+          // Settings is an INDEX of eleven pages (routes/settings.tsx). Its only loader is the pairing
           // forward: the QR `collie pair` prints still names `/settings?pair=<code>`, and the form now
-          // lives on System. `replace`, as for `/pack` below, so Back does not land on the index and
-          // bounce forward again. No `pair`, no redirect, and the registry stays on System's loader.
+          // lives on Devices and machines. `replace`, as for `/pack` below, so Back does not land on the index and
+          // bounce forward again. No `pair`, no redirect, and the registry stays on Devices and machines' loader.
           {
             index: true,
             loader: ({ request }) => {
               const target = pairLandingPath(new URL(request.url).search);
               return target === null ? null : replace(target);
             },
-            element: <SettingsRoute />,
+            lazy: lazyScreen(() => import("@/routes/settings"), (m) => m.SettingsRoute),
           },
-          { path: "appearance", element: <SettingsAppearanceRoute /> },
-          // One level below Appearance, like Voice's two pages: which character the header draws.
-          { path: "appearance/character", element: <SettingsCharacterRoute /> },
-          { path: "harnesses", element: <SettingsHarnessesRoute /> },
-          // Accounts (M101): a second login for an agent. The list, the Add form and one account's page. The row in
+          // The eleven pages (ADR 0170), in the index's order. Each draws the registry's page (lib/settings/pages.ts).
+          { path: "look", lazy: lazyScreen(() => import("@/routes/settings-sections"), (m) => m.SettingsLookRoute) },
+          // One level below Look and feel, like Voice's two pages: which character the header draws.
+          { path: "look/character", lazy: lazyScreen(() => import("@/routes/settings-sections"), (m) => m.SettingsCharacterRoute) },
+          { path: "chat", lazy: lazyScreen(() => import("@/routes/settings-sections"), (m) => m.SettingsChatRoute) },
+          { path: "keys", lazy: lazyScreen(() => import("@/routes/settings-sections"), (m) => m.SettingsKeysRoute) },
+          // Notifications carries the machines census for its Machine load group, and one machine's alerts sit below it.
+          { path: "notifications", loader: machinesLoader, lazy: lazyScreen(() => import("@/routes/settings-sections"), (m) => m.SettingsNotificationsRoute) },
+          { path: "notifications/load/:machine", loader: machinesLoader, lazy: lazyScreen(() => import("@/routes/settings-sections"), (m) => m.SettingsMachineLoadRoute) },
+          { path: "voice", lazy: lazyScreen(() => import("@/routes/settings-sections"), (m) => m.SettingsVoiceRoute) },
+          // Two pages below Voice: the host's option for every device, and the Whistle model's copies.
+          { path: "voice/host", lazy: lazyScreen(() => import("@/routes/settings-sections"), (m) => m.SettingsVoiceHostRoute) },
+          { path: "voice/model", lazy: lazyScreen(() => import("@/routes/settings-sections"), (m) => m.SettingsVoiceModelRoute) },
+          { path: "dashboard", lazy: lazyScreen(() => import("@/routes/settings-sections"), (m) => m.SettingsDashboardRoute) },
+          // Profiles (M101): a second login for an agent. The list, the Add form and one profile's page. The row in
           // the index is offered only while GET /api/accounts answers 200; the pages are routable always and
           // say so when the machine offers none.
-          { path: "accounts", element: <SettingsAccountsRoute /> },
-          { path: "accounts/add", element: <SettingsAccountAddRoute /> },
-          { path: "accounts/:id", element: <SettingsAccountRoute /> },
-          { path: "accounts/:id/login", element: <SettingsChangeLoginRoute /> },
-          { path: "device", element: <SettingsDeviceRoute /> },
-          { path: "voice", element: <SettingsVoiceRoute /> },
-          // Two pages below Voice: the host's option for every device, and the Whistle model's copies.
-          { path: "voice/host", element: <SettingsVoiceHostRoute /> },
-          { path: "voice/model", element: <SettingsVoiceModelRoute /> },
-          { path: "alerts", element: <SettingsAlertsRoute /> },
-          // The fifth section. It is routable whether or not the index offers a row for it — a page
-          // reachable only by URL is the ordinary case for a section that comes and goes, and it is
-          // what an operator who bookmarked it gets after the last experiment graduates: an empty page
-          // rather than a 404.
-          { path: "experiments", element: <SettingsExperimentsRoute /> },
-          // Tricks (M94): routable always; the index offers its row only while the phone holds a tricks reply.
-          { path: "tricks", element: <SettingsTricksRoute /> },
+          { path: "accounts", lazy: lazyScreen(() => import("@/routes/settings-accounts"), (m) => m.SettingsAccountsRoute) },
+          { path: "accounts/add", lazy: lazyScreen(() => import("@/routes/settings-accounts"), (m) => m.SettingsAccountAddRoute) },
+          { path: "accounts/:id", lazy: lazyScreen(() => import("@/routes/settings-accounts"), (m) => m.SettingsAccountRoute) },
+          { path: "accounts/:id/login", lazy: lazyScreen(() => import("@/routes/settings-change-login"), (m) => m.SettingsChangeLoginRoute) },
+          // Tricks and the Hill: both switches, and the list while tricks are on.
+          { path: "tricks", lazy: lazyScreen(() => import("@/routes/settings-sections"), (m) => m.SettingsTricksRoute) },
           // One trick's details (2026-11-21, a bottom sheet before): `<host>:<id>`, or an official entry's bare id
           // (lib/nav.ts `trickDetailPath`). No loader: it reads the tricks store and the official list, as the list does.
-          { path: "tricks/:key", element: <SettingsTrickRoute /> },
-          // The System section carries the paired-device registry, so it gets the loader Settings used
-          // to hold — a revoke or a pair is then the app's standard mutation shape (api call →
-          // revalidate), with no second data path.
-          { path: "system", loader: devicesLoader, element: <SettingsSystemRoute /> },
-          // One level below System, like Voice's two pages: the install count's switch and its explanation.
-          { path: "system/install-count", element: <SettingsInstallCountRoute /> },
-          // The Updates page, a sibling of settings and crew. No loader of its own: everything on it is
-          // either the snapshot (root loader) or the card's own read of /api/update/check. It is
-          // deliberately ON the poll loop for `crew`'s stated reason — a run in progress and a member
-          // going quiet are exactly what this page exists to show without a reload.
-          { path: "updates", element: <UpdatesRoute /> },
+          { path: "tricks/:key", lazy: lazyScreen(() => import("@/routes/settings-trick"), (m) => m.SettingsTrickRoute) },
+          // Devices and machines carries the paired-device registry, so a revoke or a pair is the app's standard
+          // mutation shape (api call, then revalidate), with no second data path.
+          { path: "devices", loader: devicesLoader, lazy: lazyScreen(() => import("@/routes/settings-sections"), (m) => m.SettingsDevicesRoute) },
+          { path: "privacy", lazy: lazyScreen(() => import("@/routes/settings-sections"), (m) => m.SettingsPrivacyRoute) },
+          // One level below Privacy and data: the install count's switch and its explanation.
+          { path: "privacy/install-count", lazy: lazyScreen(() => import("@/routes/settings-sections"), (m) => m.SettingsInstallCountRoute) },
+          // Updates and about. No loader of its own: everything on it is either the snapshot (root loader) or the
+          // card's own read of /api/update/check, and it is ON the poll loop, so a run in progress shows without a reload.
+          { path: "updates", lazy: lazyScreen(() => import("@/routes/updates"), (m) => m.UpdatesRoute) },
+          // THE OLD ADDRESSES (before 2026-11-21): each opens the page that holds most of what it held, the query and
+          // the fragment carried (routes/settings-sections.tsx `OldSettingsRedirect`). An element, not a loader,
+          // because a loader's request has no fragment, and `#changes` decides the page.
+          { path: "appearance", element: <OldSettingsRedirect from="appearance" /> },
+          { path: "appearance/character", element: <OldSettingsRedirect from="appearance" below="character" /> },
+          { path: "harnesses", element: <OldSettingsRedirect from="harnesses" /> },
+          { path: "device", element: <OldSettingsRedirect from="device" /> },
+          { path: "alerts", element: <OldSettingsRedirect from="alerts" /> },
+          { path: "experiments", element: <OldSettingsRedirect from="experiments" /> },
+          { path: "system", element: <OldSettingsRedirect from="system" /> },
+          { path: "system/install-count", element: <OldSettingsRedirect from="system" below="install-count" /> },
         ],
       },
       // The crew census, likewise on its own loader — and deliberately ON the poll loop: the payload
       // is one small object per machine, and the whole point of the page is that a member going
       // quiet shows up here without the operator reloading. (History opts out; this one wants in.)
-      { path: "crew", loader: crewLoader, element: <CrewRoute /> },
+      { path: "crew", loader: crewLoader, lazy: lazyScreen(() => import("@/routes/crew"), (m) => m.CrewRoute) },
       // The machines list and one machine's page. Both read the census through the same loader and
       // both stay ON the poll loop: a value moving and an alert firing should show without a reload.
       // The detail page's history is its own timed read (hooks/use-machine-history.ts), because every
       // active loader is refetched on each tick and 1440 points a tick would be pure waste.
-      { path: "machines", loader: machinesListLoader, element: <MachinesRoute /> },
-      { path: "machines/:id", loader: machinesLoader, element: <MachineRoute /> },
+      { path: "machines", loader: machinesListLoader, lazy: lazyScreen(() => import("@/routes/machines"), (m) => m.MachinesRoute) },
+      { path: "machines/:id", loader: machinesLoader, lazy: lazyScreen(() => import("@/routes/machine"), (m) => m.MachineRoute) },
       // The path was `crew` until 1.7.0 (M24 renamed the word a person reads). The service worker
       // caches the app shell, so a client sitting on /crew when the new bundle arrives, a bookmark
       // and an installed PWA's start URL all still ask for the old spelling. `replace` rather than
@@ -218,7 +199,7 @@ export const router = createBrowserRouter([
       {
         path: "pane/:paneId/history",
         loader: historyLoader,
-        element: <HistoryRoute />,
+        lazy: lazyScreen(() => import("@/routes/history"), (m) => m.HistoryRoute),
         // Opt OUT of the poll loop. revalidate() re-runs every active loader, and a transcript can be
         // hundreds of turns — re-pulling it every 1.5s would be pure waste, and it would fight the
         // view's own "load older" paging by resetting the page under it. History is fetched on
@@ -228,8 +209,8 @@ export const router = createBrowserRouter([
       // A durable program's own history (M53 spec 11): its list of conversations, and one of them read
       // only. Neither has a loader. Each reads on open and on its Load more tap, so the poll loop's
       // revalidate() fetches nothing for them; `shouldRevalidate` states the same opt-out as History's.
-      { path: "conversations", element: <ConversationsRoute />, shouldRevalidate: () => false },
-      { path: "conversations/:id", element: <ConversationRoute />, shouldRevalidate: () => false },
+      { path: "conversations", lazy: lazyScreen(() => import("@/routes/conversations"), (m) => m.ConversationsRoute), shouldRevalidate: () => false },
+      { path: "conversations/:id", lazy: lazyScreen(() => import("@/routes/conversations"), (m) => m.ConversationRoute), shouldRevalidate: () => false },
       {
         // The Changes view (ADR 0065). No loader: the view reads the list and an open file's diff
         // itself, on open, on its own 5 s beat while visible and on its refresh button, so the poll
@@ -239,7 +220,7 @@ export const router = createBrowserRouter([
         // and the same mounted component: the list keeps its state under the commit. A folder or a
         // file of the folder tree (`changes/files`, ADR 0083) is matched here too, the same screen.
         path: "pane/:paneId/changes/*",
-        element: <ChangesRoute />,
+        lazy: lazyScreen(() => import("@/routes/changes"), (m) => m.ChangesRoute),
         shouldRevalidate: () => false,
       },
       {
@@ -247,12 +228,16 @@ export const router = createBrowserRouter([
         // this form lets a dashboard entry open it without naming a pane. Host-aware through the
         // scope query like every other route.
         path: "space/:spaceId/changes/*",
-        element: <ChangesRoute />,
+        lazy: lazyScreen(() => import("@/routes/changes"), (m) => m.ChangesRoute),
         shouldRevalidate: () => false,
       },
     ],
   },
-], {
+];
+
+// Created once at module scope so the idle-lock in App can unmount/remount RouterProvider without
+// losing the current location (the router instance retains it; loaders re-run fresh on remount).
+export const router = createBrowserRouter(routes, {
   // The mount the bridge served this document under (ADR 0052): `/` at the root, `/collie/` behind
   // a proxy that gives Collie a path. Every route path above stays root-relative; the router puts
   // the mount in front of them and takes it off what it reads from the address bar.
@@ -275,3 +260,10 @@ const openGate: OpenGate = {
 };
 openPendingTarget(router, openGate);
 listenForInAppOpen(router, openGate);
+
+/** Fetch every lazy screen in the background once the app is idle, once per page load (main.tsx, after
+ *  the first paint). The list comes from the table itself, so a new lazy route is preloaded with no
+ *  second list to keep. */
+export function startRoutePreload(): void {
+  void schedulePreload(lazyLoadsOf(routes).loads);
+}

@@ -6,21 +6,21 @@ import { describe, expect, it } from "vitest";
 
 import { server } from "@/test/setup";
 import { withHeaderHost } from "@/test/header-host";
-import { SettingsAlertsRoute } from "./settings-sections";
+import { SettingsNotificationsRoute } from "./settings-sections";
 
-// Settings → Alerts → Clear notifications, on the real route. This page mounts no floating status,
+// Settings → Notifications → Clear notifications, on the real route. This page mounts no floating status,
 // so the acknowledgement a person sees is the card's own line: these cases read what is on the page,
 // not the status store. The card's logic is pinned in components/clear-notifications-control.test.tsx.
 
 function renderAlerts() {
-  const router = createMemoryRouter([{ path: "/settings/alerts", element: withHeaderHost(<SettingsAlertsRoute />) }], {
-    initialEntries: ["/settings/alerts"],
+  const router = createMemoryRouter([{ path: "/settings/notifications", element: withHeaderHost(<SettingsNotificationsRoute />) }], {
+    initialEntries: ["/settings/notifications"],
   });
   const { container } = render(<RouterProvider router={router} />);
   return within(container);
 }
 
-describe("Settings → Alerts — Clear all", () => {
+describe("Settings → Notifications — Clear all", () => {
   it("sits beside the snooze and says on the page that the notifications were cleared", async () => {
     server.use(http.post("/api/notifications/clear", () => HttpResponse.json({ clearedSlots: [] })));
     const page = renderAlerts();
@@ -44,5 +44,23 @@ describe("Settings → Alerts — Clear all", () => {
     const card = within(cardElement);
     await waitFor(() => expect(card.getByRole("status").textContent).not.toBe(""));
     expect(card.queryByText("Notifications cleared.")).toBeNull();
+  });
+});
+
+describe("Settings → Notifications — the groups", () => {
+  it("stands the switches under their headings: This device, Notify me when, Cache, Machine load, Quiet", async () => {
+    const page = renderAlerts();
+    for (const name of ["This device", "Notify me when", "Cache", "Machine load", "Quiet"]) {
+      expect(await page.findByRole("region", { name })).toBeInTheDocument();
+    }
+    const when = page.getByRole("region", { name: "Notify me when" });
+    expect(within(when).getByText("For every device")).toBeInTheDocument();
+    expect(within(when).getByRole("switch", { name: "A new Collie version" })).toBeInTheDocument();
+    expect(within(when).getByRole("switch", { name: "A Decision marked Now on the Hill" })).toBeInTheDocument();
+    expect(within(when).queryByRole("switch", { name: "Cache about to go cold" })).toBeNull();
+    const cache = page.getByRole("region", { name: "Cache" });
+    expect(within(cache).getByText("Watched panes")).toBeInTheDocument();
+    const load = page.getByRole("region", { name: "Machine load" });
+    expect(within(load).getByRole("switch", { name: "Machine load stays high" })).toBeInTheDocument();
   });
 });

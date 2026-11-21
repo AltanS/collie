@@ -293,13 +293,13 @@ The X at the top, the Back button at the bottom on a phone, and the phone's own 
 close the zoomed output. Zooming changes nothing on the computer. The pane keeps its size in the
 terminal.
 
-Left-handed? Set **Settings → Appearance → Hand** to **Left**. The belt turns round: the Switch, Zoom
+Left-handed? Set **Settings → Keys and touch → Hand** to **Left**. The belt turns round: the Switch, Zoom
 and X buttons move to its left end, still above Send, and Keys becomes the rightmost button, with the rest
 scrolling off toward the left. Send and Attach move to the left of the reply box. The setting is per
 device and applies the next time you open a pane.
 
 To verify, open a pane running Claude Code, Codex, pi or omp; the tinted segment sits at the right
-of the row above the keyboard. Turn that segment off per device in **Settings → Appearance → Harness shortcuts**;
+of the row above the keyboard. Turn that segment off per device in **Settings → Keys and touch → Harness shortcuts**;
 Collie's own controls stay.
 
 ### Stop a turn
@@ -494,7 +494,7 @@ unbinds the action. The example file lists every default as a commented line.
 
 The bridge re-reads the file when it changes. Reload the page to pick it up. Open the
 [shortcut list](terminology.md#shortcut-list) with the prefix, then `?`, or on a wide window from
-Settings, Device, Keyboard shortcuts. [Keyboard shortcuts](keyboard-shortcuts.md) has every action
+Settings, Keys and touch, Keyboard shortcuts. [Keyboard shortcuts](keyboard-shortcuts.md) has every action
 with its default keys, the key grammar and the Herdr names.
 
 ## Your own quick replies
@@ -923,7 +923,7 @@ typed.
 
 ## Your own typefaces
 
-The interface font is a per-device setting. Under **Settings → Appearance → Typeface**, you can choose between
+The interface font is a per-device setting. Under **Settings → Look and feel → Typeface**, you can choose between
 System, Space Grotesk, Aldrich, IBM Plex Sans, Geist, Atkinson Hyperlegible Next (the default) and Nunito. A
 [theme](themes.md) that names a face writes it here once, when you pick the theme. You can add custom fonts in
 `theme.toml`, the fourth configuration file:
@@ -1004,7 +1004,7 @@ the nearest file wins and names none. A changed picture shows within a few secon
 `icon` stays a text path for good. A later release that lets the file say more adds a new key,
 and never changes what `icon` takes.
 
-To turn the pictures off on one phone, open **Settings → Appearance → Project pictures**. To turn
+To turn the pictures off on one phone, open **Settings → Look and feel → Project pictures**. To turn
 every repository's file off on a machine, set this in the instance's `.env` and restart Collie:
 
 ```bash
@@ -1243,7 +1243,7 @@ reaches your phone unmasked only when the lead and that member both set `COLLIE_
 ## Report a problem
 
 When three sends in a row on one pane fail for a reason that points at Collie, a card above the
-reply box offers to report it. **Settings → System → Offer a report when sending fails** turns the
+reply box offers to report it. **Settings → Updates and about → Offer a report when sending fails** turns the
 card off for that device (stored in the browser, on by default). The pane menu's **Report a problem**
 and the **Report a problem** button on the same card in Settings still open the sheet.
 
@@ -1316,7 +1316,7 @@ logged. A folder that is not on disk at launch time falls back to home.
 
 ## Usage windows
 
-The figures beside the model show the limits the agent reports for Claude and Codex, usually the 5-hour and 7-day ones, with no setup. A plan that reports one limit shows one. A weekly limit for one model shows as `7d` and the model name (`7d Opus 30%`), and a row with more than three limits shows the first three and a count (`+1`). They read as a percentage of what is used (`7d 83%`) unless you choose dots in Settings, Appearance, Usage row.
+The figures beside the model show the limits the agent reports for Claude and Codex, usually the 5-hour and 7-day ones, with no setup. A plan that reports one limit shows one. A weekly limit for one model shows as `7d` and the model name (`7d Opus 30%`), and a row with more than three limits shows the first three and a count (`+1`). They read as a percentage of what is used (`7d 83%`) unless you choose dots in Settings, Chat and terminal, Context and limits.
 
 ```bash
 # turn every source off
@@ -1360,7 +1360,7 @@ The context figure needs no setting. For pi, OMP, Codex and OpenCode, Collie rea
 
 > **Note.** Collie follows your phone's appearance by default.
 
-To pin it, open **Settings → Appearance**, find the **Appearance** card under the **Theme** card, and pick
+To pin it, open **Settings → Look and feel**, find the **Light or dark** card under the **Theme** card, and pick
 **System**, **Light** or **Dark**. The [Theme](themes.md) card picks the colours; this card picks the light or
 the dark half of them. The setting is
 stored **per device** in the browser rather than on the bridge. Your phone can remain on Dark while
@@ -1409,7 +1409,7 @@ shown under another, so the next Refresh fetches again. Leave it unset for norma
 Math is off by default. To draw LaTeX as equations, a write device downloads the math engines to
 the host once, then each device picks its engine.
 
-1. Open **Settings → Appearance → Math**.
+1. Open **Settings → Look and feel → Math**.
 2. Tap **Download the math engines (about 4 MB)**, or pick **KaTeX** or **MathJax** to download and choose in one tap.
 3. Wait for the progress bar to finish; the engine you picked becomes the choice.
 
@@ -1438,7 +1438,7 @@ What the engines draw, and how to write an equation, is in [Equations](changes.m
 
 > **Note.** Zen mode is off by default.
 
-Enable it in **Settings → Device → Zen mode** (stored per device in the browser). This adds a **Zen mode**
+Enable it in **Settings → Keys and touch → Zen mode** (stored per device in the browser). This adds a **Zen mode**
 option to the pane menu, under the ⋮ beside Find and History. Tapping it hides all Collie UI
 elements: the header, tab and pane strips, agent statusline, and composer docks. Only the terminal
 mirror remains visible. A floating button in the top-right corner or the Escape key restores the
@@ -1455,7 +1455,7 @@ they are part of the content stream rather than chrome.
 
 > **Note.** Enter stays a new line until you turn **Enter sends** on. Nothing changes by itself.
 
-To make Enter send the message, open **Settings → Appearance → Enter sends** and turn it on. The
+To make Enter send the message, open **Settings → Keys and touch → Enter sends** and turn it on. The
 choice is stored per device and never leaves it.
 
 With the switch on, a physical keyboard's Enter sends the message and **Shift+Enter** adds a new
@@ -1481,7 +1481,7 @@ on this device, and **Enter sends** in Settings still changes the choice.
 
 The layout turns on for the pane screen when the screen is at least 600 CSS pixels wide and at least
 480 pixels tall. A phone held sideways is under 480 pixels tall, so it keeps the phone layout.
-To switch it off, open **Settings → Appearance → Large-screen layout** and pick **Off**. **Auto**,
+To switch it off, open **Settings → Look and feel → Large-screen layout** and pick **Off**. **Auto**,
 the default, turns it on where the screen is big enough. The choice is stored per device.
 
 The dashboard follows the same switch, from 900 pixels wide. The Spaces stand side by side in
@@ -1534,7 +1534,7 @@ open in one half and the pane fills the other. Other browsers show the flat layo
 A gesture moves you between panes and spaces, on a phone and in the large-screen layout. Left and
 right go to the previous and next pane of the space, in the switcher's order. Up and down go to the
 previous and next space. At the first or last pane or space, a move stays put. Choose the method in
-**Settings → Appearance → Pane navigation**. A change shows the next time a pane opens.
+**Settings → Keys and touch → Pane navigation**. A change shows the next time a pane opens.
 
 | Method          | How it works                                                                                                                                                                                                                                                                        |
 | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -1715,7 +1715,7 @@ Right after you return to the app, the first poll that gets no answer does not c
 Tailscale link can need a moment to come back, so the phone asks again half a second later, and
 shows the bar only when that poll gets no answer too.
 
-**Keep chat on this phone**, in **Settings → Device**, sets how long the Chat turns stay on the phone:
+**Keep chat on this phone**, in **Settings → Privacy and data**, sets how long the Chat turns stay on the phone:
 
 | Value | What it does |
 | --- | --- |
@@ -1733,7 +1733,7 @@ terminal view, the only offline copy is that terminal text.
 ## Changes
 
 The [Files screen](changes.md) shows what an agent changed in its workspace's git repos, under its
-**Changes** segment. Two per-device settings decide how far it looks for repos, in **Settings → Device → Changes**:
+**Changes** segment. Two per-device settings decide how far it looks for repos, in **Settings → Dashboard and projects → Changes**:
 
 | Setting | Default | What it does |
 | --- | --- | --- |
@@ -1744,7 +1744,7 @@ See [Which folder, and which repos](changes.md#which-folder-and-which-repos) for
 
 ## Language
 
-Collie's interface is available in twelve languages. Configure this under **Settings → Appearance → Language**.
+Collie's interface is available in twelve languages. Configure this under **Settings → Look and feel → Language**.
 
 - English
 - Deutsch

@@ -1,4 +1,6 @@
 import type { ReactNode } from "react";
+
+import { cn } from "@/lib/utils";
 import { Icon } from "@/components/icons/icon";
 import type { IconKey } from "@/components/icons/keys";
 
@@ -12,18 +14,21 @@ export function SettingsNavRow({
   title,
   caption,
   onOpen,
+  wrap = false,
 }: {
   icon: IconKey;
   title: string;
   caption: ReactNode;
   onOpen: () => void;
+  /** The caption may wrap (the index's page lines), never cut; a live value keeps its one line. */
+  wrap?: boolean;
 }) {
   return (
     <button type="button" onClick={onOpen} className="flex w-full items-center gap-3 p-4 text-left active:bg-muted/60">
       <Icon name={icon} className="size-5 shrink-0 text-muted-foreground" />
       <div className="min-w-0 flex-1">
         <div className="font-medium">{title}</div>
-        <p className="truncate text-sm text-muted-foreground">{caption}</p>
+        <p className={cn("text-sm text-muted-foreground", wrap ? "text-pretty" : "truncate")}>{caption}</p>
       </div>
       <Icon name="row-go" aria-hidden="true" className="size-5 shrink-0 text-muted-foreground" />
     </button>

@@ -839,7 +839,7 @@ export function cmdHillSwitch(
  */
 export async function cmdHillOn(deps: Pick<HillDeps, "ctx" | "io" | "now" | "paneKind"> & { readonly followSkill: SwitchFollower | null }, args: readonly string[]): Promise<number> {
   if (await inAgentPane(deps)) {
-    for (const line of personOnlyRefusal("collie hill on", "in Settings, Experiments")) deps.io.err(line);
+    for (const line of personOnlyRefusal("collie hill on", "in Settings, Tricks and the Hill")) deps.io.err(line);
     return EXIT.REFUSED;
   }
   return cmdHillSwitch(deps, "on", args);

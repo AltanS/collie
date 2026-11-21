@@ -53,10 +53,10 @@ function tempDir(prefix: string): string {
 }
 
 describe("where the person finds a proposal (M96 spec 14)", () => {
-  test("the guide and the propose output name the Hill and Settings, Tricks, and never ask for the Hill to be switched on", () => {
-    expect(PROPOSE_WHERE).toBe("on the Hill, or in Settings, Tricks, while the Hill is off");
+  test("the guide and the propose output name the Hill and Settings, Tricks and the Hill, and never ask for the Hill to be switched on", () => {
+    expect(PROPOSE_WHERE).toBe("on the Hill, or in Settings, Tricks and the Hill, while the Hill is off");
     const guide = trickGuide().join("\n");
-    expect(guide).toContain("in this session on the phone, and in Settings, Tricks (on the Hill too, while it is on)");
+    expect(guide).toContain("in this session on the phone, and in Settings, Tricks and the Hill (on the Hill too, while it is on)");
     for (const text of [guide, PROPOSE_WHERE]) {
       expect(text).not.toMatch(/switch(es)? the Hill on/iu);
       expect(text).not.toContain("Experiments");
@@ -65,13 +65,13 @@ describe("where the person finds a proposal (M96 spec 14)", () => {
 });
 
 describe("where the card is, from the bridge's answer (package I)", () => {
-  test("the session first while the card is tied to it, the Hill only while it is on, Settings, Tricks always; no answer of where keeps the old words", () => {
-    expect(proposeWhere({ session: true, hill: false })).toBe("in this session on the phone, and in Settings, Tricks");
-    expect(proposeWhere({ session: true, hill: true })).toBe("in this session on the phone, on the Hill, and in Settings, Tricks");
-    expect(proposeWhere({ session: false, hill: true })).toBe("on the Hill, and in Settings, Tricks");
-    expect(proposeWhere({ session: false, hill: false })).toBe("in Settings, Tricks, on the phone");
+  test("the session first while the card is tied to it, the Hill only while it is on, Settings, Tricks and the Hill always; no answer of where keeps the old words", () => {
+    expect(proposeWhere({ session: true, hill: false })).toBe("in this session on the phone, and in Settings, Tricks and the Hill");
+    expect(proposeWhere({ session: true, hill: true })).toBe("in this session on the phone, on the Hill, and in Settings, Tricks and the Hill");
+    expect(proposeWhere({ session: false, hill: true })).toBe("on the Hill, and in Settings, Tricks and the Hill");
+    expect(proposeWhere({ session: false, hill: false })).toBe("in Settings, Tricks and the Hill, on the phone");
     expect(proposeWhere(undefined)).toBe(PROPOSE_WHERE);
-    for (const where of [{ session: true, hill: false }, { session: false, hill: false }]) expect(proposeWhere(where)).not.toContain("Hill");
+    for (const where of [{ session: true, hill: false }, { session: false, hill: false }]) expect(proposeWhere(where)).not.toContain("on the Hill");
   });
 });
 
@@ -392,7 +392,7 @@ describe("collie trick propose, over the walky socket", () => {
     expect(Array.isArray(files) ? files.map((f) => asJsonObject(f)?.rel) : []).toEqual(["program.ts", "trick.toml"]);
     expect(d.io.stdout).toEqual([
       "Sent 2 files. Left behind: 1 (dot files, node_modules, logs, inputs/, config.toml, and any file in media/ or captures/ that is not a picture).",
-      "Proposed legs. Your person sees it as dc_k3m9x2p7q1ab on the Hill, or in Settings, Tricks, while the Hill is off. Nothing runs before their yes.",
+      "Proposed legs. Your person sees it as dc_k3m9x2p7q1ab on the Hill, or in Settings, Tricks and the Hill, while the Hill is off. Nothing runs before their yes.",
       "Read the answer with: collie hill status dc_k3m9x2p7q1ab",
     ]);
     // A draft that init made in an agent's work folder proposes with nothing registered for its id.
@@ -420,11 +420,11 @@ describe("collie trick propose, over the walky socket", () => {
     expect(Array.isArray(sent) ? sent.map((f) => asJsonObject(f)?.rel) : []).toContain("trick.toml");
   });
 
-  socketTest("a session's proposal with the Hill off names the session and Settings, Tricks, never the Hill", async () => {
+  socketTest("a session's proposal with the Hill off names the session and Settings, Tricks and the Hill, never the Hill", async () => {
     const b = await bridge(async () => ({ ok: true, kind: "proposal", id: "legs", hash: "h", decision: "dc_k3m9x2p7q1ab", replaced: null, where: { session: true, hill: false } }));
     const d = deps([walkySocketPath(b.stateDir)]);
     expect(await cmdTrickPropose(d, [trickFolder()])).toBe(EXIT.OK);
-    expect(d.io.stdout).toContain("Proposed legs. Your person sees it as dc_k3m9x2p7q1ab in this session on the phone, and in Settings, Tricks. Nothing runs before their yes.");
+    expect(d.io.stdout).toContain("Proposed legs. Your person sees it as dc_k3m9x2p7q1ab in this session on the phone, and in Settings, Tricks and the Hill. Nothing runs before their yes.");
   });
 
   socketTest("the pictures go on the line beside the code, and the CLI names what stayed behind", async () => {

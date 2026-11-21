@@ -124,15 +124,15 @@ describe("the machine page", () => {
     renderMachine("workshop", undefined, "/machines/workshop?tab=alerts");
     expect(await screen.findByRole("switch", { name: "CPU alert" })).toBeChecked();
     expect(screen.getByRole("switch", { name: "Memory alert" })).toBeChecked();
-    const memAbove = screen.getByRole("radiogroup", { name: "Memory alert threshold" });
+    const memAbove = screen.getByRole("radiogroup", { name: "Memory above" });
     expect(within(memAbove).getByRole("radio", { checked: true })).toHaveTextContent("95%");
   });
 
-  it("opens Settings, Alerts from the alert card", async () => {
+  it("opens Settings, Notifications from the alert card", async () => {
     const user = userEvent.setup();
     const router = renderMachine("lodge", undefined, "/machines/lodge?tab=alerts");
-    await user.click(await screen.findByRole("button", { name: "Settings, Alerts" }));
-    expect(router.state.location.pathname).toBe("/settings/alerts");
+    await user.click(await screen.findByRole("button", { name: "Settings, Notifications" }));
+    expect(router.state.location.pathname).toBe("/settings/notifications");
   });
 
   it("goes back up to Machines", async () => {
@@ -163,7 +163,7 @@ describe("the machine page", () => {
     renderMachine("pantry", undefined, "/machines/pantry?tab=alerts");
     expect(await screen.findByText(/Alerts need this machine to be updated/)).toBeInTheDocument();
     expect(screen.queryByRole("switch")).toBeNull();
-    expect(screen.queryByRole("radiogroup", { name: /threshold/ })).toBeNull();
+    expect(screen.queryByRole("radiogroup", { name: /above/ })).toBeNull();
   });
 
   it("keeps the alert controls on a machine that is only down, which is not an old one", async () => {

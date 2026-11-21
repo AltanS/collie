@@ -226,3 +226,16 @@ describe("StatusWord — the caption's plain-language state", () => {
   });
 });
 
+
+// THE FULL RING (ADR 0171): a row with one mark per item, the large screen's tab bar, draws the resting rings at
+// their token's full strength; everywhere else they keep the 60% calm.
+describe("StatusDot full", () => {
+  for (const status of ["idle", "unknown"] as const) {
+    it(`draws the ${status} ring at full stroke only when asked`, () => {
+      const calm = render(<StatusDot status={status} />).container;
+      expect(calm.querySelector("circle")?.getAttribute("stroke-opacity")).toBe("0.6");
+      const full = render(<StatusDot status={status} full />).container;
+      expect(full.querySelector("circle")?.getAttribute("stroke-opacity")).toBe("1");
+    });
+  }
+});

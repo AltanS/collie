@@ -393,7 +393,7 @@ function HillOffPhone() {
   );
 }
 
-/** The row in Settings → Experiments, in a 390px column, with a switch that flips in place. `waiting`: open Decisions (any arms the first tap off). */
+/** The row in Settings → Tricks and the Hill, in a 390px column, with a switch that flips in place. `waiting`: open Decisions (any arms the first tap off). */
 function SwitchRow({ initial, waiting = 0 }: { initial: boolean; waiting?: number }) {
   const [on, setOn] = useState(initial);
   return (
@@ -915,11 +915,11 @@ export function HillSection() {
 
       <Group title="The switch">
         <Card state="hill-switch-on" label="43: Settings row, on">
-          <CardHead n={43} title="Settings → Experiments: the Hill on" />
+          <CardHead n={43} title="Settings → Tricks and the Hill: the Hill on" />
           <SwitchRow initial />
         </Card>
         <Card state="hill-switch-off" label="44: Settings row, off">
-          <CardHead n={44} title="Settings → Experiments: the Hill off (the default)" />
+          <CardHead n={44} title="Settings → Tricks and the Hill: the Hill off (the default)" />
           <SwitchRow initial={false} />
         </Card>
         <Card state="hill-switch-armed" label="67: Settings row, 3 waiting">

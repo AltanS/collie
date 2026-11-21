@@ -447,6 +447,18 @@ export const SETUPS = {
     await visit(page, screen);
   },
   /** The four machines of a crew. */
+  /** Notifications with two machines in the census, so the Machine load group draws one row per machine. */
+  settingsMachines: async (page, screen) => {
+    await installCrewWorld(page);
+    await installMachinesWorld(page);
+    await visit(page, screen);
+  },
+  /** The Settings index with a query in its search field, so the results stand where the list was. */
+  settingsSearch: async (page, screen) => {
+    await visit(page, screen);
+    await page.getByRole("textbox", { name: "Search settings" }).fill("dark");
+    await page.locator('[data-slot="settings-search-results"]').first().waitFor({ state: "visible", timeout: 8000 });
+  },
   machines: async (page, screen) => {
     await installApiStub(page);
     await installCrewWorld(page);

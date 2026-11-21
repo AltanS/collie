@@ -201,7 +201,7 @@ test("each check of R5 finds the break it is for", async ({ browser }, testInfo)
     const page = await context.newPage();
     await installApiStub(page);
     await installScreenStubs(page);
-    await page.goto("/settings/appearance");
+    await page.goto("/settings/look");
     await page.waitForSelector("#root *");
     await page.waitForTimeout(500);
     await page.evaluate(() => {

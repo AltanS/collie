@@ -427,7 +427,7 @@ describe("the Hill's switch", () => {
     const refused = deps(sock, inPane("%1"), { mintRequestId: () => "0f8b5c1e-5a7d-4b8e-9f00-1a2b3c4d5e71" });
     expect(await cmdHillPost(refused, POST)).toBe(EXIT.STATE);
     // One line: a retry cannot pass until the person switches the Hill on, so no request id is offered.
-    expect(refused.io.stderr).toEqual(["hill: the Hill is off on this Collie; your person can switch it on in Settings, Experiments, on the phone, or with: collie hill on (hill_off)"]);
+    expect(refused.io.stderr).toEqual(["hill: the Hill is off on this Collie; your person can switch it on in Settings, Tricks and the Hill, on the phone, or with: collie hill on (hill_off)"]);
     // The open decision is still there, and its poster can read, list and withdraw it while the Hill is off.
     const status = deps(sock);
     expect(await cmdHillStatus(status, ["dc_cli000000001"])).toBe(EXIT.OK);

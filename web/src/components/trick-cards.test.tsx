@@ -13,7 +13,7 @@ import type { HillDecision } from "@/lib/hill/wire";
 import { collieCard, HILL_T0, hillDecision, hillReceipt } from "@/test/hill-fixtures";
 import { server } from "@/test/setup";
 
-// A TRICK'S CARD NEEDS NO HILL (M96 spec 14): the group in Settings, Tricks, the Dashboard's line while the
+// A TRICK'S CARD NEEDS NO HILL (M96 spec 14): the group in Settings, Tricks and the Hill, the Dashboard's line while the
 // Hill is off, and the card's own page, which draws the Hill's card with no Hill around it.
 
 async function holds(open: ReturnType<typeof hillDecision>[], scope: "all" | "tricks" = "tricks") {
@@ -24,7 +24,7 @@ async function holds(open: ReturnType<typeof hillDecision>[], scope: "all" | "tr
   });
 }
 
-/** The pieces under the root route, as the app mounts them: the Dashboard, Settings, Tricks and the card page. */
+/** The pieces under the root route, as the app mounts them: the Dashboard, Settings, Tricks and the Hill and the card page. */
 function renderApp(entries: InitialEntry[], data: Pick<HomeData, "hillOff" | "trickCards">) {
   const router = createMemoryRouter(
     [
@@ -49,7 +49,7 @@ function renderApp(entries: InitialEntry[], data: Pick<HomeData, "hillOff" | "tr
 beforeEach(() => __resetHill());
 afterEach(() => __resetHill());
 
-describe("Waiting for your yes, in Settings, Tricks", () => {
+describe("Waiting for your yes, in Settings, Tricks and the Hill", () => {
   it("draws nothing while no card waits", () => {
     const { container } = render(<TrickCardsWaitingList cards={[]} onOpen={() => undefined} />);
     expect(container).toBeEmptyDOMElement();
@@ -196,7 +196,7 @@ describe("the Dashboard's line", () => {
 });
 
 describe("the card's page", () => {
-  it("draws the same card with no Hill word around it, and Back returns to Settings, Tricks", async () => {
+  it("draws the same card with no Hill word around it, and Back returns to Settings, Tricks and the Hill", async () => {
     const card = collieCard("proposal", "legs");
     await holds([card]);
     const router = renderApp(["/", "/settings/tricks", { pathname: `/trick-card/${card.id}`, state: { from: "/settings/tricks" } }], { hillOff: true, trickCards: true });

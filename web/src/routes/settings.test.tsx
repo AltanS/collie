@@ -22,7 +22,7 @@ import { LIST_HOLD_MS, SettingsRoute } from "./settings";
 // written down.
 
 // The index carries NO loader now — the paired-device registry belongs to the one page that
-// renders it (/settings/system). The section routes are stubs here: this file tests the index, and
+// renders it (/settings/devices). The section routes are stubs here: this file tests the index, and
 // what each section mounts is that section's own business.
 function renderSettings() {
   const router = createMemoryRouter(
@@ -74,7 +74,7 @@ describe("SettingsRoute — the update surfaces", () => {
 
   it("holds no update card or check control: the update subject is one row, and a page", async () => {
     renderSettings();
-    await screen.findByRole("button", { name: /Appearance/ });
+    await screen.findByRole("button", { name: /Look and feel/ });
     expect(screen.queryByText("Update Collie")).toBeNull();
     expect(screen.queryByRole("button", { name: "Check for updates" })).toBeNull();
   });
@@ -142,9 +142,9 @@ describe("SettingsRoute — the Updates row", () => {
     const rows = screen
       .getAllByRole("button")
       .map((b) => b.textContent ?? "")
-      .filter((text) => /Updates|Appearance|Machines/.test(text));
-    expect(rows[0]).toContain("Updates");
-    expect(rows[1]).toContain("Appearance");
+      .filter((text) => /Updates|Look and feel|Machines/.test(text));
+    expect(rows[0]).toContain("Updates and about");
+    expect(rows[1]).toContain("Look and feel");
     expect(row.textContent).toContain("Up to date · 1.26.4");
     expect(row.querySelector("svg[data-icon=\"update-available\"]")).not.toBeNull();
     expect(row.querySelector("svg[data-icon=\"row-go\"]")).not.toBeNull();
@@ -178,84 +178,75 @@ describe("SettingsRoute — the Updates row", () => {
     expect(row.querySelector('[data-slot="update-dot"]')).toBeNull();
   });
 
-  it("gives System the caption of what it holds now: devices, crew, connection", async () => {
+  it("gives Devices and machines the line of what it holds: pairing, devices, machines, the connection", async () => {
     renderSettings();
-    const system = await screen.findByRole("button", { name: /System/ });
-    expect(system.textContent).toContain("Devices, crew, connection");
-    expect(system.textContent).not.toContain("Updates");
+    const devices = await screen.findByRole("button", { name: /Devices and machines/ });
+    expect(devices.textContent).toContain("Pairing, paired devices, your machines, the connection");
+    expect(devices.textContent).not.toContain("Updates");
   });
 });
 
 // ── THE INDEX ───────────────────────────────────────────────────────────────────────────────────
 //
-// Settings was one column of seventeen cards. The page is five rows now, and these cases pin the
-// two things that makes true: every section is reachable, and no setting is still rendered here.
+// The index is the registry's eleven pages (ADR 0170), after Updates and about, and nothing else: every page is
+// reachable, Machines is a row of Devices and machines, and no setting is rendered here.
+const PAGE_TITLES = [
+  "Look and feel",
+  "Chat and terminal",
+  "Keys and touch",
+  "Notifications",
+  "Voice",
+  "Dashboard and projects",
+  "Tricks and the Hill",
+  "Devices and machines",
+  "Privacy and data",
+] as const;
+
 describe("SettingsRoute — the index", () => {
-  it("offers the five sections, in the order of how standing a choice is", async () => {
+  it("offers the pages in the registry's order, each with its line, after Updates and about", async () => {
+    writeAnswer("settings-accounts-row", false);
+    serveAccountsStatus(404);
     renderSettings();
-    await screen.findByRole("button", { name: /Appearance/ });
-    const rows = screen
-      .getAllByRole("button")
-      .map((b) => b.textContent ?? "")
-      .filter((text) => /Appearance|Device|Voice|Alerts|System/.test(text));
-    expect(rows).toHaveLength(5);
-    expect(rows[0]).toContain("Appearance");
-    expect(rows[1]).toContain("Device");
-    // Voice sits between Device and Alerts, and is always offered: a host with no speech gets a page that says so.
-    expect(rows[2]).toContain("Voice");
-    expect(rows[2]).toContain("Where your speech becomes text, and hands-free.");
-    expect(rows[3]).toContain("Alerts");
-    expect(rows[4]).toContain("System");
+    await screen.findByRole("button", { name: /Look and feel/ });
+    expect(listTitles()).toEqual(["Updates and about", ...PAGE_TITLES]);
+    expect(screen.getByRole("button", { name: /^Look and feel/ })).toHaveTextContent("Theme, light or dark, language, fonts, text sizes");
+    expect(screen.getByRole("button", { name: /^Voice/ })).toHaveTextContent("Where your speech becomes text, and hands-free.");
+  });
+
+  it("wraps a page's line instead of cutting it", async () => {
+    renderSettings();
+    const row = await screen.findByRole("button", { name: /^Notifications/ });
+    const caption = row.querySelector("p");
+    expect(caption?.textContent).toBe("Push, cache and load alerts, do not disturb");
+    expect(caption?.classList.contains("truncate")).toBe(false);
+    expect(caption?.classList.contains("text-pretty")).toBe(true);
   });
 
   it("opens Voice at /settings/voice", async () => {
     const router = renderSettings();
-    await userEvent.click(await screen.findByRole("button", { name: /Voice/ }));
+    await userEvent.click(await screen.findByRole("button", { name: /^Voice/ }));
     await waitFor(() => expect(router.state.location.pathname).toBe("/settings/voice"));
   });
 
-  it("no longer mentions voice in the Device row's blurb", async () => {
-    renderSettings();
-    const device = await screen.findByRole("button", { name: /^Device/ });
-    expect(device.textContent).not.toMatch(/voice/i);
-  });
-
-  it("opens a section as a push, so back returns here rather than home", async () => {
+  it("opens a page as a push, so back returns here rather than home", async () => {
     const router = renderSettings();
-    await userEvent.click(await screen.findByRole("button", { name: /Appearance/ }));
-    await waitFor(() => expect(router.state.location.pathname).toBe("/settings/appearance"));
+    await userEvent.click(await screen.findByRole("button", { name: /Look and feel/ }));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/settings/look"));
     expect(screen.getByTestId("section")).toBeInTheDocument();
   });
 
-  // The fifth row, and the only one that can be absent: it renders while `lib/experiments.ts` holds
-  // something, because a row that opens an empty page is noise. Chat left in 1.17.0 (ADR 0082); the Hill
-  // moved in on 2026-11-13, so the index shows the row again.
-  it("shows the Experiments row while the Hill is filed under it", async () => {
+  it("has no Machines row and no Experiments row of its own", async () => {
     renderSettings();
-    await screen.findByRole("button", { name: /Appearance/ });
-    expect(screen.getByRole("button", { name: /Experiments/ })).toBeInTheDocument();
+    await screen.findByRole("button", { name: /Look and feel/ });
+    expect(listTitles()).not.toContain("Machines");
+    expect(listTitles()).not.toContain("Experiments");
   });
 
-  // Machines is a page of its own and not a section, so its row is the one that opens `/machines`. It is
-  // always there, solo included: a solo collie is one machine with a load worth watching.
-  it("offers Machines on a solo install, after System, and opens its own page", async () => {
-    const router = renderSettings();
-    const row = await screen.findByRole("button", { name: /Machines/ });
-    const all = screen.getAllByRole("button").map((b) => b.textContent ?? "");
-    const at = (word: string) => all.findIndex((text) => text.includes(word));
-    expect(at("System")).toBeLessThan(at("Machines"));
-    // The Experiments row sits after Machines, which is where its section is placed.
-    expect(at("Experiments")).toBeGreaterThan(at("Machines"));
-    await userEvent.click(row);
-    await waitFor(() => expect(router.state.location.pathname).toBe("/machines"));
-    expect(router.state.location.state).toMatchObject({ from: "/settings" });
-  });
-
-  it("renders no setting of its own: every switch moved behind a row", async () => {
-    // The regression this guards is a card being added back to the index out of habit. The index
-    // has exactly one interactive element per section and nothing else with a switch role.
+  it("has the search field on top, and no setting of its own: every switch is behind a row", async () => {
+    // The regression this guards is a card being added back to the index out of habit.
     renderSettings();
-    await screen.findByRole("button", { name: /Appearance/ });
+    await screen.findByRole("button", { name: /Look and feel/ });
+    expect(screen.getByRole("textbox", { name: "Search settings" })).toBeInTheDocument();
     expect(screen.queryAllByRole("switch")).toHaveLength(0);
     expect(screen.queryByRole("combobox")).toBeNull();
   });
@@ -263,9 +254,8 @@ describe("SettingsRoute — the index", () => {
 
 // ── THE CALM FIRST PAINT ────────────────────────────────────────────────────────────────────────
 //
-// The Profiles row (after Harnesses) and the Tricks row (before Experiments) depend on reads that end
-// after the first paint, and each sits in the middle of the list, so a row that arrived late pushed
-// every row after it down. jsdom has no layout, so these cases read the DOM instead: the order and
+// The Profiles row (after Dashboard and projects) depends on a read that ends after the first paint, and sits
+// in the middle of the list, so a row that arrived late pushed every row after it down. jsdom has no layout, so these cases read the DOM instead: the order and
 // length of the rows on the first paint, and again once the reads have landed. Equal lists mean no
 // neighbour moved.
 function gate() {
@@ -282,7 +272,7 @@ function listTitles(): string[] {
   return [...(group?.querySelectorAll("button") ?? [])].map((b) => b.querySelector(".font-medium")?.textContent ?? "");
 }
 
-/** The settled list's row count without the optional Accounts row, with the Tricks row (it shows while tricks are on): what the stand-in must hold. */
+/** The settled list's row count without the optional Profiles row: Updates and about and the nine steady pages, what the stand-in must hold. */
 const SETTLED_ROWS_WITHOUT_OPTIONAL = 10;
 
 function homeData(over: Partial<HomeData>): HomeData {
@@ -322,27 +312,16 @@ function renderIndex(over: Partial<HomeData>) {
   render(<RouterProvider router={router} />);
 }
 
-// THE TRICKS ROW FOLLOWS THE SWITCH (2026-11-18). The switch for tricks as a whole is the Tricks card in Settings,
-// Experiments; this row is the way into the list it switched on, so it shows only while the switch is on.
-describe("SettingsRoute — the Tricks row follows the switch for tricks", () => {
-  it("has no Tricks row while tricks are off, and the list is one row shorter from the first frame", async () => {
+// THE TRICKS ROW STAYS (ADR 0170). The switch for tricks as a whole is on Tricks and the Hill, so the row is there
+// with tricks off and on, and the list keeps its length.
+describe("SettingsRoute — the Tricks and the Hill row", () => {
+  it.each([true, false])("is there with tricks off %s, before Devices and machines", async (tricksOff) => {
     writeAnswer("settings-accounts-row", false);
     serveAccountsStatus(404);
-    renderIndex({ tricksOff: true });
-    await screen.findByRole("button", { name: /Appearance/ });
+    renderIndex({ tricksOff });
+    await screen.findByRole("button", { name: /Look and feel/ });
     const titles = listTitles();
-    expect(titles).not.toContain("Tricks");
-    expect(titles).toHaveLength(SETTLED_ROWS_WITHOUT_OPTIONAL - 1);
-    expect(titles).toContain("Experiments");
-  });
-
-  it("has the Tricks row, right before Experiments, while tricks are on", async () => {
-    writeAnswer("settings-accounts-row", false);
-    serveAccountsStatus(404);
-    renderIndex({ tricksOff: false });
-    await screen.findByRole("button", { name: /Appearance/ });
-    const titles = listTitles();
-    expect(titles.indexOf("Tricks")).toBe(titles.indexOf("Experiments") - 1);
+    expect(titles.indexOf("Tricks and the Hill")).toBe(titles.indexOf("Devices and machines") - 1);
     expect(titles).toHaveLength(SETTLED_ROWS_WITHOUT_OPTIONAL);
   });
 });
@@ -360,13 +339,12 @@ describe("SettingsRoute — the list does not move while the page loads", () => 
       }),
     );
     renderIndex({ tricks: true });
-    await screen.findByRole("button", { name: /Appearance/ });
+    await screen.findByRole("button", { name: /Look and feel/ });
 
     const first = listTitles();
     expect(document.querySelector('[data-slot="settings-list-hold"]')).toBeNull();
-    // Profiles right after Harnesses, Tricks right before Experiments, from the first frame.
-    expect(first.indexOf("Profiles")).toBe(first.indexOf("Harness configurations") + 1);
-    expect(first.indexOf("Tricks")).toBe(first.indexOf("Experiments") - 1);
+    // Profiles right after Dashboard and projects, from the first frame.
+    expect(first.indexOf("Profiles")).toBe(first.indexOf("Dashboard and projects") + 1);
     expect(first).toHaveLength(SETTLED_ROWS_WITHOUT_OPTIONAL + 1);
 
     await act(async () => {
@@ -376,7 +354,7 @@ describe("SettingsRoute — the list does not move while the page loads", () => 
     expect(listTitles()).toEqual(first);
   });
 
-  it("a device that remembers no Accounts row paints the list without it and with Tricks, and a 404 changes nothing", async () => {
+  it("a device that remembers no Profiles row paints the list without it, and a 404 changes nothing", async () => {
     writeAnswer("settings-accounts-row", false);
     const accounts = gate();
     server.use(
@@ -386,12 +364,10 @@ describe("SettingsRoute — the list does not move while the page loads", () => 
       }),
     );
     renderIndex({ tricks: false });
-    await screen.findByRole("button", { name: /Appearance/ });
+    await screen.findByRole("button", { name: /Look and feel/ });
 
     const first = listTitles();
     expect(first).not.toContain("Profiles");
-    // Tricks shows while the switch is on (the snapshot says so from the first frame), with no tricks reply and no remembered answer.
-    expect(first.indexOf("Tricks")).toBe(first.indexOf("Experiments") - 1);
     expect(first).toHaveLength(SETTLED_ROWS_WITHOUT_OPTIONAL);
 
     await act(async () => {
@@ -408,7 +384,7 @@ describe("SettingsRoute — the list does not move while the page loads", () => 
     renderIndex({ tricks: false });
     const row = await screen.findByRole("button", { name: /Profiles/ });
     const titles = listTitles();
-    expect(titles.indexOf("Profiles")).toBe(titles.indexOf("Harness configurations") + 1);
+    expect(titles.indexOf("Profiles")).toBe(titles.indexOf("Dashboard and projects") + 1);
     expect(row).toHaveTextContent("One login per agent");
     await waitFor(() => expect(readAnswer("settings-accounts-row")).toBe(true));
   });
@@ -426,7 +402,7 @@ describe("SettingsRoute — the list does not move while the page loads", () => 
     const hold = document.querySelector('[data-slot="settings-list-hold"]');
     expect(hold).not.toBeNull();
     expect(hold?.getAttribute("aria-hidden")).toBe("true");
-    // One empty row per row the settled list always has (the Updates row and `ROWS`), each of the row's
+    // One empty row per row the settled list always has (the Updates row and `STEADY_PAGES`), each of the row's
     // exact height, so the card does not collapse and the build stamp below does not jump.
     const rows = [...(hold?.querySelectorAll('[data-slot="list-group"] > *') ?? [])];
     expect(rows).toHaveLength(SETTLED_ROWS_WITHOUT_OPTIONAL);
@@ -435,13 +411,13 @@ describe("SettingsRoute — the list does not move while the page loads", () => 
       expect(row.classList.contains("p-4")).toBe(true);
       expect(row.textContent).toBe("");
     }
-    expect(screen.queryByRole("button", { name: /Appearance/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Look and feel/ })).toBeNull();
 
     await act(async () => {
       accounts.open();
     });
-    // Both answers are in (a 404 and a snapshot with no tricks): the list replaces the stand-in, row for row.
-    await screen.findByRole("button", { name: /Appearance/ });
+    // The answer is in (a 404): the list replaces the stand-in, row for row.
+    await screen.findByRole("button", { name: /Look and feel/ });
     expect(document.querySelector('[data-slot="settings-list-hold"]')).toBeNull();
     expect(listTitles()).toHaveLength(SETTLED_ROWS_WITHOUT_OPTIONAL);
   });
@@ -470,7 +446,7 @@ describe("SettingsRoute — the list does not move while the page loads", () => 
     const titles = listTitles();
     expect(titles).toHaveLength(SETTLED_ROWS_WITHOUT_OPTIONAL);
     expect(titles).not.toContain("Profiles");
-    expect(titles).toContain("Tricks");
+    expect(titles).toContain("Tricks and the Hill");
   });
 
   it("the Updates caption changes its words on its own line and moves no row", async () => {

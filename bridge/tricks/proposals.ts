@@ -114,7 +114,7 @@ export type ProposeAnswer = { ok: true; kind: "proposal" | "version"; id: string
 /**
  * Where the person finds the card (package I, 2026-11-17), for the proposer's words: `session` while the
  * card is tied to the proposer's live session (the phone draws it in that session's chat view), `hill`
- * while the Hill is on (the Hill shows it too). Settings, Tricks always lists it.
+ * while the Hill is on (the Hill shows it too). Settings, Tricks and the Hill always lists it.
  */
 export interface ProposalWhere {
   session: boolean;

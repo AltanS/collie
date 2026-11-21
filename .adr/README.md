@@ -142,7 +142,7 @@ The rule today: [0144](./0144-one-lead-one-door-and-the-operator-moves-the-crown
 
 ### Update, release and packaging
 
-The rule today: 0143 is the live record, and it names the code that holds each rule. The install kind picks the path once; a Herdr-managed checkout advances in place and is never re-linked, and every other install stages a new version beside the live one and flips `current`, with one rollback at most. A routine update stays inside the installed major, and `--major` is the consent to cross one. Each machine is on one release line, Stable or Edge; switching installs nothing, and a machine goes down a version only by a rollback or a switch back to Stable. State files only grow. A crew member takes its lead's release from GitHub by its own decision, and a crew fault blocks the lead only when the update makes it worse. The phone shows a run in one update mode, decided by one reducer. Separate records stay live for the roads they close: a packaged install is not ours to update (0035), urgency rides one changelog line (0046), Windows is a supported host (0075), the math engines are a release asset fetched on a tap (0132).
+The rule today: 0143 is the live record, and it names the code that holds each rule. The install kind picks the path once; a Herdr-managed checkout advances in place and is never re-linked, and every other install stages a new version beside the live one and flips `current`, with one rollback at most. A routine update stays inside the installed major, and `--major` is the consent to cross one. Each machine is on one release line, Stable or Edge; switching installs nothing, and a machine goes down a version only by a rollback or a switch back to Stable. State files only grow. A crew member takes its lead's release from GitHub by its own decision, and a crew fault blocks the lead only when the update makes it worse. The phone shows a run in one update mode, decided by one reducer. Separate records stay live for the roads they close: a packaged install is not ours to update (0035), urgency rides one changelog line (0046), Windows is a supported host (0075), the math engines are a release asset fetched on a tap (0132). Inside the web app, the screens a first paint does not need are lazy routes that the app preloads once it is idle, so a tab open through an update still opens them; the precache cap stays at 3 MiB and its history is in 0169.
 
 | # | Decision | Status |
 | --- | --- | --- |
@@ -161,6 +161,7 @@ The rule today: 0143 is the live record, and it names the code that holds each r
 | [0075](./0075-windows-is-a-supported-host.md) | Windows 11 x64 with Herdr is a supported host, held by CI and a VM rehearsal. | Accepted |
 | [0110](./0110-two-release-lines.md) | Two release lines, Stable and Edge; the switch installs nothing; state files only grow. | Superseded by 0143 |
 | [0132](./0132-the-math-engines-are-a-pack-the-host-downloads.md) | The math engines are one release asset that the host downloads only on a tap. | Accepted |
+| [0169](./0169-screens-load-on-demand-and-are-preloaded-when-idle.md) | Screens a first paint does not need are lazy routes (`lazyScreen`, `lazyChunk` for other doors), preloaded once the app is idle; the precache cap and its history. | Accepted |
 
 ### Sends and the input box
 
@@ -244,6 +245,7 @@ The rule today: [0147](./0147-a-pane-list-keeps-its-place-and-the-footer-holds-v
 | --- | --- | --- |
 | [0165](./0165-actions-is-one-palette-of-registry-actions.md) | Actions is one palette of registry actions, shown only where each works; the Belt's pill and `prefix+g` open it, and Switch pane keeps the drag. | Accepted |
 | [0167](./0167-a-modal-for-a-blocking-decision.md) | A decision that blocks until it is answered is a modal over a scrim, a task is a sheet; the palette and the draft offers share `ui/modal.tsx`. On a wide window a sheet is drawn in its look, centred (addendum 2026-11-20). | Accepted |
+| [0170](./0170-every-setting-is-declared-once.md) | Every setting is declared once in `web/src/lib/settings/registry.ts`; Settings is its eleven pages and a search, and the old addresses redirect. | Proposed |
 | [0147](./0147-a-pane-list-keeps-its-place-and-the-footer-holds-views.md) | No pane list is ordered by status; Activity and Cache order read the clock once; pins lead; the footer holds Crew, Dashboard, Files and the Hill, and Needs you is a switch. | Accepted, amended in scope by 0158 |
 | [0158](./0158-the-large-screen-dashboard-repeats-what-needs-you-in-a-band.md) | On a large screen the dashboard is a grid of 384px Space columns under a band that repeats the sessions that need you; no row leaves its place. | Accepted |
 | [0163](./0163-settings-goes-back-to-the-page-that-opened-it.md) | Settings' parents are every screen that can open it; its arrow steps back onto the page it came from. | Accepted |
@@ -275,6 +277,7 @@ The rule today: [0148](./0148-a-theme-names-words-never-drawings-and-the-device-
 | [0136](./0136-a-theme-may-name-a-mark-and-every-mark-keeps-one-contract.md) | A theme may name a mark from a closed list, and every mark keeps one contract. | Superseded by 0148 |
 | [0137](./0137-a-theme-may-name-a-glyph-set-from-a-closed-list.md) | A theme may name a glyph set from a closed list, and every icon is named by its meaning. | Superseded by 0148 |
 | [0138](./0138-an-app-left-alone-draws-no-frame.md) | The mark moves while the page is visible (title and first rules reversed by amendments). | Superseded by 0148 |
+| [0171](./0171-the-tab-bar-stands-on-a-firm-edge-in-both-tab-looks.md) | The large screen's tab bar stands on `--edge-firm`, a derived line, with a 6px page band; `folder` cuts the open tab from the band, `plain` marks it with a 2px bar of ink; one type for both, and the phone's tab and pane rows are 44px. | Accepted |
 | [0172](./0172-derived-state-colours-are-measured-and-collie-is-held.md) | One function, `deriveTokens`, makes a theme's planes, hover, selected and open fills and ring from its base tokens: Collie's relation, then a floor; Collie is its reference within 0.02, and `applyTheme` runs it for every theme applied. | Accepted |
 
 ### Launch, worktrees, files and changes

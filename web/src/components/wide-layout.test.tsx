@@ -450,12 +450,20 @@ describe("the strip", () => {
     expect(other!.className).not.toContain("bg-surface-paper");
   });
 
-  it("puts the navigation on the recess: the tab strip and the strip's own ground, with only the faint edge under the tab strip", async () => {
+  it("puts the navigation on the recess: the tab strip and the strip's own ground, the tab bar on the firm edge and a page band", async () => {
     const { container } = await mount("w1:p1", 1200);
     const header = q(container, '[data-slot="space-header"]')!;
     expect(header.className).toContain("bg-surface-recess");
-    expect(header.className).toContain(NAV_EDGE);
+    // The open tab stands on this line in both looks, so it is the firm edge (ADR 0171), not the faint `NAV_EDGE`
+    // that measured 1.0:1 where a theme's recess clamps to its page.
+    expect(header.className).toContain("border-edge-firm");
+    expect(header.className).not.toContain(NAV_EDGE);
     expect(header.className).not.toContain("border-rule");
+    // The 6px page band under the bar, the bar's height and not the columns'.
+    const band = header.nextElementSibling!;
+    expect(band).toHaveAttribute("data-slot", "space-band");
+    expect(band.className).toContain("h-1.5");
+    expect(band.className).toContain("bg-background");
     expect(header.className).not.toContain("bg-band-ground");
     expect(q(container, '[data-slot="strip"]')!.className).toContain("bg-surface-recess");
     // The seam between two columns is a component edge, quieter than a region's rule.

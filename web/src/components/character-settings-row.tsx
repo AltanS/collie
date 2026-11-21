@@ -9,7 +9,7 @@ import { characterPath } from "@/lib/nav";
 import { useScope } from "@/lib/session";
 
 /**
- * The row Settings → Appearance keeps for the header's character: its value in two or three words and
+ * The row Settings → Look and feel keeps for the header's character: its value in two or three words and
  * a chevron to the page that lists them (components/character-picker.tsx). It only reads the design
  * store; the choice is made on the page below.
  */

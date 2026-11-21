@@ -54,7 +54,7 @@ function officialOf(list: OfficialTricksReply | null): readonly WireOfficialTric
 }
 
 /**
- * The rows of Settings → Tricks, in order. `list` is the official list as read, or null while it is unknown
+ * The rows of Settings → Tricks and the Hill, in order. `list` is the official list as read, or null while it is unknown
  * (not read, a failed read, a machine that runs none): then every trick is a row by name, with no label.
  */
 export function trickListRows(tricks: readonly WireTrickInfo[], list: OfficialTricksReply | null): TrickListRow[] {

@@ -244,7 +244,7 @@ describe("TrickDetail", () => {
       expect(groups.at(-1)).toBe("updates");
       const group = detail().querySelector<HTMLElement>('[data-section="updates"]');
       if (group === null) throw new Error("no Updates group");
-      expect(within(group).getByRole("switch", { name: "Take changes without asking" })).toBeChecked();
+      expect(within(group).getByRole("switch", { name: "Update this trick without asking" })).toBeChecked();
       expect(within(group).getByText(HINT)).toBeInTheDocument();
     });
 
@@ -252,10 +252,10 @@ describe("TrickDetail", () => {
       const user = userEvent.setup();
       const onAuto = vi.fn();
       const { rerender } = render(<TrickDetail trick={ON} onAuto={onAuto} auto={false} />);
-      await user.click(screen.getByRole("switch", { name: "Take changes without asking" }));
+      await user.click(screen.getByRole("switch", { name: "Update this trick without asking" }));
       expect(onAuto).toHaveBeenLastCalledWith(true);
       rerender(<TrickDetail trick={ON} onAuto={onAuto} auto />);
-      await user.click(screen.getByRole("switch", { name: "Take changes without asking" }));
+      await user.click(screen.getByRole("switch", { name: "Update this trick without asking" }));
       expect(onAuto).toHaveBeenLastCalledWith(false);
     });
 
@@ -272,7 +272,7 @@ describe("TrickDetail", () => {
 
     it("is a switch that may not be flipped on a device that may only read", () => {
       render(<TrickDetail trick={ON} onAuto={vi.fn()} canWrite={false} />);
-      expect(screen.getByRole("switch", { name: "Take changes without asking" })).toBeDisabled();
+      expect(screen.getByRole("switch", { name: "Update this trick without asking" })).toBeDisabled();
     });
   });
 
@@ -350,10 +350,10 @@ describe("an agent view and its rules (contract 2)", () => {
     expect([...detail().querySelectorAll("a, b, h1, strong")].filter((el) => el.getAttribute("data-slot") !== "trick-detail-name")).toEqual([]);
   });
 
-  it("draws no Take changes without asking switch for a trick with rules, even with the write given", () => {
+  it("draws no Update this trick without asking switch for a trick with rules, even with the write given", () => {
     render(<TrickDetail trick={{ ...VIEW_TRICK, auto: true }} onAuto={vi.fn()} />);
     expect(screen.queryByText("Updates")).toBeNull();
-    expect(screen.queryByRole("switch", { name: "Take changes without asking" })).toBeNull();
+    expect(screen.queryByRole("switch", { name: "Update this trick without asking" })).toBeNull();
   });
 
   it("the not-added sheet says the trick gives instructions and to read them after the add: nothing is fetched before Add (review 8 V-N3)", () => {

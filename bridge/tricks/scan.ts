@@ -10,7 +10,7 @@ import { runtimeScript } from "./run.ts";
 
 // THE CHECK SCAN (M94): what a grep of a trick's code flags, for `collie trick check` and for the moment of
 // consent. `collie trick on` prints these warnings above its confirmation, and the bridge puts a short form
-// of them on the row of a trick that is off or changed, so Settings → Tricks shows them before the switch.
+// of them on the row of a trick that is off or changed, so Settings → Tricks and the Hill shows them before the switch.
 // A warning never refuses anything: the switch stays one tap, and `check` still passes.
 //
 // It is a grep, honest but not a proof: a program can build a command out of pieces no pattern sees, and

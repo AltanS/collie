@@ -4,7 +4,7 @@ import { asJsonString, parseJson } from "@/lib/json";
 
 // "NOT NOW" ON A TRICK PROPOSAL IN ITS SESSION (package I, 2026-11-17). The card a proposal draws in the
 // chat view of the session that proposed it (components/session-trick-card.tsx) closes on "Not now" and
-// sends nothing: the proposal stays open, and Settings, Tricks keeps it under "Waiting for your yes",
+// sends nothing: the proposal stays open, and Settings, Tricks and the Hill keeps it under "Waiting for your yes",
 // where the same card still offers its own "Not now" that declines it. So the session's "Not now" is a
 // note on this device only: the decision ids closed here, kept in localStorage, at most LATER_MAX, newest
 // last. A newer proposal of the same trick is a new decision id, so its card shows again.
@@ -29,7 +29,7 @@ function read(): readonly string[] {
   return held;
 }
 
-/** Close the card of `decisionId` in its session on this device. Settings, Tricks still lists it. */
+/** Close the card of `decisionId` in its session on this device. Settings, Tricks and the Hill still lists it. */
 export function closeInSession(decisionId: string): void {
   const now = read();
   if (now.includes(decisionId)) return;

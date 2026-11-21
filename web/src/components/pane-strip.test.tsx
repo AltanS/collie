@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 
 import { PaneStrip } from "./pane-strip";
 import type { AgentView } from "@/lib/types";
+import type { WidthClass } from "@/lib/wide-layout";
 
 // The theme on screen, with its `tabs` word set by the test (lib/tab-look.ts). Left undefined it is the
 // real active theme with no `tabs` word, which is the plain look (the default theme itself names `folder`).
@@ -10,6 +11,14 @@ interface ThemeTabs {
   word: "plain" | "folder" | undefined;
 }
 const themeTabs = vi.hoisted((): ThemeTabs => ({ word: undefined }));
+interface WindowWidth {
+  now: WidthClass;
+}
+const widthClass = vi.hoisted((): WindowWidth => ({ now: "compact" }));
+vi.mock("@/hooks/use-width-class", () => ({ useWidthClass: () => widthClass.now }));
+afterEach(() => {
+  widthClass.now = "compact";
+});
 vi.mock("@/lib/theme/store", async (importOriginal) => {
   const original = await importOriginal<typeof import("@/lib/theme/store")>();
   return {
@@ -296,9 +305,20 @@ describe("PaneStrip", () => {
   // row (`before:-bottom-5`, in an 18px `pb`/`-mb` clip room), which put it over the first lines of
   // the chat or terminal and took the tap off a file-path link there (measured 2026-10-07 with
   // `elementFromPoint`). jsdom has no layout, so this pins the classes that made it: the reach is
-  // the row's own 26px (`-inset-y-[2px]` against the pill's padding box), and the scroller has no
-  // bottom padding or negative bottom margin to extend a clip box below the row.
-  it("keeps every pill's hit box inside the 26px row, never over the content below", () => {
+  // the row's own height and no more, and the scroller has no bottom padding or negative bottom margin to
+  // extend a clip box below the row. On the phone the row is 44px: a 32px pill, 6px of air above and below,
+  // and `-inset-y-[7px]` against the pill's padding box (ADR 0171); a wider window keeps the 26px row and
+  // `-inset-y-[2px]`.
+  it("keeps every pill's hit box inside its row, never over the content below", () => {
+    widthClass.now = "medium";
+    const wide = render(<PaneStrip panes={[pane("w1:p1", "claude"), pane("w1:p2", "codex")]} currentPaneId="w1:p1" onSelect={vi.fn()} />);
+    for (const pill of screen.getAllByRole("button")) {
+      expect(pill.className).toMatch(/(?:^|\s)h-6(?=\s|$)/);
+      expect(pill.className).toMatch(/(?:^|\s)before:-inset-y-\[2px\](?=\s|$)/);
+    }
+    expect(screen.getByRole("navigation", { name: "Panes" }).querySelector(".py-px")).not.toBeNull();
+    wide.unmount();
+    widthClass.now = "compact";
     render(
       <PaneStrip
         panes={[pane("w1:p1", "claude"), pane("w1:p2", "codex")]}
@@ -310,12 +330,14 @@ describe("PaneStrip", () => {
     const scroller = nav.querySelector<HTMLElement>(".overflow-x-auto")!;
     for (const pill of screen.getAllByRole("button")) {
       const cls = pill.className;
-      expect(cls).toMatch(/(?:^|\s)before:-inset-y-\[2px\](?=\s|$)/);
-      expect(cls).not.toMatch(/before:-inset-y-\[7px\]/);
+      expect(cls).toMatch(/(?:^|\s)h-8(?=\s|$)/);
+      expect(cls).toMatch(/(?:^|\s)before:-inset-y-\[7px\](?=\s|$)/);
+      expect(cls).not.toMatch(/before:-inset-y-\[2px\]/);
       expect(cls).not.toMatch(/before:-bottom-/);
       expect(cls).not.toMatch(/before:z-/);
     }
     expect(scroller.className).not.toMatch(/(?:^|\s)(?:pb-|-mb-)/);
+    expect(nav.querySelector(".py-1\\.5")).not.toBeNull();
   });
 });
 
@@ -359,8 +381,8 @@ describe("PaneStrip under the folder look", () => {
     themeTabs.word = "folder";
     render(<PaneStrip panes={panes} currentPaneId="w1:p1" onSelect={vi.fn()} />);
     for (const pill of [open(), other()]) {
-      expect(pill.className).toMatch(/(?:^|\s)h-6(?=\s|$)/);
-      expect(pill.className).toMatch(/(?:^|\s)before:-inset-y-\[2px\](?=\s|$)/);
+      expect(pill.className).toMatch(/(?:^|\s)h-8(?=\s|$)/);
+      expect(pill.className).toMatch(/(?:^|\s)before:-inset-y-\[7px\](?=\s|$)/);
     }
   });
 

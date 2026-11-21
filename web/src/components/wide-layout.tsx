@@ -575,16 +575,19 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
           // The row keeps its 48px and the status bar's inset goes on top of it, in the row's own
           // ground, beside the sidebar's (the aside above says why). With no inset it is 48px as before.
           className={cn(
-            // On the recess with the sidebar: the step down to the page (the open tab) and up to the paper
-            // (the focused column) is the cut, so the edge under it is only the faint `NAV_EDGE`.
-            NAV_EDGE,
-            "flex h-[calc(3rem+env(safe-area-inset-top))] shrink-0 touch-none items-center gap-1 border-b bg-surface-recess pt-[env(safe-area-inset-top)] [--band-ground:var(--surface-recess)] [--chrome:var(--surface-recess)]",
+            // THE BAR STANDS ON A FIRM EDGE (strip-head round, 2026-11-21): `--edge-firm`, 3:1 or more against the
+            // recess above it and the page band below it in every bundled theme. The faint `NAV_EDGE` it had
+            // measured 1.0:1 where a theme's recess clamps to its page (Nightwatch, Harbour), and the open tab
+            // stands on this line in both looks (tab-strip.tsx). It meets the sidebar's own rule at 48px.
+            "flex h-[calc(3rem+env(safe-area-inset-top))] shrink-0 touch-none items-center gap-1 border-b border-edge-firm bg-surface-recess pt-[env(safe-area-inset-top)] [--band-ground:var(--surface-recess)] [--chrome:var(--surface-recess)]",
             bookPair ? "pr-1" : "pl-4 pr-1",
           )}
         >
           {/* Folded with two columns, the header is cut at the fold like the strip under it: the name
-              over the left column, the buttons over the right one, nothing on the hinge. */}
-          <div className={cn("flex min-w-0 items-center", bookPair ? "fold-left-col pl-4" : "flex-1")}>
+              over the left column, the buttons over the right one, nothing on the hinge.
+              `self-stretch`: the block is the bar's whole height, so the tab row inside it can stand on the
+              bar's lower edge exactly (it sat a pixel above it while this block was only as tall as the row). */}
+          <div className={cn("flex min-w-0 items-center self-stretch", bookPair ? "fold-left-col pl-4" : "flex-1")}>
             <SpaceTitle label={space?.label ?? ""} machine={machine} widthClass={widthClass} besideTabs={agent !== undefined} />
             {agent !== undefined ? (
               <TabStrip
@@ -605,24 +608,29 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
                 savedCopy={root.error}
                 onRenamed={revalidate}
                 onClosed={closedTab}
-                // Under the folder look the row sits on the bar's bottom edge, one pixel over the
-                // bar's own rule, so the open tab covers that rule and joins the page below the bar
-                // (tab-strip.tsx). Plain: centred in the bar, as it always was.
-                className={cn("min-w-0 flex-1 bg-transparent", tabLook === "folder" && "self-end -mb-px")}
+                bar
+                // The row stands on the bar's lower edge in both looks. Under the folder look it reaches over the
+                // edge, by the theme's border width (Nightwatch draws 2px), so the open tab covers it and opens into the page band under the bar; plain
+                // ends on the edge, so the open tab's mark of ink stands on it (tab-strip.tsx).
+                className={cn("min-w-0 flex-1 self-end bg-transparent", tabLook === "folder" && "mb-[calc(var(--surface-border-width)*-1)]")}
               />
             ) : (
               <span className="flex-1" />
             )}
-            {/* "space 1 of 2" only where the row has room for it. At the medium tier the chevrons beside
-                it still step through the spaces and the sidebar lists them all. */}
-            {spaceAt >= 0 && widthClass !== "medium" && (
-              <span data-slot="space-position" className="shrink-0 px-2 text-xs tabular-nums text-muted-foreground">
-                {t("wide.space.position", { index: spaceAt + 1, total: spaces.length })}
-              </span>
-            )}
           </div>
           {bookPair && <span aria-hidden className="fold-gutter shrink-0" />}
           {bookPair && <span aria-hidden className="flex-1" />}
+          {/* THE BAR'S THIRD GROUP: where you are among the spaces and the two ways through them, and the Actions
+              palette, behind one hairline (`--border`), the same one that sets a column's controls apart from
+              its name (strip-column.tsx). So the bar reads as three groups: the title, the tabs, the controls. */}
+          <div data-slot="space-controls" className="flex shrink-0 items-center gap-1 self-center border-l border-border pl-1">
+          {/* "space 1 of 2" only where the row has room for it. At the medium tier the chevrons beside
+              it still step through the spaces and the sidebar lists them all. */}
+          {spaceAt >= 0 && widthClass !== "medium" && (
+            <span data-slot="space-position" className="shrink-0 px-2 text-xs tabular-nums text-muted-foreground">
+              {t("wide.space.position", { index: spaceAt + 1, total: spaces.length })}
+            </span>
+          )}
           {/* The Actions palette (ADR 0165), the header's door to it; the focused pane's belt pins the same button. */}
           <ActionsButton />
           <Button variant="ghost" size="lg" className="size-11 px-0" aria-label={t("wide.space.previous")} {...shortcutTarget("previous_space")} disabled={spaceAt <= 0} onClick={() => moveSpace(-1)}>
@@ -639,7 +647,13 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
           >
             <Icon name="space-next" className="size-5" />
           </Button>
+          </div>
         </div>
+        {/* THE PAGE BAND: 6px of the page colour under the bar's edge, across the whole strip. The folder tab is
+            cut from it (tab-strip.tsx), so the open tab opens into the work area whichever column has the focus.
+            It is the bar's height, not the columns': a column header is 6px lower on the large screen in return
+            (app-header.tsx, strip-column.tsx), so the transcript keeps its top, its height and its first line. */}
+        <div aria-hidden data-slot="space-band" className="h-1.5 shrink-0 bg-background" />
 
         {/* The strip and its position line share a box, so the line can float over the strip's top edge
             instead of taking a row of its own under it. */}

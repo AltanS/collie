@@ -43,36 +43,45 @@ async function buttonAt(page: Page, x: number, y: number) {
   ] as const);
 }
 
-test("a tap in the lower half of the pane name reaches Pane settings, not the cache sheet", async ({ page }) => {
+test("a tap anywhere on the pane's name reaches Pane settings, and the cache reading keeps its own reach inside the header", async ({ page }) => {
   await page.goto(`/pane/${encodeURIComponent("w2:p1")}`);
   const cache = page.locator('[data-slot="cache-chip"]');
   await expect(cache).toBeVisible();
   const name = page.locator('[data-slot="pane-name"]');
-  // The name's tap target is the upper half of the header's layer (30px of the 60px row), not just
-  // its text: the cache reach used to cut into its lower 10px.
-  const nameButton = page.locator('[data-slot="pane-identity-name"]');
-  const nameBox = (await nameButton.boundingBox())!;
+  // On the phone with the tab row shown the space's door is that row's first cell (ADR 0171), so the name's tap
+  // target is the header's whole 60px layer; the cache reading sits on it and takes its own taps back.
+  const nameBox = (await name.boundingBox())!;
   const cacheBox = (await cache.boundingBox())!;
+  const header = (await page.locator('header[data-slot="app-header"]').boundingBox())!;
   const x = cacheBox.x + cacheBox.width / 2;
 
-  // The lower half of the name's tap target, straight above the cache chip.
+  // The lower half of the name line, straight above the cache chip: the cache reach used to run 16px up and cut into
+  // it (1.17.0 review). It reaches 4px up now, the gap between the two lines and no further.
   const settings = en["chat.header.openPaneSettingsAria"].replace("{name}", (await name.textContent()) ?? "");
-  for (const y of [nameBox.y + nameBox.height * 0.6, nameBox.y + nameBox.height * 0.8, nameBox.y + nameBox.height - 1]) {
+  for (const y of [nameBox.y + nameBox.height * 0.6, nameBox.y + nameBox.height - 1]) {
     expect(await buttonAt(page, x, y), `y=${y}`).toBe(settings);
   }
 
-  // And the chip itself, and the strip of reach under it, still open the cache sheet.
+  // The chip and the 4px of reach under it open the cache sheet; the reach ends inside the header, so the tab row
+  // under it answers its own taps (it took the top 11px of New tab's 44px when it hung 16px down).
   const chipLabel = (await cache.getAttribute("aria-label"))!;
   expect(await buttonAt(page, x, cacheBox.y + cacheBox.height / 2)).toBe(chipLabel);
-  expect(await buttonAt(page, x, cacheBox.y + cacheBox.height + 10)).toBe(chipLabel);
+  expect(await buttonAt(page, x, cacheBox.y + cacheBox.height + 3)).toBe(chipLabel);
+  expect(await buttonAt(page, x, cacheBox.y - 3)).toBe(chipLabel);
+  expect(cacheBox.y + cacheBox.height + 4).toBeLessThanOrEqual(header.y + header.height);
+  expect(await buttonAt(page, x, header.y + header.height + 2)).not.toBe(chipLabel);
 });
 
-test("a tap on the workspace line reaches the workspace link", async ({ page }) => {
+test("the space's door is the tab row's first cell, 44px, and the place line no longer holds it", async ({ page }) => {
   await page.goto(`/pane/${encodeURIComponent("w2:p1")}`);
   await expect(page.locator('[data-slot="cache-chip"]')).toBeVisible();
-  const place = (await page.locator('[data-slot="pane-place"]').boundingBox())!;
-  const label = await page.locator('[data-slot="pane-identity"]').getAttribute("aria-label");
+  const door = page.getByRole("navigation", { name: "Tabs" }).locator('[data-slot="pane-identity"]');
+  const label = await door.getAttribute("aria-label");
   expect(label).toContain("collie");
-
-  expect(await buttonAt(page, place.x + place.width / 2, place.y + place.height / 2)).toBe(label);
+  const box = (await door.boundingBox())!;
+  expect(box.height).toBeCloseTo(44, 0);
+  expect(await buttonAt(page, box.x + box.width / 2, box.y + box.height / 2)).toBe(label);
+  // The header holds one door to the space, not two.
+  await expect(page.locator('header [data-slot="pane-identity"]')).toHaveCount(0);
+  await expect(page.locator('[data-slot="pane-place"]')).toHaveText("");
 });

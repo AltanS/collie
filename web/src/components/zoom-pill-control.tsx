@@ -14,7 +14,7 @@ import { ZOOM_PILLS, effectiveZoomPill, type ZoomPill } from "@/lib/zoom-pill";
 // device's own choice, which then wins over any theme.
 
 const LABELS = {
-  screen: "settings.zoomPill.option.screen",
+  screen: "settings.zoomButton.option.screen",
   off: "settings.zoomPill.option.off",
 } as const satisfies Record<ZoomPill, MessageKey>;
 
@@ -30,13 +30,13 @@ export function ZoomPillControl() {
         <div className="flex min-w-0 items-start gap-3">
           <Icon name="zoom" className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
           <div className="min-w-0">
-            <div className="font-medium">{t("settings.zoomPill.title")}</div>
+            <div className="font-medium">{t("settings.zoomButton.title")}</div>
             <p className="text-sm text-muted-foreground">{t("settings.zoomPill.description")}</p>
           </div>
         </div>
       </div>
 
-      <div role="radiogroup" aria-label={t("settings.zoomPill.title")} className="flex gap-1 border-t border-border p-2">
+      <div role="radiogroup" aria-label={t("settings.zoomButton.title")} className="flex gap-1 border-t border-border p-2">
         {ZOOM_PILLS.map((choice) => {
           const selected = choice === shown;
           return (

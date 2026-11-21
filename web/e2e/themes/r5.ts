@@ -324,15 +324,20 @@ export async function runContrast(page: Page, opts: R5Options): Promise<R5Result
   // the pixel just outside the run and the one just inside it are its two sides.
   for (const f of probes.focuses) {
     const pad = 10;
-    const clip = { x: Math.max(0, f.box.x - pad), y: Math.max(0, f.box.y - pad), w: f.box.w + pad * 2, h: f.box.h + pad * 2 };
-    const focused = await page.evaluate((index) => {
+    // FOCUSED THE WAY A KEYBOARD DOES (2026-11-21): a plain focus that lets the browser scroll the control into view, one
+    // frame, then the measure, from the control's box where the focus left it. With `preventScroll` the check measured a
+    // place the browser never leaves a focused control in (under the sticky prompt pin, cut by the stream's edge).
+    const focused = await page.evaluate(async (index) => {
       const el = window.__r5targets?.[index];
       if (!(el instanceof HTMLElement)) return null;
       // SAFETY: `focusVisible` is a FocusOptions member Chromium reads (since 120) and the DOM lib does not list yet.
-      el.focus({ preventScroll: true, focusVisible: true } as FocusOptions);
-      return el.matches(":focus-visible") ? { outline: getComputedStyle(el).outlineStyle } : null;
+      el.focus({ focusVisible: true } as FocusOptions);
+      await new Promise((done) => requestAnimationFrame(() => done(null)));
+      const r = el.getBoundingClientRect();
+      return el.matches(":focus-visible") ? { outline: getComputedStyle(el).outlineStyle, box: { x: r.x, y: r.y, w: r.width, h: r.height } } : null;
     }, f.index);
     if (focused === null) continue;
+    const clip = { x: Math.max(0, focused.box.x - pad), y: Math.max(0, focused.box.y - pad), w: focused.box.w + pad * 2, h: focused.box.h + pad * 2 };
     const now = await shot(page, clip);
     // The same focus with its ring taken away: whatever else the focus paints (a fill, a lifted
     // edge) is in both shots, so the pixels that differ are the ring and nothing else.
@@ -349,8 +354,8 @@ export async function runContrast(page: Page, opts: R5Options): Promise<R5Result
       const q = at(rest, x, y);
       return Math.abs(p[0] - q[0]) + Math.abs(p[1] - q[1]) + Math.abs(p[2] - q[2]) > 24;
     };
-    const midX = Math.round((f.box.x - clip.x + f.box.w / 2) * scale);
-    const midY = Math.round((f.box.y - clip.y + f.box.h / 2) * scale);
+    const midX = Math.round((focused.box.x - clip.x + focused.box.w / 2) * scale);
+    const midY = Math.round((focused.box.y - clip.y + focused.box.h / 2) * scale);
     const lines: { from: [number, number]; step: [number, number]; n: number }[] = [
       { from: [midX, 0], step: [0, 1], n: Math.max(0, midY) },
       { from: [midX, now.height - 1], step: [0, -1], n: Math.max(0, now.height - midY) },

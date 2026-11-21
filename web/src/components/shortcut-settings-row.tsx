@@ -6,7 +6,7 @@ import { useHardwareKeyboardSeen } from "@/lib/hardware-keyboard";
 import { t } from "@/lib/i18n";
 import { openShortcutHelp } from "@/lib/shortcuts/help";
 
-// Settings, Device: Keyboard shortcuts (M108). The visible control of the `help` action: a button that
+// Settings, Keys and touch: Keyboard shortcuts (M108). The visible control of the `help` action: a button that
 // opens the same sheet `prefix+?` opens. A row, not a switch, because it is an action and not a state
 // (the argument of `TourControl`). Offered only on a device that has shown a hardware key press
 // (lib/hardware-keyboard.ts): the width is no sign of one, a large tablet has none, and a list of

@@ -111,7 +111,7 @@ test("each rule finds the break it is for", async ({ browser }, testInfo) => {
     await installScanner(page);
     await installRules(page);
     await installApiStub(page);
-    await page.goto("/settings/appearance");
+    await page.goto("/settings/look");
     await page.waitForSelector("#root *");
     await page.waitForTimeout(500);
     await page.evaluate(() => {

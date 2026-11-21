@@ -6,7 +6,7 @@ import { loadMathEngine, mathEngineFailed } from "@/lib/math/engine";
 import type { MathPackStatus } from "@/lib/types";
 
 // THE MATH PACK ON THE HOST, as the phone sees it (ADR 0132). The engines are not in the install:
-// the host downloads them on a tap in Settings → Appearance → Math and serves them under `/math/`.
+// the host downloads them on a tap in Settings → Look and feel → Math and serves them under `/math/`.
 // This module holds the host's last answer for the Math card, reads it when the card opens, and
 // polls it while a download runs or the host did not answer, like the Whistle card.
 //

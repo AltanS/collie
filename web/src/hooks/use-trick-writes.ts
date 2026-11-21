@@ -9,7 +9,7 @@ import { mintRequestId } from "@/lib/worktree-name";
 
 // THE WRITES OF SETTINGS, TRICKS, shared by the list (components/tricks-settings-card.tsx) and a trick's details page
 // (routes/settings-trick.tsx). Moved here from the card unchanged when the About sheet became a page (2026-11-21), so
-// the two places that switch a trick on, flip its "Take changes without asking", save its settings and add an official
+// the two places that switch a trick on, flip its "Update this trick without asking", save its settings and add an official
 // trick do it with one code path:
 //
 //   * A SWITCH FLIPS AT ONCE and holds the new position until the store's list agrees (`HOLD_MS` at most). A switch on
@@ -130,7 +130,7 @@ export interface TrickWrites {
   addOfficial: (entry: WireOfficialTrick, mode: "add" | "update") => Promise<void>;
 }
 
-/** The writes of one screen of Settings, Tricks, against the store's `tricks` and the official list it read. */
+/** The writes of one screen of Settings, Tricks and the Hill, against the store's `tricks` and the official list it read. */
 export function useTrickWrites(calls: TrickWriteCalls, tricks: readonly WireTrickInfo[], official: OfficialListState): TrickWrites {
   const { onSwitch = switchTrick, onAuto = setTrickAuto, onUndo = undoTrick, onSetValue = setTrickValue, onOfficialAdd = addOfficialTrick } = calls;
   // The position a flipped switch holds until the list agrees, and the switches with a post in flight

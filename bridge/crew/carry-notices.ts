@@ -64,7 +64,7 @@ export function carriedCard(lead: string, at: number, failure: CarryFailure): Hi
     return {
       requestId: carriedRequestId(lead, at, failure),
       title: `The trick ${failure.name} is off after the takeover`,
-      summary: `It ran on ${lead}, but the rights its code asks for are not the rights your lead says you approved. Collie left it off on this machine. Read its rights in Settings → Tricks before you switch it on.`,
+      summary: `It ran on ${lead}, but the rights its code asks for are not the rights your lead says you approved. Collie left it off on this machine. Read its rights in Settings → Tricks and the Hill before you switch it on.`,
       options: [{ intent: CARRIED_OK, label: "OK" }],
       text: "none",
     };
@@ -72,7 +72,7 @@ export function carriedCard(lead: string, at: number, failure: CarryFailure): Hi
   return {
     requestId: carriedRequestId(lead, at, failure),
     title: `The trick ${failure.name} did not start after the takeover`,
-    summary: `It ran on ${lead}. Collie did not start it on this machine: ${failure.reason}. Switch it on again in Settings → Tricks when you want it here.`,
+    summary: `It ran on ${lead}. Collie did not start it on this machine: ${failure.reason}. Switch it on again in Settings → Tricks and the Hill when you want it here.`,
     options: [{ intent: CARRIED_OK, label: "OK" }],
     text: "none",
   };

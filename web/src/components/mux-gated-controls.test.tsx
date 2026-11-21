@@ -17,7 +17,7 @@ import { SpaceOverview } from "./space-overview";
 import { SpaceStrip } from "./space-strip";
 import { TabActionsSheet } from "./tab-actions-sheet";
 import { TabStrip } from "./tab-strip";
-import { STRIP_TAP_TARGET_SQUARE, TAB_ROW_ADD_TAP_TARGET } from "./ui/labelled-strip";
+import { STRIP_TAP_TARGET_SQUARE } from "./ui/labelled-strip";
 import { cn } from "@/lib/utils";
 
 // EVERY CAPABILITY-GATED CONTROL, IN BOTH STATES (M10/06). One file rather than a case bolted onto
@@ -250,13 +250,14 @@ describe("New tab — createTab", () => {
     expect(screen.queryByText("no tabs here.")).toBeNull();
   });
 
-  it("is the shared '+', bare in a 24px box with the tab row's own reach, plus the folder look's 12px gap", async () => {
+  it("is the shared '+', bare, drawn as the phone row's 44px square, plus the folder look's 12px gap", async () => {
     declares({ createTab: true });
     tabStrip();
     const plus = await screen.findByRole("button", { name: "New tab" });
-    // The default look is "folder": the "+" sits 12px (ml-3) off the last tab, nothing else added.
-    // Bare since 2026-11-06: in this row the dashed ring read as a placeholder (ui/add-button.tsx).
-    expect(classSet(plus)).toEqual([...handRolledPlus(TAB_ROW_ADD_TAP_TARGET, "size-6", false), "ml-3"].toSorted());
+    // The default look is "folder": the "+" sits 12px (ml-3) off the last tab. Bare since 2026-11-06: in this row
+    // the dashed ring read as a placeholder (ui/add-button.tsx). On the phone it is the row's whole 44px, drawn
+    // rather than reached (ADR 0171), so it needs no reach of its own.
+    expect(classSet(plus)).toEqual(cn(handRolledPlus("relative", "size-8", false).join(" "), "ml-3", "size-11 rounded-md").split(" ").toSorted());
   });
 });
 

@@ -211,7 +211,7 @@ export function ActionsRowSection() {
         <Card
           state="harness-status-line-switches"
           label="Harness configurations: one status line switch per harness, Claude Code first"
-          reach="Settings → Harness configurations. Per device, one row for every harness the app has an adapter for."
+          reach="Settings → Chat and terminal. Per device, one row for every harness the app has an adapter for."
           note="The real card over the real store; the rows come from the adapter registry, so a new adapter adds one. Flip a switch off and that harness's pane draws no status line under Chat, and no background-agents block for Claude Code. The model label returns above the belt instead. The Terminal view is unchanged. Every harness starts on."
           span={2}
         >

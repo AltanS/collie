@@ -47,7 +47,8 @@ const RESTING: ReadonlySet<AgentStatus> = new Set(["idle", "unknown"]);
  * there: filled silhouettes with no inner marks survive 10px and a colour-vision simulation, which a
  * ring with a gap or a symbol in a chip did not.
  */
-function StatusGlyph({ status, turning }: { status: AgentStatus; turning: boolean }) {
+function StatusGlyph({ status, turning, full }: { status: AgentStatus; turning: boolean; full: boolean }) {
+  const rest = full ? 1 : 0.6;
   return (
     <svg
       viewBox="0 0 12 12"
@@ -66,7 +67,7 @@ function StatusGlyph({ status, turning }: { status: AgentStatus; turning: boolea
       )}
       {status === "done" && <circle cx="6" cy="6" r="5" fill="currentColor" />}
       {status === "idle" && (
-        <circle cx="6" cy="6" r="4.3" fill="none" stroke="currentColor" strokeOpacity="0.6" strokeWidth="1.6" />
+        <circle cx="6" cy="6" r="4.3" fill="none" stroke="currentColor" strokeOpacity={rest} strokeWidth="1.6" />
       )}
       {status === "unknown" && (
         <circle
@@ -75,7 +76,7 @@ function StatusGlyph({ status, turning }: { status: AgentStatus; turning: boolea
           r="4.3"
           fill="none"
           stroke="currentColor"
-          strokeOpacity="0.6"
+          strokeOpacity={rest}
           strokeWidth="1.6"
           strokeDasharray="2.5 2"
         />
@@ -92,6 +93,7 @@ export function StatusDot({
   live = false,
   glide,
   backed = false,
+  full = false,
   className,
 }: {
   status: AgentStatus;
@@ -139,6 +141,12 @@ export function StatusDot({
    * a broken coin (2026-10-14). Paint only: the box is the same with or without it.
    */
   backed?: boolean;
+  /**
+   * Draw a resting ring (idle, unknown) at its token's full strength instead of 60%. For a row that holds ONE
+   * mark per item, the tab strip: the 60% calm is for a list of eighteen rings, and in a tab at 10px the
+   * faded ring measured 2.6:1 on a light recess, under the 3:1 a mark owes (e2e/strip-head.spec.ts).
+   */
+  full?: boolean;
   className?: string;
 }) {
   const turning = live && status === "working" && stale !== true;
@@ -161,7 +169,7 @@ export function StatusDot({
           it is filled and never shows the ground through. Paint only: it is absolute, the box does
           not change with the state. */}
       {(backed || RESTING.has(status)) && <span aria-hidden className={cn("absolute inset-px rounded-full", surface)} />}
-      <StatusGlyph status={status} turning={turning} />
+      <StatusGlyph status={status} turning={turning} full={full} />
     </span>
   );
 }

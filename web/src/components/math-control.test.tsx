@@ -34,8 +34,8 @@ const ABSENT: MathPackStatus = { state: "absent" };
 function renderCard(opts: { readOnly?: boolean } = {}) {
   // A device that may only read is one whose root data says the device gate refused it.
   const loader = opts.readOnly === true ? () => ({ device: { enforced: true, authorized: false } }) : undefined;
-  const router = createMemoryRouter([{ id: ROOT_ROUTE_ID, path: "/settings/appearance", element: <MathControl />, loader }], {
-    initialEntries: ["/settings/appearance"],
+  const router = createMemoryRouter([{ id: ROOT_ROUTE_ID, path: "/settings/look", element: <MathControl />, loader }], {
+    initialEntries: ["/settings/look"],
   });
   return render(<RouterProvider router={router} />);
 }
