@@ -8,8 +8,8 @@ import { installApiStub } from "./fixtures/api";
 
 // A TRICK'S DETAILS PAGE (2026-11-21), in a real engine at 390 x 844 and at 1440 x 900: a tap on a name in
 // Settings, Tricks opens the page and Back returns to the list where it was; the header button of a trick's own
-// page opens the same page and Back returns there; nothing on the page is wider than the window. No Remove: the
-// bridge has no route for one.
+// page opens the same page and Back returns there; nothing on the page is wider than the window. The Remove section
+// (ADR 0168) has its own spec, trick-remove.spec.ts.
 
 test.use({ serviceWorkers: "block" });
 
@@ -114,13 +114,13 @@ for (const size of [
       await expect.poll(() => listScroll(page)).toBe(before);
     });
 
-    test("the full page of a trick with a program and settings is no wider than the window, and holds no Remove", async ({ page }) => {
+    test("the full page of a trick with a program and settings is no wider than the window; on, its Remove waits", async ({ page }) => {
       await stub(page);
       await page.goto("/settings/tricks/lodge%3Akettle");
       await expect(page.locator('[data-slot="trick-detail-name"]')).toHaveText("Kettle Watch");
       await expect(page.locator('[data-section="settings"]')).toBeVisible();
       expect(await overflow(page)).toBeLessThanOrEqual(0);
-      await expect(page.getByRole("button", { name: /Remove/ })).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "Remove trick" })).toBeDisabled();
     });
 
     test("the trick's own page opens its details from the header, and Back returns to the trick's page", async ({ page }) => {
