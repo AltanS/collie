@@ -102,6 +102,7 @@ export const SCREENS: readonly Screen[] = [
   { id: "settings-alerts", route: "settings/alerts", path: "/settings/alerts", title: "Settings, Alerts", wide: "column" , waive: { "targets@390": PHONE_TARGETS } },
   { id: "settings-experiments", route: "settings/experiments", path: "/settings/experiments", title: "Settings, Experiments", wide: "column" , waive: { "targets@390": PHONE_TARGETS } },
   { id: "settings-tricks", route: "settings/tricks", path: "/settings/tricks", title: "Settings, Tricks", wide: "column", setup: "tricks" , waive: { "targets@390": PHONE_TARGETS } },
+  { id: "settings-trick", route: "settings/tricks/:key", path: "/settings/tricks/lodge%3Akettle", title: "Settings, one trick's details", wide: "column", setup: "tricks", waive: { "targets@390": PHONE_TARGETS } },
   { id: "settings-system", route: "settings/system", path: "/settings/system", title: "Settings, System", wide: "column" , waive: { "targets@390": PHONE_TARGETS } },
   { id: "settings-install-count", route: "settings/system/install-count", path: "/settings/system/install-count", title: "Settings, the install count", wide: "column" },
   { id: "settings-updates", route: "settings/updates", path: "/settings/updates", title: "Updates", wide: "column" , waive: { "targets@390": PHONE_TARGETS } },

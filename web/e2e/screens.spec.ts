@@ -8,7 +8,7 @@ import { stillMarkState } from "./fixtures/still-mark";
 import { installScanner } from "./hitbox/inject";
 import { SCREENS } from "./screens/list";
 import { installRules, runRules, type RuleId, type Violation } from "./screens/rules";
-import { installScreenStubs, SETUPS } from "./screens/setups";
+import { installFilledReads, installScreenStubs, SETUPS } from "./screens/setups";
 
 // THE SCREEN LIST, WALKED (`e2e/screens/list.ts`). Every entry opens at 1440x900 with a mouse and at 390x844 with a finger
 // (its own `widths` replace them), settles, and is checked against the four layout rules of `e2e/screens/rules.ts`. A red
@@ -57,6 +57,7 @@ for (const screen of SCREENS) {
         await installRules(page);
         await installApiStub(page);
         await installScreenStubs(page);
+        await installFilledReads(page);
         // A request the fixtures do not answer reads as an error on the page: say which, so the entry's setup can answer it.
         page.on("response", (response) => {
           if (response.status() === 501 && response.url().includes("/api/")) unstubbed.add(`${response.request().method()} ${new URL(response.url()).pathname}`);
