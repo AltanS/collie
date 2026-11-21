@@ -231,6 +231,8 @@ test.describe("New over the screen, large screen", () => {
         expect(howBox.y - (nameBox.y + nameBox.height)).toBeLessThan(80);
         // Another variant of the form changes the height downward: the top edge stays.
         const panel = add.locator('[data-presentation="dialog"]');
+        // Past the entrance zoom (a transform) before the first measure.
+        await settle(page);
         const before = await panel.boundingBox();
         await add.getByRole("radio", { name: en["launcherAdd.mode.text"], exact: true }).click();
         await page.waitForTimeout(300);
@@ -324,6 +326,37 @@ test.describe("New over the screen, large screen", () => {
       await page.waitForURL((url) => url.pathname === "/");
       expect(new URL(page.url()).searchParams.get("over")).toBeNull();
       await expect(dialog(page)).toHaveCount(0);
+    } finally {
+      await context.close();
+    }
+  });
+});
+
+test.describe("New over the screen on a cold load", () => {
+  test.beforeEach(({ browserName: _browser }, testInfo) => {
+    test.skip(testInfo.project.name !== "app-phone", "sets its own viewport; one project is enough");
+  });
+
+  // New's chunk loads on demand (ADR 0169). Opened at once after a cold load, before the idle preload has
+  // fetched it, New over the screen must come up as the dialog, from the button and from the address.
+  test("New opened at once after a cold load shows the dialog", async ({ browser }, testInfo) => {
+    const { context, page } = await open(browser, String(testInfo.project.use.baseURL), SIZES[0]);
+    const scripts: string[] = [];
+    page.on("request", (request) => {
+      if (request.resourceType() === "script") scripts.push(new URL(request.url()).pathname);
+    });
+    try {
+      await page.goto("/");
+      await dashboardNew(page).click();
+      await expect(dialog(page)).toBeVisible();
+      await expect(startButton(page)).toBeVisible();
+      // The dialog came from New's own chunk, not from the main one.
+      expect(scripts.some((path) => /\/assets\/new-[\w-]+\.js$/u.test(path))).toBe(true);
+      await page.goto("/pane/w1%3Ap1?over=%2Fnew%3Fpane%3Dw1%253Ap1");
+      await expect(dialog(page)).toBeVisible();
+      await expect(page.locator('[data-slot="wide-layout"]')).toHaveCount(1);
+      await page.goto("/new/add?kind=agent");
+      await expect(page.locator('[data-slot="new-add-dialog"]')).toBeVisible();
     } finally {
       await context.close();
     }

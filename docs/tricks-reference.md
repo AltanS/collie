@@ -1793,7 +1793,7 @@ Every verb of `collie trick`.
 | `list` | `collie trick list [--json] [--official]` | Lists every trick folder with its switch, state, last run and last error. |
 | `add` | `collie trick add [<name> \| <https-url>[//<folder>][#<ref>]]` | Copies a trick from a git repository into the tricks folder, off. With no source, or a repository's `collie-tricks.json` and no `//<folder>`, it lists and adds nothing. |
 | `update` | `collie trick update <id> [--ref <branch\|tag\|commit>] [--dry-run]` | Fetches an added trick again and replaces its code, keeping `config.toml`. |
-| `remove` | `collie trick remove <id>` | Deletes a trick that is off, with its state folder. |
+| `remove` | `collie trick remove <id>` | Deletes a trick that is off, with its state folder and its approved code. It refuses while a run of it is still going. |
 | `on` | `collie trick on <id>` | Switches a trick on, approving its code as it is now. It refuses inside an agent's pane. |
 | `off` | `collie trick off <id>` | Switches a trick off. |
 | `auto` | `collie trick auto <id> on\|off` | Takes new versions without asking while the powers do not change. A trick with rules never takes one. |

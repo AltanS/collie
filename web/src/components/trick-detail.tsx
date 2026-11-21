@@ -12,6 +12,7 @@ import { SectionLabel } from "@/components/ui/section-label";
 import { Switch } from "@/components/ui/switch";
 import { TokenUseChip, tokenUseWhy, useTokenUseShown } from "@/components/token-use-label";
 import { TrickCodeFolds, type TrickCodeReader } from "@/components/trick-code-folds";
+import { TrickRemoveSection } from "@/components/trick-remove-section";
 import { TrickSettingsGroup } from "@/components/trick-settings-group";
 import { valueSentence } from "@/components/trick-value";
 import { useLocale } from "@/hooks/use-locale";
@@ -480,10 +481,12 @@ export interface TrickDetailProps {
   timeZone?: string;
   /** The reads behind the "Read the code" folds, bound to this trick. Without it the section is not drawn. */
   readCode?: TrickCodeReader;
+  /** Remove the trick from this machine (ADR 0168): null when it went, else the words to show. Without it no Remove section. */
+  onRemove?: () => Promise<string | null>;
 }
 
 /** The details of one trick on a machine: the head, then the sheet's groups in the sheet's order. */
-export function TrickDetail({ trick, runsOn, origin, checked, onFlip, auto, canWrite = true, onAuto, onValue, timeZone, readCode }: TrickDetailProps) {
+export function TrickDetail({ trick, runsOn, origin, checked, onFlip, auto, canWrite = true, onAuto, onValue, timeZone, readCode, onRemove }: TrickDetailProps) {
   useLocale();
   const paragraphs = trick.about === undefined ? [] : aboutParagraphs(trick.about);
   const tokens = useTokenUseShown();
@@ -523,6 +526,8 @@ export function TrickDetail({ trick, runsOn, origin, checked, onFlip, auto, canW
       {trick.on && runsOn === undefined && onAuto !== undefined && trick.rules === undefined && trick.rulesUnshown !== true && trick.agentView !== true && <UpdatesGroup auto={auto ?? trick.auto === true} canWrite={canWrite} onAuto={onAuto} />}
       {/* The version a read shows moves with the row: the switch (the copy that runs, or the folder) and the hash a switch on approves. */}
       {readCode !== undefined && <TrickCodeFolds reader={readCode} scope={`${trick.host}/${trick.id}/${String(trick.on)}/${trick.approves ?? ""}`} />}
+      {/* The last section: the one place that removes a trick. A trick that is on, also one held on by a flip, cannot go. */}
+      {onRemove !== undefined && <TrickRemoveSection name={trick.name} on={on || trick.on} canWrite={canWrite} onRemove={onRemove} />}
     </div>
   );
 }

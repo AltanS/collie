@@ -72,8 +72,31 @@ export function reloadForMissingChunk(): boolean {
   return true;
 }
 
+// A BACKGROUND PRELOAD NEVER RELOADS THE PAGE (lib/route-preload.ts, ADR 0169). It imports the lazy
+// screens while the app is idle, and a chunk it cannot fetch is the real navigation's business later.
+// Vite fires `vite:preloadError` synchronously inside the failed import, before it rethrows, so a count
+// of the preloads in flight tells this listener the event is theirs. A real navigation in the same moment
+// still reloads: every lazy screen goes through `reloadOnChunkError`, which decides on its own.
+let preloadsInFlight = 0;
+
+/** One chunk's import, for a background preload: it settles when the chunk is in or has failed. */
+export type ChunkPreload = () => Promise<void>;
+
+/** Run `load` as a background preload: its failure is swallowed and never reloads the page. */
+export async function preloadQuietly(load: ChunkPreload): Promise<void> {
+  preloadsInFlight += 1;
+  try {
+    await load();
+  } catch {
+    // The navigation that needs this chunk fetches it again, with its own reload.
+  } finally {
+    preloadsInFlight -= 1;
+  }
+}
+
 /** The `vite:preloadError` listener. Cancels Vite's rethrow only when it reloads. */
 export function onPreloadError(event: Event): void {
+  if (preloadsInFlight > 0) return;
   if (reloadForMissingChunk()) event.preventDefault();
 }
 
