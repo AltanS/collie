@@ -458,7 +458,7 @@
      (`RECESS_ACCENT`, `PAPER_PLANE`, `PAGE_PLANE`), and here they hold the page's. These are Collie's relations,
      the colours Altan approved on 2026-11-21: the accent on the page and the paper, the paper on the recess, the
      on-colour for an open trigger. A theme that is applied gets the same relations with a floor under each
-     (lib/theme/derive.ts, set inline by applyTheme); derive.test.ts holds the two together within 0.02. */
+     (lib/theme/derive.ts, set inline by applyTheme); derive.test.ts holds the two together within 0.005. */
   --state-hover-page: var(--accent);
   --state-hover-recess: var(--surface-paper);
   --state-hover-paper: var(--accent);

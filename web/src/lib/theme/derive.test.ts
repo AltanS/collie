@@ -31,9 +31,13 @@ const read = (id: string): Theme => {
 const COLLIE = read("collie");
 const filled = (t: Theme) => fillHalves(t, COLLIE);
 
-// THE REFERENCE: Collie through the function is Collie as painted. The planes are the colours the themes set read
-// off the screen on 2026-11-21 (e2e/themes/collie-states.json, "plane recess" and "plane paper"); the state fills
-// are the tokens Collie's stylesheet points them at. Held within 0.02 in OKLab, the hold of Altan's approval.
+// THE REFERENCE: Collie through the function is Collie as painted. Collie's base tokens are read from
+// `src/themes/collie.json`, which `src/themes/themes.test.ts` holds equal to index.css's `:root`, token by token; the
+// relations derive.ts mirrors are held to index.css's own lines below, so the stylesheet cannot move alone. The planes
+// are the colours the themes set read off the screen on 2026-11-21 (e2e/themes/collie-states.json, "plane recess" and
+// "plane paper"); the state fills are the tokens Collie's stylesheet points them at. Held within 0.005 in OKLab (the
+// worst is 0.0021, the dark recess), well inside the 0.02 of Altan's approval.
+const REFERENCE_TOLERANCE = 0.005;
 const PAINTED = {
   light: { "surface-recess": "#e1dfdd", "surface-paper": "#ffffff" },
   dark: { "surface-recess": "#060605", "surface-paper": "#1d1c1b" },
@@ -62,7 +66,29 @@ describe("Collie is the reference", () => {
         "state-open-paper": token("control-on"),
         ring: token("ring"),
       } satisfies Record<keyof DerivedHalf, Lab>;
-      for (const name of DERIVED_TOKENS) expect(distance(at(name), expected[name]), `${half} ${name}`).toBeLessThanOrEqual(0.02);
+      for (const name of DERIVED_TOKENS) expect(distance(at(name), expected[name]), `${half} ${name}`).toBeLessThanOrEqual(REFERENCE_TOLERANCE);
+    });
+  }
+});
+
+describe("index.css holds the relations derive.ts mirrors", () => {
+  const css = readFileSync(resolve(__dirname, "../../index.css"), "utf8");
+  // One line each, as written: a change to any of them is a change to derive.ts's relation too (and to its golden values).
+  for (const line of [
+    "--surface-recess: oklch(from var(--background) calc(l - 0.05) c h);",
+    "--surface-paper: light-dark(oklch(from var(--card) min(1, calc(l + 0.05)) c h), color-mix(in oklch, var(--background), oklch(from var(--card) calc(l + 0.05) c h)));",
+    "--state-hover-page: var(--accent);",
+    "--state-hover-recess: var(--surface-paper);",
+    "--state-hover-paper: var(--accent);",
+    "--state-on-page: var(--accent);",
+    "--state-on-recess: var(--surface-paper);",
+    "--state-on-paper: var(--accent);",
+    "--state-open-page: var(--control-on);",
+    "--state-open-recess: var(--control-on);",
+    "--state-open-paper: var(--control-on);",
+  ]) {
+    it(line.slice(0, line.indexOf(":")), () => {
+      expect(css).toContain(`  ${line}\n`);
     });
   }
 });
