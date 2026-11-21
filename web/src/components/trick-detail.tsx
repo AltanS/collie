@@ -50,7 +50,9 @@ import { trickTokenUse, type TrickTokenFacts } from "@/lib/tricks/token-use";
 //      code (the same words the card shows before the switch). A row is left out when its fact is absent,
 //      and the whole group when every row is. Each row leads with a small muted glyph of its kind (`FactKind`):
 //      where it shows, what it adds, what starts it, when it runs, what it may read, why it uses tokens, and the
-//      warning glyph for a warning. The glyph never carries a status colour;
+//      warning glyph for a warning. A fact's glyph is muted; the warning glyph alone takes the caution tone of
+//      the code folds' "flagged" mark (`text-status-working`), on the glyph only, the words in their normal colour
+//      (2026-11-21): a warning is a risk statement. Colour on this page goes toward caution, never toward "safe";
 //   2b. "Read the instructions": for a trick with `rules` (contract 2), a fold with the rules file's text
 //      whole, monospace, wrapped, never markdown (`RulesFold`). "What it does" names the agent view's two
 //      rights lines and the rules line;
@@ -264,7 +266,7 @@ function doesRows(trick: WireTrickInfo, tokens: boolean, opensPage = false): Fac
   // `drafts = "session"`: its buttons may fill the reply box of the session you are in, and never send. The cards' line.
   if (trick.draftsSession === true) rows.push({ key: "drafts", kind: "adds", node: <span data-line="drafts">{t("settings.tricks.about.drafts")}</span> });
   for (const line of warningLines(trick)) {
-    // The warning glyph leads the row, muted as on the card: a text search's flag, never a verdict.
+    // The warning glyph leads the row in the caution tone (FactLine): a text search's flag, never a verdict.
     rows.push({ key: `warn:${line.kind}`, kind: "warn", node: <span data-warning={line.kind}>{line.text}</span> });
   }
   // The one line of a trick that reacts, after the rights lines and the warnings (2026-11-17): it starts with no phone open.
@@ -276,12 +278,15 @@ function doesRows(trick: WireTrickInfo, tokens: boolean, opensPage = false): Fac
 const SECTION = "pt-6";
 const SECTION_LABEL = "mb-2 block";
 
-/** A row's words, after its glyph when it has a kind. The glyph is muted and hidden from assistive tech. */
+/** The tone of a fact's glyph: muted, and the caution tone of a flagged code line for a warning. */
+export const FACT_GLYPH_TONE = { fact: "text-muted-foreground", warn: "text-status-working" } as const;
+
+/** A row's words, after its glyph when it has a kind. The glyph is hidden from assistive tech. */
 function FactLine({ row }: { row: FactRow }) {
   if (row.kind === undefined) return row.node;
   return (
     <span className="flex items-start gap-2.5">
-      <Icon name={FACT_GLYPH[row.kind]} data-fact={row.kind} aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+      <Icon name={FACT_GLYPH[row.kind]} data-fact={row.kind} aria-hidden className={cn("mt-0.5 size-4 shrink-0", row.kind === "warn" ? FACT_GLYPH_TONE.warn : FACT_GLYPH_TONE.fact)} />
       <span className="min-w-0 flex-1">{row.node}</span>
     </span>
   );
@@ -349,9 +354,16 @@ function UpdatesGroup({ auto, canWrite, onAuto }: { auto: boolean; canWrite: boo
 }
 
 /** The small label after a trick's name: where it comes from, "Official" or "Community". The list's and the page's. */
+/**
+ * The app's accent for an official trick (2026-11-21): an official trick is Collie's own, and the page says who
+ * checks it. The accent is the control-on blue, a fact of who made it, never a verdict: no green, no check mark,
+ * no shield. Every other origin stays neutral.
+ */
+export const OFFICIAL_TONE = { label: "border-control-on-foreground/40 bg-control-on text-control-on-foreground", tile: "border-control-on-foreground/40 bg-control-on text-control-on-foreground" } as const;
+
 export function OriginLabel({ origin }: { origin: TrickOrigin }) {
   return (
-    <Badge variant="outline" data-slot="trick-origin" data-origin={origin} className="px-1.5 py-0 text-[11px] leading-4 font-normal text-muted-foreground">
+    <Badge variant="outline" data-slot="trick-origin" data-origin={origin} className={cn("px-1.5 py-0 text-[11px] leading-4 font-normal", origin === "official" ? OFFICIAL_TONE.label : "text-muted-foreground")}>
       {t(origin === "official" ? "settings.tricks.origin.official" : "settings.tricks.origin.community")}
     </Badge>
   );
@@ -359,22 +371,22 @@ export function OriginLabel({ origin }: { origin: TrickOrigin }) {
 
 /**
  * THE HEAD: the trick's icon in a tile, its name, and its labels, then, for a trick on this machine, its switch with
- * the state in words. The tile is the same neutral frame for every trick, official or not: a fact of identity,
- * never a status. The name is the page's first level (20 px, semibold), above the section labels and the rows.
+ * the state in words. The tile is a neutral frame, in the official accent for an official trick (`OFFICIAL_TONE`):
+ * a fact of identity, never a status. The name is the page's heading (`h1`, 20 px, semibold); the header's
+ * title says "Trick details", so the name stands once.
  */
 function DetailHead({ icon, name, origin, tokens, children }: { icon: string | undefined; name: string; origin: TrickOrigin | undefined; tokens: boolean; children?: ReactNode }) {
   const Glyph = trickIconOf(icon);
   return (
     <header data-section="head" className="flex flex-col gap-3">
       <div className="flex items-start gap-3">
-        <span aria-hidden data-slot="trick-detail-icon" className="inline-flex size-12 shrink-0 items-center justify-center rounded-sm border border-border bg-card text-primary">
+        <span aria-hidden data-slot="trick-detail-icon" className={cn("inline-flex size-12 shrink-0 items-center justify-center rounded-sm border", origin === "official" ? OFFICIAL_TONE.tile : "border-border bg-card text-primary")}>
           <Glyph className="size-6" />
         </span>
         <div className="min-w-0 flex-1 pt-0.5">
-          {/* Not a heading: the header's title already names the page; this is the same name, for the eye. */}
-          <p data-slot="trick-detail-name" className="text-xl leading-7 font-semibold tracking-tight break-words">
+          <h1 data-slot="trick-detail-name" className="text-xl leading-7 font-semibold tracking-tight break-words">
             {name}
-          </p>
+          </h1>
           {(origin !== undefined || tokens) && (
             <div data-slot="trick-detail-labels" className="mt-1 flex flex-wrap items-center gap-1">
               {origin !== undefined && <OriginLabel origin={origin} />}

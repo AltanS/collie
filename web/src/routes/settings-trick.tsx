@@ -29,6 +29,7 @@ import { isReadOnly } from "@/lib/types";
 // works: the page reads the tricks store and the official list, as the list does. While the first tricks reply has
 // not come the page draws nothing; a key that names no trick says so calmly, with a way back to the list.
 //
+// The header's title is "Trick details"; the trick's name is the page's `h1`, in the head (2026-11-21).
 // Back goes up one level (ADR 0067): to the list, or to the trick's own page when its header opened this one.
 // Tricks switched off as a whole send a deep link to Settings, Experiments, as the list does.
 
@@ -79,7 +80,7 @@ function TrickPage({ store = tricksStore, onOfficialList, readOnly, timeZone, ..
 
   if (waiting || gone || row === undefined) {
     return (
-      <SettingsPage title="settings.section.tricks.title" parent={list}>
+      <SettingsPage title="tricks.session.details" parent={list}>
         {gone && (
           <div data-slot="trick-detail-gone" className="flex flex-col gap-3">
             <Notice tone="neutral" variant="box">
@@ -97,7 +98,7 @@ function TrickPage({ store = tricksStore, onOfficialList, readOnly, timeZone, ..
   if (row.kind === "official") {
     const entry = row.entry;
     return (
-      <SettingsPage title="settings.section.tricks.title" heading={entry.name} parent={list}>
+      <SettingsPage title="tricks.session.details" parent={list} headingBelow>
         <TrickBoundary fallback="none" resetKey={entry}>
           <OfficialTrickDetail entry={entry} busy={writes.adding.has(entry.id) || entry.state !== "absent"} canWrite={canWrite} onAdd={() => void writes.addOfficial(entry, "add")} timeZone={timeZone} />
         </TrickBoundary>
@@ -107,7 +108,7 @@ function TrickPage({ store = tricksStore, onOfficialList, readOnly, timeZone, ..
 
   const trick = row.trick;
   return (
-    <SettingsPage title="settings.section.tricks.title" heading={trick.name} parent={list}>
+    <SettingsPage title="tricks.session.details" parent={list} headingBelow>
       {/* Its own boundary: a page that throws draws nothing below the header, and the list stays a step back. */}
       <TrickBoundary fallback="none" resetKey={trick}>
         <TrickDetail

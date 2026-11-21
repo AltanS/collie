@@ -28,6 +28,7 @@ export function SettingsPage({
   onScroll,
   foot,
   keepScroll = false,
+  headingBelow = false,
   children,
 }: {
   title: MessageKey;
@@ -40,6 +41,8 @@ export function SettingsPage({
   foot?: ReactNode;
   /** Keep the column's scroll for this history entry, so a step back from a page below lands where it was (Tricks). */
   keepScroll?: boolean;
+  /** The page draws its own `h1` in its column (a trick's details: the trick's name), so the header's title is a plain label. */
+  headingBelow?: boolean;
   children: ReactNode;
 }) {
   const nav = useNav();
@@ -64,7 +67,13 @@ export function SettingsPage({
             >
               <Icon name="back" className="size-5" />
             </Button>
-            <h1 className="min-w-0 truncate text-lg font-semibold tracking-tight">{heading ?? t(title)}</h1>
+            {headingBelow ? (
+              <p data-slot="settings-page-title" className="min-w-0 truncate text-lg font-semibold tracking-tight">
+                {heading ?? t(title)}
+              </p>
+            ) : (
+              <h1 className="min-w-0 truncate text-lg font-semibold tracking-tight">{heading ?? t(title)}</h1>
+            )}
           </>
         }
       />

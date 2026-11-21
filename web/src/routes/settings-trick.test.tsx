@@ -45,6 +45,9 @@ describe("the details page at its own address", () => {
     const head = detail()?.querySelector<HTMLElement>('[data-section="head"]');
     expect(within(head!).getByRole("switch", { name: "Browser leg" })).not.toBeChecked();
     expect(head).toHaveTextContent("Off");
+    // The header says what the page is; the name stands once, as the page's h1 (2026-11-21).
+    expect(document.querySelector('[data-slot="settings-page-title"]')).toHaveTextContent("Trick details");
+    expect(screen.getAllByRole("heading", { level: 1 }).map((h) => h.textContent)).toEqual(["Browser leg"]);
   });
 
   it("flips the trick from its head with the list's one-tap switch, and says the new state in words", async () => {

@@ -346,7 +346,8 @@ describe("an agent view and its rules (contract 2)", () => {
     await user.click(toggle());
     const pre = detail().querySelector('[data-line="rules-text"]');
     expect(pre?.textContent).toBe(text);
-    expect(detail().querySelector("a, b, h1, strong")).toBeNull();
+    // The one h1 is the page's own heading, the trick's name (2026-11-21); the rules draw none.
+    expect([...detail().querySelectorAll("a, b, h1, strong")].filter((el) => el.getAttribute("data-slot") !== "trick-detail-name")).toEqual([]);
   });
 
   it("draws no Take changes without asking switch for a trick with rules, even with the write given", () => {
