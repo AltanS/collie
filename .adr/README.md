@@ -275,6 +275,7 @@ The rule today: [0148](./0148-a-theme-names-words-never-drawings-and-the-device-
 | [0136](./0136-a-theme-may-name-a-mark-and-every-mark-keeps-one-contract.md) | A theme may name a mark from a closed list, and every mark keeps one contract. | Superseded by 0148 |
 | [0137](./0137-a-theme-may-name-a-glyph-set-from-a-closed-list.md) | A theme may name a glyph set from a closed list, and every icon is named by its meaning. | Superseded by 0148 |
 | [0138](./0138-an-app-left-alone-draws-no-frame.md) | The mark moves while the page is visible (title and first rules reversed by amendments). | Superseded by 0148 |
+| [0172](./0172-derived-state-colours-are-measured-and-collie-is-held.md) | The colours the app derives from a theme (hover, the chosen row, the ring, the planes) are measured on every look from painted pixels, and Collie's are held within 0.02; a re-pointed accent takes its ink, and every focusable row wears the house ring. | Accepted in part |
 
 ### Launch, worktrees, files and changes
 

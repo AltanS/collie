@@ -1154,3 +1154,35 @@ ground and a `band` are measured too, at the far end of the ground and on `secon
 list only with a new schema version, and in the same change: `index.css`, every shipped theme
 file, the validator, the word table in `surface.ts` and the lists spelled in `public/theme-init.js`.
 The coupling test (§9) and `bun scripts/build-themes.ts --check` fail when they drift. Until then, reuse the nearest token; do not paint a literal.
+
+## 14. State layers and derived tokens
+
+A theme names 43 colours. Hover, selection, the open look, the focus ring and the large screen's planes are
+not in that list: the app makes them from the theme's tokens. So each one must stay visible on any theme,
+not only on the four shipped ones. The themes set (`E2E_SET=themes`, `web/e2e/themes/`) checks this from
+painted pixels in every bundled look and in 24 generated themes ([ADR 0172](./.adr/0172-derived-state-colours-are-measured-and-collie-is-held.md)).
+
+**The floors.** Text 4.5:1 (3:1 large). An icon that is a control's only label, a field's edge, the focus
+ring on both its sides, and the focus frame 3:1. A hover 0.04 in OKLab from the fill at rest. A selected or
+open state 0.06 in OKLab from its neighbour, or a 3:1 mark beside it.
+
+**Collie is held.** Altan approved Collie's hover fills, rings and planes on 2026-11-21.
+`web/e2e/themes/collie-states.json` holds the 241 state colours that passed in Collie light and dark that day.
+A change that moves one of them by more than 0.02 in OKLab fails the set. A state that broke a floor is not
+held, because fixing it moves it.
+
+**The rules.**
+
+| Rule | What it says | Status | Numbers |
+| --- | --- | --- | --- |
+| D4 | A plane that points `--accent` at the paper points `--accent-foreground` at `--foreground` in the same class: `RECESS_ACCENT` in `ui/nav-edge.ts` | in force | the chosen row's words were 1.04 to 1.18:1 with an accent of the other polarity; now 0 such breaks |
+| D6 | Every focusable control wears `FOCUS_RING` or `FOCUS_RING_INSET`, never the browser's own ring | in force for the pane rows and the palette's rows; open for the sidebar's mark and word and the dashboard's summary button | ring breaks 217 to 168 over all looks, 99 to 67 in the bundled ones |
+| D2 | One hover: the ink at 8% over the ground it stands on | not adopted | keeps 9 of Collie's 72 held hovers within 0.02, worst 0.157 |
+| D3 | One selected and open fill: the ink at 12% | not adopted | keeps 14 of 30 held selected rows and 0 of 5 open triggers, worst 0.187 |
+| D5 | `--ring` held to 3:1 on page, card, recess, paper and a primary button | not adopted | needs two colours' lightness in one expression, which CSS relative colour cannot read |
+| D10 | The recess and the paper held so `--muted-foreground` keeps 4.5:1 on them | not adopted | the same limit as D5; the bundled looks keep 4.81:1 at worst already |
+
+**Why the state layers do not hold Collie.** In Collie light a row on the recess hovers and selects UP, to
+the paper. An ink layer can only darken a light ground. The open look is the `control-on` sky tint, and an
+ink layer is grey. So a single ink layer moves what Altan approved; a hover on the recess today is a step
+toward the paper, not a layer of ink.
