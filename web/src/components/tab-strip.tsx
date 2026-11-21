@@ -30,6 +30,7 @@ import { t as translate } from "@/lib/i18n";
 import { useLocale } from "@/hooks/use-locale";
 import { useShortcutHandler } from "@/hooks/use-shortcut-handler";
 import type { WidthClass } from "@/lib/wide-layout";
+import { stripHeadVariant } from "@/lib/strip-head-variant";
 
 interface TabStripProps {
   workspaceId: string;
@@ -83,6 +84,8 @@ interface TabStripProps {
   trailing?: ReactNode;
   /** The row's own box, merged last: a large screen's space header seats the row inside its bar. */
   className?: string;
+  /** LAB (strip-head B): a control at the row's start, before the tabs (the phone's space cell). */
+  leading?: ReactNode;
 }
 
 /** One step of the tab row's size, read off the window's width class. */
@@ -140,6 +143,16 @@ const STEP = {
     addReach: TAB_ROW_ADD_TAP_TARGET_EXPANDED,
   },
 } as const satisfies Record<WidthClass, Step>;
+
+/** LAB (strip-head B): the phone's row at the 44px reach, for every proposal. */
+const LAB_COMPACT: Step = {
+  cell: "h-11 min-w-11 px-2 text-[12px]",
+  folderPx: "px-3",
+  group: "-mx-2",
+  folderGroup: "-mx-3",
+  add: "md",
+  addReach: "relative",
+};
 
 // The selected space's tabs, drawn as PLAIN CELLS on the composer's chrome ground — not the
 // file-folder kind this row used to draw.
@@ -219,10 +232,12 @@ export function TabStrip({
   onClosed,
   trailing,
   className,
+  leading,
 }: TabStripProps) {
   useLocale();
   const look = useTabLook();
-  const step = STEP[useWidthClass()];
+  const widthClass = useWidthClass();
+  const step = stripHeadVariant() !== "today" && widthClass === "compact" ? LAB_COMPACT : STEP[widthClass];
   const [sheetTab, setSheetTab] = useState<TabView | null>(null);
   // How the sheet opens: on its list (a hold), or on the view the Actions palette named (ADR 0165).
   const [sheetDoor, setSheetDoor] = useState<"list" | "rename" | "close">("list");
@@ -282,6 +297,7 @@ export function TabStrip({
   return (
     <>
       <nav
+        data-slot="tab-strip"
         // The row's accessible name, which used to come from the visible word via aria-labelledby.
         // The word is gone; the name is not. A row of buttons with no name is an unnamed run of
         // buttons to a screen reader, which is the fault LabelledStrip was written to fix.
@@ -334,6 +350,7 @@ export function TabStrip({
             trailing ? "-ml-4 min-w-0 flex-1 pl-4 pr-3" : "-mx-4 px-4",
           )}
         >
+          {leading}
           {/* THE TAB GROUP: every tab cell, separated by air rather than a hairline, no `divide-x`
               any more (the header comment above says why). The air is each tab's own `px-1.5`, so
               the group itself has no gap, and `-mx-1.5` pulls the first LABEL back onto the route's
@@ -405,7 +422,7 @@ export function TabStrip({
               // would start, and the "+" touched it. `ml-3` adds the 12px back, the same air a
               // folder tab leaves from its card to the next label. Plain draws no card: its `-mx-1.5`
               // leaves the 12px between two labels already.
-              className={look === "folder" ? "ml-3" : undefined}
+              className={cn(look === "folder" && "ml-3", step === LAB_COMPACT && "size-11 rounded-md")}
             />
           )}
         </div>
@@ -508,6 +525,7 @@ function Tab({
   return (
     <button
       type="button"
+      data-slot="tab"
       onClick={handleClick}
       {...target}
       {...longPress}
@@ -577,7 +595,7 @@ function Tab({
           <StatusDot
             status={TRIAGE_STATUS[status]}
             surface={look === "folder" && active ? "bg-background" : "bg-chrome"}
-            className="size-2.5"
+            className={stripHeadVariant() === "today" ? "size-2.5" : "size-3"}
           />
           {/* The mark is a shape and a colour; say it in words for screen readers. */}
           <span className="sr-only">{statusLabel(TRIAGE_STATUS[status])}</span>

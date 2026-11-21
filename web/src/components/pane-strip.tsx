@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { Icon } from "@/components/icons/icon";
 
 import { cn } from "@/lib/utils";
+import { stripHeadVariant } from "@/lib/strip-head-variant";
 import { useTabLook, type TabLook } from "@/lib/tab-look";
 import { LabelledStrip, STRIP_TAP_TARGET } from "@/components/ui/labelled-strip";
 import { StatusDot } from "@/components/status-badge";
@@ -134,7 +135,7 @@ export function PaneStrip({
       >
         {/* `px-4` moves the gutter from the scroller onto the track, so the track covers the
             gutters too and the scroll width keeps both of them. */}
-        <div className="flex w-max min-w-full shrink-0 items-center gap-2 px-4 py-px">
+        <div data-slot="pane-strip-track" className={cn("flex w-max min-w-full shrink-0 items-center gap-2 px-4", stripHeadVariant() === "today" ? "py-px" : "py-1.5")}>
           {panes.map((p) => (
             <PanePill
               key={p.paneId}
@@ -209,6 +210,7 @@ function PanePill({
   return (
     <button
       type="button"
+      data-slot="pane-pill"
       onClick={onClick}
       {...longPress}
       aria-current={active ? "true" : undefined}
@@ -242,6 +244,8 @@ function PanePill({
         // (see the row's comment in PaneStrip above).
         STRIP_TAP_TARGET,
         "flex h-6 min-w-11 shrink-0 select-none [-webkit-touch-callout:none] items-center justify-center gap-1.5 whitespace-nowrap rounded-md border border-transparent px-2.5 text-[11px] font-medium transition-colors before:-inset-y-[2px] active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+        // LAB (strip-head B): a 32px pill whose reach fills the 44px row.
+        stripHeadVariant() !== "today" && "h-8 text-[12px] before:-inset-y-[7px]",
         look === "folder"
           ? // The folder look: a tinted, ringed cell for the open pane, a `secondary` cell for the rest.
             active
