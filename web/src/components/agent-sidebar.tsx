@@ -755,7 +755,7 @@ export function PaneRow({
         FOCUS_RING,
         // The sidebar's 16px inset is the list's 8 plus the row's 8, and its 44px floor a little more air.
         roomy ? "min-h-11 px-2 py-2.5" : "px-2.5 py-2",
-        active ? "bg-accent text-accent-foreground" : "hover:bg-muted/60 active:bg-muted",
+        active ? "bg-(--state-on) text-accent-foreground" : "hover:bg-(--state-hover) active:bg-muted",
         // The switcher is exactly where you jump TO the thing that needs you, so it must be able to
         // SHOW that across the whole row, not only in the mark on the logo. Staying denser than the
         // dashboard is fine; being unable to mark a blocked pane is not. (isAttention, so the rule

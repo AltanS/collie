@@ -192,16 +192,25 @@ function mixOklchHalf(x: Lab, y: Lab): Lab {
 const STEP = 0.0025;
 
 /**
- * `start` when `ok(start)`; otherwise the first lightness that is `ok`, walking from `start` in `direction` (+1
- * lighter, -1 darker), then, if that runs out of range, the other way. Hue and chroma stay. When no lightness is
- * `ok`, the one with the best `score` (how close it came).
+ * How far past a floor a pushed value lands: a value written at exactly 0.04 paints a hair under it once the screen
+ * rounds it to 8 bits (0.0399 was measured). A value that meets its floor as Collie's relation made it is not moved.
  */
-export function pushLightness(start: Lab, direction: 1 | -1, ok: (c: Lab) => boolean, score: (c: Lab) => number): Lab {
-  if (ok(start)) return start;
-  for (const dir of [direction, -direction]) {
+const MARGIN = { distance: 0.006, ratio: 0.1 } as const;
+
+/** A floor check: `margin` false for the value as the relation made it, true for a value the floor pushes. */
+export type Floor = (c: Lab, margin: boolean) => boolean;
+
+/**
+ * `start` when it meets its floor as it is; otherwise the first lightness that meets it (with MARGIN), walking from
+ * `start` in `direction` (+1 lighter, -1 darker), then, if that runs out of range and `bothWays`, the other way. Hue
+ * and chroma stay. When no lightness meets it, the one with the best `score` (how close it came).
+ */
+export function pushLightness(start: Lab, direction: 1 | -1, floor: Floor, score: (c: Lab) => number, bothWays = true): Lab {
+  if (floor(start, false)) return start;
+  for (const dir of bothWays ? [direction, -direction] : [direction]) {
     for (let L = start[0] + dir * STEP; L >= 0 && L <= 1; L += dir * STEP) {
       const c = withLightness(start, L);
-      if (ok(c)) return painted(c);
+      if (floor(c, true)) return painted(c);
     }
   }
   let best = start;
@@ -216,6 +225,9 @@ export function pushLightness(start: Lab, direction: 1 | -1, ok: (c: Lab) => boo
   }
   return best;
 }
+
+/** `distance(x, y) >= floor`, with the margin when asked. */
+const off = (x: Lab, y: Lab, floor: number, margin: boolean): boolean => distance(x, y) >= floor + (margin ? MARGIN.distance : 0);
 
 /** Which way a value already stands from its ground; at the same lightness, away from the nearer end of the range. */
 function awayFrom(value: Lab, ground: Lab): 1 | -1 {
@@ -242,9 +254,19 @@ function made(w: Work, token: DerivedToken): Lab {
   return c;
 }
 
-/** The ink that must stay readable on a ground: never worse than the floor, nor than the page already gives it. */
-function inkHolds(ink: Lab, ground: Lab, page: Lab): boolean {
-  return contrast(ink, ground) >= Math.min(TEXT_FLOOR, contrast(ink, page)) - 1e-6;
+/** A ground on the same side of the ink as the page: lighter than it when the page is, darker when the page is. */
+function sameSide(ink: Lab, ground: Lab, page: Lab): boolean {
+  return Math.sign(ground[0] - ink[0]) === Math.sign(page[0] - ink[0]);
+}
+
+/**
+ * The ink that must stay readable on a ground: never worse than the floor, nor than the page already gives it, and on
+ * the same side of the ink as the page (a dark page's plane never turns light: a low-contrast theme's mid-grey ink
+ * reads as badly on both, and the page would flip).
+ */
+function inkHolds(ink: Lab, ground: Lab, page: Lab, margin = false): boolean {
+  if (!sameSide(ink, ground, page)) return false;
+  return contrast(ink, ground) >= Math.min(TEXT_FLOOR + (margin ? MARGIN.ratio : 0), contrast(ink, page)) - 1e-6;
 }
 
 /**
@@ -261,27 +283,30 @@ function planes(w: Work): void {
   const own = (token: "surface-recess" | "surface-paper"): Lab | undefined => (w.tokens[token] === undefined ? undefined : w.colour(token));
 
   const recessStart = own("surface-recess") ?? withLightness(page, page[0] - 0.05);
-  const inks = (c: Lab) => inkHolds(muted, c, page) && inkHolds(fg, c, page);
-  const recess = placePlane(recessStart, awayFrom(recessStart, page), inks, [(c) => distance(c, page) >= PLANE_GAP], muted);
+  const inks: Floor = (c, m) => inkHolds(muted, c, page, m) && inkHolds(fg, c, page, m);
+  const recess = placePlane(recessStart, awayFrom(recessStart, page), inks, [(c, m) => off(c, page, PLANE_GAP, m)], muted, true);
   w.out["surface-recess"] = recess;
 
   const paperStart = own("surface-paper") ?? (w.half === "light" ? withLightness(card, Math.min(1, card[0] + 0.05)) : mixOklchHalf(page, withLightness(card, card[0] + 0.05)));
   const paperDir = distance(paperStart, page) > 1e-3 ? awayFrom(paperStart, page) : awayFrom(paperStart, recess);
-  w.out["surface-paper"] = placePlane(paperStart, paperDir, inks, [(c) => distance(c, page) >= PLANE_GAP, (c) => distance(c, recess) >= PLANE_GAP], muted);
+  w.out["surface-paper"] = placePlane(paperStart, paperDir, inks, [(c, m) => off(c, page, PLANE_GAP, m), (c, m) => off(c, recess, PLANE_GAP, m)], muted, false);
 }
 
 /**
- * A plane under its floors, the ink first: the gaps are tried as a list, the first ones the most wanted (off the page,
- * then off the recess), and dropped from the end until a lightness meets the ink's floor and the gaps left. With no
- * gap left the plane may sit on the page (a white page has no lighter paper); with no lightness at all, the one the
- * muted ink reads best on.
+ * A plane under its floors, the ink first. The gaps are tried as a list, the most wanted first (off the page, then off
+ * the recess), and dropped from the end until a lightness meets the ink's floor and the gaps left. The recess may
+ * turn the other way when its own runs out (lighter than a mid-grey page whose muted ink allows no darker step); the
+ * paper's gaps are sought only in its own direction, so it never turns darker than the recess to stand off a white
+ * page. With
+ * no gap left the plane may sit on the page (a white page has no lighter paper, as Daylight's); with no lightness at
+ * all, the one the muted ink reads best on.
  */
-function placePlane(start: Lab, direction: 1 | -1, inks: (c: Lab) => boolean, gaps: readonly ((c: Lab) => boolean)[], muted: Lab): Lab {
+function placePlane(start: Lab, direction: 1 | -1, inks: Floor, gaps: readonly Floor[], muted: Lab, bothWays: boolean): Lab {
   for (let keep = gaps.length; keep > 0; keep -= 1) {
     const kept = gaps.slice(0, keep);
-    const ok = (c: Lab) => inks(c) && kept.every((g) => g(c));
-    const found = pushLightness(start, direction, ok, () => Number.NEGATIVE_INFINITY);
-    if (ok(found)) return found;
+    const floor: Floor = (c, m) => inks(c, m) && kept.every((g) => g(c, m));
+    const found = pushLightness(start, direction, floor, () => Number.NEGATIVE_INFINITY, bothWays);
+    if (floor(found, false)) return found;
   }
   return pushLightness(start, direction, inks, (c) => contrast(muted, c));
 }
@@ -295,34 +320,58 @@ function groundOf(w: Work, plane: Plane): Lab {
 /**
  * THE STATE FILLS, per plane. Collie's relation: a hover and a selected row take `--accent` on the page and the paper,
  * and the paper on the recess (`RECESS_ACCENT` points the accent there); an open trigger takes `--control-on` on every
- * plane. Floors: a hover HOVER_FLOOR off its ground, a selected and an open fill STATE_FLOOR off it, and the ink on
- * each fill as readable as it is on the page.
+ * plane. Floors: a hover HOVER_FLOOR off its ground, a selected and an open fill STATE_FLOOR off it, and the inks on
+ * each fill as readable as on the page: the foreground always, the muted ink (a row's second line) where a lightness on
+ * the relation's side allows it.
  */
 function states(w: Work): void {
   const accent = w.colour("accent");
   const fg = w.colour("foreground");
+  const muted = w.colour("muted-foreground");
   const page = w.colour("background");
+  const recess = made(w, "surface-recess");
   const on = w.colour("control-on");
   const onInk = w.colour("control-on-foreground");
+  const onInkHolds = (c: Lab) => contrast(onInk, c) >= Math.min(TEXT_FLOOR, contrast(onInk, on)) - 1e-6;
   for (const plane of PLANES) {
     const ground = groundOf(w, plane);
+    // The page's fills are also what a strip of the recess with no plane class shows (the space header): a fill the
+    // floor has to push is pushed clear of the recess too, so it does not land on it. Collie's own are not pushed.
+    const alsoOff = (c: Lab, floor: number, m: boolean) => !m || plane !== "page" || off(c, recess, floor, m);
     const fillStart = plane === "recess" ? made(w, "surface-paper") : accent;
-    const fill = (floor: number): Lab =>
-      pushLightness(
-        fillStart,
-        awayFrom(fillStart, ground),
-        (c) => distance(c, ground) >= floor && inkHolds(fg, c, page),
-        (c) => distance(c, ground),
-      );
+    const fill = (floor: number): Lab => {
+      const reach: Floor = (c, m) => off(c, ground, floor, m) && inkHolds(fg, c, page, m);
+      const keepsMuted: Floor = (c, m) => inkHolds(muted, c, page, m);
+      return pushTiers(fillStart, awayFrom(fillStart, ground), [
+        (c, m) => reach(c, m) && alsoOff(c, floor, m) && keepsMuted(c, m),
+        (c, m) => reach(c, m) && keepsMuted(c, m),
+        (c, m) => reach(c, m) && alsoOff(c, floor, m),
+        reach,
+      ], (c) => (sameSide(fg, c, page) && sameSide(muted, c, page) ? distance(c, ground) : -1));
+    };
     w.out[`state-hover-${plane}`] = fill(HOVER_FLOOR);
     w.out[`state-on-${plane}`] = fill(STATE_FLOOR);
-    w.out[`state-open-${plane}`] = pushLightness(
-      on,
-      awayFrom(on, ground),
-      (c) => distance(c, ground) >= STATE_FLOOR && contrast(onInk, c) >= Math.min(TEXT_FLOOR, contrast(onInk, on)) - 1e-6,
-      (c) => distance(c, ground),
-    );
+    w.out[`state-open-${plane}`] = pushTiers(on, awayFrom(on, ground), [
+      (c, m) => off(c, ground, STATE_FLOOR, m) && alsoOff(c, STATE_FLOOR, m) && onInkHolds(c),
+      (c, m) => off(c, ground, STATE_FLOOR, m) && onInkHolds(c),
+    ], (c) => (onInkHolds(c) ? distance(c, ground) : -1));
   }
+}
+
+/**
+ * A fill under a list of floors, the strictest first. Each is sought in the relation's own direction before any is
+ * sought the other way, so a fill keeps the side Collie's relation gave it while a looser floor allows that. With none
+ * met (a low-contrast theme, whose ink has no room), the lightness with the best `score`: for a fill the farthest from
+ * its ground on the page's side of both inks, so neither ink ever lands on a fill of its own lightness.
+ */
+function pushTiers(start: Lab, direction: 1 | -1, tiers: readonly Floor[], score: (c: Lab) => number): Lab {
+  for (const bothWays of [false, true]) {
+    for (const tier of tiers) {
+      const found = pushLightness(start, direction, tier, () => Number.NEGATIVE_INFINITY, bothWays);
+      if (tier(found, found !== start)) return found;
+    }
+  }
+  return pushLightness(start, direction, () => false, score);
 }
 
 /**
@@ -336,7 +385,7 @@ function ring(w: Work): void {
   const grounds = [page, w.colour("card"), made(w, "surface-recess"), made(w, "surface-paper"), w.colour("secondary"), w.colour("muted")];
   const start = w.colour("ring");
   const worst = (c: Lab) => Math.min(...grounds.map((g) => contrast(c, g)));
-  w.out.ring = pushLightness(start, awayFrom(start, page), (c) => worst(c) >= RING_FLOOR, worst);
+  w.out.ring = pushLightness(start, awayFrom(start, page), (c, m) => worst(c) >= RING_FLOOR + (m ? MARGIN.ratio : 0), worst);
 }
 
 const STEPS: readonly ((w: Work) => void)[] = [planes, states, ring];

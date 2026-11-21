@@ -76,11 +76,24 @@ function brokenFloors(tokens: Half, d: DerivedHalf): string[] {
   for (const plane of ["recess", "paper"] as const) {
     const floor = Math.min(TEXT_FLOOR, contrast(muted, page)) - 0.01;
     if (contrast(muted, ground[plane]) < floor) out.push(`muted ink on the ${plane} ${contrast(muted, ground[plane]).toFixed(2)}`);
-    // The gap gives way to the ink: it may be short only when no lightness both meets it and keeps the muted ink.
-    const gapCanHold = Array.from({ length: 401 }, (_, i) => withLightness(ground[plane], i / 400)).some(
-      (c) => distance(c, page) >= PLANE_GAP && contrast(muted, c) >= floor && contrast(token("foreground"), c) >= Math.min(TEXT_FLOOR, contrast(token("foreground"), page)) - 0.01,
-    );
-    if (gapCanHold && distance(ground[plane], page) < PLANE_GAP - 1e-3) out.push(`${plane} ${distance(ground[plane], page).toFixed(3)} off the page`);
+    // The gap gives way to the ink, and is only sought on the plane's own side of the page: it may be short only when
+    // no lightness on that side both meets it and keeps the inks (a white page has no lighter paper).
+    // The recess may stand on either side; the paper keeps its own.
+    const side = Math.sign(ground[plane][0] - page[0]) || 1;
+    const gapCanHold = Array.from({ length: 401 }, (_, i) => withLightness(ground[plane], i / 400))
+      .filter((c) => plane === "recess" || Math.sign(c[0] - page[0]) === side)
+      // A plane keeps the page's side of the ink (derive.ts, inkHolds).
+      .filter((c) => Math.sign(c[0] - token("foreground")[0]) === Math.sign(page[0] - token("foreground")[0]) && Math.sign(c[0] - muted[0]) === Math.sign(page[0] - muted[0]))
+      .some(
+        (c) =>
+          // With the margin a pushed plane is given (derive.ts, MARGIN).
+          distance(c, page) >= PLANE_GAP + 0.006 &&
+          contrast(muted, c) >= Math.min(TEXT_FLOOR + 0.1, contrast(muted, page)) &&
+          contrast(token("foreground"), c) >= Math.min(TEXT_FLOOR + 0.1, contrast(token("foreground"), page)),
+      );
+    // A paper that cannot stand off the page on its own side sits on it (Daylight's white page): the focus frame marks it.
+    const onPage = plane === "paper" && distance(ground[plane], page) < 0.005;
+    if (gapCanHold && !onPage && distance(ground[plane], page) < PLANE_GAP - 1e-3) out.push(`${plane} ${distance(ground[plane], page).toFixed(3)} off the page`);
   }
   for (const plane of PLANES) {
     const g = ground[plane];
