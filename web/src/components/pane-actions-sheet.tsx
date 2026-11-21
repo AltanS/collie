@@ -187,6 +187,8 @@ interface PaneActionsSheetProps {
   /** The button the sheet was opened from, when a tap on it opened it: on a wide window the sheet is then
    *  a menu beside it (ui/sheet.tsx `anchor`). Absent for a hold, the Actions palette or a shortcut. */
   anchor?: RefObject<HTMLElement | null>;
+  /** The menu was opened by the Pane menu key: beside its button, the first row takes the focus (ui/sheet.tsx `focusFirstRow`). */
+  focusFirstRow?: boolean;
 }
 
 const NO_HERD: readonly AgentView[] = [];
@@ -261,6 +263,7 @@ export function PaneActionsSheet({
   agentViews,
   tricksStore: trickStore,
   anchor,
+  focusFirstRow,
 }: PaneActionsSheetProps) {
   useLocale();
   // Whether this pane is pinned on this device, read live from the store so the row's word is right
@@ -436,6 +439,7 @@ export function PaneActionsSheet({
       open={open}
       onClose={onClose}
       anchor={anchor}
+      focusFirstRow={focusFirstRow}
       title={
         pane ? (
           // Every row below acts on THIS pane on THIS machine — rename, close, focus — so the

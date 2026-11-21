@@ -1295,6 +1295,7 @@ export const en = {
 
   // --- paneActions (long-press sheet: rename / close a pane) ---
   "paneActions.title.fallback": "Pane",
+  "paneActions.menu.label": "Pane menu",
   "paneActions.settings.label": "Pane settings",
   "paneActions.readOnly": "Read-only. This device isn't authorised to rename or close panes.",
   "paneActions.hostBlockSuffix": "{hostBlock}. Rename and close are unavailable until it answers.",
@@ -4206,6 +4207,7 @@ export const en = {
   "shortcuts.action.close_tab": "Close this tab",
   "shortcuts.action.rename_pane": "Rename this pane",
   "shortcuts.action.pin_pane": "Pin or unpin this pane",
+  "shortcuts.action.pane_menu": "Open the pane menu",
   "shortcuts.action.pane_settings": "Open the pane settings",
   "shortcuts.action.close_pane": "Close this pane",
   "shortcuts.action.copy_output": "Copy the output",
@@ -4345,6 +4347,8 @@ export const PENDING_TRANSLATION = [
   "shortcuts.action.close_tab",
   "shortcuts.action.rename_pane",
   "shortcuts.action.pin_pane",
+  "shortcuts.action.pane_menu",
+  "paneActions.menu.label",
   "shortcuts.action.pane_settings",
   "shortcuts.action.close_pane",
   "shortcuts.action.copy_output",

@@ -67,9 +67,9 @@
 # cycle_pane_next = "prefix+tab"
 # cycle_pane_previous = "prefix+shift+tab"
 
-# Remove the pane from the view (it keeps running), the pane's settings, zen mode, the sidebar.
+# Remove the pane from the view (it keeps running), open the pane menu, zen mode, the sidebar.
 # remove_from_view = "prefix+x"
-# pane_settings = "prefix+m"
+# pane_menu = "prefix+m"
 # zen_mode = "prefix+z"
 # toggle_sidebar = "prefix+b"
 
@@ -104,6 +104,7 @@
 # close_tab = []
 # rename_pane = []
 # pin_pane = []
+# pane_settings = []
 # close_pane = []
 # copy_output = []
 # conversation_history = []

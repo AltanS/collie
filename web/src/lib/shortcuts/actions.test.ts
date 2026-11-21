@@ -33,6 +33,7 @@ describe("the action table", () => {
         "open_crew",
         "open_files",
         "open_shortcuts",
+        "pane_settings",
         "pin_pane",
         "rename_pane",
         "rename_space",
