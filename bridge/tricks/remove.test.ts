@@ -7,7 +7,7 @@ import { HOST } from "../host.ts";
 import { approveFolder, FOLDER_GONE_LINE, forgetLeftovers } from "./approved.ts";
 import { diskTrickFs, type TrickFs } from "./code-hash.ts";
 import { makeFoldersUnder } from "./proposal-install.ts";
-import { ASIDE_COMMITS_DIR, commitAside, GONE_PREFIX, moveAside, newAsideToken, sweepGone } from "./aside.ts";
+import { ASIDE_COMMITS_DIR, asideCommitPath, commitAside, GONE_PREFIX, moveAside, newAsideToken, sweepGone } from "./aside.ts";
 import { createTrickScanner } from "./discover.ts";
 import { APPROVED_DIR, PENDING_DIR, switchesPath, TRICKS_DIR, tricksStateDir, trickStateDir } from "./paths.ts";
 import { clearRunMarks, markRun, REMOVE_LINK_LINE, REMOVE_ON_LINE, REMOVE_RUNNING_LINE, removeTrick, RemoveUnreadable, RUN_MARK_MAX_MS, runMarked, runMarkPath, unmarkRun } from "./remove.ts";
@@ -439,6 +439,28 @@ describe.if(posix)("B4: the other writers and a remove", () => {
     expect(await exists(s.folder)).toBe(false);
     await makeFoldersUnder(s.other, "src/deep");
     expect(await exists(join(s.other, "src", "deep"))).toBe(true);
+  });
+
+  test("a batch committed after the sweep's first listing keeps its commit file and its asides", async () => {
+    const s = await setup();
+    const token = newAsideToken();
+    let path = "";
+    const out = await sweepGone({
+      stateDir: s.stateDir,
+      configDir: s.configDir,
+      // Another process (a terminal remove) renames and commits its batch right after the listing.
+      listed: async () => {
+        path = (await moveAside(s.state, "legs", token)) ?? "";
+        await commitAside(s.stateDir, "legs", token);
+      },
+    });
+    expect(out).toEqual({ removed: 0, restored: 0, kept: 0 });
+    expect(await exists(path)).toBe(true);
+    expect(await exists(asideCommitPath(s.stateDir, "legs", token))).toBe(true);
+    // The next sweep finishes that batch: the aside and its commit file go.
+    expect(await sweepGone({ stateDir: s.stateDir, configDir: s.configDir })).toEqual({ removed: 1, restored: 0, kept: 0 });
+    expect(await exists(path)).toBe(false);
+    expect(await exists(asideCommitPath(s.stateDir, "legs", token))).toBe(false);
   });
 
   test("the sweep's put-back waits for the switch file's lock, as an add and a remove do", async () => {

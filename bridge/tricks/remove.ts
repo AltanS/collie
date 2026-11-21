@@ -153,7 +153,11 @@ export async function removeTrick(opts: RemoveOptions): Promise<RemoveResult> {
         const to = await moveAside(place.path, id, token);
         if (to !== null) moved.push({ from: place.path, to });
       }
-      // No switch write: an off trick has no entry (asked above). The commit is the last step inside the lock.
+      // No switch write: an off trick has no entry (asked above). The file holds `v`, `layout` and `on` only
+      // (switches.ts `renderSwitches`); `on` is the one field keyed by a trick id, and an entry in it IS "on"
+      // (`withSwitch(..., false)` deletes it; the service reads on as `switches.on.has(id)`). Its `declined`,
+      // `auto`, `previous` and `from` live inside that entry, so an off trick holds none. The commit is the last
+      // step inside the lock.
       await (opts.commit ?? commitAside)(stateDir, id, token);
     } catch (err) {
       const back = await putBack(moved, warn);

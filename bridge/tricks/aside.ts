@@ -180,18 +180,12 @@ export interface SweepResult {
  * deleted; an uncommitted one goes back to its name when that name is free, else it stays and is logged. A commit
  * file with no aside left goes. Never throws.
  */
-export async function sweepGone(opts: { stateDir: string; configDir: string; warn?: (line: string) => void }): Promise<SweepResult> {
+export async function sweepGone(opts: { stateDir: string; configDir: string; warn?: (line: string) => void; listed?: () => Promise<void> }): Promise<SweepResult> {
   const warn = opts.warn ?? (() => {});
-  const root = tricksConfigDir(opts.configDir);
   const out: SweepResult = { removed: 0, restored: 0, kept: 0 };
-  const found: { path: string; parent: string; id: string; token: string }[] = [];
-  for (const parent of [root, tricksStateDir(opts.stateDir), join(root, APPROVED_DIR), join(root, PENDING_DIR)]) {
-    for (const name of await names(parent)) {
-      const parts = goneParts(name);
-      if (parts !== null) found.push({ path: join(parent, name), parent, ...parts });
-    }
-  }
-  const live = new Set<string>();
+  const found = await listGone(opts.stateDir, opts.configDir);
+  // A seam for the tests: another process may commit a batch right after this listing.
+  await opts.listed?.();
   const doomed: typeof found = [];
   const back: typeof found = [];
   for (const one of found) ((await committed(opts.stateDir, one.id, one.token)) ? doomed : back).push(one);
@@ -227,10 +221,31 @@ export async function sweepGone(opts: { stateDir: string; configDir: string; war
       continue;
     }
     warn(`${one.path} could not be deleted (${why})`);
-    live.add(`${one.id}-${one.token}`);
     out.kept += 1;
   }
-  const commits = join(tricksStateDir(opts.stateDir), ASIDE_COMMITS_DIR);
-  for (const name of await names(commits)) if (!live.has(name)) await unlink(join(commits, name)).catch(() => {});
+  // A commit file goes only when, inside the lock that every commit is written in, a fresh listing shows no aside of
+  // its batch: a batch another process committed after the first listing keeps its file while it deletes.
+  try {
+    await withSwitchLock(opts.stateDir, async () => {
+      const held = new Set((await listGone(opts.stateDir, opts.configDir)).map((one) => `${one.id}-${one.token}`));
+      const commits = join(tricksStateDir(opts.stateDir), ASIDE_COMMITS_DIR);
+      for (const name of await names(commits)) if (!held.has(name)) await unlink(join(commits, name)).catch(() => {});
+    });
+  } catch (err) {
+    warn(`the commit files of removed tricks could not be cleaned up: ${messageOf(err)}`);
+  }
   return out;
+}
+
+/** Every set-aside name in the four folders a batch renames inside, with its parent, id and token. */
+async function listGone(stateDir: string, configDir: string): Promise<{ path: string; parent: string; id: string; token: string }[]> {
+  const root = tricksConfigDir(configDir);
+  const found: { path: string; parent: string; id: string; token: string }[] = [];
+  for (const parent of [root, tricksStateDir(stateDir), join(root, APPROVED_DIR), join(root, PENDING_DIR)]) {
+    for (const name of await names(parent)) {
+      const parts = goneParts(name);
+      if (parts !== null) found.push({ path: join(parent, name), parent, ...parts });
+    }
+  }
+  return found;
 }
