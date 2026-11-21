@@ -287,17 +287,30 @@ export function readPostedImage(path: string, denied: readonly string[], allowed
   return { ok: true, mime, bytes, width: size?.width ?? null, height: size?.height ?? null };
 }
 
-/** Each private folder as given and as its real path, whichever spelling a path reaches. */
+/**
+ * Each private folder as given, as its real path and as the OS's own real path, whichever spelling a
+ * path reaches. The two real paths differ on Windows only: `realpathSync` keeps an 8.3 short name
+ * (`RUNNER~1`), a `subst` drive and the drive letter's case as given, while the OS's answer
+ * (`realpathSync.native`, the same one `fs/promises` `realpath` gives) has the long name, the real
+ * drive and its case. The hill's reader resolves a path the first way; the project picture
+ * (project-picture.ts) and the Files view (`realpathOf`) the second. With one spelling only, a state
+ * folder configured as `C:\Users\RUNNER~1\...` did not deny the picture the project file resolved to
+ * `C:\Users\runneradmin\...` (Windows CI, 2026-11-21). Elsewhere the two agree and the list is as before.
+ */
 export function deniedFoldersSync(privateFolders: readonly string[]): string[] {
   const denied: string[] = [];
+  const add = (spelling: string) => {
+    if (!denied.includes(spelling)) denied.push(spelling);
+  };
   for (const folder of privateFolders) {
     if (folder.trim() === "") continue;
-    denied.push(folder);
-    try {
-      const real = realpathSync(folder);
-      if (real !== folder) denied.push(real);
-    } catch {
-      // A folder that does not exist yet still denies its spelling.
+    add(folder);
+    for (const resolve of [realpathSync, realpathSync.native]) {
+      try {
+        add(resolve(folder));
+      } catch {
+        // A folder that does not exist yet still denies its spelling.
+      }
     }
   }
   return denied;
