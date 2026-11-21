@@ -7,7 +7,7 @@ import { arrowsOf, OverflowEdges } from "./overflow-edges";
 // pill, cancels the pill's own press) and `arrows` (a button over each edge that still hides content, only
 // under a hovering fine pointer). jsdom has no layout and no pointer capture, so both are set by hand.
 
-const ARROWS = { left: 0, right: 40, leftLabel: "Scroll left", rightLabel: "Scroll right" } as const;
+const ARROWS = { left: "0px", right: "calc(40px - 4rem)", leftLabel: "Scroll left", rightLabel: "Scroll right" } as const;
 
 function fineMouse(matches: boolean) {
   vi.stubGlobal(
@@ -103,7 +103,7 @@ describe("the arrows", () => {
       scroller.dispatchEvent(new Event("scroll"));
     });
     expect(screen.queryByRole("button", { name: "Scroll left" })).toBeNull();
-    expect(screen.getByRole("button", { name: "Scroll right" })).toHaveStyle({ right: "44px" });
+    expect(screen.getByRole("button", { name: "Scroll right" })).toHaveStyle({ right: "calc(40px - 4rem)" });
     scroller.scrollLeft = 100;
     act(() => {
       scroller.dispatchEvent(new Event("scroll"));

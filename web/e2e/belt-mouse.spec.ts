@@ -26,6 +26,31 @@ async function overflowTheBelt(page: Page): Promise<void> {
 
 const scrollLeft = (page: Page) => page.locator(TRACK).first().evaluate((el) => el.scrollLeft);
 
+// WHERE THE ARROWS STAND. The right arrow's side touches the scrolling strip's visible right edge, where the
+// pinned block's fade ends at its hairline, and the left arrow's touches the strip's left edge. They do not
+// float inside the strip over a label, and the fade under each is at least as wide as the arrow.
+async function arrowPlaces(page: Page) {
+  return page.evaluate(() => {
+    const belt = document.querySelector('[data-slot="composer-actions"]')!;
+    const track = belt.querySelector(".overflow-x-auto")!;
+    const hairline = [...belt.querySelectorAll("span")].find((el) => el.className.includes("w-px"))!;
+    const pinnedFade = hairline.parentElement!.previousElementSibling!;
+    const right = belt.querySelector('[data-slot="scroll-arrow"][data-side="right"]')?.getBoundingClientRect() ?? null;
+    const left = belt.querySelector('[data-slot="scroll-arrow"][data-side="left"]')?.getBoundingClientRect() ?? null;
+    const rule = hairline.getBoundingClientRect();
+    const firstPinned = [...belt.querySelectorAll("button")].find((b) => b.getBoundingClientRect().left > rule.right);
+    return {
+      stripLeft: track.getBoundingClientRect().left,
+      stripRight: rule.left,
+      right: right === null ? null : { left: right.left, right: right.right, width: right.width },
+      left: left === null ? null : { left: left.left, right: left.right, width: left.width },
+      rightFadeWidth: pinnedFade.getBoundingClientRect().width,
+      leftMask: getComputedStyle(track.parentElement!).maskImage,
+      firstPinned: firstPinned?.getBoundingClientRect().left ?? null,
+    };
+  });
+}
+
 test.describe("on a desktop window", () => {
   test.use({ hasTouch: false });
 
@@ -97,6 +122,36 @@ test.describe("on a desktop window", () => {
     await expect(arrow(page, "left")).toBeVisible();
     await arrow(page, "left").click();
     await expect.poll(() => scrollLeft(page)).toBeLessThan((await page.locator(TRACK).first().evaluate((el) => el.scrollWidth - el.clientWidth)) - 200);
+  });
+
+  test("the right arrow stands at the strip's right edge and the left one at its left edge, each over a fade as wide as itself", async ({ page }) => {
+    const rest = await arrowPlaces(page);
+    expect(rest.right).not.toBeNull();
+    expect(Math.abs(rest.right!.right - rest.stripRight)).toBeLessThanOrEqual(2);
+    expect(rest.right!.right).toBeLessThanOrEqual(rest.firstPinned!);
+    expect(rest.rightFadeWidth).toBeGreaterThanOrEqual(rest.right!.width);
+
+    await page.locator(TRACK).first().evaluate((el) => {
+      el.scrollLeft = 300;
+    });
+    await expect(arrow(page, "left")).toBeVisible();
+    const middle = await arrowPlaces(page);
+    expect(Math.abs(middle.left!.left - middle.stripLeft)).toBeLessThanOrEqual(2);
+    // The left fade is the scroller wrapper's mask, 1.5rem (24px), as wide as the arrow.
+    expect(middle.leftMask).toContain("24px");
+    expect(middle.left!.width).toBeLessThanOrEqual(24);
+  });
+
+  test("the same holds in a narrow pane of a row of three, where the strip is short", async ({ page }) => {
+    await page.locator(BELT).evaluate((el) => {
+      const column = el.closest<HTMLElement>("section[data-col-key]");
+      if (column !== null) column.style.cssText += ";flex:0 0 330px;max-width:330px";
+    });
+    const rest = await arrowPlaces(page);
+    expect(rest.right).not.toBeNull();
+    expect(Math.abs(rest.right!.right - rest.stripRight)).toBeLessThanOrEqual(2);
+    expect(rest.right!.right).toBeLessThanOrEqual(rest.firstPinned!);
+    expect(rest.right!.left).toBeGreaterThan(rest.stripLeft);
   });
 });
 
