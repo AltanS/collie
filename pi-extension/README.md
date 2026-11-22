@@ -10,7 +10,7 @@ On tmux, zellij and the normal Herdr you do not need it. It does nothing there.
 - Collie's pi journal reads that label first, and opens that file for that pane.
 - The label is a hint, not proof. Collie checks that the file is in pi's own log folder for that working directory before it opens it.
 
-It does nothing outside a Herdr core terminal, in a pi started from another pi's shell, and outside the pi TUI (`print`, `json` and `rpc` modes). Windows is not checked.
+It does nothing outside a Herdr core terminal, in a pi started from another pi's shell, and outside the pi TUI (`print`, `json` and `rpc` modes). Windows is not checked. Checked with pi 1.3.0.
 
 ## Install
 
@@ -47,6 +47,7 @@ A good result is a path that ends in `.jsonl`. Chat shows the conversation after
 - An empty card on a brand-new session is normal until pi's first reply. Pi writes its session file only then.
 - Chat shows another conversation after pi crashed or was killed: the old label stayed behind. Clear it with `hc label "$HC_TERMINAL_ID" pi.session_file=`.
 - A pi started from another pi's shell is skipped on purpose. `PI_SESSION_ID` is set there.
+- pi may take up to 1.5 seconds longer to quit when `hc` does not answer. This is the time limit for `hc`.
 
 ## Privacy
 

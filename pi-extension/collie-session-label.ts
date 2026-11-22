@@ -19,7 +19,12 @@ import { isAbsolute } from "node:path";
 //  - pi waits for what a handler returns. This extension never makes it wait at the start of a session
 //    or at the end of a turn: those handlers start the write and return at once. Only a quit waits for
 //    the queue, because the process is about to end, and `hc` gets 1.5 s at most. A failed or hung `hc`
-//    never throws into pi.
+//    never throws into pi. The `hc` child and its timer hold pi's process open while that wait lasts,
+//    so a quick `hc` ends the wait at once and a hung one is killed at the limit: pi can take up to 1.5 s
+//    longer to quit.
+//  - A session with no file (`--no-session`) writes the empty value at start. That is harmless and
+//    clears an old label. After `/new` and `/fork` the label names a file that pi writes only at the
+//    first reply.
 //  - pi's bash tool injects `PI_SESSION_ID` into every shell it spawns, never into pi's own root env,
 //    so an inherited `PI_SESSION_ID` marks a nested pi.
 //  - `pi --mode rpc` sets `hasUI: true` with `mode: "rpc"`, so TUI gating checks `mode === undefined ||
@@ -158,7 +163,9 @@ const HC_LIMIT_MS = 1500;
 /**
  * `hc` on the PATH, or `COLLIE_HC_BIN` (an empty value counts as unset); 1.5 s at most. Never rejects.
  * The output is never read, so the child gets no pipes: a wrapper script that leaves a child behind
- * cannot hold the wait. At the limit the child is killed and the answer is `false` at once.
+ * cannot hold the wait. At the limit the child is killed and the answer is `false` at once. The
+ * child and the timer keep the process alive until then, on purpose: the host awaits this answer at a
+ * quit, and a process that held nothing would end before the clear landed or the kill ran.
  */
 function runHc(args: readonly string[]): Promise<boolean> {
   return new Promise<boolean>((resolve) => {
@@ -181,8 +188,6 @@ function runHc(args: readonly string[]): Promise<boolean> {
         }
         finish(false);
       }, HC_LIMIT_MS);
-      timer.unref();
-      child.unref();
       child.on("error", () => finish(false));
       child.on("exit", (code) => finish(code === 0));
     } catch {
