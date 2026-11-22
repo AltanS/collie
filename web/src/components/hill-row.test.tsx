@@ -35,6 +35,9 @@ function renderRow(first: Partial<HomeData>) {
   return holder;
 }
 
+/** The note while it shows: its layer is the visible one (the unarmed ghost is aria-hidden). */
+const shown = (root: ParentNode = document) => root.querySelector('[data-line="armed"]:not([aria-hidden])');
+
 beforeEach(() => __resetHill());
 afterEach(() => clearStatus());
 
@@ -136,7 +139,7 @@ describe("the first tap on the switch right after the card appears", () => {
     const onToggle = vi.fn();
     await tapAtFirstPaint(<Row on disabled={false} waiting={3} onToggle={onToggle} />, '[role="switch"]', (host) => {
       expect(onToggle).not.toHaveBeenCalled();
-      expect(host.querySelector('[data-line="armed"]')).not.toBeNull();
+      expect(shown(host)).not.toBeNull();
     });
   });
 });
@@ -178,23 +181,54 @@ describe("the armed second tap on the switch", () => {
     expect(screen.getByRole("status")).toHaveTextContent("1 question waits on the Hill. You cannot answer it while it is off.");
   });
 
-  it("reserves the note's slot before the tap, so arming moves nothing, and keeps it when the list empties", () => {
-    const { rerender } = render(<Row {...props} waiting={3} onToggle={() => {}} />);
-    const slot = document.querySelector('[data-slot="armed-slot"]');
-    expect(slot).not.toBeNull();
-    expect(slot!.querySelector('[data-line="armed"]')).toBeNull();
-    expect(slot!.querySelector("[aria-hidden]")).toHaveClass("invisible");
+  it("lays the note over the text in one grid cell: arming swaps the layers and the row keeps its height", () => {
+    render(<Row {...props} waiting={3} onToggle={() => {}} />);
+    const cell = document.querySelector('[data-slot="hill-text"]')!;
+    const text = cell.querySelector('[data-layer="text"]')!;
+    const note = cell.querySelector('[data-line="armed"]')!;
+    // Both layers share the cell's one grid area, so the cell is as tall as the taller one.
+    expect(cell).toHaveClass("grid");
+    expect(text).toHaveClass("col-start-1", "row-start-1");
+    expect(note).toHaveClass("col-start-1", "row-start-1");
+    // Unarmed: the note is a ghost, the text shows.
+    expect(note).toHaveClass("invisible");
+    expect(note.getAttribute("aria-hidden")).toBe("true");
+    expect(text).not.toHaveClass("invisible");
+    expect(text.getAttribute("aria-hidden")).toBeNull();
+    expect(screen.queryByRole("status")).toBeNull();
     fireEvent.click(screen.getByRole("switch", { name: "The Hill" }));
-    expect(document.querySelector('[data-slot="armed-slot"]')).toBe(slot);
-    rerender(<Row {...props} waiting={0} onToggle={() => {}} />);
-    expect(document.querySelector('[data-slot="armed-slot"]')).toBe(slot);
+    // Armed: the note shows, the text is the ghost. Same two elements, none added or removed.
+    expect(cell.querySelector('[data-line="armed"]')).toBe(note);
+    expect(note).not.toHaveClass("invisible");
+    expect(note.getAttribute("aria-hidden")).toBeNull();
+    expect(text).toHaveClass("invisible");
+    expect(text.getAttribute("aria-hidden")).toBe("true");
+    expect(screen.getByRole("status")).toBe(note);
   });
 
-  it("draws no slot when no question waits, and none while the Hill is off", () => {
+  it("holds the note's layer once a question waited, until the row unmounts, so the row does not shrink after the second tap", () => {
+    const { rerender } = render(<Row {...props} waiting={3} onToggle={() => {}} />);
+    const note = document.querySelector('[data-line="armed"]');
+    expect(note).not.toBeNull();
+    fireEvent.click(screen.getByRole("switch", { name: "The Hill" }));
+    rerender(<Row {...props} waiting={0} onToggle={() => {}} />);
+    expect(document.querySelector('[data-line="armed"]')).toBe(note);
+  });
+
+  it("draws only the text when no question waits, and no note layer while the Hill is off", () => {
     const { rerender } = render(<Row {...props} waiting={0} onToggle={() => {}} />);
-    expect(document.querySelector('[data-slot="armed-slot"]')).toBeNull();
+    expect(document.querySelector('[data-line="armed"]')).toBeNull();
+    expect(document.querySelector('[data-layer="text"]')).not.toBeNull();
     rerender(<Row on={false} disabled={false} waiting={3} onToggle={() => {}} />);
-    expect(document.querySelector('[data-slot="armed-slot"]')).toBeNull();
+    expect(document.querySelector('[data-line="armed"]')).toBeNull();
+  });
+
+  it("the stretched link still opens the page from the text area while unarmed: the text layer is no control and sits under the link's layer", () => {
+    render(<Row {...props} waiting={3} onToggle={() => {}} />);
+    const link = screen.getByRole("link", { name: "About The Hill" });
+    expect(link.className).toContain("after:absolute");
+    expect(document.querySelector('[data-layer="text"]')!.closest("a")).toBeNull();
+    expect(document.querySelector('[data-hill-row]')!.querySelector('[data-layer="text"] button, [data-layer="text"] a')).toBeNull();
   });
 
   it("the arm lapses by itself, and the next tap arms again instead of switching off", () => {
@@ -204,9 +238,9 @@ describe("the armed second tap on the switch", () => {
       render(<Row {...props} waiting={2} onToggle={onToggle} />);
       const sw = screen.getByRole("switch", { name: "The Hill" });
       fireEvent.click(sw);
-      expect(document.querySelector('[data-line="armed"]')).not.toBeNull();
+      expect(shown()).not.toBeNull();
       act(() => vi.advanceTimersByTime(5000));
-      expect(document.querySelector('[data-line="armed"]')).toBeNull();
+      expect(shown()).toBeNull();
       fireEvent.click(sw);
       expect(onToggle).not.toHaveBeenCalled();
     } finally {

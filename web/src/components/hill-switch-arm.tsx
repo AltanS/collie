@@ -17,10 +17,18 @@ import { cn } from "@/lib/utils";
 // THE ARMED SECOND TAP. Off blocks every answer: the Decisions that wait (an agent's, a trick's or Collie's own)
 // stay open and cannot be answered meanwhile. So a first tap on the switch while ANY Decision is open ARMS it
 // (`useArm`, the shared window and dwell): the switch stays on, and a note says how many questions wait. A second
-// tap inside the window switches off. With no Decision open, a tap switches at once. Turning on never asks. The
-// note has a RESERVED SLOT under the switch (DESIGN.md §2): an invisible copy of the words holds the height from the
-// moment the control knows a question waits, and the slot stays while the control is on screen (switching off
-// empties the list the phone holds, and a row that shrank then would pull the page up under the thumb).
+// tap inside the window switches off. With no Decision open, a tap switches at once. Turning on never asks.
+//
+// WHERE THE NOTE GOES (2026-11-22). Nothing may move under the thumb between the two taps (DESIGN.md §2), and a list row
+// must not carry a blank slot. So the two places differ:
+//   - ON THE ROW (components/hill-row.tsx) the note takes the place of the row's text block while armed. The text and the
+//     note are two layers of ONE grid cell (`HillTextCell`): the cell is as tall as the taller one, so the row never changes
+//     height and its switch never moves. Unarmed, the note's layer is `invisible` and `aria-hidden`; armed, the text's layer is.
+//     The note's layer exists from the moment a question waits and stays until the row unmounts (switching off empties the
+//     list the phone holds, and a row that shrank then would pull the page up under the thumb). With no question
+//     waiting only the text exists.
+//   - ON THE DETAILS HEAD (components/hill-page.tsx) the note sits BELOW the switch, so the switch cannot move: the note is
+//     drawn only while armed (`HillArmedNote`), and what is below moves down by its height.
 
 /** The armed note's look: the armed tint of DESIGN.md §4 in a box with the house corner. */
 const noteClass = (extra: string): string => cn("rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm break-words text-destructive", extra);
@@ -46,7 +54,7 @@ export interface HillSwitchArm {
   flip: (next: boolean) => void;
   /** The note shows now: the first tap armed the switch. */
   asks: boolean;
-  /** The note's slot is held, from the moment the control knows a question waits. */
+  /** The row keeps the note's layer, from the moment a question waits until it unmounts. */
   reserved: boolean;
 }
 
@@ -77,21 +85,12 @@ export function useHillSwitchArm({ on, waiting, onToggle }: Pick<HillSwitchValue
   return { flip, asks: armed === "off", reserved };
 }
 
-/** The armed note's reserved slot under the switch, or nothing before a question waits. `className` sets its margins. */
-export function HillArmedSlot({ arm, waiting, className }: { arm: Pick<HillSwitchArm, "asks" | "reserved">; waiting: number; className?: string }) {
+/** The note's words and role, in the armed look. `className` places it (a margin on the head, a grid layer on the row). */
+export function HillArmedNote({ waiting, className, hidden = false }: { waiting: number; className?: string; hidden?: boolean }) {
   useLocale();
-  if (!arm.reserved) return null;
   return (
-    <div data-slot="armed-slot" className={cn("relative", className)}>
-      {/* The ghost sets the slot's height with the words themselves; the real note sits over it. */}
-      <p aria-hidden className={noteClass("invisible")}>
-        {tn("settings.tricks.hill.waits", waiting)}
-      </p>
-      {arm.asks && (
-        <p data-line="armed" role="status" className={noteClass("absolute inset-0")}>
-          {tn("settings.tricks.hill.waits", waiting)}
-        </p>
-      )}
-    </div>
+    <p data-line="armed" role="status" aria-hidden={hidden || undefined} className={noteClass(cn(hidden && "invisible", className))}>
+      {tn("settings.tricks.hill.waits", waiting)}
+    </p>
   );
 }

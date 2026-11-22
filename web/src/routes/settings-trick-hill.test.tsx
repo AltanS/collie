@@ -178,8 +178,8 @@ describe("the head's switch", () => {
     const sw = screen.getByRole("switch", { name: "The Hill" });
     const t0 = Date.now();
     const clock = vi.spyOn(Date, "now").mockReturnValue(t0);
-    // The slot is held before the tap, so arming moves nothing.
-    expect(document.querySelector('[data-slot="armed-slot"] [aria-hidden]')).toHaveClass("invisible");
+    // The note sits below the switch and is drawn only while armed: no slot is held before the tap.
+    expect(document.querySelector('[data-line="armed"], [data-slot="armed-slot"]')).toBeNull();
     fireEvent.click(sw);
     expect(onToggle).not.toHaveBeenCalled();
     expect(sw).toBeChecked();
@@ -188,6 +188,24 @@ describe("the head's switch", () => {
     act(() => fireEvent.click(sw));
     expect(onToggle).toHaveBeenCalledExactlyOnceWith(false);
     clock.mockRestore();
+  });
+
+  it("draws the note below the switch while armed and takes it away when the arm lapses, with no ghost left", () => {
+    vi.useFakeTimers();
+    try {
+      page({ waiting: 2 });
+      const head = section("head");
+      fireEvent.click(screen.getByRole("switch", { name: "The Hill" }));
+      const note = head.querySelector('[data-line="armed"]')!;
+      expect(note.getAttribute("aria-hidden")).toBeNull();
+      expect(note.className).not.toContain("invisible");
+      // The switch's row comes first; the note follows it in the head.
+      expect(head.querySelector('[data-slot="trick-detail-switch"]')!.compareDocumentPosition(note) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+      act(() => vi.advanceTimersByTime(5000));
+      expect(head.querySelector('[data-line="armed"]')).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("is disabled where the device may not write", () => {

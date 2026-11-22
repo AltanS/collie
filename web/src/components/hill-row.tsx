@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-import { HillArmedSlot, useHillSwitchArm, useHillSwitchValue, type HillSwitchValue } from "@/components/hill-switch-arm";
+import { HillArmedNote, useHillSwitchArm, useHillSwitchValue, type HillSwitchArm, type HillSwitchValue } from "@/components/hill-switch-arm";
 import { Icon } from "@/components/icons/icon";
 import { ExperimentalBadge } from "@/components/experimental-badge";
 import { FeatureTokenChip } from "@/components/token-use-label";
@@ -13,6 +13,7 @@ import { useLocale } from "@/hooks/use-locale";
 import { t, tn } from "@/lib/i18n";
 import { HILL_DETAIL_KEY, trickDetailPath } from "@/lib/nav";
 import { useScope } from "@/lib/session";
+import { cn } from "@/lib/utils";
 
 // THE HILL'S ROW, the first row of the trick list in Settings, Tricks (2026-11-22). The Hill is a trick that ships with Collie, so
 // it stands in the list like one: the same row (`TrickRowFrame`, the stretched link of `ui/row-open.ts`), its mountain
@@ -31,6 +32,29 @@ const MARKED = "scroll-my-4 data-[marked=true]:outline-2 data-[marked=true]:-out
 export interface HillRowProps extends HillSwitchValue {
   /** The Hill's details page. */
   to: string;
+}
+
+/**
+ * The row's text block and the armed note, two layers of one grid cell. The cell is as tall as the taller layer, so
+ * arming moves nothing; the note's layer exists once a question waits and stays while the row is drawn (hill-switch-arm.tsx).
+ */
+function HillTextCell({ arm, waiting }: { arm: Pick<HillSwitchArm, "asks" | "reserved">; waiting: number }) {
+  const layered = arm.reserved || arm.asks;
+  return (
+    <div data-slot="hill-text" className="grid">
+      <div data-layer="text" aria-hidden={arm.asks || undefined} className={cn("col-start-1 row-start-1 min-w-0", arm.asks && "invisible")}>
+        <p data-line="description" className="line-clamp-2 break-words text-sm text-muted-foreground">
+          {t("settings.hill.row")}
+        </p>
+        {waiting > 0 && (
+          <p data-line="slot" className="truncate text-xs text-muted-foreground">
+            {tn("home.tabs.hill", waiting)}
+          </p>
+        )}
+      </div>
+      {layered && <HillArmedNote waiting={waiting} hidden={!arm.asks} className="col-start-1 row-start-1 min-w-0" />}
+    </div>
+  );
 }
 
 /** The row itself, every value handed in, so the playground draws the real markup in each state. */
@@ -53,19 +77,14 @@ export function HillRow({ on, disabled, waiting, onToggle, to }: HillRowProps) {
           <FeatureTokenChip feature="hill" />
         </>
       }
-      description={t("settings.hill.row")}
+      description={undefined}
       control={
         <span data-slot="hill-switch" className="flex shrink-0">
           <Switch checked={on} disabled={disabled} onCheckedChange={arm.flip} aria-label={t("settings.hill.label")} className={ROW_OPEN_SWITCH} />
         </span>
       }
-      below={<HillArmedSlot arm={arm} waiting={waiting} className="mt-3" />}
     >
-      {waiting > 0 && (
-        <p data-line="slot" className="truncate text-xs text-muted-foreground">
-          {tn("home.tabs.hill", waiting)}
-        </p>
-      )}
+      <HillTextCell arm={arm} waiting={waiting} />
     </TrickRowFrame>
   );
 }

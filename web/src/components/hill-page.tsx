@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 
 import { ExperimentalBadge } from "@/components/experimental-badge";
-import { HillArmedSlot, useHillSwitchArm, useHillSwitchValue, type HillSwitchValue } from "@/components/hill-switch-arm";
+import { HillArmedNote, useHillSwitchArm, useHillSwitchValue, type HillSwitchValue } from "@/components/hill-switch-arm";
 import { Icon } from "@/components/icons/icon";
 import { SettingSlot } from "@/components/setting-slot";
 import { FeatureTokenChip } from "@/components/token-use-label";
@@ -22,7 +22,7 @@ import { t } from "@/lib/i18n";
 // catalog's (`settings.hill.*`); a command inside a sentence is a slot (`{command}`) drawn on a chip, as the trick pages do.
 //
 // The head's switch is the row's switch (components/hill-row.tsx): the same value, the same armed second tap and the same
-// warning line. The page does not depend on the Tricks switch, and it never redirects.
+// warning line, drawn below the switch only while armed (so nothing moves under the thumb; the content below moves down). The page does not depend on the Tricks switch, and it never redirects.
 
 /** Where "Read more in the docs" opens. */
 export const HILL_DOCS_URL = "https://colliepwa.dev/docs/hill";
@@ -74,7 +74,7 @@ export function HillDetail({ on, disabled, waiting, onToggle }: HillSwitchValue)
       >
         <SettingSlot ids={["tricks.hill"]}>
           <HeadSwitch name={name} checked={on} disabled={disabled} onFlip={arm.flip} />
-          <HillArmedSlot arm={arm} waiting={waiting} className="mt-3" />
+          {arm.asks && <HillArmedNote waiting={waiting} className="mt-3" />}
         </SettingSlot>
       </DetailHead>
       <AboutGroup description={undefined} paragraphs={[t("settings.hill.about.1"), t("settings.hill.about.2"), t("settings.hill.about.3")]} note={false} />
