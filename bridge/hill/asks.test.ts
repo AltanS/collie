@@ -3,7 +3,12 @@ import { describe, expect, test } from "bun:test";
 import { HILL_ASK_ANSWERED_HERE, HILL_MORE_CONTEXT, HILL_MORE_CONTEXT_LABEL, askTakenBack, type HillAnswerRequest, type HillDecision } from "../../web/src/lib/hill/wire.ts";
 import { ASKS_ANSWERS_SUBJECT } from "../../web/src/lib/hill/answers-message.ts";
 import { askInput, askRig, ONE, posted, TWO, uuid } from "./ask-rig.ts";
-import { ASK_FILES_LEAD_ONLY, type HillPostAnswer } from "./service.ts";
+import type { JsonObject } from "../json.ts";
+import type { HillLeadForward } from "./crew.ts";
+import { readPostFields } from "./parse.ts";
+import { memoryHillReceipts } from "./receipts.ts";
+import { ASK_FILES_LEAD_ONLY, HillService, type HillPostAnswer } from "./service.ts";
+import { HillStore } from "./store.ts";
 
 // Asks (2026-11-22): a Decision with the `ask` field, from `collie walky ask`. These cases cover the
 // post's rules, the open cap, `--replaces`, the take back, the single answer, and what an ask is spared
@@ -214,3 +219,72 @@ describe("the single answer to an ask", () => {
     expect(outcome).toMatchObject({ kind: "receipt", receipt: { code: "rejected" } });
   });
 });
+
+describe("an ask from a crew member", () => {
+  function member(answer: (fields: JsonObject) => HillPostAnswer) {
+    const withdrawn: string[] = [];
+    const forwarded: JsonObject[] = [];
+    const forward: HillLeadForward = {
+      post: async (_from, fields) => {
+        forwarded.push(fields);
+        return answer(fields);
+      },
+      one: async (op, _from, id) => {
+        if (op === "withdraw") withdrawn.push(id);
+        return { ok: false, missing: true, error: "x" };
+      },
+      list: async () => ({ ok: true, decisions: [] }),
+      state: async () => ({ ok: false, error: "x" }),
+    };
+    const lead = askRig();
+    const hill = new HillService({
+      store: new HillStore(null, () => 1000),
+      receipts: memoryHillReceipts(),
+      place: () => null,
+      send: async () => "typed",
+      crewMode: () => "peer",
+      walkyOn: () => true,
+      memberId: "m_bbbbbbbbbb",
+      machine: "member",
+      forward,
+    });
+    return { hill, lead, withdrawn, forwarded };
+  }
+  const fields = (over: JsonObject = {}): JsonObject => ({
+    requestId: uuid(1),
+    title: "Ship it on Edge first?",
+    summary: "Green.",
+    options: [
+      { intent: "edge", label: "Ship it on Edge first", detail: "Testers." },
+      { intent: "stable", label: "Ship it on Stable now", detail: "Everyone." },
+    ],
+    ask: { words: false, files: [] },
+    ...over,
+  });
+
+  test("refuses --file on a member, and sends nothing", async () => {
+    const m = member(() => ({ ok: false, code: null, error: "x" }));
+    const answer = await m.hill.askPost(ONE, fields({ ask: { words: false, files: [{ path: "/repo/a.md" }] } }));
+    expect(answer).toMatchObject({ ok: false, code: "bad_file", error: ASK_FILES_LEAD_ONLY });
+    expect(m.forwarded).toHaveLength(0);
+  });
+
+  test("forwards the ask to the lead; a lead that posts a plain Decision gets it taken back, lead_too_old", async () => {
+    const m = member((sent) => {
+      const { ask: _ask, ...plain } = sent;
+      return m.lead.hill.post(ONE, readPost(plain));
+    });
+    const answer = await m.hill.askPost(ONE, fields());
+    expect(answer).toMatchObject({ ok: false, code: "lead_too_old" });
+    expect(m.withdrawn).toHaveLength(1);
+    const today = member((sent) => m.lead.hill.postDecision(ONE, readPost(sent)));
+    expect(await today.hill.askPost(ONE, fields({ requestId: uuid(2) }))).toMatchObject({ ok: true, decision: { ask: { words: false, files: [], root: null } } });
+    expect(today.withdrawn).toHaveLength(0);
+  });
+});
+
+function readPost(fields: JsonObject) {
+  const read = readPostFields(fields);
+  if (!read.ok) throw new Error(read.error);
+  return read.input;
+}

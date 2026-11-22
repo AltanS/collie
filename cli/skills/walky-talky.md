@@ -192,16 +192,21 @@ minutes, and a reply chain stops after 4 replies. A refusal says which limit it 
 If a send prints `not sent: off`, or the command cannot find a bridge, tell your operator. Do not work around it.
 
 {{HILL}}
-## Decisions (the hill)
+## Asks
 
-The Hill is off unless your operator switched it on. Use it for a question that can wait: post it, end your turn, and the answer starts your next turn.
+Your operator runs many sessions and reads your questions later, with no memory of this session.
+So do not end a turn with a list of questions. Send each open question as one ask, at the moment you meet it:
 
 ```bash
-{{COLLIE_BIN}} hill post --title "Ship it to Edge first?" --summary "Edge gets the fix today." \
-  --option edge="Ship to Edge" --option wait="Hold until CI" --recommend edge --why "Edge users find a problem in a day."
+{{COLLIE_BIN}} walky ask "<the question>" --fact "<the fact that decides it>" --option <id>="<label>" --does <id>="<what it does>" ... --recommend <id> --why "<reason>" --body <file.md>
 ```
 
-Rules and flags: {{COLLIE_BIN}} hill --help
+Write for a reader who knows nothing of this session. Explain each name a stranger would not know.
+The body holds what you found and what can go wrong. Link a file with --file path#heading, do not paste it.
+Put no open question in a file or in your reply. Then go on with the work that does not need the answer.
+The answers come back together, as one message.
+A dialog that blocks a command, such as a permission prompt, is not an ask.
+Rules and flags: {{COLLIE_BIN}} walky ask --help
 
 {{/HILL}}
 ## Tricks

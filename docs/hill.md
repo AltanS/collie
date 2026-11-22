@@ -516,6 +516,19 @@ shows every Decision, with the machine it came from. Your answer goes back throu
 from a member need Collie 1.29.0 on the lead and on that member
 ([Decisions from any machine](crew.md#decisions-from-any-machine)).
 
+## Asks (in work)
+
+An ask is a Decision that an agent sends with `collie walky ask`, for a question it meets during its
+work. It holds one question, the fact that decides it, two to five options that each say what they
+do, and a background in Markdown. It can link files of the agent's workspace, which you open with the
+Files view. An ask rings no notification and does not expire. It stays open until you answer it, the
+agent takes it back, or the session ends. A session has at most five open asks.
+
+Each ask also takes the answer "I need more context". The agent then sends the ask again with a
+better background. Your answers to the asks of one session go back together, as one message.
+
+This part of the Hill is still being built.
+
 ## Where to go next
 
 - [Tricks](tricks.md), for the tricks that ask you here.

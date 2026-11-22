@@ -6,7 +6,7 @@ import { WALKY_TALKY_SKILL_TEMPLATE } from "./docs-embed.ts";
 import { collieVersion, type Environment } from "./context.ts";
 import { capture, context, fakeFiles, fakeLinkFs, HOME, posixKey, ROOT, STATE } from "./fakes.ts";
 import { HILL_RULES, HILL_WRITING, hillHelp, hillPostHelp } from "./hill.ts";
-import { hillWordingWarnings } from "./hill-rules.ts";
+import { ASK_HELP } from "./ask.ts";
 import { EXIT } from "./io.ts";
 import {
   BLOCK_BEGIN,
@@ -73,7 +73,7 @@ describe("the rendered skill", () => {
   test("the browser-leg rig gives its agents this render with the Hill off, down to the command and the version", () => {
     const d = deps();
     const off = rendered(d);
-    expect(off).not.toContain("Decisions (the hill)");
+    expect(off).not.toContain("## Asks");
     // The rig names the command `collie` and the version `rig`; every other byte is the product's (the version appears once, in the stamp).
     expect(off.replaceAll(collieBinary(ROOT), "collie").replaceAll(`collie ${collieVersion(ROOT)} -->`, "collie rig -->")).toBe(rigSkillText());
   });
@@ -94,15 +94,16 @@ describe("the rendered skill", () => {
     expect(WALKY_TALKY_SKILL_TEMPLATE.trimEnd().split("\n").at(-1)).toBe(`<!-- collie-skill walky-talky v${String(SKILL_FORMAT)} collie {{COLLIE_VERSION}} -->`);
   });
 
-  test("teaches the hill in a few lines: off by default, what it is for, one example, and where the rules are", () => {
+  test("teaches asks in a few lines (Asks, 2026-11-22): why, one example, and where the rules are", () => {
     const d = deps({ files: HILL_ON });
     const out = rendered(d);
     const bin = collieBinary(ROOT);
-    expect(out).toContain("## Decisions (the hill)");
-    expect(out).toContain("The Hill is off unless your operator switched it on.");
-    expect(out).toContain("end your turn, and the answer starts your next turn");
-    expect(out).toContain(`${bin} hill post --title`);
-    expect(out).toContain(`Rules and flags: ${bin} hill --help`);
+    expect(out).toContain("## Asks");
+    expect(out).toContain("So do not end a turn with a list of questions.");
+    expect(out).toContain("The answers come back together, as one message.");
+    expect(out).toContain(`${bin} walky ask "<the question>" --fact`);
+    expect(out).toContain(`Rules and flags: ${bin} walky ask --help`);
+    for (const line of ASK_HELP.filter((help) => /^\d\. /u.test(help))) expect(out).not.toContain(line);
     // The rules and the writing guide are the help's, not the skill's: one place to read them.
     for (const rule of HILL_RULES) expect(out).not.toContain(rule.replaceAll("collie hill", `${bin} hill`));
     for (const line of HILL_WRITING) expect(out).not.toContain(line);
@@ -113,26 +114,23 @@ describe("the rendered skill", () => {
     expect(out).not.toContain("{{");
   });
 
-  test("the Hill section of the rendered skill is at most 480 bytes, with a short binary path", () => {
+  test("the Asks section of the rendered skill is at most 1,000 bytes, with a short binary path", () => {
     // The section as an agent reads it, with the binary as the bare word `collie`: the path is the install's.
+    // 480 for the Hill's own section until Asks (2026-11-22); the spec's draft is longer, word for word.
     const bare = WALKY_TALKY_SKILL_TEMPLATE.replaceAll("{{COLLIE_BIN}}", "collie");
-    const start = bare.indexOf("## Decisions (the hill)");
+    const start = bare.indexOf("## Asks");
     const section = bare.slice(start, bare.indexOf("{{/HILL}}"));
     expect(start).toBeGreaterThan(0);
-    expect(Buffer.byteLength(section)).toBeLessThanOrEqual(480);
+    expect(Buffer.byteLength(section)).toBeLessThanOrEqual(1000);
   });
 
-  test("the example Decision obeys the wording rules the help prints", () => {
-    const example = WALKY_TALKY_SKILL_TEMPLATE.slice(WALKY_TALKY_SKILL_TEMPLATE.indexOf("hill post --title"));
-    const flat = example.slice(0, example.indexOf("```")).replaceAll("\\\n", "");
-    const title = /--title "([^"]+)"/u.exec(flat)?.[1] ?? "";
-    const summary = /--summary "([^"]+)"/u.exec(flat)?.[1] ?? "";
-    const options = [...flat.matchAll(/--option (\w+)="([^"]+)"/gu)].map((m) => ({ intent: m[1] ?? "", label: m[2] ?? "" }));
-    expect(title).not.toBe("");
-    expect(options.length).toBe(2);
-    expect(hillWordingWarnings({ title, summary, options })).toEqual([]);
-    expect(flat).toContain(`--recommend ${options[0]?.intent ?? "?"}`);
-    expect(flat).toContain("--why ");
+  test("the example ask names every flag it needs, as the help names them", () => {
+    const example = WALKY_TALKY_SKILL_TEMPLATE.slice(WALKY_TALKY_SKILL_TEMPLATE.indexOf("walky ask \""));
+    const line = example.slice(0, example.indexOf("\n"));
+    for (const flag of ["--fact", "--option", "--does", "--recommend", "--why", "--body"]) {
+      expect(line).toContain(flag);
+      expect(ASK_HELP.join("\n")).toContain(flag);
+    }
   });
 
   test("teaches tricks: list, skill <id>, off asks nothing, and where to learn to write one", () => {
@@ -150,7 +148,7 @@ describe("the rendered skill", () => {
     for (const target of SKILL_TARGETS) expect(cmdSkillInstall(d, [target.harness])).toBe(EXIT.OK);
     for (const path of [CLAUDE_FILE, CODEX_FILE, OPENCODE_FILE, PI_FILE, OMP_FILE, GEMINI_FILE]) {
       const written = text(d, path) ?? "";
-      expect(written).toContain("## Decisions (the hill)");
+      expect(written).toContain("## Asks");
       expect(written).toContain("## Tricks");
       expect(written).toContain("Rules and flags:");
     }
@@ -826,7 +824,7 @@ describe("the Hill's words follow the switch (M96 spec 12)", () => {
     const off = rendered(deps());
     expect(on).not.toContain("{{");
     expect(description(on).endsWith("or when the operator mentions WalkyTalky. Also for hill Decisions and tricks.")).toBe(true);
-    const section = on.slice(on.indexOf("## Decisions (the hill)"), on.indexOf("## Tricks"));
+    const section = on.slice(on.indexOf("## Asks"), on.indexOf("## Tricks"));
     expect(off).toBe(on.replace(section, "").replace(" Also for hill Decisions and tricks.", " Also for tricks."));
   });
 
@@ -840,7 +838,7 @@ describe("the Hill's words follow the switch (M96 spec 12)", () => {
     expect(cmdSkillSync(d, [])).toBe(EXIT.OK);
     expect(stateOf(d, CLAUDE_FILE)).toBe("installed");
     expect(skillIsStale(d)).toBe(false);
-    expect(text(d, CLAUDE_FILE)).not.toContain("## Decisions (the hill)");
+    expect(text(d, CLAUDE_FILE)).not.toContain("## Asks");
     const check = { ...d, io: capture() };
     expect(cmdSkillStatus(check, ["--check"])).toBe(EXIT.OK);
   });
@@ -900,7 +898,7 @@ describe("the Hill's words follow the switch (M96 spec 12)", () => {
   test("print shows the text for the switch as it reads now", () => {
     const on = deps({ files: HILL_ON });
     expect(cmdSkillPrint(on, ["claude"])).toBe(EXIT.OK);
-    expect(on.io.stdout.join("\n")).toContain("## Decisions (the hill)");
+    expect(on.io.stdout.join("\n")).toContain("## Asks");
     const off = deps();
     expect(cmdSkillPrint(off, ["claude"])).toBe(EXIT.OK);
     expect(off.io.stdout.join("\n")).not.toContain("hill");

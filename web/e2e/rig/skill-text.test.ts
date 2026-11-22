@@ -36,7 +36,7 @@ describe("the text the rig writes", () => {
       expect(text).not.toContain("{{HILL");
       expect(text).not.toContain("{{/HILL");
       expect(text).not.toContain("{{COLLIE_");
-      expect(text).not.toContain("Decisions (the hill)");
+      expect(text).not.toContain("## Asks");
       expect(text).not.toMatch(/hill Decisions and/u);
     }
   });
@@ -53,9 +53,9 @@ describe("the text the rig writes", () => {
     expect(template()).toContain(HILL_OPEN);
     const on = renderRigSkill(template(), true);
     const off = renderRigSkill(template(), false);
-    expect(on).toContain("Decisions (the hill)");
+    expect(on).toContain("## Asks");
     expect(on).not.toContain("{{HILL");
-    expect(off).not.toContain("Decisions (the hill)");
+    expect(off).not.toContain("## Asks");
     expect(off.length).toBeLessThan(on.length);
   });
 });

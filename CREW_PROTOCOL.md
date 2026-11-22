@@ -4336,6 +4336,11 @@ none. Before 1.29.0 a member refused every post with `not_on_lead`.
   answers `{ ok, crewState: { state, at, by, told } }`. Every member, and its agents through
   `collie hill state --json`, so learns who set it (a phone's label, or `terminal`) and how many sessions
   the last tell reached. A lead before it answers `400`, which the member reads as `lead_too_old`.
+- An ask (`collie walky ask`, ADR 0176, in work) travels as a post whose fields carry `ask: { words,
+  files: [] }`: a member sends no linked files, and the lead refuses any with `bad_file`. A lead before
+  asks ignores the field and posts a plain Decision; the member sees no `ask` on the answer, withdraws
+  it at once and refuses `lead_too_old`. A `withdraw` of an ask may carry `answered: true` or
+  `because: "<reason>"`; a lead before asks ignores both and withdraws it "by the poster".
 - **Content refusals are `200` with `{ ok: false, code, error }`**, the codes of the socket
   (`docs/commands.md`): `bad_title`, `too_many_open`, `hill_off`, `bad_image` and the others. `400`
   is a body the lead cannot read. `401` is the uniform 401.
