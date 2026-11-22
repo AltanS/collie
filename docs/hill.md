@@ -400,6 +400,34 @@ Tricks, on the phone, or with: collie hill on".
 Notifications for Decisions marked `now` are in
 [Voice input and Web Push](voice-and-push.md#web-push-optional).
 
+## Send a test Decision
+
+To see the whole loop once, send a test Decision. Switch the Hill on, then open Settings → Tricks → The Hill.
+The group **Try it** has the button **Send a test Decision**. It works only while the Hill is on, and only on a
+device that may write.
+
+Collie posts one Decision of its own, marked `now`, 20 seconds after you tap. The card is called "Does the Hill
+reach you?" and has one button, "It works". Tap it and the card closes. Collie sends a notification for it, as
+for any `now` Decision, so your phone shows the notification. A second test replaces the open one, so only one
+test card is open at a time, and an unanswered card expires after ten minutes.
+
+The card waits 20 seconds because the app does not send a notification to a phone that has the app open: the
+app shows the card itself. The wait gives you time to leave the app or lock the phone. A press while a test waits
+starts no second test; the sentence under the button says how many seconds remain.
+
+The sentence under the button says when the card arrives. When no notification would be sent, it says why, the
+first reason that holds:
+
+- Notifications are not set up on this Collie.
+- No device has notifications switched on.
+- The notification for a Decision marked Now is switched off, in Settings → Notifications.
+- Notifications are snoozed.
+- This machine is a crew member, and the lead sends the notifications.
+- Your crew state is Quiet, or Away ([Here, Quiet and Away](#here-quiet-and-away)).
+- Too many Hill notifications went out in the last hour: one sender may send three an hour.
+
+The card still arrives in each of these cases. A restart of the bridge within the 20 seconds drops the test.
+
 ## Here, Quiet and Away
 
 The crew state tells your agents how much you want to hear now. Only you set it.
