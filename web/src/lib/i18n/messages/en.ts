@@ -1010,6 +1010,17 @@ export const en = {
   "chat.stream.returnedSendAria": "Send this message from the agent's box",
   "chat.stream.returnedDiscard": "Discard",
   "chat.stream.returnedDiscardAria": "Discard this message from the agent's box",
+  // Edit (ADR 0122, the 2026-11-22 addendum): the button on the "Waiting to send" card and on the "Back in the
+  // box" card that takes the message out of the agent and into Collie's own message box, to change it before it
+  // is sent. A verb on a button. Not `chat.card.edit`, which names a file edit step in the thread.
+  "chat.stream.edit": "Edit",
+  // The accessible name of Edit on the "Waiting to send" card. It holds the visible word ("edit", WCAG 2.5.3,
+  // Label in Name) and says that every waiting message comes back, because the agent's key takes them all.
+  // "The box" is Collie's own message box, where the person types.
+  "chat.stream.editAria": "Take the waiting messages back into the box to edit them",
+  // The accessible name of Edit on the "Back in the box" card: this one message comes out of the agent's box
+  // and into Collie's message box.
+  "chat.stream.returnedEditAria": "Take this message back into the box to edit it",
   "chat.stream.unconfirmed": "Not confirmed",
   "chat.stream.unconfirmedWhy": "Collie cannot tell where this message went. Check the agent.",
   "chat.stream.unconfirmedDiscard": "Discard",
@@ -4419,7 +4430,7 @@ export type Messages = typeof en;
  * already carries, so the list cannot outlive its translations. Never a way to skip translating a
  * key for good: a key stays here only between a feature and its translation pass.
  */
-export const PENDING_TRANSLATION = [] as const satisfies readonly MessageKey[];
+export const PENDING_TRANSLATION = ["chat.stream.edit", "chat.stream.editAria", "chat.stream.returnedEditAria"] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */
 export type PendingKey = (typeof PENDING_TRANSLATION)[number];

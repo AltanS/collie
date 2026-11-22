@@ -1936,6 +1936,13 @@ export interface ChatWindowBody {
    */
   sendQueuedNow?: string[];
   /**
+   * The keys that take {@link queued} back into the agent's input box, declared by the bridge for this
+   * session's harness. The phone reads it only as "Edit may show"; it never sends these keys, the
+   * bridge's take-back route does (`POST /api/pane/:id/dequeue`). Absent for every harness with no such
+   * key and from an older bridge. Mirrors `ChatWindowBody` in bridge/journal/live.ts.
+   */
+  dequeueQueued?: string[];
+  /**
    * The operator's newest prompt the live window holds, even when the first page left it out. STATE
    * like {@link queued}: whole on every answer, replaced rather than merged. Absent when the window
    * holds no prompt and from a bridge one release behind, and both read as "not known". Mirrors

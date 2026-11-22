@@ -33,6 +33,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Fixed
 
+- **Cancel on a waiting message never drops its text.** When you cancel a message that Collie held for later and the message box already holds other text, that text stays, and the cancelled message waits on the Put back notice above the box. Before, Collie put the cancelled text back only into an empty box and lost it otherwise.
 - **On a narrow phone, in languages with long words, the font choices and the Light or dark choice stay inside their card.** The interface font and terminal font menus shrink and cut a long name with an ellipsis, and the three Light or dark buttons share the card width, instead of running past the card edge. Nothing changes in English.
 - **On Windows, a picture posted to the Hill is refused in Collie's own folders by every spelling of its path.** A picture that an agent posts to the Hill, an experimental feature, is refused when it lies in Collie's own state or config folder, whatever way Windows spells that path. Before, a short (8.3) name such as `C:\Users\NAME~1` or a mapped drive could get past that check. Linux and macOS were not affected. If you use Collie on Windows, update.
 - **A read card names the right last line.** When an agent reads 20 lines from line 10, the card says lines 10 to 29, where it said 10 to 30, one line too far. Thanks @soarkit (#845).

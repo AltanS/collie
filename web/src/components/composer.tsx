@@ -93,6 +93,7 @@ import { isDestructiveInput } from "@/lib/destructive";
 import { asksSendAgain, forgetUnknownSend, rememberUnknownSend, SEND_AGAIN_CONFIRM_DELAY_MS, sendAgainId, sentForm } from "@/lib/send-again";
 import { useHostLabel } from "@/components/crew-provider";
 import { fitsDraftStore, loadDraftEntry, loadPutBack, saveDraft, savePutBack, type PutBackItem } from "@/lib/drafts";
+import { mergedDraft } from "@/lib/dequeue-words";
 import { clearIntent, clearIntentIfDraftChanged, loadIntent, saveIntent } from "@/lib/send-intent";
 import type { IntentId } from "@/lib/durable-control";
 import { wipeDevice } from "@/lib/wipe";
@@ -217,6 +218,14 @@ export interface ComposerHandle {
    * sends it by itself.
    */
   keepLine: (line: string) => void;
+  /**
+   * Take a message that has not gone out back into this box (ADR 0122, the 2026-11-22 addendum): Edit on the
+   * chat's waiting card or on the "Back in the box" card. The text goes in first, then one newline, then the
+   * draft the box already held, so nothing is dropped; the caret goes to the end. Where the box cannot take
+   * it (a sign-in code field, a prompt that does not echo, an open Undo window from the belt's X), the text
+   * goes onto the Put back notice instead, as `keepLine`'s does. Nothing sends it by itself.
+   */
+  takeIn: (text: string) => void;
 }
 
 /** A tap in an agent view: the screen's rev and the control path the bridge reads, and the words it names (display only). */
@@ -1661,6 +1670,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const sendLineRef = useRef<(line: string) => Promise<boolean>>(() => Promise.resolve(false));
   const lineCanStartRef = useRef<() => boolean>(() => false);
   const keepLineRef = useRef<(line: string) => void>(() => undefined);
+  const takeInRef = useRef<(text: string) => void>(() => undefined);
   useImperativeHandle(
     ref,
     () => ({
@@ -1678,6 +1688,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       sendLine: (line) => sendLineRef.current(line),
       lineCanStart: () => lineCanStartRef.current(),
       keepLine: (line) => keepLineRef.current(line),
+      takeIn: (taken) => takeInRef.current(taken),
     }),
     [startMessage],
   );
@@ -2360,6 +2371,17 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     return refusal === null;
   };
   keepLineRef.current = (line) => giveBack({ draft: line, chips: [], pane: paneId, scope, line });
+  takeInRef.current = (taken) => {
+    // A code field, a prompt that does not echo, or an Undo window: no box to merge into. The notice keeps it.
+    if (noEchoRef.current !== null || secretFieldRef.current || clearedDraftRef.current !== null) {
+      putAside({ draft: taken, chips: [], pane: paneId, scope, line: taken });
+      return;
+    }
+    const draft = inputValueRef.current;
+    // The taken text first, in queue order, then the draft the person had begun; the chips stay where they are.
+    updateInput(mergedDraft(taken, draft));
+    focusInputEnd();
+  };
   sendViewTapRef.current = async (tap) => {
     const sent = await send(tap.words, false, undefined, tap);
     return { sent, ...viewAnswerRef.current };
@@ -2458,6 +2480,10 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       writeBack(back);
       return;
     }
+    putAside(back);
+  }
+  /** A text kept on its pane's Put back notice: appended to the stored list, shown at once when that pane is the one in view. */
+  function putAside(back: SentBack): void {
     // Appended to its pane's stored list, never in place of a text already there (the M102 review 3).
     const item: PutBackItem = { draft: back.draft, chips: [...back.chips], line: back.line };
     if (back.intent !== undefined) item.intent = back.intent;
@@ -2651,16 +2677,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     }
   }
 
-  // Cancel on a held send gives its words back: into this box when it is empty (text and chips), else into the
-  // stored draft of the pane they came from when that holds nothing. A box with words of its own is left alone.
+  // Cancel on a held send gives its words back on the road a text that did not go takes (`giveBack`, M104): into
+  // the box of the pane they came from when it is empty, else onto that pane's Put back notice, never merged into
+  // the words already there and never dropped (ADR 0122, the 2026-11-22 addendum). Cancel is not Edit.
   function returnHeldWords(words: string, fromPane: string) {
-    if (draftPaneRef.current.paneId !== fromPane) {
-      const stored = loadDraftEntry(scope, fromPane);
-      if (stored === null || (stored.text.trim() === "" && stored.attachments.length === 0)) saveDraft(scope, fromPane, words);
-      return;
-    }
-    if (inputValueRef.current.trim() !== "" || attachmentsRef.current.length > 0) return;
-    updateInput(words);
+    giveBack({ draft: words, chips: [], pane: fromPane, scope, line: words });
   }
 
   // A tap on an ended held row. Resend: a NEW request (a new id) that names the old one in `resendOf`

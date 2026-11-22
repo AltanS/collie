@@ -347,6 +347,17 @@ describe("what is queued", () => {
     expect(mergeChat(two, live({ rev: 4, upserts: [] })).sendQueuedNow).toEqual([]);
   });
 
+  it("carries the dequeue key the bridge declared for Edit, as it carries Send now's keys, and keeps none on a saved copy", () => {
+    expect(EMPTY_CHAT_WINDOW.dequeueQueued).toEqual([]);
+    const one = mergeChat(held(), live({ rev: 2, upserts: [], queued: ["waiting"], dequeueQueued: ["Up"] }));
+    expect(one.dequeueQueued).toEqual(["Up"]);
+    const two = mergeChat(one, live({ rev: 3, upserts: [], queued: ["waiting"], dequeueQueued: ["Up"] }));
+    expect(two.dequeueQueued).toBe(one.dequeueQueued);
+    expect(mergeChat(two, older({ upserts: [entry("z", BASE - 1)] })).dequeueQueued).toEqual(["Up"]);
+    expect(mergeChat(two, live({ rev: 4, upserts: [] })).dequeueQueued).toEqual([]);
+    expect(savedChatWindow([], 5).dequeueQueued).toEqual([]);
+  });
+
   it("is untouched by a 304", () => {
     const one = mergeChat(held(), live({ rev: 2, upserts: [], queued: ["waiting"] }));
     expect(mergeChat(one, CHAT_UNCHANGED)).toBe(one);

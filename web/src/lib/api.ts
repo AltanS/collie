@@ -25,6 +25,7 @@ import type { PushPictureReport } from "./project-picture-push";
 import { REQUEST_ID, type HeldCancelAnswer, type SendReceiptRow, type SendRequestBody } from "./surface/send";
 import type { AnswerBody } from "./surface/ask";
 import { boundedDraft, CLEAR_OUTCOMES, CLEAR_REASONS, type ClearBody, type ClearReceipt } from "./surface/clear";
+import { DEQUEUE_OUTCOMES, DEQUEUE_REASONS, type DequeueBody, type DequeueReceipt } from "./surface/dequeue";
 import { STOP_OUTCOMES, STOP_REASONS, type StopBody, type StopReceipt } from "./surface/stop";
 import { readAskTapReply, type AskTapReply } from "./ask-reply";
 import { authHeader, clearNotPaired, EXPIRED_BODY, markExpired, markNotPaired, NOT_PAIRED_BODY } from "./pairing";
@@ -1593,6 +1594,61 @@ async function postClear(paneId: string, requestId: string, scope: Scope | undef
   const receipt = clearReceiptOf(got, requestId);
   if (receipt === null) throw new ApiError("The clear route sent a body this phone cannot read.", 502);
   // A refusal after the keys went in (a box that would not empty) still moved the pane: look soon.
+  stampSend(paneId);
+  return receipt;
+}
+
+/**
+ * What a take-back's 400, 404 or 405 means, as {@link clearMissed} reads a Clear's: the bridge's own
+ * `pane_gone` receipt, a refusal in the bridge's error shape thrown as that refusal, or a build with no
+ * take-back route (`unsupported_build`). Nothing was pressed either way.
+ */
+function dequeueMissed(body: JsonObject, status: 400 | 404 | 405, requestId: string): DequeueReceipt {
+  if (body.outcome === "refused" && body.reason === "pane_gone") return { requestId, outcome: "refused", reason: "pane_gone" };
+  const fields = asJsonString(body.code) === undefined ? undefined : apiErrorFieldsOf(body);
+  if (fields !== undefined) throw new ApiError(fields.error ?? "The take-back route refused it.", status, fields);
+  return { requestId, outcome: "refused", reason: "unsupported_build" };
+}
+
+/** The receipt a take-back answered, or null for a body that is none. A 404, 400 or 405 never pressed a key. */
+function dequeueReceiptOf(body: JsonObject | undefined, requestId: string): DequeueReceipt | null {
+  if (body === undefined) return null;
+  if (body[HTTP_STATUS] === 404) return dequeueMissed(body, 404, requestId);
+  if (body[HTTP_STATUS] === 400) return dequeueMissed(body, 400, requestId);
+  if (body[HTTP_STATUS] === 405) return dequeueMissed(body, 405, requestId);
+  // The lead could not hear the member's answer in time (`write_outcome_unknown`): the key may have gone in.
+  if (body[HTTP_STATUS] === 504) return { requestId, outcome: "unknown" };
+  const outcome = DEQUEUE_OUTCOMES.find((word) => word === body.outcome);
+  if (outcome === undefined) return null;
+  const id = asJsonString(body.requestId) ?? requestId;
+  if (outcome === "taken") {
+    const texts = Array.isArray(body.texts) ? body.texts.flatMap((item) => asJsonString(item) ?? []) : [];
+    // A `taken` with no text is no answer this phone can act on: the agent's box was emptied, so it must not read as done.
+    return texts.length === 0 ? null : { requestId: id, outcome, texts };
+  }
+  if (outcome !== "refused") return { requestId: id, outcome };
+  const reason = DEQUEUE_REASONS.find((word) => word === body.reason);
+  return reason === undefined ? null : { requestId: id, outcome, reason };
+}
+
+/**
+ * POST /api/pane/:id/dequeue: take the agent's waiting queue back into the phone's composer (ADR 0122, the
+ * 2026-11-22 addendum). The request id alone: the bridge reads the screen and the journal, presses the
+ * harness's dequeue key once as this person's tap, proves it from the journal and answers a
+ * {@link DequeueReceipt}. The same request id answers the same receipt and presses once, so a caller whose
+ * answer was lost asks again with the same id; nothing here asks twice by itself.
+ */
+export async function dequeuePane(paneId: string, requestId: string, scope?: Scope): Promise<DequeueReceipt> {
+  // The operator is watching from the tap on, as every write to a pane assumes (poll-intent).
+  stampSend(paneId);
+  const body: DequeueBody = { requestId };
+  const got = await req<JsonObject>(
+    withScope(`/api/pane/${encodeURIComponent(paneId)}/dequeue`, scope),
+    { method: "POST", body: JSON.stringify(body) },
+    sendRecover(clearRecover),
+  );
+  const receipt = dequeueReceiptOf(got, requestId);
+  if (receipt === null) throw new ApiError("The take-back route sent a body this phone cannot read.", 502);
   stampSend(paneId);
   return receipt;
 }

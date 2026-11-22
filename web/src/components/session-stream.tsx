@@ -170,33 +170,42 @@ function WorkingRow() {
 const SEND_NOW_PENDING_MS = 5_000;
 
 /**
- * THE QUEUE CARD: one group, however many messages wait, with its one control at the head.
+ * THE QUEUE CARD: one group, however many messages wait, with its controls at the head.
  *
  * "Send now" belongs to the GROUP and not to a message because it IS a group act: in Claude Code,
  * Ctrl+Enter hands the whole queue to the running turn, so a button on one row would promise a
  * choice the agent does not offer. It is drawn only when the caller passes `sendNow`, which the pane
  * view does only for a bridge-declared key list on a pane this device may write to (agent-chat.tsx).
  *
- * PENDING, NEVER RETRYING. A tap disables the button and shows a spinner until the card goes away
- * (the queue emptied, so the unmount ends it) or {@link SEND_NOW_PENDING_MS} pass, or the send
- * itself failed. It never sends a second time on its own: a second Ctrl+Enter that lands after the
- * queue emptied would be a key typed into the agent's composer.
+ * "Edit" (ADR 0122, the 2026-11-22 addendum) is a group act for the same reason: the harness's dequeue
+ * key takes the whole queue back, so it sits beside Send now, on its left, and takes every waiting
+ * message into the composer. It is drawn only when the caller passes `edit`, which the pane view does
+ * only where the bridge declares a dequeue key (`ChatWindow.dequeueQueued`) on a pane this device may
+ * write to. This card never had the "stop the turn" line: that line stands on the receipt card of a
+ * harness whose log records no queue, which has no Edit.
+ *
+ * PENDING, NEVER RETRYING. A tap disables both buttons and shows a spinner on the one tapped until the
+ * card goes away (the queue emptied, so the unmount ends it) or {@link SEND_NOW_PENDING_MS} pass, or the
+ * act itself failed. It never acts a second time on its own: a second Ctrl+Enter that lands after the
+ * queue emptied would be a key typed into the agent's composer, and a second Up would recall the last
+ * prompt from the agent's history.
  */
-function QueuedCard({ queued, sendNow }: { queued: readonly string[]; sendNow: (() => Promise<boolean>) | null }) {
-  const [pending, setPending] = useState(false);
+function QueuedCard({ queued, sendNow, edit }: { queued: readonly string[]; sendNow: (() => Promise<boolean>) | null; edit: (() => Promise<boolean>) | null }) {
+  const [pending, setPending] = useState<"send" | "edit" | null>(null);
   useEffect(() => {
-    if (!pending) return;
-    const timer = setTimeout(() => setPending(false), SEND_NOW_PENDING_MS);
+    if (pending === null) return;
+    const timer = setTimeout(() => setPending(null), SEND_NOW_PENDING_MS);
     return () => clearTimeout(timer);
   }, [pending]);
 
-  const onTap = () => {
-    if (pending || sendNow === null) return;
-    setPending(true);
+  const onTap = (which: "send" | "edit") => {
+    const act = which === "send" ? sendNow : edit;
+    if (pending !== null || act === null) return;
+    setPending(which);
     // A refusal or a failed write has already told the operator why (the pane view's status line).
-    void sendNow().then(
-      (sent) => (sent ? undefined : setPending(false)),
-      () => setPending(false),
+    void act().then(
+      (done) => (done ? undefined : setPending(null)),
+      () => setPending(null),
     );
   };
 
@@ -204,6 +213,26 @@ function QueuedCard({ queued, sendNow }: { queued: readonly string[]; sendNow: (
     <div data-slot="stream-queued" className={QUEUED_BLOCK}>
       <div className={QUEUED_HEAD}>
         <p className={QUEUED_LABEL}>{t("chat.stream.queued")}</p>
+        {/* Edit takes the free room on its left (an auto margin beats the head's space-between), so the
+            two sit together at the row's end with the act that sends last, at the thumb. */}
+        {edit !== null && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            data-slot="stream-queued-edit"
+            className={cn(QUEUED_BUTTON, "ml-auto")}
+            disabled={pending !== null}
+            aria-busy={pending === "edit"}
+            // The accessible name holds the visible word (WCAG 2.5.3, Label in Name) and says that every
+            // waiting message comes back.
+            aria-label={t("chat.stream.editAria")}
+            onClick={() => onTap("edit")}
+          >
+            {pending === "edit" && <Icon name="busy" aria-hidden className="size-3.5 animate-spin" />}
+            {t("chat.stream.edit")}
+          </Button>
+        )}
         {sendNow !== null && (
           <Button
             type="button"
@@ -211,14 +240,14 @@ function QueuedCard({ queued, sendNow }: { queued: readonly string[]; sendNow: (
             size="sm"
             data-slot="stream-send-now"
             className={QUEUED_BUTTON}
-            disabled={pending}
-            aria-busy={pending}
+            disabled={pending !== null}
+            aria-busy={pending === "send"}
             // The accessible name STARTS with the visible words in every language (WCAG 2.5.3, Label in
             // Name), so a voice command "tap Send now" finds the button; the rest says what is sent.
             aria-label={t("chat.stream.sendNowAria")}
-            onClick={onTap}
+            onClick={() => onTap("send")}
           >
-            {pending ? <Icon name="busy" aria-hidden className="size-3.5 animate-spin" /> : <Icon name="send-now" aria-hidden className="size-3.5" />}
+            {pending === "send" ? <Icon name="busy" aria-hidden className="size-3.5 animate-spin" /> : <Icon name="send-now" aria-hidden className="size-3.5" />}
             {t("chat.stream.sendNow")}
           </Button>
         )}
@@ -237,10 +266,11 @@ function QueuedCard({ queued, sendNow }: { queued: readonly string[]; sendNow: (
 
 /**
  * What a receipt card's buttons ask of the pane view: send the box (`submit`) or empty it (`discard`)
- * on a returned card, drop an unconfirmed card and press nothing (`dismiss`), or drop it and send its text again
+ * on a returned card, empty it and take its text into the composer (`edit`, the 2026-11-22 addendum of
+ * ADR 0122), drop an unconfirmed card and press nothing (`dismiss`), or drop it and send its text again
  * as a new send (`sendAgain`, M102 spec 04).
  */
-export type QueuedCardAction = "submit" | "discard" | "dismiss" | "sendAgain";
+export type QueuedCardAction = "submit" | "discard" | "edit" | "dismiss" | "sendAgain";
 
 /**
  * How a card's act ended: true when it was done, false when nothing was (the pane view has said why), and `"gone"` when
@@ -308,9 +338,10 @@ interface CardButton {
   readonly slot: string;
 }
 
-/** Discard first and quieter, Send last and outlined: the act that sends sits at the thumb's end. */
+/** Discard first and quieter, Edit between, Send last and outlined: the act that sends sits at the thumb's end. */
 const RETURNED_BUTTONS: readonly CardButton[] = [
   { action: "discard", word: "chat.stream.returnedDiscard", aria: "chat.stream.returnedDiscardAria", variant: "ghost", slot: "stream-returned-discard" },
+  { action: "edit", word: "chat.stream.edit", aria: "chat.stream.returnedEditAria", variant: "ghost", slot: "stream-returned-edit" },
   { action: "submit", word: "chat.stream.returnedSend", aria: "chat.stream.returnedSendAria", variant: "outline", slot: "stream-returned-send" },
 ];
 const UNCONFIRMED_BUTTONS: readonly CardButton[] = [
@@ -337,8 +368,9 @@ function ReceiptCard({
   const [pending, setPending] = useState<QueuedCardAction | null>(null);
   // The card's one line under its words: a Send again that found the card gone says nothing was sent.
   const [gone, setGone] = useState(false);
-  // A text the bridge masked is dots, not the message: sending it again would type the dots, so no Send again.
-  const shown = buttons.filter((button) => button.action !== "sendAgain" || !holdsMask(row.text));
+  // A text the bridge masked is dots, not the message: sending it again would type the dots, so no Send again,
+  // and taking it into the composer would put the dots there, so no Edit.
+  const shown = buttons.filter((button) => (button.action !== "sendAgain" && button.action !== "edit") || !holdsMask(row.text));
   useEffect(() => {
     if (pending === null) return;
     const timer = setTimeout(() => setPending(null), SEND_NOW_PENDING_MS);
@@ -563,6 +595,7 @@ export function SessionStream({
   listRef,
   savedCopy = null,
   onSendQueuedNow,
+  onEditQueued,
   onReturned,
   asks,
   durable = false,
@@ -610,6 +643,13 @@ export function SessionStream({
    * sent. The keys are handed back so this body never holds a copy of its own.
    */
   onSendQueuedNow?: (keys: readonly string[]) => Promise<boolean>;
+  /**
+   * Take the waiting queue back into the composer (ADR 0122, the 2026-11-22 addendum): Edit on the waiting
+   * card. Passed ONLY where this device may write to this pane, like {@link onSendQueuedNow}; the button
+   * shows only where the bridge declares a dequeue key (`feed.window.dequeueQueued`). Resolves false when
+   * nothing came back.
+   */
+  onEditQueued?: () => Promise<boolean>;
   /**
    * A receipt card's act (ADR 0122), by the card's request id: Send or Discard on a returned card,
    * Discard on an unconfirmed one. Passed ONLY where this device may write to this pane; leave it out
@@ -972,6 +1012,8 @@ export function SessionStream({
   const sendNowKeys = window.sendQueuedNow;
   const sendNow =
     onSendQueuedNow !== undefined && sendNowKeys.length > 0 ? () => onSendQueuedNow(sendNowKeys) : null;
+  // Edit only where the bridge declares a dequeue key for this pane: the field is data, never a harness name.
+  const editQueued = onEditQueued !== undefined && window.dequeueQueued.length > 0 ? onEditQueued : null;
 
   const status = window.status;
   const missing =
@@ -1186,7 +1228,7 @@ export function SessionStream({
           therefore wears the operator's OWN colour (the same well `UserTurn` uses) so the eye reads
           "mine, not yet sent" rather than "a turn nobody answered". */}
       {window.queued.length > 0 && window.status.kind === "live" && (
-        <QueuedCard queued={window.queued} sendNow={sendNow} />
+        <QueuedCard queued={window.queued} sendNow={sendNow} edit={editQueued} />
       )}
       {window.queuedSends.length > 0 && window.status.kind === "live" && (
         <ReceiptQueueCards rows={window.queuedSends} act={onReturned ?? null} />

@@ -488,16 +488,23 @@ describe("the held-send card", () => {
     await waitFor(() => expect(onReturn).toHaveBeenCalledWith("the words I queued"));
   });
 
-  it("Cancel leaves a composer that holds other text alone", async () => {
+  // ADR 0122, the 2026-11-22 addendum: Cancel never drops the words. A box with text of its own keeps that text,
+  // and the cancelled words wait on the Put back notice, as a send that did not go waits (M104).
+  it("Cancel over a composer that holds other text keeps that text and puts the cancelled words on Put back", async () => {
     const user = userEvent.setup();
     const calls = fakeDelete({ body: { result: "cancelled" } });
     renderComposer({ held: [row("req00001", "held", { text: "the words I queued" })] });
-    await user.type(screen.getByPlaceholderText(/type a reply/i), "what I am writing now");
+    const box = screen.getByPlaceholderText(/type a reply/i);
+    await user.type(box, "what I am writing now");
     await user.click(screen.getByRole("button", { name: "Cancel the queued message" }));
     await waitFor(() => expect(calls).toHaveLength(1));
-    await waitFor(() => expect(screen.getByRole("button", { name: "Cancel the queued message" })).toBeEnabled());
-    expect(screen.getByPlaceholderText(/type a reply/i)).toHaveValue("what I am writing now");
+    await waitFor(() => expect(document.querySelector('[data-slot="composer-held-back"]')).toHaveTextContent("Not sent, kept here: the words I queued"));
+    expect(box).toHaveValue("what I am writing now");
     expect(loadDraft(undefined, "w1:p1")).toBe("what I am writing now");
+    // Once the box is empty, Put back writes the cancelled words into it, and nothing is sent.
+    await user.clear(box);
+    await user.click(screen.getByRole("button", { name: "Put back" }));
+    await waitFor(() => expect(box).toHaveValue("the words I queued"));
   });
 
   it("a Cancel that finds the request already sent returns nothing to the box", async () => {
