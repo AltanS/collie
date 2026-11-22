@@ -132,7 +132,7 @@ Settings has eleven pages, each with one line on the index that says what it hol
 (theme, light or dark, language, fonts, text sizes), **Chat and terminal** (what a pane shows),
 **Keys and touch** (Enter sends, the Keys pad, shortcuts, gestures, haptics, zen), **Notifications**,
 **Voice**, **Dashboard and projects** (pane order, repo search, worktree folder), **Profiles**,
-**Tricks and the Hill** (the Tricks switch, your tricks, the Hill), **Devices and machines** (pairing,
+**Tricks** (the Tricks switch, your tricks, the Hill), **Devices and machines** (pairing,
 paired devices, your machines, the connection), **Privacy and data** (saved chat copies, telemetry)
 and **Updates and about**. The search at the top of Settings finds a setting by its name, and says
 where a setting is when it lives in a pane's own sheet. The pages used to be Appearance, Harness
@@ -414,9 +414,10 @@ different thing, a panel of that app
 
 ## Tricks switch
 
-The one switch for tricks as a whole on a machine, in Settings → Tricks and the Hill and in
+The one switch for tricks as a whole on a machine, in Settings → Tricks and in
 `collie tricks on|off|status`. Tricks are an experiment, so it is off until you switch it on. While it
-is on, that page shows the list of tricks under it. While it is off no trick runs or draws, and each
+is on, that page shows the list of tricks under it, with the Hill as the first row. While it is off the
+Hill's row stays on its own, and no trick runs or draws, and each
 trick keeps its own switch for when you switch it on
 ([Switch tricks on or off](tricks.md#switch-tricks-on-or-off)).
 
@@ -443,7 +444,7 @@ shows it whole, and a change to it always asks you again
 ## Official tricks
 
 The tricks in Collie's own repository. Each release names the exact version of each one, and Add, in
-Settings → Tricks and the Hill or with `collie trick add <name>`, fetches that version and nothing else. They
+Settings → Tricks or with `collie trick add <name>`, fetches that version and nothing else. They
 arrive off, like every trick ([Official and community tricks](tricks.md#official-and-community-tricks)).
 
 ## Community tricks
@@ -515,7 +516,7 @@ which still answers the routes that return a session's text. Collie does not sto
 
 ## Details page
 
-The page that opens when you tap a trick's name in Settings → Tricks and the Hill, or the info button in the header of
+The page that opens when you tap a trick's name in Settings → Tricks, or the info button in the header of
 the trick's own page. It used to be a sheet, the About sheet. It shows the trick's description
 and its own text, then the facts Collie knows: where it draws, what it reads, which environment names it
 asks for, what a text search of its code found, and where it came from
@@ -552,7 +553,8 @@ and the code is replaced only on your yes ([A trick an agent proposes](hill.md#a
 The page of Decisions that wait for you, grouped Now, Today and Later, with the answered ones below.
 It is the fourth item of the Dashboard's bottom bar, and on a large screen a button beside Actions in
 the dashboard's header. One crew has one Hill, on the lead. "Hill" is the
-view's name and stays the same in every language ([The Hill](hill.md)).
+view's name and stays the same in every language. Its switch is the first row of the trick list in
+Settings → Tricks ([The Hill](hill.md)).
 
 ## Event
 

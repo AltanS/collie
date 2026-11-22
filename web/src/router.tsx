@@ -135,7 +135,7 @@ export const routes: RouteObject[] = [
           { path: "accounts/add", lazy: lazyScreen(() => import("@/routes/settings-accounts"), (m) => m.SettingsAccountAddRoute) },
           { path: "accounts/:id", lazy: lazyScreen(() => import("@/routes/settings-accounts"), (m) => m.SettingsAccountRoute) },
           { path: "accounts/:id/login", lazy: lazyScreen(() => import("@/routes/settings-change-login"), (m) => m.SettingsChangeLoginRoute) },
-          // Tricks and the Hill: both switches, and the list while tricks are on.
+          // Tricks: both switches, and the list while tricks are on.
           { path: "tricks", lazy: lazyScreen(() => import("@/routes/settings-sections"), (m) => m.SettingsTricksRoute) },
           // One trick's details (2026-11-21, a bottom sheet before): `<host>:<id>`, or an official entry's bare id
           // (lib/nav.ts `trickDetailPath`). No loader: it reads the tricks store and the official list, as the list does.

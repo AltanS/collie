@@ -461,7 +461,7 @@ told.
 The Hill is an experiment, off until switched on. A member with no Hill switch file of its own follows
 the lead: it does not refuse the post or the image, it sends them, and the lead's switch decides. A
 lead with the Hill off refuses with "the Hill is off on the lead of this crew; your person can switch
-it on in Settings, Tricks and the Hill, on the phone". Only a member whose own switch says off refuses on its
+it on in Settings, Tricks, on the phone". Only a member whose own switch says off refuses on its
 own machine.
 
 A machine removed from the crew is another matter. After `collie crew remove` on the lead, or
@@ -472,9 +472,9 @@ When the lead does not answer, `collie hill post` says so, exits 5, and posts no
 comes late, it says the post is not confirmed, and exits 5. Either way it prints the command to send
 the same post again, with its `--request-id`: the lead keeps one Decision for it.
 
-One machine's agents hold at most 40 open Decisions on the lead, and ring the phone at most four
-times an hour. All members together ring it at most six times an hour, so the lead's own sessions
-always keep a share.
+One machine's agents hold at most 40 open Decisions on the lead, and send at most four
+notifications to the phone an hour. All members together send at most six an hour, so the lead's own
+sessions always keep a share.
 
 > **Note.** Decisions from a member need Collie 1.29.0 on the lead and on that member. An older lead
 > is refused with "the lead runs a Collie older than 1.29.0", and the post is not sent. Post from a
@@ -558,7 +558,7 @@ The deputy trusts what its lead says you approved. It cannot see your yes on the
 starts, the deputy checks that its code is the version the lead names. A trick that does not match does
 not start, and the Hill says so after the takeover, with an OK button. It also checks that the trick
 asks for the rights the lead says you approved. A trick that asks for other rights stays off, and the
-Hill says "The trick `<name>` is off after the takeover". Read its rights in Settings → Tricks and the Hill before you
+Hill says "The trick `<name>` is off after the takeover". Read its rights in Settings → Tricks before you
 switch it on. When the deputy
 already has a trick folder of that name, Collie leaves the folder as it is, runs the approved version,
 and shows the folder's own code as a new version that waits for your yes.
