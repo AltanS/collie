@@ -16,6 +16,7 @@ import { REACT_FLOOR_MS, TrickReactions, type Admit, type FloorTimers, type Reac
 import { type FsWatchHandle, type WatchFactory, type WatchOptions } from "./watch.ts";
 import { newRights, ON_CHIP, watchChip } from "./version-card.ts";
 import { readManifestText } from "./discover.ts";
+import { tapQueued, until } from "./wait.rig.ts";
 import { watch as fsWatch } from "node:fs";
 
 // `on` and `watch` (M105 spec 03, decisions 9 to 11). Two layers: TrickReactions against a fake host (the
@@ -38,10 +39,6 @@ const sessionOf = (pane: string): string => encodeSessionId({ machine: MACHINE, 
 const scopeOf = (pane: string): string => `${MACHINE}:${pane}`;
 const tick = (ms = 0): Promise<void> => Bun.sleep(ms);
 
-/** Wait until `ready()` holds, polling every 20 ms, at most `ms` (a file event lands later on some systems, Windows among them). */
-async function until(ready: () => boolean, ms = 3000): Promise<void> {
-  for (let waited = 0; waited < ms && !ready(); waited += 20) await tick(20);
-}
 
 const realFactory: WatchFactory = (dir, onEvent, onError) => {
   const handle = fsWatch(dir, { persistent: false, encoding: "utf8" }, (_type, name) => onEvent(name === "" || name === null ? null : name));
@@ -297,7 +294,7 @@ describe("the watch of a trick, in the runner", () => {
     // and the watch's stat check would see no change.
     await writeFile(file, "bb");
     bus.publish({ type: "turn.end", session: sessionOf("a:1") });
-    await until(() => reactions.counts().waiting === 2);
+    await until(() => reactions.counts().waiting === 2, "two waiting requests");
     expect(reactions.counts().waiting).toBe(2);
     reactions.ended("w");
     expect(reactions.counts().waiting).toBe(1);
@@ -422,6 +419,19 @@ function factsOf(spec: RunSpec | undefined): TrickFacts {
 
 const kinds = (r: Rig): string[] => r.specs.map((spec) => factsOf(spec).trigger.kind);
 
+/** Wait for `n` runs to have reached their program. */
+const ran = (r: Rig, n: number): Promise<void> => until(() => r.specs.length >= n, `run ${String(n)} to reach its program`);
+
+/**
+ * The settle point after a run: no program holds a slot, then one more turn, so the run's end (`begin`'s
+ * `finally`: `ended`, the pump) is done. A run that end started holds its slot at once (`begin`), so a
+ * wrong start shows as a slot held or a request taken, never as a wait that is merely too short.
+ */
+async function ended(r: Rig): Promise<void> {
+  await until(() => r.service.runsHeld() === 0, "the runs to end");
+  await tick();
+}
+
 const ON_MANIFEST = (events = '["turn.end"]'): string => `id = "react"\nname = "React"\nrun = "./react.sh"\nplaces = ["belt"]\non = ${events}\n`;
 const watchManifest = (...paths: string[]): string => `id = "react"\nname = "React"\nrun = "./react.sh"\nplaces = ["belt"]\nwatch = [${paths.map((p) => JSON.stringify(p)).join(", ")}]\n`;
 
@@ -438,7 +448,7 @@ describe("the wire: what a program receives in `trigger`", () => {
   test("event: exactly kind, event, session and count; session is the facts scope id of the event's session", async () => {
     const r = await onRig([OK]);
     r.bus.publish({ type: "turn.end", session: sessionOf("w6X:3") });
-    await tick(50);
+    await ran(r, 2);
     expect(kinds(r)).toEqual(["start", "event"]);
     const raw: { trigger: Record<string, string | number> } = JSON.parse(r.specs[1]?.stdin ?? "null");
     expect(Object.keys(raw.trigger).toSorted()).toEqual(["count", "event", "kind", "session"]);
@@ -482,7 +492,8 @@ describe("`on` runs a trick through the road a timer run takes", () => {
     await tickAt(r, T0);
     expect(r.specs.length).toBe(2);
     r.bus.publish({ type: "turn.end", session: sessionOf("a:1") });
-    await tick(50);
+    await ran(r, 3);
+    await ended(r);
     expect(r.specs.length).toBe(3);
     expect(factsOf(r.specs[2]).trick.id).toBe("react");
     r.service.stop();
@@ -498,7 +509,7 @@ describe("`on` runs a trick through the road a timer run takes", () => {
     };
     const r = await onRig([OK, slow, OK]);
     r.bus.publish({ type: "turn.end", session: sessionOf("a:1") });
-    await tick(30);
+    await ran(r, 2);
     expect(r.specs.length).toBe(2);
     for (const pane of ["b:2", "c:3", "d:4"]) {
       r.bus.publish({ type: "turn.end", session: sessionOf(pane) });
@@ -509,7 +520,8 @@ describe("`on` runs a trick through the road a timer run takes", () => {
     // The run lasted longer than the floor, so its end starts the waiting run at once.
     r.clock.t = T0 + REACT_FLOOR_MS + 1;
     release();
-    await tick(60);
+    await ran(r, 3);
+    await ended(r);
     expect(kinds(r)).toEqual(["start", "event", "event"]);
     expect(factsOf(r.specs[2]).trigger).toEqual({ kind: "event", event: "turn.end", session: scopeOf("d:4"), count: 3 });
     expect(r.service.reactionCounts().waiting).toBe(0);
@@ -528,16 +540,16 @@ describe("`on` runs a trick through the road a timer run takes", () => {
     const drawn = exited(belt("drawn"));
     const r = await onRig([drawn, slow, drawn, drawn]);
     r.bus.publish({ type: "turn.end", session: sessionOf("a:1") });
-    await tick(30);
+    await ran(r, 2);
     const rev = (await r.service.reply(undefined)).parts.find((p) => p.part === "belt")?.rev ?? 0;
     const tap = r.service.tap(HOST, "react", { rid: "7f0c1d2e-3b4a-4c5d-8e6f-708192a3b4c5", node: "belt", intent: "x", rev });
-    await tick(20);
+    await until(() => tapQueued(r.service, "react"), "the queued tap");
     r.bus.publish({ type: "turn.end", session: sessionOf("b:2") });
     await tick(20);
     r.clock.t = T0 + REACT_FLOOR_MS + 1;
     release();
     expect((await tap).status).toBe(200);
-    await tick(60);
+    await ran(r, 4);
     expect(kinds(r)).toEqual(["start", "event", "tap", "event"]);
     r.service.stop();
   });
@@ -545,17 +557,19 @@ describe("`on` runs a trick through the road a timer run takes", () => {
   test("a failed event run backs the trick off: events in the backoff are dropped, and run again once it ends", async () => {
     const r = await onRig([OK, FAIL, OK, OK]);
     r.bus.publish({ type: "turn.end", session: sessionOf("a:1") });
-    await tick(50);
+    await ran(r, 2);
+    await ended(r);
     expect(kinds(r)).toEqual(["start", "event"]);
     // Failed: one minute of backoff. Events inside it are dropped, not held.
     r.bus.publish({ type: "turn.end", session: sessionOf("a:1") });
     await tick(50);
     expect(r.specs.length).toBe(2);
+    expect(r.service.runsHeld()).toBe(0);
     expect(r.service.reactionCounts().waiting).toBe(0);
     r.clock.t = T0 + 61_000;
     r.service.noteWatched();
     r.bus.publish({ type: "turn.end", session: sessionOf("a:1") });
-    await tick(50);
+    await ran(r, 3);
     expect(r.specs.length).toBe(3);
     r.service.stop();
   });
@@ -570,7 +584,7 @@ describe("`on` runs a trick through the road a timer run takes", () => {
     };
     const r = await onRig([OK, slowFail, OK]);
     r.bus.publish({ type: "turn.end", session: sessionOf("a:1") });
-    await tick(30);
+    await ran(r, 2);
     expect(kinds(r)).toEqual(["start", "event"]);
     // Admitted to wait behind the running run.
     r.bus.publish({ type: "turn.end", session: sessionOf("b:2") });
@@ -579,17 +593,17 @@ describe("`on` runs a trick through the road a timer run takes", () => {
     // The run fails past the floor: the pump after it meets the backoff, so admit says no. The request stays.
     r.clock.t = T0 + REACT_FLOOR_MS + 1;
     release();
-    await tick(60);
+    await ended(r);
     expect(r.specs.length).toBe(2);
     expect(r.service.reactionCounts()).toMatchObject({ waiting: 1, timers: 0 });
     // The backoff ends; the next event is admitted, and it and the waiting one are ONE run, naming the newest.
     r.clock.t = T0 + 61_000 + REACT_FLOOR_MS;
     r.bus.publish({ type: "turn.end", session: sessionOf("c:3") });
-    await tick(60);
+    await ran(r, 3);
     expect(kinds(r)).toEqual(["start", "event", "event"]);
     expect(factsOf(r.specs[2]).trigger).toEqual({ kind: "event", event: "turn.end", session: scopeOf("c:3"), count: 2 });
     expect(r.service.reactionCounts().waiting).toBe(0);
-    await tick(60);
+    await ended(r);
     expect(r.specs.length).toBe(3);
     r.service.stop();
   });
@@ -604,19 +618,19 @@ describe("`on` runs a trick through the road a timer run takes", () => {
     };
     const r = await onRig([OK, slowFail, exited(belt("drawn")), OK]);
     r.bus.publish({ type: "turn.end", session: sessionOf("a:1") });
-    await tick(30);
+    await ran(r, 2);
     r.bus.publish({ type: "turn.end", session: sessionOf("b:2") });
     await tick(20);
     r.clock.t = T0 + REACT_FLOOR_MS + 1;
     release();
-    await tick(60);
+    await ended(r);
     expect(r.service.reactionCounts().waiting).toBe(1);
     // A tap clears the backoff and runs; at its end the waiting event runs, as it was.
     r.clock.t = T0 + 61_000 + REACT_FLOOR_MS;
     const rev = (await r.service.reply(undefined)).parts.find((p) => p.part === "belt")?.rev ?? 0;
     const tap = await r.service.tap(HOST, "react", { rid: "7f0c1d2e-3b4a-4c5d-8e6f-708192a3b4c5", node: "belt", intent: "x", rev });
     expect(tap.status).toBe(200);
-    await tick(60);
+    await ran(r, 4);
     expect(kinds(r)).toEqual(["start", "event", "tap", "event"]);
     expect(factsOf(r.specs[3]).trigger).toEqual({ kind: "event", event: "turn.end", session: scopeOf("b:2"), count: 1 });
     expect(r.service.reactionCounts().waiting).toBe(0);
@@ -627,12 +641,13 @@ describe("`on` runs a trick through the road a timer run takes", () => {
     const r = await onRig([OK, FAIL]);
     const waits = [0, 61_000, 361_000, 2_161_000];
     let at = T0;
-    for (const wait of waits) {
+    for (const [i, wait] of waits.entries()) {
       at += wait + 1000;
       r.clock.t = at;
       r.service.noteWatched();
       r.bus.publish({ type: "turn.end", session: sessionOf("a:1") });
-      await tick(50);
+      await ran(r, i + 2);
+      await ended(r);
     }
     // Start plus four failed event runs: the ladder is 1, 5, 30 minutes, then stop.
     expect(r.specs.length).toBe(5);
@@ -642,6 +657,7 @@ describe("`on` runs a trick through the road a timer run takes", () => {
     r.bus.publish({ type: "turn.end", session: sessionOf("a:1") });
     await tick(50);
     expect(r.specs.length).toBe(5);
+    expect(r.service.runsHeld()).toBe(0);
     r.service.stop();
   });
 
@@ -654,7 +670,7 @@ describe("`on` runs a trick through the road a timer run takes", () => {
     expect(r.specs.length).toBe(1);
     // An event runs all the same.
     r.bus.publish({ type: "turn.end", session: sessionOf("a:1") });
-    await tick(50);
+    await ran(r, 2);
     expect(kinds(r)).toEqual(["start", "event"]);
     r.service.stop();
   });
@@ -690,7 +706,8 @@ describe("`on` runs a trick through the road a timer run takes", () => {
       const r = await onRig([OK, OK, OK], ON_MANIFEST(), { reactionTimers: timers });
       r.clock.t = T0 + 20_000;
       r.bus.publish({ type: "turn.end", session: sessionOf("a:1") });
-      await tick(50);
+      await ran(r, 2);
+      await ended(r);
       expect(kinds(r)).toEqual(["start", "event"]);
       // 3 s after the start of that run: inside the floor, so two events are ONE waiting run.
       r.clock.t = T0 + 23_000;
@@ -704,7 +721,7 @@ describe("`on` runs a trick through the road a timer run takes", () => {
       // The floor ends at 10 s after the start: the timer starts the one waiting run.
       r.clock.t = T0 + 30_000;
       timers.fire();
-      await tick(60);
+      await ran(r, 3);
       expect(kinds(r)).toEqual(["start", "event", "event"]);
       expect(factsOf(r.specs[2]).trigger).toEqual({ kind: "event", event: "turn.end", session: scopeOf("c:3"), count: 2 });
       expect(r.service.reactionCounts()).toMatchObject({ waiting: 0, timers: 0 });
@@ -716,7 +733,8 @@ describe("`on` runs a trick through the road a timer run takes", () => {
       const r = await onRig([OK, OK], ON_MANIFEST(), { reactionTimers: timers });
       r.clock.t = T0 + 20_000;
       r.bus.publish({ type: "turn.end", session: sessionOf("a:1") });
-      await tick(50);
+      await ran(r, 2);
+      await ended(r);
       r.bus.publish({ type: "turn.end", session: sessionOf("b:2") });
       await tick(20);
       expect(r.service.reactionCounts()).toMatchObject({ waiting: 1, timers: 1 });
@@ -728,7 +746,8 @@ describe("`on` runs a trick through the road a timer run takes", () => {
       const second = await onRig([OK, OK], ON_MANIFEST(), { reactionTimers: timers });
       second.clock.t = T0 + 20_000;
       second.bus.publish({ type: "turn.end", session: sessionOf("a:1") });
-      await tick(50);
+      await ran(second, 2);
+      await ended(second);
       second.bus.publish({ type: "turn.end", session: sessionOf("b:2") });
       await tick(20);
       expect(timers.open.size).toBe(1);
@@ -743,7 +762,8 @@ describe("`on` runs a trick through the road a timer run takes", () => {
       const r = await onRig([drawn, drawn, drawn, drawn], ON_MANIFEST(), { reactionTimers: timers });
       r.clock.t = T0 + 20_000;
       r.bus.publish({ type: "turn.end", session: sessionOf("a:1") });
-      await tick(50);
+      await ran(r, 2);
+      await ended(r);
       r.clock.t = T0 + 23_000;
       const rev = (await r.service.reply(undefined)).parts.find((p) => p.part === "belt")?.rev ?? 0;
       const answer = await r.service.tap(HOST, "react", { rid: "7f0c1d2e-3b4a-4c5d-8e6f-708192a3b4c5", node: "belt", intent: "x", rev });
@@ -756,7 +776,7 @@ describe("`on` runs a trick through the road a timer run takes", () => {
       expect(timers.delays).toEqual([7000]);
       r.clock.t = T0 + 30_000;
       timers.fire();
-      await tick(60);
+      await ran(r, 4);
       expect(kinds(r)).toEqual(["start", "event", "tap", "event"]);
       r.service.stop();
     });
@@ -773,17 +793,18 @@ describe("`on` runs a trick through the road a timer run takes", () => {
       const r = await onRig([OK, slow, OK], ON_MANIFEST(), { reactionTimers: timers });
       r.clock.t = T0 + 20_000;
       r.bus.publish({ type: "turn.end", session: sessionOf("a:1") });
-      await tick(30);
+      await ran(r, 2);
       r.bus.publish({ type: "turn.end", session: sessionOf("b:2") });
       await tick(20);
       r.clock.t = T0 + 24_000;
       release();
-      await tick(60);
+      // The run's end has been folded in (no fixed wait that a slow machine outruns): it took nothing.
+      await ended(r);
       expect(r.specs.length).toBe(2);
       expect(r.service.reactionCounts()).toMatchObject({ waiting: 1, timers: 1 });
       r.clock.t = T0 + 30_000;
       timers.fire();
-      await tick(60);
+      await ran(r, 3);
       expect(kinds(r)).toEqual(["start", "event", "event"]);
       r.service.stop();
     });
@@ -850,7 +871,7 @@ describe("switch-off and stop end it all", () => {
     };
     const r = await onRig([OK, slow, OK]);
     r.bus.publish({ type: "turn.end", session: sessionOf("a:1") });
-    await tick(30);
+    await ran(r, 2);
     r.bus.publish({ type: "turn.end", session: sessionOf("b:2") });
     await tick(20);
     expect(r.service.reactionCounts()).toMatchObject({ subscribed: true, waiting: 1 });
@@ -859,7 +880,7 @@ describe("switch-off and stop end it all", () => {
     expect(r.service.reactionCounts()).toEqual({ subscribed: false, watchers: 0, handles: 0, timers: 0, waiting: 0 });
     expect(r.bus.listeners().subscriptions).toBe(0);
     release();
-    await tick(60);
+    await ended(r);
     expect(r.specs.length).toBe(2);
     r.service.stop();
   });
@@ -889,7 +910,7 @@ describe("switch-off and stop end it all", () => {
     expect(r.bus.listeners().subscriptions).toBe(1);
     expect(kinds(r)).toEqual(["start", "start"]);
     r.bus.publish({ type: "turn.end", session: sessionOf("b:2") });
-    await tick(80);
+    await ran(r, 3);
     expect(kinds(r).at(-1)).toBe("event");
     r.service.stop();
   });
@@ -1122,7 +1143,7 @@ describe("the scan at bridge start", () => {
     expect(told).toEqual([true]);
     r.clock.t = T0 + REACT_FLOOR_MS + 1;
     r.bus.publish({ type: "turn.end", session: sessionOf("a:1") });
-    await tick(50);
+    await ran(r, 2);
     expect(kinds(r)).toEqual(["start", "event"]);
     r.service.stop();
   });
