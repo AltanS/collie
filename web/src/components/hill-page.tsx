@@ -17,7 +17,7 @@ import { t } from "@/lib/i18n";
 // folds and no Remove: the Hill has an author that Collie checks, nothing to update and nothing to take away.
 //
 // WHAT IT ANSWERS. A person who switched the Hill on and got no message did not know that no agent posts until it is told to.
-// So the page says what a Decision is, who can ask (an agent by `collie hill post`, a trick, Collie), when the phone rings
+// So the page says what a Decision is, who can ask (an agent by `collie hill post`, a trick, Collie), when you get a notification
 // (only a Decision marked Now, and not under Quiet or Away), and what to do when nothing arrives. The words are the
 // catalog's (`settings.hill.*`); a command inside a sentence is a slot (`{command}`) drawn on a chip, as the trick pages do.
 //

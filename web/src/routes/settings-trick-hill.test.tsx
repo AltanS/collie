@@ -113,12 +113,12 @@ describe("the page's words", () => {
     expect(who.querySelector('[data-line="who-collie"]')).toHaveTextContent("Collie posts its own cards: a trick that an agent proposes, and a new version of a trick's code.");
   });
 
-  it("says when the phone rings, and names the Notifications page and its row by their own words", () => {
+  it("says when a notification is sent, and names the Notifications page and its row by their own words", () => {
     page({});
     const rings = section("rings");
-    expect(within(rings).getByText("When your phone rings")).toBeInTheDocument();
+    expect(within(rings).getByText("When you get a notification")).toBeInTheDocument();
     expect(rings.querySelector('[data-line="rings-now"]')).toHaveTextContent("Only a Decision marked Now sends a notification.");
-    expect(rings.querySelector('[data-line="rings-state"]')).toHaveTextContent("While your crew state is Quiet or Away, nothing rings.");
+    expect(rings.querySelector('[data-line="rings-state"]')).toHaveTextContent("While your crew state is Quiet or Away, no notification is sent.");
     // The page's name and the row's label are the catalog's own, so the sentence never drifts from the page it points at.
     expect(rings.querySelector('[data-line="rings-setting"]')?.textContent).toBe(`The notification has its own switch in Settings, ${en["settings.page.notifications.title"]}: ${en["settings.notify.decisionNow.label"]}.`);
     expect(en["settings.page.notifications.title"]).toBe("Notifications");
