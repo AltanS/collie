@@ -92,6 +92,10 @@ export const ACK_MANIFEST = {
     channel: "inline",
     why: "The pane owner's Drop on a held walky talky message (M62 spec 03): the row's receipt turns to `dropped by the pane's owner` on the next read and the held mark goes; an `already typed` answer and a failed call land as a line under the row.",
   },
+  dequeuePane: {
+    channel: "status",
+    why: "Edit on the chat's waiting card (ADR 0122, the 2026-11-22 addendum): a taken queue lands in the composer under the person's thumb, with the caret at its end, and the card goes, which is its own receipt; every other end (it already went out, cannot tell, a refusal) is one status line, because the text did not come back and the person must know why.",
+  },
   deliverWalky: {
     channel: "inline",
     why: "The pane owner's Deliver now on a message held for their draft (M99 spec 05): the button spins while the call runs, a delivery shows the note \"Message delivered. Your text stays here.\" over the box and the row's receipt reads delivered with the text kept; a refusal lands as a line on the mark or under the row, because the message still waits; a message that no longer waited at the tap (the bridge's 410) is no refusal, so one neutral line says so over the box or under the row and the list is read again.",
