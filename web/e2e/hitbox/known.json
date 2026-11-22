@@ -1219,12 +1219,6 @@
   },
   {
     "screen": "settings-tricks",
-    "selector": "div[data-slot=\"hill-switch\"] > div:nth-of-type(1) > button[data-slot=\"switch\"]",
-    "name": "The Hill",
-    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
-  },
-  {
-    "screen": "settings-tricks",
     "selector": "div[data-slot=\"tricks-switch\"] > div > button[data-slot=\"switch\"]",
     "name": "Tricks",
     "why": "Taken as found on 2026-11-21, after Settings became eleven pages (ADR 0170). A design decision or an open item; write the reason here when you know it."
