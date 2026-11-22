@@ -97,7 +97,9 @@ const HC_LIMIT_MS = 1500;
 /**
  * `hc` on the PATH, or `COLLIE_HC_BIN` (an empty value counts as unset); 1.5 s at most. Never rejects.
  * The output is never read, so the child gets no pipes: a wrapper script that leaves a child behind
- * cannot hold the wait. At the limit the child is killed and the answer is `false` at once.
+ * cannot hold the wait. At the limit the child is killed and the answer is `false` at once. The
+ * child and the timer keep the process alive until then, on purpose: the host awaits this answer at a
+ * quit, and a process that held nothing would end before the clear landed or the kill ran.
  */
 function runHc(args: readonly string[]): Promise<boolean> {
   return new Promise<boolean>((resolve) => {
@@ -120,8 +122,6 @@ function runHc(args: readonly string[]): Promise<boolean> {
         }
         finish(false);
       }, HC_LIMIT_MS);
-      timer.unref();
-      child.unref();
       child.on("error", () => finish(false));
       child.on("exit", (code) => finish(code === 0));
     } catch {
