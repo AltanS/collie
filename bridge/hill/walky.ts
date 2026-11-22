@@ -205,15 +205,17 @@ export interface WalkySendOptions {
  * typed nothing) is `refused`; an inbox-only or a receipt still bare at the bound is `unknown`. Nothing is
  * sent again.
  */
-export function walkySend(walky: Pick<WalkyService, "send" | "status">, options: WalkySendOptions = {}): (to: string, body: string, by: string) => Promise<HillSendResult> {
+export function walkySend(walky: Pick<WalkyService, "send" | "status">, options: WalkySendOptions = {}): (to: string, body: string, by: string, subject?: string) => Promise<HillSendResult> {
   const now = options.now ?? Date.now;
   const sleep = options.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
   const waitMs = options.waitMs ?? HILL_SEND_WAIT_MS;
-  return async (to, body, by) => {
+  return async (to, body, by, subject) => {
     const id = (options.mintId ?? mintWalkyId)();
     // Collie composes this text from stored words (an answer, a crew state): a line that would read as a
     // view's head is made harmless, never refused, so the receipt still goes (agent views SECURITY rule 2).
-    const answer = await walky.send({ id, to, body: neutraliseViewHeads(body), replyTo: null }, { kind: "operator", label: by }, options.budget === undefined ? {} : { budget: options.budget });
+    // A subject only when one is given (an ask's answers, "Answers to your asks"), so every other send is the one it was.
+    const input = subject === undefined ? { id, to, body: neutraliseViewHeads(body), replyTo: null } : { id, to, body: neutraliseViewHeads(body), replyTo: null, subject };
+    const answer = await walky.send(input, { kind: "operator", label: by }, options.budget === undefined ? {} : { budget: options.budget });
     if (!answer.ok) return "refused";
     let receipt = answer.receipts[0];
     const until = now() + waitMs;

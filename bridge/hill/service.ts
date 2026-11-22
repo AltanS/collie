@@ -86,7 +86,6 @@ import type { JsonObject } from "../json.ts";
 import {
   HILL_ANSWER_TEXT_MAX,
   HILL_ANSWERED_IN_SESSION,
-  HILL_BODY_MAX,
   HILL_DEVICE_ID_RE,
   HILL_LINK_HREF_MAX,
   HILL_LINK_LABEL_MAX,
@@ -96,12 +95,7 @@ import {
   HILL_NOW_MAX,
   HILL_OPEN_MAX,
   HILL_OPTION_CONFIRM_MAX,
-  HILL_OPTION_DETAIL_MAX,
-  HILL_OPTION_LABEL_MAX,
   HILL_OPTIONS_MAX,
-  HILL_SUMMARY_MAX,
-  HILL_TITLE_MAX,
-  HILL_WHY_MAX,
   crewStateLine,
   cardName,
   crewStateTellLine,
@@ -111,6 +105,18 @@ import {
   isHillOptionIntent,
   isTrickCard,
   sortOpenDecisions,
+  HILL_ASK_ANSWERED_HERE,
+  HILL_ASK_BECAUSE_MAX,
+  HILL_ASK_OPEN_MAX,
+  HILL_BY_THE_POSTER,
+  HILL_MORE_CONTEXT,
+  HILL_MORE_CONTEXT_LABEL,
+  askTakenBack,
+  type HillAsk,
+  type HillAskFileInput,
+  type HillAnswersRefusal,
+  type HillAnswersRequest,
+  type HillAnswersResult,
   type HillAnswerRequest,
   type HillCollieRef,
   type HillCrewState,
@@ -140,6 +146,10 @@ import type { HillStore, HillTombstone } from "./store.ts";
 import type { HillLeadForward, HillListAnswer } from "./crew.ts";
 import { HILL_CREW_STATE_DEFAULT, type HillCrewStateFile } from "./crew-state.ts";
 import type { HillSwitchReading } from "./switch.ts";
+import { askRuleRefusal, HILL_ASK_LIMITS, HILL_LIMITS, tooManyAsks, type HillPostLimits } from "./ask-rules.ts";
+import type { HillAskFilesAnswer } from "./ask-files.ts";
+import { askAnswerRid, resultOf, sendDigest, sendRecord } from "./answers.ts";
+import { answersMessage, ASKS_ANSWERS_SUBJECT } from "../../web/src/lib/hill/answers-message.ts";
 
 /**
  * A session's or a trick's name, never Collie's own (crew slice 8 review Q1, Q2): a name that reads
@@ -251,8 +261,8 @@ export interface HillServiceDeps {
   readonly receipts: HillReceiptSurface;
   /** The one live session a walky pane address names now, or null (gone, a shell, not an address). */
   place(address: string): HillPlace | null;
-  /** Type `body` into the session at `to` as an operator walky message under the label `by`. */
-  send(to: string, body: string, by: string): Promise<HillSendResult>;
+  /** Type `body` into the session at `to` as an operator walky message under the label `by`, with a subject when given (an ask's answers). */
+  send(to: string, body: string, by: string, subject?: string): Promise<HillSendResult>;
   /**
    * The send "Tell all sessions now" uses (1.29.0): the same operator message, counted in a rate bucket of
    * its own (`hill-tell`), so a tell never spends the bucket the typed answers use. Absent: `send`.
@@ -277,6 +287,14 @@ export interface HillServiceDeps {
   readonly machine: string;
   readonly now?: () => number;
   readonly mintId?: () => string;
+  /** The id mint of an ask (`ak_`). Absent: {@link mintDecisionId} with the `ak_` prefix. */
+  readonly mintAskId?: () => string;
+  /**
+   * The linked files of an ask from a pane of THIS machine (ask-files.ts `askFilesResolver`): the root the
+   * phone opens them under, and each path relative to it, checked by the Files view's own rules. Absent: an
+   * ask records no root, and a `--file` is refused.
+   */
+  readonly askFiles?: (address: string, files: readonly HillAskFileInput[]) => Promise<HillAskFilesAnswer>;
   readonly audit?: (entry: AuditEntry) => void;
   /**
    * Run a trick's program with an answer as its tap (bridge/index.ts wires it to the tricks runner).
@@ -391,7 +409,16 @@ export interface HillPostOptions {
    * card, never holds the person's answer, and the answer is typed there only while it is live.
    */
   readonly tellOf?: string;
+  /**
+   * An ask's linked files and root, already resolved on this machine under the Files rules (ask-files.ts).
+   * Absent: the ask records no root, and an ask that names files is refused (a crew member's forwarded ask,
+   * whose files the lead cannot check).
+   */
+  readonly askFiles?: { readonly root: string | null; readonly files: HillAsk["files"] };
 }
+
+/** The sentence a `--file` gets where the bridge cannot check the files: a crew member's ask, in this build. */
+export const ASK_FILES_LEAD_ONLY = "linked files work on the lead's own sessions in this build; send the ask again without --file";
 
 /**
  * A post's answer: the stored decision, or a refusal with its code and plain words the CLI prints. A
@@ -487,7 +514,7 @@ export const HILL_OFF_ON_LEAD = "the Hill is off on the lead of this crew; your 
 /** The sentence a bridge with WalkyTalky off answers a post with. */
 export const HILL_WALKY_OFF = "WalkyTalky is off on this machine (COLLIE_WALKY=off), so no answer could reach you";
 /** The closed reason of a withdrawn decision. */
-export const BY_THE_POSTER = "by the poster";
+export const BY_THE_POSTER = HILL_BY_THE_POSTER;
 /** The closed reason of a decision its trick no longer lists, or replaced while closed. */
 export const BY_THE_TRICK = "by the trick";
 /** The closed reason of every open decision of a trick switched off or removed. */
@@ -512,7 +539,7 @@ const SELF_CLEARING: ReadonlySet<HillState> = new Set<HillState>(["expired", "wi
 
 /** Whether a closed card leaves by itself: it closed without the person, and not by their own message. */
 function selfClears(decision: HillDecision): boolean {
-  return SELF_CLEARING.has(decision.state) && decision.from.kind !== "collie" && decision.closedReason !== HILL_ANSWERED_IN_SESSION;
+  return SELF_CLEARING.has(decision.state) && decision.from.kind !== "collie" && decision.closedReason !== HILL_ANSWERED_IN_SESSION && decision.closedReason !== HILL_ASK_ANSWERED_HERE;
 }
 /** What `status` and `withdraw` answer the poster for a decision that left the Hill: the state it closed in. */
 export function leftTheHill(id: string, state: HillState): string {
@@ -540,7 +567,7 @@ export function notAnswering(machine: string): string {
 export { HILL_DEFAULT_EXPIRY_DAYS, HILL_DEFAULT_EXPIRY_MS, HILL_MAX_EXPIRY_DAYS, HILL_MAX_EXPIRY_MS };
 
 /** Mint a decision id: `dc_` and 12 characters of [a-z0-9], from a uniform random source. */
-export function mintDecisionId(random: (n: number) => Uint8Array = (n) => randomBytes(n)): string {
+export function mintDecisionId(random: (n: number) => Uint8Array = (n) => randomBytes(n), prefix: "dc_" | "ak_" = "dc_"): string {
   const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789";
   let out = "";
   // 252 is the largest multiple of 36 below 256: a byte at or above it is skipped, so no letter is likelier.
@@ -551,7 +578,7 @@ export function mintDecisionId(random: (n: number) => Uint8Array = (n) => random
       if (out.length === 12) break;
     }
   }
-  return `dc_${out}`;
+  return `${prefix}${out}`;
 }
 
 /** A string as the hill keeps it, and whether it is past its field's cap (then it is refused, never cut). */
@@ -653,7 +680,10 @@ export function hillPostDigest(input: HillPostInput): string {
   const parts = [input.title, input.summary, input.body ?? "", options, input.text ?? "optional", recommends, links, input.priority ?? "today", input.about ?? null, input.replyTo ?? null, images];
   // The view joins only when there is one, so a post without one keeps the digest it always had; a group too.
   const withView = input.view === undefined ? parts : [...parts, input.view];
-  return payloadDigest([JSON.stringify(input.group === undefined ? withView : [...withView, { group: input.group }])]);
+  const withGroup = input.group === undefined ? withView : [...withView, { group: input.group }];
+  // An ask joins only when it is one, so every other post keeps the digest it always had.
+  const ask = input.ask === undefined ? null : { ask: [input.ask.words, input.ask.files.map((file) => [file.path, file.heading ?? null, file.line ?? null])] };
+  return payloadDigest([JSON.stringify(ask === null ? withGroup : [...withGroup, ask])]);
 }
 
 /** A decision as the phone and the socket get it: without `postDigest` and `pushTag`, which only the bridge needs. */
@@ -714,25 +744,25 @@ function refuse(code: HillRefusalCode | null, error: string): HillPostAnswer {
 /** The cleaned fields of a post, or the refusal of the first that fails. */
 type Cleaned = Pick<HillDecision, "title" | "summary" | "body" | "options" | "text" | "recommends" | "links">;
 
-function cleanPost(input: HillPostInput): { readonly ok: true; readonly fields: Cleaned } | Extract<HillPostAnswer, { ok: false }> {
-  const title = cleanLine(input.title, HILL_TITLE_MAX);
+function cleanPost(input: HillPostInput, limits: HillPostLimits = HILL_LIMITS): { readonly ok: true; readonly fields: Cleaned } | Extract<HillPostAnswer, { ok: false }> {
+  const title = cleanLine(input.title, limits.title);
   if (title.text === "") return { ok: false, code: "bad_title", error: "a decision needs a title" };
-  if (title.over) return { ok: false, code: "bad_title", error: `the title is longer than ${String(HILL_TITLE_MAX)} characters` };
-  const summary = cleanText(input.summary, HILL_SUMMARY_MAX);
+  if (title.over) return { ok: false, code: "bad_title", error: `the title is longer than ${String(limits.title)} characters` };
+  const summary = cleanText(input.summary, limits.summary);
   if (summary.text === "") return { ok: false, code: "bad_summary", error: "a decision needs a summary in plain words" };
-  if (summary.over) return { ok: false, code: "bad_summary", error: `the summary is longer than ${String(HILL_SUMMARY_MAX)} characters` };
-  const body = cleanText(input.body ?? "", HILL_BODY_MAX);
-  if (body.over) return { ok: false, code: "bad_body", error: `the body is longer than ${String(HILL_BODY_MAX)} characters` };
+  if (summary.over) return { ok: false, code: "bad_summary", error: `the summary is longer than ${String(limits.summary)} characters` };
+  const body = cleanText(input.body ?? "", limits.body);
+  if (body.over) return { ok: false, code: "bad_body", error: `the body is longer than ${String(limits.body)} characters` };
   const rawOptions = input.options ?? [];
   if (rawOptions.length > HILL_OPTIONS_MAX) return { ok: false, code: "bad_option", error: `a decision has at most ${String(HILL_OPTIONS_MAX)} options` };
   const options: HillOption[] = [];
   for (const raw of rawOptions) {
     if (!isHillOptionIntent(raw.intent)) return { ok: false, code: "bad_option", error: `\`${headerField(raw.intent, 40)}\` is not an option intent: a lowercase word of at most 32 characters, not answer or dismiss` };
     if (options.some((option) => option.intent === raw.intent)) return { ok: false, code: "bad_option", error: `two options share the intent \`${raw.intent}\`` };
-    const label = cleanLine(raw.label, HILL_OPTION_LABEL_MAX);
-    if (label.text === "" || label.over) return { ok: false, code: "bad_option", error: `the label of \`${raw.intent}\` is 1 to ${String(HILL_OPTION_LABEL_MAX)} characters` };
-    const detail = cleanLine(raw.detail ?? "", HILL_OPTION_DETAIL_MAX);
-    if (detail.over) return { ok: false, code: "bad_option", error: `the detail of \`${raw.intent}\` is longer than ${String(HILL_OPTION_DETAIL_MAX)} characters` };
+    const label = cleanLine(raw.label, limits.label);
+    if (label.text === "" || label.over) return { ok: false, code: "bad_option", error: `the label of \`${raw.intent}\` is 1 to ${String(limits.label)} characters` };
+    const detail = cleanLine(raw.detail ?? "", limits.detail);
+    if (detail.over) return { ok: false, code: "bad_option", error: `the detail of \`${raw.intent}\` is longer than ${String(limits.detail)} characters` };
     const confirm = raw.confirm === undefined ? null : cleanLine(raw.confirm, HILL_OPTION_CONFIRM_MAX);
     if (confirm !== null && (confirm.text === "" || confirm.over)) return { ok: false, code: "bad_option", error: `the confirm word of \`${raw.intent}\` is 1 to ${String(HILL_OPTION_CONFIRM_MAX)} characters` };
     const base: HillOption = { intent: raw.intent, label: label.text };
@@ -745,8 +775,8 @@ function cleanPost(input: HillPostInput): { readonly ok: true; readonly fields: 
   if (input.recommends !== undefined && input.recommends !== null) {
     const named = input.recommends.intent;
     if (!options.some((option) => option.intent === named)) return { ok: false, code: "bad_recommends", error: `the recommendation \`${headerField(named, 40)}\` names no option` };
-    const why = cleanLine(input.recommends.why, HILL_WHY_MAX);
-    if (why.text === "" || why.over) return { ok: false, code: "bad_recommends", error: `the why is 1 to ${String(HILL_WHY_MAX)} characters` };
+    const why = cleanLine(input.recommends.why, limits.why);
+    if (why.text === "" || why.over) return { ok: false, code: "bad_recommends", error: `the why is 1 to ${String(limits.why)} characters` };
     recommends = { intent: named, why: why.text };
   }
   const rawLinks = input.links ?? [];
@@ -781,10 +811,48 @@ type Claim =
       readonly decision: HillDecision;
       readonly record: HillReceiptRecord;
       /** The walky message, or null when nothing is typed (a trick with no `replyTo`). */
-      readonly send: { readonly to: string; readonly body: string } | null;
+      readonly send: { readonly to: string; readonly body: string; readonly subject?: string } | null;
       /** The trick's tap, or null for an agent's decision. */
       readonly tap: { readonly host: string; readonly trickId: string; readonly decisionId: string; readonly tap: HillTrickTap } | null;
     };
+
+/** How `collie walky cancel` closes an ask: `--answered`, or a take back with `--because "<reason>"`. */
+export interface HillAskCancel {
+  readonly answered: boolean;
+  readonly because: string | null;
+}
+
+/** What the lead of a crew whose member sent an ask answers when it is older than asks. */
+export const ASK_LEAD_TOO_OLD = "the lead of this crew runs a Collie that does not know asks; the post was taken back. Update the lead, or ask from a session on the lead";
+
+/** What one Send came to (`POST /api/hill/answers`). */
+export type HillAnswersOutcome =
+  | { readonly kind: "done"; readonly result: HillAnswersResult }
+  | { readonly kind: "refused"; readonly refusal: HillAnswersRefusal }
+  | { readonly kind: "unsaved" }
+  | { readonly kind: "off" }
+  | { readonly kind: "denied"; readonly error: string };
+
+function refusedSend(code: HillAnswersRefusal["code"], error: string, extra: Pick<HillAnswersRefusal, "over" | "id" | "machine"> = {}): HillAnswersOutcome {
+  return { kind: "refused", refusal: { code, error, ...extra } };
+}
+
+/** What a Send's claim hands its send step, or the outcome that ends it. */
+type SendClaim =
+  | { readonly kind: "done"; readonly outcome: HillAnswersOutcome }
+  | { readonly kind: "deliver"; readonly to: string; readonly body: string; readonly closed: readonly HillDecision[]; readonly gone: ReadonlyMap<string, HillReceipt>; readonly now: number };
+
+/**
+ * Why `--replaces` cannot take `old`, or null. It takes an ask of the same session (the caller checked the
+ * sender) that is open, or one answered with "I need more context": then it closes nothing and the new ask
+ * records it.
+ */
+function replaceRefusal(old: HillDecision): string | null {
+  if (old.ask === undefined) return `--replaces ${old.id}: that is not an ask; it takes an ask of this session`;
+  if (old.state === "open") return null;
+  if (old.state === "answered" && old.answer?.intent === HILL_MORE_CONTEXT) return null;
+  return `--replaces ${old.id}: that ask is ${old.state}; it takes an open ask, or one answered with "I need more context"`;
+}
 
 export class HillService {
   private readonly now: () => number;
@@ -810,6 +878,8 @@ export class HillService {
   private claiming = new Map<string, number>();
   /** The test Decision that waits to be posted: when, and its timer. One at a time; a restart drops it. */
   private testPending: { readonly at: number } | null = null;
+  /** The Sends (`answerAsks`) that run now, by `rid`, with their digest: a second call with one rid joins the first. */
+  private sends = new Map<string, { readonly digest: string; readonly work: Promise<HillAnswersOutcome> }>();
 
   constructor(private readonly deps: HillServiceDeps) {
     this.now = deps.now ?? Date.now;
@@ -888,6 +958,9 @@ export class HillService {
     let closed = 0;
     for (const decision of this.deps.store.all()) {
       if (decision.state !== "open" || decision.from.kind !== "agent" || decision.from.address !== address || decision.at >= at) continue;
+      // An ask stays open, unmarked, when the person writes in the session (Asks, 2026-11-22): it closes
+      // only by an answer, the agent's take back or replace, or the sweep.
+      if (decision.ask !== undefined) continue;
       if (this.busy(decision.id)) continue;
       if (started && this.answersThePoster(decision)) {
         changed.push({ ...decision, state: "withdrawn", closedAt: at, closedReason: HILL_ANSWERED_IN_SESSION });
@@ -1301,8 +1374,15 @@ export class HillService {
     const cleared = this.deps.store.tombstoneOfRequest(input.requestId, key);
     if (cleared !== undefined && cleared.digest !== null && cleared.digest !== digest) return refuse("request_id_reused", `this request id already posted ${cleared.id} with other content; post with a new --request-id`);
     if (cleared !== undefined) return refuse(null, clearedRepost(cleared.id));
-    const cleaned = cleanPost(input);
+    const ask = input.ask;
+    const cleaned = cleanPost(input, ask === undefined ? HILL_LIMITS : HILL_ASK_LIMITS);
     if (!cleaned.ok) return cleaned;
+    if (ask !== undefined) {
+      const refusal = this.askPostRefusal(from, input, cleaned.fields, opts);
+      if (refusal !== null) return refuse(refusal.code, refusal.error);
+    }
+    // An ask with options takes an optional note; a `--words` ask takes the words and nothing else.
+    const fields: Cleaned = ask === undefined ? cleaned.fields : { ...cleaned.fields, text: ask.words ? "required" : "optional" };
     const now = this.now();
     if (input.expiresAt !== undefined && input.expiresAt !== null && input.expiresAt <= now) return refuse(null, "bad request: the expiry is in the past");
 
@@ -1321,29 +1401,43 @@ export class HillService {
     const told = from.kind === "collie" && opts.tellOf !== undefined ? (this.deps.place(opts.tellOf)?.address ?? null) : null;
 
     let superseded: HillDecision | null = null;
+    // An ask that replaces one answered with "I need more context" records it and closes nothing.
+    let replaces: string | null = null;
     if (input.supersedes !== undefined && input.supersedes !== null) {
       const old = this.deps.store.get(input.supersedes);
-      if (old === undefined || keyOf(old) !== key) return refuse("bad_supersedes", `no decision ${input.supersedes} from this session`);
-      if (old.state !== "open") return refuse("bad_supersedes", `${old.id} is ${old.state}, only an open decision can be replaced`);
-      superseded = old;
+      if (old === undefined || keyOf(old) !== key) return refuse("bad_supersedes", ask === undefined ? `no decision ${input.supersedes} from this session` : `--replaces ${input.supersedes}: no ask of this session has that id`);
+      if (ask !== undefined) {
+        const replace = replaceRefusal(old);
+        if (replace !== null) return refuse("bad_supersedes", replace);
+        replaces = old.id;
+        superseded = old.state === "open" ? old : null;
+      } else {
+        if (old.state !== "open") return refuse("bad_supersedes", `${old.id} is ${old.state}, only an open decision can be replaced`);
+        superseded = old;
+      }
     }
     const allOpen = this.deps.store.all().filter((decision) => decision.state === "open" && decision.id !== superseded?.id);
     const open = allOpen.filter((decision) => keyOf(decision) === key);
     if (open.length >= HILL_OPEN_MAX) return refuse("too_many_open", `this session has ${String(HILL_OPEN_MAX)} open decisions; withdraw one, or wait for answers`);
+    // At most five open asks per session: the list stays short enough to answer.
+    const openAsks = ask === undefined ? [] : open.filter((decision) => decision.ask !== undefined);
+    if (openAsks.length >= HILL_ASK_OPEN_MAX) return refuse("too_many_open", tooManyAsks(openAsks));
     // A crew member's agents, posting through their lead: one machine's share of the hill. This
     // bridge's own sessions keep the solo caps alone.
     const crewMember = from.kind === "agent" && from.memberId !== this.deps.memberId ? from.memberId : null;
     const machineOpen = crewMember === null ? [] : allOpen.filter((decision) => decision.from.kind === "agent" && decision.from.memberId === crewMember);
     if (machineOpen.length >= HILL_OPEN_MEMBER_MAX) return refuse("too_many_open", `this machine's sessions have ${String(HILL_OPEN_MEMBER_MAX)} open decisions; withdraw one, or wait for answers`);
     if (allOpen.length >= HILL_OPEN_TOTAL_MAX) return refuse("too_many_open", `the hill holds ${String(HILL_OPEN_TOTAL_MAX)} open decisions; withdraw one, or wait for answers`);
-    const asked = input.priority ?? "today";
+    // An ask has no priority and rings nothing: it is stored as `today`, which never pushes.
+    const asked = ask === undefined ? (input.priority ?? "today") : "today";
     const priority = asked === "now" && open.filter((decision) => decision.priority === "now").length >= HILL_NOW_MAX ? "today" : asked;
     // A trick's own folder is a root for a trick's images only; an agent's post never has one.
     const images = opts.images === undefined ? this.readImages(input.images ?? [], from.kind === "trick" ? (from.imageRoot ?? null) : null) : this.heldImages(input.images ?? [], opts.images);
     if (!images.ok) return images;
 
-    let id = this.mint();
-    for (let tries = 0; this.deps.store.taken(id) && tries < 8; tries += 1) id = this.mint();
+    const mint = ask === undefined ? this.mint : (this.deps.mintAskId ?? (() => mintDecisionId(undefined, "ak_")));
+    let id = mint();
+    for (let tries = 0; this.deps.store.taken(id) && tries < 8; tries += 1) id = mint();
     if (this.deps.store.taken(id)) return refuse(null, "could not mint a decision id; try again");
     // The Decision stores this bridge's id: it is written down before the first one does.
     this.deps.keepId?.();
@@ -1357,15 +1451,16 @@ export class HillService {
       about: about?.address ?? null,
       priority,
       priorityAsked: asked,
-      ...cleaned.fields,
+      ...fields,
       media,
       replyTo: replyTo?.address ?? told,
       target: target === null ? null : { label: this.nameOf(target.address, target.label), host: target.host, unattended: target.unattended },
-      supersedes: superseded?.id ?? null,
+      supersedes: replaces ?? superseded?.id ?? null,
       supersededBy: null,
       // No expiry asked for: it closes `expired` after the default, so a forgotten decision does not stay
-      // forever; and none stays past the cap, whatever it asked for.
-      expiresAt: Math.min(input.expiresAt ?? now + HILL_DEFAULT_EXPIRY_MS, now + HILL_MAX_EXPIRY_MS),
+      // forever; and none stays past the cap, whatever it asked for. An ask has none: it stays open across
+      // turns, and closes by an answer, a take back, a replace, or the sweep when its session is gone.
+      expiresAt: ask === undefined ? Math.min(input.expiresAt ?? now + HILL_DEFAULT_EXPIRY_MS, now + HILL_MAX_EXPIRY_MS) : null,
       at: now,
       state: "open",
       closedAt: null,
@@ -1374,6 +1469,7 @@ export class HillService {
       postDigest: digest,
     };
     if (input.view !== undefined) decision.view = input.view;
+    if (ask !== undefined) decision.ask = { words: ask.words, files: opts.askFiles?.files ?? [], root: opts.askFiles?.root ?? null };
     if (input.group !== undefined && from.kind === "collie") {
       const made = makeGroup(input.group, from.ref, decision.options);
       if (!made.ok) return refuse("bad_body", made.error);
@@ -1386,7 +1482,9 @@ export class HillService {
       if (media.length > 0) this.deps.media?.remove(id);
       return refuse(null, "the decision could not be saved on this machine; nothing was posted");
     }
-    const base = superseded === null ? { decisionId: id, options: decision.options.length } : { decisionId: id, options: decision.options.length, supersedes: superseded.id };
+    const plain = superseded === null ? { decisionId: id, options: decision.options.length } : { decisionId: id, options: decision.options.length, supersedes: superseded.id };
+    // An ask says so, with how many files it links: a count, never a path.
+    const base = decision.ask === undefined ? plain : { ...plain, ask: true, files: decision.ask.files.length };
     // The images as a count and a byte sum, never a path or a caption.
     const detail = media.length === 0 ? base : { ...base, images: media.length, imageBytes: media.reduce((sum, item) => sum + item.bytes, 0) };
     this.deps.audit?.({ action: "hill.post", detail });
@@ -1394,6 +1492,23 @@ export class HillService {
     // Only while it is still open: nothing between the write and here closes it, and a push is never late.
     if (push.send && this.deps.store.get(id)?.state === "open") this.deps.push?.send(key, decision, crewMember);
     return { ok: true, decision: served(decision) };
+  }
+
+  /**
+   * Why an ask's post breaks a rule of an ask, or null: only an agent's session asks; an ask names no other
+   * session, carries no link, view or group (its background is the body, its files are `--file`); its own
+   * rules (ask-rules.ts); and its files must have been resolved on this machine.
+   */
+  private askPostRefusal(from: AnySender, input: HillPostInput, fields: Cleaned, opts: HillPostOptions): { readonly code: HillRefusalCode; readonly error: string } | null {
+    const ask = input.ask;
+    if (ask === undefined) return null;
+    if (from.kind !== "agent") return { code: "bad_body", error: "an ask comes from an agent's session" };
+    if ((input.about ?? null) !== null || (input.replyTo ?? null) !== null) return { code: "bad_target", error: "an ask is about its own session, and the answer goes there" };
+    if (fields.links.length > 0 || input.view !== undefined) return { code: "bad_body", error: "an ask carries no links and no view: put the background in --body, and link files with --file" };
+    const rule = askRuleRefusal(fields, ask.words);
+    if (rule !== null) return rule;
+    if (ask.files.length > 0 && opts.askFiles === undefined) return { code: "bad_file", error: ASK_FILES_LEAD_ONLY };
+    return null;
   }
 
   /** The `from` a new decision stores for its sender. */
@@ -1848,7 +1963,7 @@ export class HillService {
     if (claim.send !== null) {
       let sent: HillSendResult;
       try {
-        sent = await this.deps.send(claim.send.to, claim.send.body, by);
+        sent = await this.deps.send(claim.send.to, claim.send.body, by, claim.send.subject);
       } catch {
         // Not confirmed, and never sent again: the decision stays answered with `unknown`.
         sent = "unknown";
@@ -1999,7 +2114,9 @@ export class HillService {
     const option = decision.options.find((candidate) => candidate.intent === intent);
     // The intent is typed into the session; only a word the post rules let through ever is (a stored file is not re-checked on load).
     if (option !== undefined && !isHillOptionIntent(option.intent)) return this.final(request, id, by, digest, receiptOf(rid, now, "rejected", "not an option of this decision", "open", null));
-    if (option === undefined && intent !== "answer" && intent !== "dismiss") return this.final(request, id, by, digest, receiptOf(rid, now, "rejected", "not an option of this decision", "open", null));
+    if (option === undefined && intent !== "answer" && intent !== "dismiss" && !(decision.ask !== undefined && intent === HILL_MORE_CONTEXT)) return this.final(request, id, by, digest, receiptOf(rid, now, "rejected", "not an option of this decision", "open", null));
+    // An ask with options takes one of them or "I need more context"; only a `--words` ask takes words alone.
+    if (decision.ask !== undefined && intent === "answer" && !decision.ask.words) return this.final(request, id, by, digest, receiptOf(rid, now, "rejected", "not an option of this decision", "open", null));
     // A yes to a trick's code needs the digest this phone was given (the code it showed), so a yes never
     // approves other code than the card showed. Its decline and a dismiss need none. Nothing is kept for
     // these refusals, so the same answer may go again from a phone that shows the card as it is now.
@@ -2013,7 +2130,9 @@ export class HillService {
     // Collie's own card carries Collie's own title and labels (a trick's id, fixed words), so the session
     // it tells gets them as a poster does.
     // The crew state at this moment rides on the typed answer as one last line, while it is not `here`.
-    const message = answerMessage(decision, intent, option?.label ?? null, text, this.answersThePoster(decision) || decision.from.kind === "collie");
+    // An ask's answer is the one-line form of a Send (answers-message.ts); a dismiss of one says only that.
+    const message =
+      decision.ask !== undefined && intent !== "dismiss" ? answersMessage([{ ask: decision, intent, text }]) : answerMessage(decision, intent, option?.label ?? null, text, this.answersThePoster(decision) || decision.from.kind === "collie");
     let body = withCrewLine(message, this.crewState().state);
     if (codePoints(body) > WALKY_BODY_MAX) return this.final(request, id, by, digest, receiptOf(rid, now, "rejected", "text is too long for one message", "open", null));
 
@@ -2060,19 +2179,280 @@ export class HillService {
       const late = receiptOf(rid, now, "gone", `the decision is ${fresh?.state ?? "gone"}`, fresh?.state ?? null, null);
       return this.final(request, id, by, digest, late);
     }
-    const answer: NonNullable<HillDecision["answer"]> = { rid, intent, label: option?.label ?? null, text, by: headerField(by, WALKY_LABEL_MAX), at: now, delivery: typed ? "unknown" : "none", trick: firstTrick };
+    const label = intent === HILL_MORE_CONTEXT ? HILL_MORE_CONTEXT_LABEL : (option?.label ?? null);
+    const answer: NonNullable<HillDecision["answer"]> = { rid, intent, label, text, by: headerField(by, WALKY_LABEL_MAX), at: now, delivery: typed ? "unknown" : "none", trick: firstTrick };
     const closed: HillDecision = { ...fresh, state, closedAt: now, closedReason: null, answer: device === null ? answer : { ...answer, deviceId: device } };
     if (!this.save(closed)) {
       const unsaved = receiptOf(rid, now, "unknown", "the answer could not be saved on this machine; nothing was typed", "open", null);
       return this.final(request, id, by, digest, unsaved);
     }
-    const send = typed && to !== null ? { to, body } : null;
+    const send = typed && to !== null ? (decision.ask !== undefined && intent !== "dismiss" ? { to, body, subject: ASKS_ANSWERS_SUBJECT } : { to, body }) : null;
     const tap = trick === null ? null : { host: trick.host, trickId: trick.trickId, decisionId: id, tap: { rid, node: hillNode(trick.trickKey), intent, value: { text } } };
     if (send === null && tap === null) {
       this.auditAnswer(closed, request, by, record.receipt);
       return { kind: "done", outcome: { kind: "receipt", receipt: record.receipt } };
     }
     return { kind: "deliver", decision: closed, record, send, tap };
+  }
+
+  // ── ASKS (2026-11-22): the socket's `ask.*` ops, and one Send per session ─────────────────────────
+
+  /**
+   * `ask.post` from the socket: an ask from an agent's pane. On this machine its linked files are resolved
+   * under the pane's Files root first (deps `askFiles`, the Files view's own checks), then it is posted as a
+   * Decision with the `ask` field. On a crew member it goes to the lead without files (`--file` is refused
+   * here, {@link ASK_FILES_LEAD_ONLY}); a lead that does not know asks posts a plain Decision, which the
+   * member takes back at once and refuses `lead_too_old`.
+   */
+  async askPost(from: HillAgentSender, fields: JsonObject): Promise<HillPostAnswer> {
+    const read = readPostFields(fields);
+    if (!read.ok) return refuse(read.code, read.error);
+    const ask = read.input.ask;
+    if (ask === undefined) return refuse(null, "bad request: an ask names its `ask` field");
+    const forward = this.forwardOf();
+    if (forward !== null) {
+      if (ask.files.length > 0) return refuse("bad_file", ASK_FILES_LEAD_ONLY);
+      const answer = await this.postFields(from, fields);
+      if (!answer.ok || answer.decision.ask !== undefined) return answer;
+      // The lead is older than asks: it posted a plain Decision. Take it back, and say so.
+      await forward.one("withdraw", from, answer.decision.id);
+      return refuse("lead_too_old", ASK_LEAD_TOO_OLD);
+    }
+    // The switch first, so a Hill that is off says so before any file is looked at.
+    if (this.refusesHere()) return refuse("hill_off", HILL_OFF);
+    const files = this.deps.askFiles === undefined ? null : await this.deps.askFiles(from.address, ask.files);
+    if (files !== null && !files.ok) return refuse("bad_file", files.error);
+    return this.withCrewState(this.postDecision(from, read.input, files === null ? {} : { askFiles: { root: files.root, files: files.files } }));
+  }
+
+  /** `ask.list` from the socket: the sender's own OPEN asks, oldest first, from this bridge or the lead. */
+  async askOpen(sender: HillAgentSender): Promise<HillListAnswer> {
+    const listed = await this.askList(sender);
+    if (!listed.ok) return listed;
+    return { ok: true, decisions: listed.decisions.filter((decision) => decision.state === "open" && decision.ask !== undefined).toSorted((a, b) => a.at - b.at) };
+  }
+
+  /** `ask.cancel` from the socket: {@link cancelAsk} here, or on a crew member the lead's. */
+  async askCancel(sender: HillAgentSender, id: string, how: HillAskCancel): Promise<HillOneAnswer> {
+    const forward = this.forwardOf();
+    return forward === null ? this.cancelAsk(sender, id, how) : forward.one("withdraw", sender, id, how);
+  }
+
+  /**
+   * The poster takes an ask (or any Decision of its own) back. `answered`: the person answered it in the
+   * session, closed {@link HILL_ASK_ANSWERED_HERE}, never "taken back". `because`: the agent's reason,
+   * kept in the closed reason ({@link askTakenBack}). Both are for an ask only.
+   */
+  cancelAsk(sender: HillSender, id: string, how: HillAskCancel): HillOneAnswer {
+    const decision = this.mine(sender, id);
+    const special = how.answered || how.because !== null;
+    if (special && decision !== null && decision.ask === undefined) return { ok: false, missing: false, error: `${id} is not an ask: --answered and --because close an ask; take a Decision back with no flag` };
+    if (how.answered && how.because !== null) return { ok: false, missing: false, error: "--answered and --because do not go together: an ask answered in the session needs no reason" };
+    if (how.answered) return this.withdrawAny(sender, id, HILL_ASK_ANSWERED_HERE);
+    if (how.because === null) return this.withdrawAny(sender, id, BY_THE_POSTER);
+    const because = cleanLine(how.because, HILL_ASK_BECAUSE_MAX);
+    if (because.text === "" || because.over) return { ok: false, missing: false, error: `--because is 1 to ${String(HILL_ASK_BECAUSE_MAX)} characters` };
+    return this.withdrawAny(sender, id, askTakenBack(because.text));
+  }
+
+  /**
+   * One Send per session (`POST /api/hill/answers`): 1 to 5 answers to open asks of ONE session. Each ask is
+   * claimed in the answer lane and closed as answered with its own receipt, and ONE operator message is
+   * typed into the session (answers-message.ts), the session's other open asks last. A repeat of `rid`
+   * answers its stored result and runs nothing. The whole Send is refused, nothing closed and nothing typed,
+   * when an id is not an ask, the asks are of two sessions, an answer does not fit its ask, the session's
+   * machine is not answering, or the message is longer than a WalkyTalky message (`too_long`). An ask that
+   * closed before the Send is skipped and reported; with none left, nothing is typed.
+   */
+  answerAsks(request: HillAnswersRequest, by: string, deviceId: string | null = null): Promise<HillAnswersOutcome> {
+    if (this.refusesHere()) return Promise.resolve({ kind: "off" });
+    if (this.deps.crewMode() === "peer" || this.deps.deposed?.() === true) return Promise.resolve({ kind: "denied", error: HILL_DEPOSED });
+    const digest = sendDigest(request);
+    // SYNCHRONOUS from here to the `set`: two requests with one rid must not both get past the look.
+    const stored = this.deps.receipts.get(request.rid);
+    if (stored !== undefined) return Promise.resolve(stored.payloadDigest === digest ? this.storedSend(request, stored.receipt) : refusedSend("rid_reused", "this rid was used for another Send"));
+    const running = this.sends.get(request.rid);
+    if (running !== undefined) return running.digest === digest ? running.work : Promise.resolve(refusedSend("rid_reused", "this rid was used for another Send"));
+    const work = this.runSend(request, by, digest, deviceId).finally(() => this.sends.delete(request.rid));
+    this.sends.set(request.rid, { digest, work });
+    return work;
+  }
+
+  /** A Send answered from its records, for a repeat of its `rid`. */
+  private storedSend(request: HillAnswersRequest, send: HillReceipt): HillAnswersOutcome {
+    if (send.code !== "ok") return refusedSend("not_typed", send.reason ?? HILL_NOT_TYPED);
+    return { kind: "done", result: resultOf(request, send, (rid) => this.deps.receipts.get(rid)?.receipt) };
+  }
+
+  private async runSend(request: HillAnswersRequest, by: string, digest: string, deviceId: string | null): Promise<HillAnswersOutcome> {
+    const ids = request.answers.map((answer) => answer.id);
+    // The answers count as running from the tap on, so no quiet close takes one under them.
+    for (const id of ids) this.claiming.set(id, (this.claiming.get(id) ?? 0) + 1);
+    try {
+      const claimed = this.lane.then(() => this.claimSend(request, by, digest, deviceId));
+      this.lane = claimed.then(
+        () => undefined,
+        () => undefined,
+      );
+      const claim = await claimed;
+      if (claim.kind === "done") return claim.outcome;
+      return await this.deliverSend(request, by, digest, claim);
+    } finally {
+      for (const id of ids) {
+        const left = (this.claiming.get(id) ?? 1) - 1;
+        if (left <= 0) this.claiming.delete(id);
+        else this.claiming.set(id, left);
+      }
+    }
+  }
+
+  /** The claim step of a Send, in the lane: every check, then the receipts, then the close of every ask at once. */
+  private async claimSend(request: HillAnswersRequest, by: string, digest: string, deviceId: string | null): Promise<SendClaim> {
+    const known = this.deps.receipts.get(request.rid);
+    if (known !== undefined) return { kind: "done", outcome: known.payloadDigest === digest ? this.storedSend(request, known.receipt) : refusedSend("rid_reused", "this rid was used for another Send") };
+    const now = this.now();
+    const live: Array<{ readonly decision: HillDecision; readonly intent: string; readonly text: string | null }> = [];
+    const gone = new Map<string, HillReceipt>();
+    const senders = new Set<string>();
+    for (const answer of request.answers) {
+      const decision = this.deps.store.get(answer.id);
+      if (decision === undefined) {
+        // A cleared ask answers as it did while it was held: gone, with the state it closed in.
+        const stone = this.deps.store.tombstone(answer.id);
+        if (stone === undefined) return { kind: "done", outcome: refusedSend("not_an_ask", `${answer.id} is not an ask on this machine`, { id: answer.id }) };
+        senders.add(stone.key);
+        gone.set(answer.id, receiptOf(askAnswerRid(request.rid, answer.id), now, "gone", `the decision is ${stone.state}`, stone.state, null));
+        continue;
+      }
+      if (decision.ask === undefined || decision.from.kind !== "agent") return { kind: "done", outcome: refusedSend("not_an_ask", `${answer.id} is not an ask`, { id: answer.id }) };
+      senders.add(keyOf(decision));
+      if (decision.state !== "open") {
+        gone.set(answer.id, receiptOf(askAnswerRid(request.rid, answer.id), now, "gone", `the decision is ${decision.state}`, decision.state, null));
+        continue;
+      }
+      const checked = this.askAnswerCheck(decision, answer.intent, answer.text ?? null);
+      if (!checked.ok) return { kind: "done", outcome: refusedSend("bad_answer", `${answer.id}: ${checked.reason}`, { id: answer.id }) };
+      live.push({ decision, intent: answer.intent, text: checked.text });
+    }
+    if (senders.size > 1) return { kind: "done", outcome: refusedSend("mixed_sessions", "one Send answers the asks of one session; these are of more than one") };
+    const address = [...senders][0] ?? null;
+    if (live.length === 0 || address === null) return { kind: "done", outcome: await this.settleSend(request, digest, now, gone, "none", false) };
+    // The session's other open asks, oldest first, close the message as "no answer yet".
+    const answered = new Set(live.map((entry) => entry.decision.id));
+    const others = this.deps.store
+      .all()
+      .filter((decision) => decision.state === "open" && decision.ask !== undefined && keyOf(decision) === address && !answered.has(decision.id))
+      .toSorted((a, b) => a.at - b.at);
+    const message = answersMessage(
+      live.map((entry) => ({ ask: entry.decision, intent: entry.intent, text: entry.text })),
+      others,
+    );
+    const body = withCrewLine(message, this.crewState().state);
+    const over = codePoints(body) - WALKY_BODY_MAX;
+    if (over > 0) return { kind: "done", outcome: refusedSend("too_long", `the message is ${String(over)} characters longer than a WalkyTalky message may be (${String(WALKY_BODY_MAX)}); answer fewer asks in this Send, or shorten a note`, { over }) };
+    const away = this.away(address);
+    if (away !== null) return { kind: "done", outcome: refusedSend("not_answering", notAnswering(away), { machine: away }) };
+    if (this.deps.place(address)?.address !== address) {
+      // The session ended: every live ask closes as the sweep would close it, and nothing is typed.
+      for (const entry of live) {
+        this.closeAs(entry.decision.id, now, "undeliverable", TARGET_ENDED);
+        gone.set(entry.decision.id, receiptOf(askAnswerRid(request.rid, entry.decision.id), now, "gone", TARGET_ENDED, "undeliverable", null));
+      }
+      return { kind: "done", outcome: await this.settleSend(request, digest, now, gone, "none", false) };
+    }
+    const device = deviceId !== null && HILL_DEVICE_ID_RE.test(deviceId) ? deviceId : null;
+    // Each ask's receipt first, as not confirmed: a bridge that stops after these lines never types twice.
+    for (const entry of live) {
+      const rid = askAnswerRid(request.rid, entry.decision.id);
+      const plain = receiptOf(rid, now, "ok", null, "answered", "unknown", "none");
+      const record: HillReceiptRecord = { requestId: rid, payloadDigest: hillAnswerDigest(hillNode(entry.decision.id), entry.intent, entry.text), receipt: device === null ? plain : { ...plain, deviceId: device } };
+      if (!(await this.deps.receipts.recordFirst(record))) return { kind: "done", outcome: { kind: "unsaved" } };
+    }
+    // A take back or the sweep may have closed one while the receipts were written: it is gone then.
+    const closed: HillDecision[] = [];
+    for (const entry of live) {
+      const fresh = this.deps.store.get(entry.decision.id);
+      if (fresh === undefined || fresh.state !== "open") {
+        gone.set(entry.decision.id, receiptOf(askAnswerRid(request.rid, entry.decision.id), now, "gone", `the decision is ${fresh?.state ?? "gone"}`, fresh?.state ?? null, null));
+        continue;
+      }
+      const label = entry.intent === HILL_MORE_CONTEXT ? HILL_MORE_CONTEXT_LABEL : (fresh.options.find((option) => option.intent === entry.intent)?.label ?? null);
+      const answer: NonNullable<HillDecision["answer"]> = { rid: askAnswerRid(request.rid, fresh.id), intent: entry.intent, label, text: entry.text, by: headerField(by, WALKY_LABEL_MAX), at: now, delivery: "unknown", trick: "none" };
+      closed.push({ ...fresh, state: "answered", closedAt: now, closedReason: null, answer: device === null ? answer : { ...answer, deviceId: device } });
+    }
+    if (closed.length === 0) return { kind: "done", outcome: await this.settleSend(request, digest, now, gone, "none", false) };
+    if (closed.length < live.length) {
+      // One closed meanwhile: the message must not name it. Built again from what is still open.
+      return { kind: "done", outcome: refusedSend("not_typed", "an ask closed while the Send was written; look again and send again") };
+    }
+    if (!this.save(...closed)) return { kind: "done", outcome: { kind: "unsaved" } };
+    return { kind: "deliver", to: address, body, closed, gone, now };
+  }
+
+  /** Write the records of a Send that typed nothing (every ask gone) and answer its result. */
+  private async settleSend(request: HillAnswersRequest, digest: string, now: number, gone: ReadonlyMap<string, HillReceipt>, delivery: HillAnswersResult["delivery"], unconfirmed: boolean): Promise<HillAnswersOutcome> {
+    for (const [id, receipt] of gone) await this.deps.receipts.record({ requestId: askAnswerRid(request.rid, id), payloadDigest: digest, receipt });
+    const send = sendRecord(request.rid, digest, now, "ok", delivery, unconfirmed);
+    await this.deps.receipts.record(send);
+    this.deps.audit?.({ action: "hill.answers", detail: { answered: 0, gone: gone.size, delivery } });
+    return { kind: "done", result: resultOf(request, send.receipt, (rid) => this.deps.receipts.get(rid)?.receipt) };
+  }
+
+  /** The send step of a Send: the one message, then every receipt and answer with what walky said. */
+  private async deliverSend(request: HillAnswersRequest, by: string, digest: string, claim: Extract<SendClaim, { kind: "deliver" }>): Promise<HillAnswersOutcome> {
+    let sent: HillSendResult;
+    try {
+      sent = await this.deps.send(claim.to, claim.body, by, ASKS_ANSWERS_SUBJECT);
+    } catch {
+      sent = "unknown";
+    }
+    if (sent === "refused") {
+      // Walky typed nothing: the asks open again as they were, and the Send says why.
+      const reopened = claim.closed.flatMap((decision) => {
+        const held = this.deps.store.get(decision.id);
+        return held !== undefined && held.state === "answered" && held.answer?.rid === decision.answer?.rid ? [{ ...held, state: "open" as const, closedAt: null, closedReason: null, answer: null }] : [];
+      });
+      if (reopened.length > 0) this.save(...reopened);
+      for (const decision of claim.closed) {
+        const rid = askAnswerRid(request.rid, decision.id);
+        await this.deps.receipts.record({ requestId: rid, payloadDigest: digest, receipt: receiptOf(rid, this.now(), "rejected", HILL_NOT_TYPED, this.deps.store.get(decision.id)?.state ?? null, "none") });
+      }
+      await this.deps.receipts.record(sendRecord(request.rid, digest, this.now(), "rejected", "none", false, HILL_NOT_TYPED));
+      this.deps.audit?.({ action: "hill.undelivered", device: by, detail: { asks: claim.closed.length, why: "refused, the asks are open again" } });
+      return refusedSend("not_typed", HILL_NOT_TYPED);
+    }
+    const delivery: HillAnswersResult["delivery"] = sent === "inbox-only" ? "unknown" : sent;
+    const unconfirmed = sent === "unknown";
+    const settled: HillDecision[] = [];
+    for (const decision of claim.closed) {
+      const rid = askAnswerRid(request.rid, decision.id);
+      const held = this.deps.receipts.get(rid);
+      if (held !== undefined) await this.deps.receipts.record({ ...held, receipt: { ...held.receipt, delivery } });
+      const now = this.deps.store.get(decision.id);
+      if (now?.answer?.rid !== rid) continue;
+      const { unconfirmed: _was, ...kept } = now.answer;
+      settled.push({ ...now, answer: unconfirmed ? { ...kept, delivery, unconfirmed: true } : { ...kept, delivery } });
+    }
+    if (settled.length > 0) this.save(...settled);
+    for (const [id, receipt] of claim.gone) await this.deps.receipts.record({ requestId: askAnswerRid(request.rid, id), payloadDigest: digest, receipt });
+    const send = sendRecord(request.rid, digest, claim.now, "ok", delivery, unconfirmed);
+    await this.deps.receipts.record(send);
+    if (delivery === "unknown") this.deps.audit?.({ action: "hill.undelivered", device: by, detail: { asks: claim.closed.length, why: unconfirmed ? "not confirmed" : "in the inbox" } });
+    this.deps.audit?.({ action: "hill.answers", device: by, detail: { answered: claim.closed.length, gone: claim.gone.size, delivery } });
+    return { kind: "done", result: resultOf(request, send.receipt, (rid) => this.deps.receipts.get(rid)?.receipt) };
+  }
+
+  /** Whether one answer fits its open ask, as the single answer's rules say it, and the cleaned text. */
+  private askAnswerCheck(decision: HillDecision, intent: string, raw: string | null): { readonly ok: true; readonly text: string | null } | { readonly ok: false; readonly reason: string } {
+    const option = decision.options.find((candidate) => candidate.intent === intent);
+    const words = decision.ask?.words === true;
+    const fits = intent === HILL_MORE_CONTEXT || (intent === "answer" && words) || (option !== undefined && isHillOptionIntent(option.intent));
+    if (!fits) return { ok: false, reason: "not an option of this decision" };
+    const cleaned = cleanText(raw ?? "", HILL_ANSWER_TEXT_MAX);
+    if (cleaned.over) return { ok: false, reason: `text is longer than ${String(HILL_ANSWER_TEXT_MAX)} characters` };
+    const text = cleaned.text === "" ? null : cleaned.text;
+    const rule = this.textRule(decision, intent, text);
+    return rule === null ? { ok: true, text } : { ok: false, reason: rule };
   }
 
   /**
@@ -2091,6 +2471,8 @@ export class HillService {
   /** Why the text breaks the decision's rule, or null when it keeps it. */
   private textRule(decision: HillDecision, intent: string, text: string | null): string | null {
     if (intent === "dismiss") return text === null ? null : "a dismiss carries no text";
+    // "I need more context" takes an optional note, on every ask, a `--words` one too.
+    if (intent === HILL_MORE_CONTEXT) return null;
     if (intent === "answer") {
       if (decision.text === "none") return "this decision takes no text";
       return text === null ? "text is required" : null;

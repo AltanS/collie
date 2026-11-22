@@ -243,7 +243,7 @@ export class HillHeldMedia {
 // ── On the lead: the three routes ───────────────────────────────────────────────────────────────────
 
 export interface HillCrewLeadDeps {
-  readonly hill: Pick<HillService, "postDecision" | "status" | "withdraw" | "mineList" | "isOn" | "withCrewState" | "crewState">;
+  readonly hill: Pick<HillService, "postDecision" | "status" | "withdraw" | "cancelAsk" | "mineList" | "isOn" | "withCrewState" | "crewState">;
   readonly held: HillHeldMedia;
   /** False with COLLIE_WALKY=off on the lead: no answer could be typed, so no image is held. Absent: on. */
   readonly walkyOn?: () => boolean;
@@ -365,8 +365,13 @@ export class HillCrewLead {
     const sender: HillAgentSender = { kind: "agent", address: as, memberId, harness: null, label: "", host: null };
     if (op === "list") return { status: 200, body: { ok: true, decisions: this.deps.hill.mineList(sender) } };
     const id = asJsonString(row.id);
-    if (id === undefined || !HILL_ID_RE.test(id)) return badRequest("a decision id is dc_ and 12 characters");
-    const answer = op === "status" ? this.deps.hill.status(sender, id) : this.deps.hill.withdraw(sender, id);
+    if (id === undefined || !HILL_ID_RE.test(id)) return badRequest("a decision id is dc_ or ak_ and 12 characters");
+    // An ask's close (Asks, 2026-11-22) carries `answered` or `because`; a lead before asks ignores both and
+    // takes it back plainly, which the member's CLI shows as the state it reads back.
+    const answered = asJsonBoolean(row.answered) === true;
+    const because = asJsonString(row.because) ?? null;
+    const special = op === "withdraw" && (answered || because !== null);
+    const answer = op === "status" ? this.deps.hill.status(sender, id) : special ? this.deps.hill.cancelAsk(sender, id, { answered, because }) : this.deps.hill.withdraw(sender, id);
     return { status: 200, body: answer };
   }
 }
@@ -394,7 +399,8 @@ export type HillListAnswer = { readonly ok: true; readonly decisions: readonly H
 /** What `HillService` asks of a member's forward. */
 export interface HillLeadForward {
   post(from: HillAgentSender, fields: JsonObject, requestId: string, images: readonly HillForwardImage[]): Promise<HillPostAnswer>;
-  one(op: "status" | "withdraw", from: HillAgentSender, id: string): Promise<HillOneAnswer>;
+  /** `how`: an ask's close, `--answered` or `--because` (Asks); absent for every other call. */
+  one(op: "status" | "withdraw", from: HillAgentSender, id: string, how?: { readonly answered: boolean; readonly because: string | null }): Promise<HillOneAnswer>;
   list(from: HillAgentSender): Promise<HillListAnswer>;
   /** The lead's crew state (1.29.0). `older`: the lead runs a release that cannot say. */
   state(): Promise<HillCrewStateAnswer>;
@@ -577,10 +583,13 @@ export class HillMemberForward implements HillLeadForward {
     return readDial(await this.link.call(CREW_HILL_OP_ROUTE, JSON.stringify(body), this.budgets.callMs), this.link.leadAtFloor());
   }
 
-  async one(op: "status" | "withdraw", from: HillAgentSender, id: string): Promise<HillOneAnswer> {
+  async one(op: "status" | "withdraw", from: HillAgentSender, id: string, how?: { readonly answered: boolean; readonly because: string | null }): Promise<HillOneAnswer> {
     const lead = this.lead();
     if (this.link.leadOlder()) return { ok: false, missing: false, error: hillLeadOlder(lead) };
-    const read = await this.call({ op, id, as: from.address });
+    const body: JsonObject = { op, id, as: from.address };
+    if (how?.answered === true) body.answered = true;
+    if (how !== undefined && how.because !== null) body.because = how.because;
+    const read = await this.call(body);
     if (read.kind === "older") return { ok: false, missing: false, error: hillLeadOlder(lead) };
     if (read.kind === "refused") return { ok: false, missing: false, error: hillLeadAway(lead) };
     if (read.kind === "unknown") return { ok: false, missing: false, error: op === "withdraw" ? `the lead (${lead}) did not confirm the withdraw; check with: collie hill status ${id}` : hillLeadAway(lead) };
