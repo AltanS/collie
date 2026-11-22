@@ -77,6 +77,34 @@ export function claimPendingDequeue(scope: Scope | undefined, paneId: string, re
   return true;
 }
 
+/** Forget the pane's pending id, whatever it is (the wipe of one pane). */
+export function clearPendingDequeue(scope: Scope | undefined, paneId: string): void {
+  const key = keyFor(scope, paneId);
+  memory.delete(key);
+  try {
+    storage()?.removeItem(key);
+  } catch {
+    // Locked-down storage kept nothing.
+  }
+}
+
+/** Forget every pending id this page holds (the wipe at unpair). */
+export function forgetAllPendingDequeues(): void {
+  memory.clear();
+  try {
+    const store = storage();
+    if (store === null) return;
+    const held: string[] = [];
+    for (let i = 0; i < store.length; i++) {
+      const key = store.key(i);
+      if (key !== null && key.startsWith(PREFIX)) held.push(key);
+    }
+    for (const key of held) store.removeItem(key);
+  } catch {
+    // Locked-down storage kept nothing.
+  }
+}
+
 /** What one ask ended in: a receipt, a refusal the bridge stated (nothing was pressed), or no answer at all. */
 export type DequeueSettle =
   | { readonly kind: "receipt"; readonly receipt: DequeueReceipt }

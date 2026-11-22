@@ -51,6 +51,7 @@ import { forgetRecentPanes } from "@/lib/recent-panes";
 import { forgetAllChatSilhouettes, forgetChatSilhouette } from "@/lib/chat-silhouette";
 import { forgetAllUnknownSends, forgetUnknownSend } from "@/lib/send-again";
 import { clearIntent, forgetAllSendIntents } from "@/lib/send-intent";
+import { clearPendingDequeue, forgetAllPendingDequeues } from "@/lib/dequeue-pending";
 import { clearAllDrafts, clearDraft, clearPutBack } from "@/lib/drafts";
 import { forgetAgain } from "@/lib/new-page";
 import { forgetSlots } from "@/lib/slots";
@@ -187,6 +188,14 @@ const BUILT_IN: readonly (readonly [string, WipeCleaner])[] = [
     (context) => {
       if (context.reason === "password") clearIntent(context.pane.scope, context.pane.paneId);
       else forgetAllSendIntents();
+    },
+  ],
+  [
+    // The request id of a take-back with no answer yet (lib/dequeue-pending.ts, sessionStorage): an id, no text.
+    "dequeue-pending",
+    (context) => {
+      if (context.reason === "password") clearPendingDequeue(context.pane.scope, context.pane.paneId);
+      else forgetAllPendingDequeues();
     },
   ],
   [
