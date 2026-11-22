@@ -70,7 +70,7 @@ describe("the person's tap starts the carried tricks", () => {
     expect(await trickCodeHash(join(tricksConfigDir(deputy.configDir), "legs"))).toEqual({ ok: true, hash });
     const card = carriedCard("desk", TAP, result.failed[0]!);
     expect(card.title).toBe("The trick Leg day is off after the takeover");
-    expect(card.summary).toBe("It ran on desk, but the rights its code asks for are not the rights your lead says you approved. Collie left it off on this machine. Read its rights in Settings → Tricks and the Hill before you switch it on.");
+    expect(card.summary).toBe("It ran on desk, but the rights its code asks for are not the rights your lead says you approved. Collie left it off on this machine. Read its rights in Settings → Tricks before you switch it on.");
     // The notice keeps its kind through the file.
     await writeCarryNotices(deputy.stateDir, "desk", TAP, result.failed);
     const notices = parseCarryNotices(await readFile(join(tricksStateDir(deputy.stateDir), TAKEOVER_NOTICES_FILE), "utf8"));
