@@ -1,8 +1,8 @@
 import { execFile } from "node:child_process";
 import { isAbsolute } from "node:path";
 
-// A pi extension that names the pane's session file on its herdr-core terminal (#809), ported from
-// `omp-extension/collie-session-label.ts` (#675).
+// A pi extension that names the pane's session file on its herdr-core terminal (#809), based on
+// ibrmora's port of `omp-extension/collie-session-label.ts` (#675) in #780.
 //
 // herdr-core keeps a terminal's status but not its agent's conversation, so a pane whose folder holds
 // a second pi or omp pane cannot be told apart by its folder (#508). Collie's pi journal already reads

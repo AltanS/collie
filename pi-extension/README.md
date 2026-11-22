@@ -1,6 +1,6 @@
 # Collie session label for pi
 
-A [pi](https://github.com/badlogic/pi-mono) extension that names the session file on its herdr-core terminal, so Collie can tell two pi panes in one folder apart (#809, counterpart of `omp-extension/` from #675).
+A [pi](https://github.com/badlogic/pi-mono) extension that names the session file on its herdr-core terminal, so Collie can tell two pi panes in one folder apart (#809, based on ibrmora's port of `omp-extension/` from #675 in #780).
 
 What it does:
 
