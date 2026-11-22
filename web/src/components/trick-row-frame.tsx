@@ -26,9 +26,10 @@ export const NAME_LINE = "flex w-full flex-wrap items-center gap-x-2 gap-y-0.5 t
 export const LABELS = "flex max-w-full min-w-0 items-center gap-1";
 
 /** The name and the chevron: the name keeps its width up to the line's, then truncates. */
-export function RowName({ name }: { name: string }) {
+export function RowName({ name, glyph }: { name: string; glyph?: ReactNode }) {
   return (
     <span data-slot="row-name" className="flex max-w-full min-w-0 items-center gap-1">
+      {glyph}
       <span className="min-w-0 truncate">{name}</span>
       {/* The cue that the name opens something: the app's own "this row opens another screen" glyph. */}
       <Icon name="row-go" className="size-4 shrink-0 text-muted-foreground" aria-hidden />
@@ -58,8 +59,10 @@ export interface TrickRowFrameProps {
   linkSlot: string;
   /** The labels after the name, or null for none: drawn as one group so they wrap together. */
   labels: ReactNode;
-  /** A glyph before the text column (the Hill's mountain). Absent for a trick, which draws none. */
+  /** A glyph before the name, inside the link (the Hill's mountain). Absent for a trick, which draws none. The lines under keep the row's full width. */
   glyph?: ReactNode;
+  /** The labels may wrap onto a second line instead of shrinking (the Hill carries three). */
+  wrapLabels?: boolean;
   /** The one muted description, at most two lines. Absent: no line. */
   description: string | undefined;
   /** The lines under the description, in the text column. */
@@ -71,15 +74,15 @@ export interface TrickRowFrameProps {
 }
 
 /** One row of the trick list. */
-export function TrickRowFrame({ rowData, className, to, name, linkSlot, labels, glyph, description, children, control, below }: TrickRowFrameProps) {
+export function TrickRowFrame({ rowData, className, to, name, linkSlot, labels, glyph, wrapLabels = false, description, children, control, below }: TrickRowFrameProps) {
   const column = (
     <div className="min-w-0 flex-1">
       {/* The name is the link to the details page, and its stretched layer is the whole row (ui/row-open.ts): the
           lines under it are no controls, so a tap on any of them opens the page. */}
       <RowLink to={to} name={name} slot={linkSlot}>
-        <RowName name={name} />
+        <RowName name={name} glyph={glyph} />
         {labels !== null && (
-          <span data-slot="row-labels" className={LABELS}>
+          <span data-slot="row-labels" className={cn(LABELS, wrapLabels && "flex-wrap")}>
             {labels}
           </span>
         )}
@@ -95,14 +98,7 @@ export function TrickRowFrame({ rowData, className, to, name, linkSlot, labels, 
   return (
     <div {...rowData} className={cn(ROW_OPEN_ROW, "px-4 py-3", className)}>
       <div className="flex min-h-11 items-center justify-between gap-4">
-        {glyph === undefined ? (
-          column
-        ) : (
-          <div className="flex min-w-0 flex-1 items-start gap-3">
-            {glyph}
-            {column}
-          </div>
-        )}
+        {column}
         {control}
       </div>
       {below}

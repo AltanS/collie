@@ -15,7 +15,8 @@ const COLUMN_CEILING = 10;
 // waiver (the trick switch, 44x24, an open item of e2e/hitbox/known.json); its confirm, a modal, needs none.
 // 25 since ADR 0171 (2026-11-21): the phone's tab row is 44px with its "+" and its fold, so One Space and the Tab
 // strip with long names break no tap target at 390 and their waivers went.
-const WAIVER_CEILING = 25;
+// 26 since the Hill's details page (2026-11-22): its head switch is the trick page's, 44x24, the same open item of e2e/hitbox/known.json.
+const WAIVER_CEILING = 26;
 
 /** Every path the router can match, as `router.tsx` spells them: no leading slash, "/" for the index. */
 function routePaths(routes: readonly RouteObject[], parent = ""): string[] {

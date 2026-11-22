@@ -106,6 +106,34 @@ test("every line of a trick's row reaches its About link, and the switch keeps i
   await expect(page.locator('[data-slot="trick-detail-name"]')).toHaveText("Browser leg");
 });
 
+test("the Hill's row: its lines open its page, the switch keeps its own taps and a 44px reach", async ({ page }) => {
+  const posts: string[] = [];
+  await stubTricks(page, posts);
+  await page.route("**/api/hill/switch", (route) => {
+    posts.push("/api/hill/switch");
+    return route.fulfill({ contentType: "application/json", body: JSON.stringify({ on: false }) });
+  });
+  await page.goto("/settings/tricks");
+  const row = "[data-hill-row]";
+  await expect(page.locator(row)).toBeVisible();
+  for (const line of ["description"]) {
+    const { x, y } = await centre(page, `${row} [data-line="${line}"]`);
+    expect(await targetAt(page, x, y), line).toBe("About The Hill");
+  }
+  const sw = (await page.locator(`${row} [role="switch"]`).boundingBox())!;
+  expect(await targetAt(page, sw.x + sw.width / 2, sw.y + sw.height / 2)).toBe("The Hill");
+  // The reach: 44px tall in all, as a trick row's switch.
+  expect(await targetAt(page, sw.x + sw.width / 2, sw.y - 6)).toBe("The Hill");
+  expect(await targetAt(page, sw.x + sw.width / 2, sw.y + sw.height + 6)).toBe("The Hill");
+  await page.mouse.click(sw.x + sw.width / 2, sw.y + sw.height / 2);
+  await expect.poll(() => posts).toEqual(["/api/hill/switch"]);
+  await expect(page).toHaveURL(/\/settings\/tricks$/);
+  const { x, y } = await centre(page, `${row} [data-line="description"]`);
+  await page.mouse.click(x, y);
+  await expect(page).toHaveURL(/\/settings\/tricks\/hill$/);
+  await expect(page.locator('[data-slot="trick-detail-name"]')).toHaveText("The Hill");
+});
+
 test("an official entry's lines open its details page, and Add adds without opening it", async ({ page }) => {
   const posts: string[] = [];
   await stubTricks(page, posts);

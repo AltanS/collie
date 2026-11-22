@@ -16,7 +16,7 @@ import { useScope } from "@/lib/session";
 
 // THE HILL'S ROW, the first row of the trick list in Settings, Tricks (2026-11-22). The Hill is a trick that ships with Collie, so
 // it stands in the list like one: the same row (`TrickRowFrame`, the stretched link of `ui/row-open.ts`), its mountain
-// before the name, the label "Built in" in the neutral look, the Experimental badge and the token chip, the one line of
+// before the name (inside the link, so the lines under keep the row's full width), the label "Built in" in the neutral look, the Experimental badge and the token chip, the one line of
 // what it is, a line while Decisions wait, and its own switch at the right. A tap anywhere but the switch opens its
 // details page (`settings/tricks/hill`, components/hill-page.tsx). It holds no value of its own: the switch is the
 // Hill's (`useHillSwitch`, `POST /api/hill/switch`), and its armed second tap is the head's (components/hill-switch-arm.tsx).
@@ -44,7 +44,8 @@ export function HillRow({ on, disabled, waiting, onToggle, to }: HillRowProps) {
       to={to}
       name={t("settings.hill.label")}
       linkSlot="hill-about"
-      glyph={<Icon name="hill" className="mt-0.5 size-5 shrink-0 text-muted-foreground" aria-hidden />}
+      glyph={<Icon name="hill" className="size-5 shrink-0 text-muted-foreground" aria-hidden />}
+      wrapLabels
       labels={
         <>
           <BuiltInLabel />
