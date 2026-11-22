@@ -530,6 +530,26 @@ describe("ticking rows, plan approvals and the countdown, on the phone and in th
       expect(verifyPromptParts(countdown("1:20").replace("level.py;", "level.sh;"), parts)).toEqual({ ok: false, reason: "not_found" });
     });
 
+    it("Claude Code 2.1.330's block/holding-up countdown binds two parts and lets the tap pass as the clock ticks", async () => {
+      const blockSentence = (clock: string) =>
+        `⚠ Claude Code will automatically block this request in ${clock}, to avoid holding up an unattended session`;
+      const blockScreen = (clock: string) => {
+        const rows = BG.split("\n");
+        const at = rows.findIndex((row) => row.includes("Dangerous rm operation"));
+        expect(at).toBeGreaterThan(0);
+        rows.splice(at + 1, 0, ` \u001b[0m\u001b[2m│\u001b[0m \u001b[38;2;255;193;7m${blockSentence(clock)}\u001b[0m\r`);
+        return rows.join("\n");
+      };
+      const prompt = tapped(blockScreen("1:20"));
+      expect(prompt.bindParts).toHaveLength(2);
+      for (const part of prompt.bindParts!) expect(part).not.toContain("automatically block");
+      mockFetchPane.mockResolvedValue({ paneId: "w1:p1", text: blockScreen("1:19"), truncated: false, revision: 9 });
+      const res = await submitPromptOption({ paneId: "w1:p1", requestedLines: 200, detectedRevision: 8, agent: "claude", prompt, option: prompt.options[0]! });
+      expect(res).toEqual({ status: "sent" });
+      for (const clock of ["0:59", "0:05", "about 45 seconds"]) expect(verifyPromptParts(blockScreen(clock), prompt.bindParts!).ok).toBe(true);
+      expect(verifyPromptParts(blockScreen("1:20").replace("level.py;", "level.sh;"), prompt.bindParts!)).toEqual({ ok: false, reason: "not_found" });
+    });
+
     it("a bridge that does not know the list refuses it, and the tap is a shown error with nothing retried", async () => {
       const prompt = tapped(countdown("1:20"));
       mockFetchPane.mockResolvedValue({ paneId: "w1:p1", text: countdown("1:19"), truncated: false, revision: 9 });

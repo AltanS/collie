@@ -237,6 +237,7 @@ function liftOf(screen: string) {
 // phone showed it on 2026-10-29. `breakAfter` wraps the sentence after that many words, as a narrow
 // box does; `sentence` replaces the harness wording.
 const DENY_SENTENCE = (clock: string) => `⚠ Claude Code will automatically deny this request in ${clock}, to avoid blocking progress on an unattended session`;
+const BLOCK_SENTENCE = (clock: string) => `⚠ Claude Code will automatically block this request in ${clock}, to avoid holding up an unattended session`;
 function countdown(screen: string, clock: string, breakAfter?: number, sentence = DENY_SENTENCE): string {
   const rows = screen.split("\n");
   const at = rows.findIndex((row) => row.includes("Dangerous rm operation"));
@@ -276,9 +277,39 @@ describe("a dialog's self-answer countdown is not part of the ask", () => {
     }
   });
 
+  test("the Claude Code 2.1.330 block/holding-up countdown wording keeps the same binding, hash and ask id", async () => {
+    const reference = liftOf(countdown(BG_RM, "1:20", undefined, BLOCK_SENTENCE));
+    expect(reference.signature).toContain("automatically block this request in 1:20");
+    for (const breakAfter of [undefined, 3, 9, 10, 14]) {
+      for (const clock of ["1:20", "1:19", "0:59", "0:05", "about 2 minutes", "about 1 minute", "about 45 seconds", "about 1 second"]) {
+        const after = liftOf(countdown(BG_RM, clock, breakAfter, BLOCK_SENTENCE));
+        expect(after.hash).toBe(reference.hash);
+        expect(askBinding(GEN, after)).toBe(askBinding(GEN, reference));
+        expect(sameDialog(reference, after)).toBe(true);
+      }
+    }
+    const { pane, poll, answer } = rig(countdown(BG_RM, "1:20", undefined, BLOCK_SENTENCE));
+    const ask = poll()!;
+    pane.screen = countdown(BG_RM, "1:19", undefined, BLOCK_SENTENCE);
+    expect(poll()!.id).toBe(ask.id);
+    let second = 18;
+    pane.beforeRead = (p) => {
+      p.screen = countdown(BG_RM, `1:${second--}`, undefined, BLOCK_SENTENCE);
+    };
+    pane.onKeys = (_keys, p) => {
+      p.beforeRead = null;
+      p.screen = IDLE;
+    };
+    const reply = await answer(ask, idOf(ask, "Yes"));
+    expect(reply.receipt).toMatchObject({ outcome: "sent", keys: ["1"] });
+  });
+
   test("a clock in a sentence that is not the harness countdown still changes the ask", () => {
     const sentences = [
       (clock: string) => `⚠ Claude Code will automatically allow this request in ${clock}, to avoid blocking progress on an unattended session`,
+      (clock: string) => `⚠ Claude Code will automatically allow this request in ${clock}, to avoid holding up an unattended session`,
+      (clock: string) => `⚠ Claude Code will automatically deny this request in ${clock}, to avoid holding up an unattended session`,
+      (clock: string) => `⚠ Claude Code will automatically block this request in ${clock}, to avoid blocking progress on an unattended session`,
       (clock: string) => `Agent will automatically deny this request in ${clock}, to avoid blocking progress on an unattended session`,
       (clock: string) => `⚠ Claude Code will automatically deny this request in ${clock} unless you stop it`,
     ];
