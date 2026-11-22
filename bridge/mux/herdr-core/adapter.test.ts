@@ -340,6 +340,8 @@ describe("HerdrCoreMux over a fake core", () => {
     expect(second.value.revision).toBe(first.value.revision);
     expect(history.value.text.split("\n").length).toBeGreaterThan(first.value.text.split("\n").length);
     expect(first.value.text.includes("\u001b")).toBe(false);
+    expect(first.value.unstyled).toBe(true);
+    expect(history.value.unstyled).toBe(true);
     await fake.changePane("t1");
     const moved = await viewport();
     if (!moved.ok) throw new Error("a read failed");

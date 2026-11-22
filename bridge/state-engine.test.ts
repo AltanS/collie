@@ -759,6 +759,93 @@ describe("StateEngine — session name enrichment", () => {
     expect(agent("w1:p1").agentTitle).toBe("Lodge migration");
   });
 
+  test("an unstyled screen never turns a mode badge into sessionName when a journal tracks the session", async () => {
+    const { herdr, poll, agent } = makeTitledEngine({ "w1:p1": { agent: "Refactor cache layer" } });
+    const p = pane("w1:p1", "w1", "idle", "claude");
+    p.agent_session = { source: "hook", agent: "claude", kind: "id", value: "sess-1" };
+    herdr.panes = [p];
+    herdr.texts.set("w1:p1", named("ultracode"));
+    await poll();
+    expect("sessionName" in agent("w1:p1")).toBe(false);
+    expect(agent("w1:p1").agentTitle).toBe("Refactor cache layer");
+  });
+
+  test("a grid marked unstyled skips screen-name fallback even before a session ref arrives", async () => {
+    const herdr = new NameHerdr();
+    herdr.panes = [pane("w1:p1", "w1", "idle", "claude")];
+    herdr.texts.set("w1:p1", named("ultracode"));
+    const base = asMux(herdr);
+    const origReadGrid = base.readGrid.bind(base);
+    base.readGrid = async (id, req) => {
+      const res = await origReadGrid(id, req);
+      return res.ok ? { ok: true, value: { ...res.value, unstyled: true } } : res;
+    };
+    const engine = new StateEngine(base, 1500);
+    await engine["poll"]();
+    const view = engine.current().agents.find((a) => a.paneId === "w1:p1")!;
+    expect("sessionName" in view).toBe(false);
+  });
+
+  test("a real /rename ultracode in the journal still becomes sessionName on an unstyled screen", async () => {
+    const { herdr, poll, agent } = makeTitledEngine({ "w1:p1": { person: "ultracode", agent: "Refactor cache layer" } });
+    const p = pane("w1:p1", "w1", "idle", "claude");
+    p.agent_session = { source: "hook", agent: "claude", kind: "id", value: "sess-1" };
+    herdr.panes = [p];
+    herdr.texts.set("w1:p1", named("ultracode"));
+    await poll();
+    expect(agent("w1:p1").sessionName).toBe("ultracode");
+  });
+
+  test("a styled screen still reads a default-colour /rename when the journal names no person", async () => {
+    const { herdr, poll, agent } = makeTitledEngine({ "w1:p1": { agent: "Lodge migration" } });
+    const p = pane("w1:p1", "w1", "idle", "claude");
+    p.agent_session = { source: "hook", agent: "claude", kind: "id", value: "sess-1" };
+    herdr.panes = [p];
+    herdr.texts.set("w1:p1", [`\u001b[0m──────── screen-name ─`, "❯ ", "────────────────"].join("\n"));
+    await poll();
+    expect(agent("w1:p1").sessionName).toBe("screen-name");
+  });
+
+  test("attaching a session ref drops a badge cached from an earlier unstyled poll even at the same revision", async () => {
+    const titles: Record<string, { person?: string; agent?: string }> = {};
+    const { herdr, poll, agent } = makeTitledEngine(titles);
+    const p = pane("w1:p1", "w1", "idle", "claude");
+    p.revision = 5;
+    herdr.panes = [p];
+    herdr.texts.set("w1:p1", named("ultracode"));
+    await poll();
+    expect(agent("w1:p1").sessionName).toBe("ultracode");
+
+    p.agent_session = { source: "hook", agent: "claude", kind: "id", value: "sess-1" };
+    titles["w1:p1"] = { agent: "Refactor cache layer" };
+    await poll();
+    expect("sessionName" in agent("w1:p1")).toBe(false);
+    expect(agent("w1:p1").agentTitle).toBe("Refactor cache layer");
+  });
+
+  test("clearing a journal person name does not resurrect an earlier screen-cached name", async () => {
+    const titles: Record<string, { person?: string; agent?: string }> = {};
+    const { herdr, poll, agent } = makeTitledEngine(titles);
+    const p = pane("w1:p1", "w1", "idle", "claude");
+    p.revision = 1;
+    herdr.panes = [p];
+    herdr.texts.set("w1:p1", named("stale-screen"));
+    await poll();
+    expect(agent("w1:p1").sessionName).toBe("stale-screen");
+
+    p.agent_session = { source: "hook", agent: "claude", kind: "id", value: "sess-1" };
+    titles["w1:p1"] = { person: "renamed" };
+    p.revision = 2;
+    await poll();
+    expect(agent("w1:p1").sessionName).toBe("renamed");
+
+    titles["w1:p1"] = {};
+    p.revision = 3;
+    herdr.texts.set("w1:p1", "Do you want to proceed?\n ❯ 1. Yes\n   2. No");
+    await poll();
+    expect("sessionName" in agent("w1:p1")).toBe(false);
+  });
+
   test("threads a claude pane's /rename session name onto the view — claude-only", async () => {
     const { herdr, poll, agent } = makeNameEngine();
     herdr.panes = [pane("w1:p1", "w1", "idle", "claude"), pane("w1:p2", "w1", "idle", "codex")];
