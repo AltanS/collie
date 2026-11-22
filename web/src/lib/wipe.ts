@@ -57,6 +57,7 @@ import { forgetAgain } from "@/lib/new-page";
 import { forgetSlots } from "@/lib/slots";
 import { forgetNoPromptsConfirms } from "@/lib/no-prompts";
 import { forgetAnswers } from "@/lib/remembered-shape";
+import { forgetAskDrafts } from "@/lib/hill/asks-drafts";
 import { forgetSessionLater } from "@/lib/hill/session-later";
 import { forgetTroubleSignals } from "@/lib/report/once";
 import {
@@ -281,6 +282,13 @@ const BUILT_IN: readonly (readonly [string, WipeCleaner])[] = [
     "session-later",
     (context) => {
       if (context.reason !== "password") forgetSessionLater();
+    },
+  ],
+  [
+    // The answers marked on the Asks pages and not sent yet (lib/hill/asks-drafts.ts): words typed under this pairing.
+    "ask-drafts",
+    (context) => {
+      if (context.reason !== "password") forgetAskDrafts();
     },
   ],
   [
