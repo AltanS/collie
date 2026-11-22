@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+import { spawn } from "node:child_process";
 import { isAbsolute } from "node:path";
 
 // A pi extension that names the pane's session file on its herdr-core terminal (#809), based on
@@ -16,6 +16,10 @@ import { isAbsolute } from "node:path";
 //    tears it down, and emits `session_start` on a fresh runtime in the same process. Write state is
 //    shared on `globalThis` per `HC_TERMINAL_ID` so replacement runtimes share one serialised queue and
 //    remove the label only when `session_shutdown` carries `reason === "quit"`.
+//  - pi waits for what a handler returns. This extension never makes it wait at the start of a session
+//    or at the end of a turn: those handlers start the write and return at once. Only a quit waits for
+//    the queue, because the process is about to end, and `hc` gets 1.5 s at most. A failed or hung `hc`
+//    never throws into pi.
 //  - pi's bash tool injects `PI_SESSION_ID` into every shell it spawns, never into pi's own root env,
 //    so an inherited `PI_SESSION_ID` marks a nested pi.
 //  - `pi --mode rpc` sets `hasUI: true` with `mode: "rpc"`, so TUI gating checks `mode === undefined ||
@@ -33,7 +37,7 @@ export interface SessionContext {
   readonly sessionManager?: { getSessionFile?(): string | undefined };
 }
 
-/** A session event's payload (`reason` distinguishes `"quit"` from `/new`, `/resume`, `/fork`, `/reload`). */
+/** A session event's payload (`reason` distinguishes `"quit"` from `/new`, `/resume`, `/fork`, `/reload`). It may be missing. */
 export interface SessionEvent {
   readonly reason?: string;
 }
@@ -41,12 +45,12 @@ export interface SessionEvent {
 /** The pi events this extension listens to. */
 export type LabelledEvent = "session_start" | "agent_end" | "session_shutdown";
 
-/** The part of pi's extension API this extension uses. A handler may return a promise to await. */
+/** The part of pi's extension API this extension uses. Pi awaits a promise a handler returns; only a quit returns one. */
 export interface ExtensionApi {
-  on(event: LabelledEvent, handler: (event: SessionEvent, ctx: SessionContext | undefined) => Promise<void> | void): void;
+  on(event: LabelledEvent, handler: (event: SessionEvent | undefined, ctx: SessionContext | undefined) => Promise<void> | void): void;
 }
 
-/** Runs `hc` with these arguments and answers whether it succeeded. Never rejects. */
+/** Runs `hc` with these arguments and answers whether it succeeded. A runner that throws or rejects counts as not written. */
 export type HcRunner = (args: readonly string[]) => Promise<boolean>;
 
 /** Shared across replacement extension runtimes of one pi process (`wanted` newest, `written` last acked). */
@@ -75,7 +79,11 @@ function stateFor(store: Map<string, LabelState>, terminal: string): LabelState 
 
 /** Only the interactive TUI root pi of a terminal labels it (`rpc` also sets `hasUI: true`). */
 function interactive(ctx: SessionContext | undefined): boolean {
-  return ctx?.hasUI === true && (ctx.mode === undefined || ctx.mode === "tui");
+  try {
+    return ctx?.hasUI === true && (ctx.mode === undefined || ctx.mode === "tui");
+  } catch {
+    return false;
+  }
 }
 
 /** The session's file as an absolute path, or "" when it has none (`--no-session`). */
@@ -90,7 +98,10 @@ export function sessionFileOf(ctx: SessionContext | undefined): string {
 
 /**
  * Hook the events when this pi is the root TUI agent of a herdr-core terminal, and answer whether it
- * did. `env`, `run` and `shared` default to the process's own in production.
+ * did. `env`, `run` and `shared` default to the process's own in production. The handlers of
+ * `session_start` and `agent_end` start the write and return at once, so pi never waits for `hc`
+ * there. A quit returns the queue, so pi waits once, for at most the writes still pending and the
+ * clear. No handler throws or rejects.
  */
 export function activate(
   pi: ExtensionApi,
@@ -104,8 +115,11 @@ export function activate(
   const state = stateFor(shared, terminal);
   const write = async (): Promise<void> => {
     const next = state.wanted;
-    if (next !== state.written && (await run(["label", terminal, `${SESSION_FILE_LABEL}=${next}`]))) {
-      state.written = next;
+    if (next === state.written) return;
+    try {
+      if (await run(["label", terminal, `${SESSION_FILE_LABEL}=${next}`])) state.written = next;
+    } catch {
+      // A runner that throws or rejects counts as not written; the next event tries again.
     }
   };
   const sync = (value: string): Promise<void> => {
@@ -113,24 +127,68 @@ export function activate(
     state.queue = state.queue.then(write, write);
     return state.queue;
   };
-  const update = (_event: SessionEvent, ctx: SessionContext | undefined): Promise<void> | undefined =>
-    interactive(ctx) ? sync(sessionFileOf(ctx)) : undefined;
+  const update = (_event: SessionEvent | undefined, ctx: SessionContext | undefined): undefined => {
+    try {
+      if (interactive(ctx)) void sync(sessionFileOf(ctx));
+    } catch {
+      // Do nothing: a label is only a hint.
+    }
+    return undefined;
+  };
   pi.on("session_start", update);
   pi.on("agent_end", update);
   // Only a real quit clears the pane's label; `/new`, `/resume`, `/fork` and `/reload` hand over to the next runtime.
-  pi.on("session_shutdown", (event, ctx) => (event.reason === "quit" && interactive(ctx) ? sync("") : undefined));
+  // It clears by what this process wrote, not by `ctx`, which may be torn down by then. A pi that never
+  // wrote (print, json, rpc) has nothing to clear.
+  pi.on("session_shutdown", (event, _ctx) => {
+    try {
+      if (event?.reason !== "quit") return undefined;
+      if (state.wanted === "" && (state.written === undefined || state.written === "")) return undefined;
+      return sync("");
+    } catch {
+      return undefined;
+    }
+  });
   return true;
 }
 
-/** `hc` on the PATH, or `COLLIE_HC_BIN`; 1.5 s at most. Never rejects. */
+/** How long `hc` gets before it is killed. */
+const HC_LIMIT_MS = 1500;
+
+/**
+ * `hc` on the PATH, or `COLLIE_HC_BIN` (an empty value counts as unset); 1.5 s at most. Never rejects.
+ * The output is never read, so the child gets no pipes: a wrapper script that leaves a child behind
+ * cannot hold the wait. At the limit the child is killed and the answer is `false` at once.
+ */
 function runHc(args: readonly string[]): Promise<boolean> {
-  const { promise, resolve } = Promise.withResolvers<boolean>();
-  try {
-    execFile(process.env.COLLIE_HC_BIN ?? "hc", [...args], { timeout: 1500 }, (error) => resolve(error === null));
-  } catch {
-    resolve(false);
-  }
-  return promise;
+  return new Promise<boolean>((resolve) => {
+    let done = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const stop = (): void => clearTimeout(timer);
+    const finish = (ok: boolean): void => {
+      if (done) return;
+      done = true;
+      stop();
+      resolve(ok);
+    };
+    try {
+      const child = spawn(process.env.COLLIE_HC_BIN || "hc", [...args], { stdio: "ignore" });
+      timer = setTimeout(() => {
+        try {
+          child.kill("SIGKILL");
+        } catch {
+          // The child is gone already.
+        }
+        finish(false);
+      }, HC_LIMIT_MS);
+      timer.unref();
+      child.unref();
+      child.on("error", () => finish(false));
+      child.on("exit", (code) => finish(code === 0));
+    } catch {
+      finish(false);
+    }
+  });
 }
 
 export default function collieSessionLabel(pi: ExtensionApi): void {

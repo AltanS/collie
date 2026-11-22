@@ -15,11 +15,14 @@ import collieSessionLabel, {
 
 const SEPARATOR = "--call--";
 const POSIX = process.platform !== "win32";
-const ENV_KEYS = ["HC_TERMINAL_ID", "COLLIE_HC_BIN", "PI_SESSION_ID"] as const;
+const ENV_KEYS = ["HC_TERMINAL_ID", "COLLIE_HC_BIN", "PI_SESSION_ID", "PATH"] as const;
 
 type Handler = (event: SessionEvent, ctx: SessionContext | undefined) => Promise<void> | void;
 
-/** A fake pi runtime: `emit` runs every handler of an event and waits for what they return, as pi does. */
+/**
+ * A fake pi runtime: `emit` runs every handler of an event and waits for what they return, as pi does.
+ * Only a quit returns a promise, so after a start or a turn a test waits for the write with `idle`.
+ */
 function fakePi() {
   const handlers = new Map<LabelledEvent, Handler[]>();
   const pi: ExtensionApi = {
@@ -31,6 +34,11 @@ function fakePi() {
     await Promise.all((handlers.get(event) ?? []).map((handler) => handler(payload, ctx)));
   };
   return { pi, emit };
+}
+
+/** Waits until every write the terminal's queue holds has run. */
+async function idle(): Promise<void> {
+  await globalThis.__colliePiSessionLabel?.get(process.env.HC_TERMINAL_ID ?? "")?.queue;
 }
 
 const session = (file: string): SessionContext => ({ hasUI: true, mode: "tui", sessionManager: { getSessionFile: () => file } });
@@ -98,6 +106,7 @@ describe.skipIf(!POSIX)("the real hc runner", () => {
     const runtime = fakePi();
     collieSessionLabel(runtime.pi);
     await runtime.emit("session_start", session(file), { reason: "startup" });
+    await idle();
     expect(calls()).toEqual([["label", terminal, `pi.session_file=${file}`]]);
   });
 
@@ -109,6 +118,7 @@ describe.skipIf(!POSIX)("the real hc runner", () => {
     const runtime = fakePi();
     collieSessionLabel(runtime.pi);
     await runtime.emit("session_start", session(file), { reason: "startup" });
+    await idle();
     expect(calls()).toEqual([["label", terminal, `pi.session_file=${file}`]]);
     expect(existsSync(pwned)).toBe(false);
   });
@@ -120,33 +130,59 @@ describe.skipIf(!POSIX)("the real hc runner", () => {
     const runtime = fakePi();
     collieSessionLabel(runtime.pi);
     await runtime.emit("session_start", session(file), { reason: "startup" });
+    await idle();
     expect(calls()).toEqual([]);
 
     process.env.COLLIE_HC_BIN = writeHc("hc");
     await runtime.emit("agent_end", session(file));
+    await idle();
     expect(calls()).toEqual([["label", terminal, `pi.session_file=${file}`]]);
   });
 
-  test(
-    "an hc that hangs is cut off at the time limit and does not count as written",
-    async () => {
+  test.each([
+    ["a script that execs the sleep", "exec sleep 10"],
+    ["a wrapper script that leaves a child behind", "sleep 10"],
+  ])(
+    "an hc that hangs (%s) is cut off at the time limit, also at quit, and does not count as written",
+    async (_name, before) => {
       const terminal = newTerminal();
-      // `exec` replaces the shell, so the kill at the limit ends the process that holds the pipes.
-      process.env.COLLIE_HC_BIN = writeHc("hc-slow", "exec sleep 10");
+      process.env.COLLIE_HC_BIN = writeHc("hc-slow", before);
       const file = join(dir, "c.jsonl");
       const runtime = fakePi();
       collieSessionLabel(runtime.pi);
+      // The start does not wait for hc at all.
       const started = Date.now();
       await runtime.emit("session_start", session(file), { reason: "startup" });
-      expect(Date.now() - started).toBeLessThan(4000);
+      expect(Date.now() - started).toBeLessThan(500);
+      // The write itself is cut off at the limit (1.5 s; the bound is loose, the suite runs under load).
+      await idle();
+      expect(Date.now() - started).toBeLessThan(5000);
+      // A quit waits once, and also for at most the limit.
+      const quitAt = Date.now();
+      await runtime.emit("session_shutdown", session(file), { reason: "quit" });
+      expect(Date.now() - quitAt).toBeLessThan(5000);
       expect(calls()).toEqual([]);
 
       process.env.COLLIE_HC_BIN = writeHc("hc");
       await runtime.emit("agent_end", session(file));
+      await idle();
       expect(calls()).toEqual([["label", terminal, `pi.session_file=${file}`]]);
     },
     15_000,
   );
+
+  test("an empty COLLIE_HC_BIN counts as unset: hc on the PATH answers", async () => {
+    const terminal = newTerminal();
+    writeHc("hc");
+    process.env.COLLIE_HC_BIN = "";
+    process.env.PATH = `${dir}:${saved.PATH ?? ""}`;
+    const file = join(dir, "e.jsonl");
+    const runtime = fakePi();
+    collieSessionLabel(runtime.pi);
+    await runtime.emit("session_start", session(file), { reason: "startup" });
+    await idle();
+    expect(calls()).toEqual([["label", terminal, `pi.session_file=${file}`]]);
+  });
 
   test("session_shutdown with reason quit writes the empty value", async () => {
     const terminal = newTerminal();
@@ -155,6 +191,7 @@ describe.skipIf(!POSIX)("the real hc runner", () => {
     const runtime = fakePi();
     collieSessionLabel(runtime.pi);
     await runtime.emit("session_start", session(file), { reason: "startup" });
+    await idle();
     await runtime.emit("session_shutdown", session(file), { reason: "quit" });
     expect(calls()).toEqual([
       ["label", terminal, `pi.session_file=${file}`],

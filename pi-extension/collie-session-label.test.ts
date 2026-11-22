@@ -14,9 +14,13 @@ import {
 // What the extension writes into the pane's herdr-core terminal, and when. The `hc` runner is a fake
 // that records each argument list; the real one is `hc label <terminal> pi.session_file=<path>`.
 
-type Handler = (event: SessionEvent, ctx: SessionContext | undefined) => Promise<void> | void;
+type Handler = (event: SessionEvent | undefined, ctx: SessionContext | undefined) => Promise<void> | void;
 
-/** A fake pi runtime: `emit` runs every handler of an event and waits for what they return, as pi does. */
+/**
+ * A fake pi runtime: `emit` runs every handler of an event and answers what they returned, as pi
+ * sees it. Pi waits for a returned promise; the extension returns one only at a quit, so a test that
+ * wants the write of a start or a turn waits for the state's queue with `idle`.
+ */
 function fakePi() {
   const handlers = new Map<LabelledEvent, Handler[]>();
   const pi: ExtensionApi = {
@@ -24,10 +28,14 @@ function fakePi() {
       handlers.set(event, [...(handlers.get(event) ?? []), handler]);
     },
   };
-  const emit = async (event: LabelledEvent, ctx: SessionContext | undefined, payload: SessionEvent = {}) => {
-    await Promise.all((handlers.get(event) ?? []).map((handler) => handler(payload, ctx)));
-  };
+  const emit = (event: LabelledEvent, ctx: SessionContext | undefined, payload: SessionEvent | undefined = {}) =>
+    (handlers.get(event) ?? []).map((handler) => handler(payload, ctx));
   return { pi, handlers, emit };
+}
+
+/** Waits until every write the terminal's queue holds has run. */
+async function idle(store: Map<string, LabelState> | undefined, terminal = "t7"): Promise<void> {
+  await store?.get(terminal)?.queue;
 }
 
 /** A runner that records each call and answers with the next outcome (success by default). */
@@ -71,29 +79,34 @@ describe("the pi.session_file label", () => {
       // Uses the default process-wide globalThis store across replacement runtimes.
       const first = fakePi();
       expect(activate(first.pi, env, hc.run)).toBe(true);
-      await first.emit("session_start", session(A), { reason: "startup" });
-      await first.emit("session_shutdown", session(A), { reason: "new" });
+      first.emit("session_start", session(A), { reason: "startup" });
+      await idle(globalThis.__colliePiSessionLabel);
+      first.emit("session_shutdown", session(A), { reason: "new" });
 
       const second = fakePi();
       activate(second.pi, env, hc.run);
-      await second.emit("session_start", session(B), { reason: "new" });
-      await second.emit("session_shutdown", session(B), { reason: "resume" });
+      second.emit("session_start", session(B), { reason: "new" });
+      await idle(globalThis.__colliePiSessionLabel);
+      second.emit("session_shutdown", session(B), { reason: "resume" });
 
       const third = fakePi();
       activate(third.pi, env, hc.run);
-      await third.emit("session_start", session(C), { reason: "resume" });
-      await third.emit("session_shutdown", session(C), { reason: "fork" });
+      third.emit("session_start", session(C), { reason: "resume" });
+      await idle(globalThis.__colliePiSessionLabel);
+      third.emit("session_shutdown", session(C), { reason: "fork" });
 
       const fourth = fakePi();
       activate(fourth.pi, env, hc.run);
-      await fourth.emit("session_start", session(D), { reason: "fork" });
-      await fourth.emit("session_shutdown", session(D), { reason: "reload" });
+      fourth.emit("session_start", session(D), { reason: "fork" });
+      await idle(globalThis.__colliePiSessionLabel);
+      fourth.emit("session_shutdown", session(D), { reason: "reload" });
 
       // Reload keeps the same file D; shared state avoids a redundant write until Ctrl+D quits.
       const fifth = fakePi();
       activate(fifth.pi, env, hc.run);
-      await fifth.emit("session_start", session(D), { reason: "reload" });
-      await fifth.emit("session_shutdown", session(D), { reason: "quit" });
+      fifth.emit("session_start", session(D), { reason: "reload" });
+      await idle(globalThis.__colliePiSessionLabel);
+      await Promise.all(fifth.emit("session_shutdown", session(D), { reason: "quit" }));
 
       expect(hc.calls).toEqual([set(A), set(B), set(C), set(D), REMOVE]);
     } finally {
@@ -106,33 +119,43 @@ describe("the pi.session_file label", () => {
     const runtime = fakePi();
     const hc = recorder();
     activate(runtime.pi, { HC_TERMINAL_ID: "t7" }, hc.run, shared);
-    await runtime.emit("session_start", session(A), { reason: "startup" });
-    await runtime.emit("agent_end", session(A));
+    runtime.emit("session_start", session(A), { reason: "startup" });
+    await idle(shared);
+    runtime.emit("agent_end", session(A));
+    await idle(shared);
     // Older pi without ctx.mode still counts when hasUI is true.
-    await runtime.emit("agent_end", session(undefined, true, undefined));
-    await runtime.emit("agent_end", session("relative/path.jsonl"));
+    runtime.emit("agent_end", session(undefined, true, undefined));
+    await idle(shared);
+    runtime.emit("agent_end", session("relative/path.jsonl"));
+    await idle(shared);
     expect(hc.calls).toEqual([set(A), REMOVE]);
   });
 
   test("a failed write is tried again at agent_end, even for the same file", async () => {
+    const shared = new Map<string, LabelState>();
     const runtime = fakePi();
     const hc = recorder([false]);
-    activate(runtime.pi, { HC_TERMINAL_ID: "t7" }, hc.run, new Map());
-    await runtime.emit("session_start", session(A), { reason: "startup" });
-    await runtime.emit("agent_end", session(A));
-    await runtime.emit("agent_end", session(A));
+    activate(runtime.pi, { HC_TERMINAL_ID: "t7" }, hc.run, shared);
+    runtime.emit("session_start", session(A), { reason: "startup" });
+    await idle(shared);
+    runtime.emit("agent_end", session(A));
+    await idle(shared);
+    runtime.emit("agent_end", session(A));
+    await idle(shared);
     expect(hc.calls).toEqual([set(A), set(A)]);
   });
 
   test("non-TUI modes (print, json, and rpc where hasUI is true) never touch the pane's label", async () => {
+    const shared = new Map<string, LabelState>();
     const runtime = fakePi();
     const hc = recorder();
-    activate(runtime.pi, { HC_TERMINAL_ID: "t7" }, hc.run, new Map());
-    await runtime.emit("session_start", session(A, false, "print"), { reason: "startup" });
-    await runtime.emit("session_start", session(A, true, "rpc"), { reason: "startup" });
-    await runtime.emit("agent_end", session(B, true, "rpc"));
-    await runtime.emit("session_shutdown", session(A, true, "rpc"), { reason: "quit" });
-    await runtime.emit("session_start", undefined);
+    activate(runtime.pi, { HC_TERMINAL_ID: "t7" }, hc.run, shared);
+    runtime.emit("session_start", session(A, false, "print"), { reason: "startup" });
+    runtime.emit("session_start", session(A, true, "rpc"), { reason: "startup" });
+    runtime.emit("agent_end", session(B, true, "rpc"));
+    await Promise.all(runtime.emit("session_shutdown", session(A, true, "rpc"), { reason: "quit" }));
+    runtime.emit("session_start", undefined);
+    await idle(shared);
     expect(hc.calls).toEqual([]);
   });
 
@@ -149,29 +172,41 @@ describe("the pi.session_file label", () => {
     };
     const r1 = fakePi();
     activate(r1.pi, { HC_TERMINAL_ID: "t7" }, run, shared);
-    const first = r1.emit("session_start", session(A), { reason: "startup" });
+    r1.emit("session_start", session(A), { reason: "startup" });
     await started.promise;
 
     const r2 = fakePi();
     activate(r2.pi, { HC_TERMINAL_ID: "t7" }, run, shared);
-    const second = r2.emit("session_start", session(B), { reason: "new" });
+    r2.emit("session_start", session(B), { reason: "new" });
 
     const r3 = fakePi();
     activate(r3.pi, { HC_TERMINAL_ID: "t7" }, run, shared);
-    const third = r3.emit("session_start", session(C), { reason: "new" });
+    r3.emit("session_start", session(C), { reason: "new" });
 
     slow.resolve(true);
-    await Promise.all([first, second, third]);
+    await idle(shared);
     expect(calls).toEqual([set(A), set(C)]);
   });
 
   test("quit resolves only once the label is removed, so pi waits for it before exiting", async () => {
+    const shared = new Map<string, LabelState>();
     const runtime = fakePi();
     const slow = Promise.withResolvers<boolean>();
-    activate(runtime.pi, { HC_TERMINAL_ID: "t7" }, () => slow.promise, new Map());
+    const calls: string[] = [];
+    const started = Promise.withResolvers<void>();
+    activate(runtime.pi, { HC_TERMINAL_ID: "t7" }, (args) => {
+      calls.push(args.join(" "));
+      if (calls.length > 1) return Promise.resolve(true);
+      started.resolve();
+      return slow.promise;
+    }, shared);
+    runtime.emit("session_start", session(A), { reason: "startup" });
+    await started.promise;
+    const returned = runtime.emit("session_shutdown", session(A), { reason: "quit" });
+    expect(returned).toHaveLength(1);
     let done = false;
     const shutdown = (async () => {
-      await runtime.emit("session_shutdown", session(A), { reason: "quit" });
+      await Promise.all(returned);
       done = true;
     })();
     await Promise.resolve();
@@ -179,6 +214,75 @@ describe("the pi.session_file label", () => {
     slow.resolve(true);
     await shutdown;
     expect(done).toBe(true);
+    expect(calls).toEqual([set(A), REMOVE]);
+  });
+
+  test("session_start and agent_end return undefined at once, while the write is still pending", async () => {
+    const shared = new Map<string, LabelState>();
+    const runtime = fakePi();
+    const slow = Promise.withResolvers<boolean>();
+    activate(runtime.pi, { HC_TERMINAL_ID: "t7" }, () => slow.promise, shared);
+    expect(runtime.emit("session_start", session(A), { reason: "startup" })).toEqual([undefined]);
+    expect(runtime.emit("agent_end", session(A))).toEqual([undefined]);
+    expect(runtime.emit("session_shutdown", session(A), { reason: "reload" })).toEqual([undefined]);
+    slow.resolve(true);
+    await idle(shared);
+  });
+
+  test("a runner that throws, or rejects, counts as not written and never rejects a handler; the next event writes", async () => {
+    for (const fail of [
+      () => {
+        throw new Error("spawn failed");
+      },
+      () => Promise.reject(new Error("hc failed")),
+    ]) {
+      const shared = new Map<string, LabelState>();
+      const runtime = fakePi();
+      const calls: string[] = [];
+      let first = true;
+      activate(runtime.pi, { HC_TERMINAL_ID: "t7" }, (args) => {
+        calls.push(args.join(" "));
+        if (!first) return Promise.resolve(true);
+        first = false;
+        return fail();
+      }, shared);
+      expect(runtime.emit("session_start", session(A), { reason: "startup" })).toEqual([undefined]);
+      await idle(shared);
+      runtime.emit("agent_end", session(A));
+      await idle(shared);
+      expect(calls).toEqual([set(A), set(A)]);
+      expect(shared.get("t7")?.written).toBe(A);
+    }
+  });
+
+  test("quit clears a written label even when ctx is undefined or torn down", async () => {
+    const tornDown: SessionContext = {
+      get hasUI(): boolean {
+        throw new Error("torn down");
+      },
+    };
+    for (const ctx of [undefined, tornDown]) {
+      const shared = new Map<string, LabelState>();
+      const runtime = fakePi();
+      const hc = recorder();
+      activate(runtime.pi, { HC_TERMINAL_ID: "t7" }, hc.run, shared);
+      runtime.emit("session_start", session(A), { reason: "startup" });
+      await idle(shared);
+      await Promise.all(runtime.emit("session_shutdown", ctx, { reason: "quit" }));
+      expect(hc.calls).toEqual([set(A), REMOVE]);
+    }
+  });
+
+  test("quit in a process that never wrote calls nothing, and a missing event is ignored", async () => {
+    const shared = new Map<string, LabelState>();
+    const runtime = fakePi();
+    const hc = recorder();
+    activate(runtime.pi, { HC_TERMINAL_ID: "t7" }, hc.run, shared);
+    await Promise.all(runtime.emit("session_shutdown", session(A), { reason: "quit" }));
+    await Promise.all(runtime.emit("session_shutdown", undefined, undefined));
+    runtime.emit("session_start", undefined, undefined);
+    await idle(shared);
+    expect(hc.calls).toEqual([]);
   });
 
   test("a session manager that throws reads as no file", () => {

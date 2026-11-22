@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+import { spawn } from "node:child_process";
 import { isAbsolute } from "node:path";
 
 // An Oh My Pi extension that names the pane's session file on its herdr-core terminal (#675).
@@ -91,11 +91,42 @@ export function activate(pi: ExtensionApi, env: Readonly<Record<string, string |
   return true;
 }
 
-/** `hc` on the PATH, or `COLLIE_HC_BIN`; 1.5 s at most. */
+/** How long `hc` gets before it is killed. */
+const HC_LIMIT_MS = 1500;
+
+/**
+ * `hc` on the PATH, or `COLLIE_HC_BIN` (an empty value counts as unset); 1.5 s at most. Never rejects.
+ * The output is never read, so the child gets no pipes: a wrapper script that leaves a child behind
+ * cannot hold the wait. At the limit the child is killed and the answer is `false` at once.
+ */
 function runHc(args: readonly string[]): Promise<boolean> {
-  const { promise, resolve } = Promise.withResolvers<boolean>();
-  execFile(process.env.COLLIE_HC_BIN ?? "hc", [...args], { timeout: 1500 }, (error) => resolve(error === null));
-  return promise;
+  return new Promise<boolean>((resolve) => {
+    try {
+      let done = false;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const finish = (ok: boolean): void => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        resolve(ok);
+      };
+      const child = spawn(process.env.COLLIE_HC_BIN || "hc", [...args], { stdio: "ignore" });
+      timer = setTimeout(() => {
+        try {
+          child.kill("SIGKILL");
+        } catch {
+          // The child is gone already.
+        }
+        finish(false);
+      }, HC_LIMIT_MS);
+      timer.unref();
+      child.unref();
+      child.on("error", () => finish(false));
+      child.on("exit", (code) => finish(code === 0));
+    } catch {
+      resolve(false);
+    }
+  });
 }
 
 export default function collieSessionLabel(pi: ExtensionApi): void {
