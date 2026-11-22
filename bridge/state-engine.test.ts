@@ -823,6 +823,24 @@ describe("StateEngine — session name enrichment", () => {
     expect(agent("w1:p1").agentTitle).toBe("Refactor cache layer");
   });
 
+  test("switching session ref at the same revision re-enriches and drops the previous session's cached screen name", async () => {
+    const titles: Record<string, { person?: string; agent?: string }> = {};
+    const { herdr, poll, agent } = makeTitledEngine(titles);
+    const p = pane("w1:p1", "w1", "idle", "claude");
+    p.revision = 5;
+    p.agent_session = { source: "hook", agent: "claude", kind: "id", value: "sess-1" };
+    herdr.panes = [p];
+    herdr.texts.set("w1:p1", ["\x1b[2m────\x1b[0m old-name \x1b[2m────\x1b[0m", "❯ ", "─".repeat(40)].join("\n"));
+    await poll();
+    expect(agent("w1:p1").sessionName).toBe("old-name");
+
+    // A new session attaches to the same pane before the mux reports a new revision.
+    p.agent_session = { source: "hook", agent: "claude", kind: "id", value: "sess-2" };
+    herdr.texts.set("w1:p1", [`\x1b[2m${"─".repeat(40)}\x1b[0m`, "❯ ", "─".repeat(40)].join("\n"));
+    await poll();
+    expect("sessionName" in agent("w1:p1")).toBe(false);
+  });
+
   test("clearing a journal person name does not resurrect an earlier screen-cached name", async () => {
     const titles: Record<string, { person?: string; agent?: string }> = {};
     const { herdr, poll, agent } = makeTitledEngine(titles);
