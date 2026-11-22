@@ -257,8 +257,9 @@ push until the release is out.
 **The GitHub Release page is built, not written.** `release.yml` runs
 `scripts/release-notes.ts` over `CHANGELOG.md` and hands the result to `gh release create`. The
 page opens with `## What changed`, the bold lead of every bullet in that version's section, one
-line each, under its group's name; then a link to the section itself for the commits and a compare
-link; then the by-hand verify recipe, the one block that sits in a `<details>`. It carries no update
+line each, under its group's name, the groups in the order the section's `###` headings stand (a
+patch may put `### Fixed` first; the in-app notes keep the fixed order); then a link to the section
+itself for the commits and a compare link; then the by-hand verify recipe, the one block that sits in a `<details>`. It carries no update
 commands (Altan, 2026-11-18): `docs/upgrading.md` keeps them, and the in-app update band shows its
 own. An Edge build's page opens with one line that says it is an Edge build.
 
