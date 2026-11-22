@@ -83,8 +83,10 @@ export function FontSettingsControl() {
           </label>
           {/* Same construction as LanguageControl's select, for the same reasons: the wrapper owns
               the border and the chevron, `appearance-none` removes the engine's own caret, and the
-              box is `shrink-0` so a long family name never resizes the row. */}
-          <div className="relative shrink-0">
+              box is `min-w-0` with a truncating select, so a long family name never resizes the
+              row, and on a narrow phone a long label shrinks the box and cuts the name with an
+              ellipsis instead of pushing it out of the card. */}
+          <div className="relative min-w-0">
             <select
               id="pref-font-family"
               value={prefs.fontFamily}
@@ -95,7 +97,7 @@ export function FontSettingsControl() {
                 const next = event.target.value;
                 if (isFontFamily(next)) setFontFamily(next);
               }}
-              className="min-h-11 appearance-none rounded-md border border-border/60 bg-background py-2 pl-3 pr-9 text-sm font-medium text-foreground"
+              className="min-h-11 max-w-full appearance-none truncate rounded-md border border-border/60 bg-background py-2 pl-3 pr-9 text-sm font-medium text-foreground"
             >
               {FONT_FAMILIES.map((family) => (
                 <option key={family} value={family}>

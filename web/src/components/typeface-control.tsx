@@ -80,9 +80,10 @@ export function TypefaceControl() {
             {t("settings.typeface.family")}
           </label>
           {/* Same construction as LanguageControl's select: the wrapper owns the border and the
-              chevron, `appearance-none` removes the engine's caret, `shrink-0` keeps a long family
-              name from resizing the row. */}
-          <div className="relative shrink-0">
+              chevron, `appearance-none` removes the engine's caret, `min-w-0` with a truncating select
+              keeps a long family name from resizing the row, and on a narrow phone the box shrinks
+              and cuts the name with an ellipsis instead of leaving the card. */}
+          <div className="relative min-w-0">
             <select
               id="pref-typeface"
               value={chosen}
@@ -97,7 +98,7 @@ export function TypefaceControl() {
                 if (face === null) setDesignFont(next);
                 else setDesignFont(next, face);
               }}
-              className="min-h-11 appearance-none rounded-md border border-border/60 bg-background py-2 pl-3 pr-9 text-sm font-medium text-foreground"
+              className="min-h-11 max-w-full appearance-none truncate rounded-md border border-border/60 bg-background py-2 pl-3 pr-9 text-sm font-medium text-foreground"
             >
               {SHIPPED_FONTS.map((font) => (
                 <option key={font} value={font}>

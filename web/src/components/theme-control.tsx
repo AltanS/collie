@@ -59,7 +59,10 @@ export function ThemeControl() {
               onClick={() => setTheme(option.value)}
               className={cn(
                 // min-h-11 = 44px, the iOS/Android comfort target rather than the 24px AA floor.
-                "flex min-h-11 flex-1 items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+                // px-1.5 and not px-3: three icon-and-word segments must fit the card at 360 px in a language
+                // with long words (Russian "Системная" is 101 px of text). Equal widths still hold whenever the
+                // words are short, so the English row does not move.
+                "flex min-h-11 flex-1 items-center justify-center gap-2 rounded-md px-1.5 py-2 text-sm font-medium transition-colors",
                 // Selected is a filled pill, not a tint: `bg-secondary` on a white card is 1.09:1,
                 // so the fill has to carry the selection on its own. `font-medium` is therefore
                 // unconditional: bold glyphs are wider, so putting the weight on at selection made
