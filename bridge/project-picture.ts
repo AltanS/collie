@@ -54,7 +54,7 @@ import { PROJECT_PICTURE_BYTES_MAX, PROJECT_PICTURE_SIDE_MAX, PROJECT_PICTURE_SI
 import { deniedFoldersSync, hillImageMime, hillImageSize } from "./hill/media.ts";
 import { HOST, isBelow } from "./host.ts";
 import { locateProjectFile, readProjectFile, readSmallFile, stampOf, type LocatedProjectFile, type ProjectFileOnDisk } from "./project-file.ts";
-import { isDeniedPath } from "./read-guard.ts";
+import { isDeniedSpelling, spellingsOf } from "./read-guard.ts";
 
 /** How long the answer to "which file speaks for this folder" stands. */
 export const LOCATE_TTL_MS = 30_000;
@@ -253,7 +253,8 @@ export async function readProjectPicture(path: string, denied: readonly string[]
   } catch {
     return { ok: false, why: "does not exist or may not be read" };
   }
-  if (isDeniedPath(path, denied)) return { ok: false, why: "is inside Collie's own folders or a .git folder" };
+  // Every spelling of the path, not only the one checked above (read-guard.ts, `isDeniedSpelling`).
+  if (isDeniedSpelling(await spellingsOf(path), () => denied)) return { ok: false, why: "is inside Collie's own folders or a .git folder" };
   // Opened without following a link and without blocking, the descriptor checked to be this very file at
   // this real path, its size checked before the read (project-file.ts, `readSmallFile`).
   // Compared with `path` itself, the path every check above ran on (R2): one resolve, one truth.

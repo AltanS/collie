@@ -30,8 +30,8 @@
 // bridge can. A file with more than one link is not refused either: package managers (pnpm) and
 // tools hard-link ordinary files, and refusing them would refuse the files a root is made of.
 
-import { constants, type Dirent } from "node:fs";
-import { lstat, open, opendir, readlink, stat } from "node:fs/promises";
+import { constants, realpath as realpathCb, realpathSync, type Dirent } from "node:fs";
+import { lstat, open, opendir, readlink, realpath, stat } from "node:fs/promises";
 
 import { isStateSecretName } from "./acl-policy.ts";
 import { isAbsoluteFolder, withinBound } from "./changes-root.ts";
@@ -171,6 +171,46 @@ export async function deniedFolders(privateFolders: readonly string[], fs: Pick<
     if (real !== null && real !== folder) denied.push(real);
   }
   return denied;
+}
+
+/**
+ * Every spelling of one path on this host: as given, as `realpathSync` answers it, and as the OS answers
+ * it (`realpathSync.native`, the same as `fs/promises` `realpath`). They differ on Windows only: the first
+ * keeps an 8.3 short name (`RUNNER~1`) and a `subst` drive, the OS's answer has the long name and the
+ * real drive. A denied check that looks at one spelling lets the other through (the Hill's reader read a
+ * file in the state folder by its 8.3 name, 2026-11-22), so a reader checks them all with
+ * {@link isDeniedSpelling}. A spelling that cannot be resolved is left out; the path as given stays.
+ */
+export function spellingsOfSync(path: string): string[] {
+  const out = [path];
+  for (const resolve of [realpathSync, realpathSync.native]) {
+    try {
+      const spelled = resolve(path);
+      if (!out.includes(spelled)) out.push(spelled);
+    } catch {
+      // Not there (any more): the spellings that resolved still count.
+    }
+  }
+  return out;
+}
+
+/** {@link spellingsOfSync} with async calls only, for a reader that must never block on a slow disk. */
+export async function spellingsOf(path: string): Promise<string[]> {
+  const js = new Promise<string>((resolve, reject) => realpathCb(path, (err, real) => (err === null ? resolve(real) : reject(err))));
+  const out = [path];
+  for (const spelled of await Promise.all([js.catch(() => null), realpath(path).catch(() => null)])) {
+    if (spelled !== null && !out.includes(spelled)) out.push(spelled);
+  }
+  return out;
+}
+
+/**
+ * Whether any spelling of one path ({@link spellingsOfSync}) is denied by {@link isDeniedPath}, each
+ * against the list `deniedOf` gives for it. THE check for a reader that takes a path from outside (the
+ * Hill's reader, the project picture): a file inside Collie's own folders is refused by every spelling.
+ */
+export function isDeniedSpelling(spellings: readonly string[], deniedOf: (spelling: string) => readonly string[], host: Host = HOST): boolean {
+  return spellings.some((spelling) => isDeniedPath(spelling, deniedOf(spelling), host));
 }
 
 /**
