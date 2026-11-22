@@ -41,6 +41,8 @@ export const SCENARIOS = [
   { id: "clear-pi", title: "28 Clear a pi draft from the Keys board", only: ["pi"] },
   // A send queued behind a running omp turn (ADR 0122), case 29: the receipt card, Stop, Send, Discard.
   { id: "queued-omp", title: "29 a queued send on omp: card, Stop, Send or Discard", only: ["omp"] },
+  // Edit on Claude's waiting card (ADR 0122, the 2026-11-22 addendum), case 37: the take-back, then the changed text sent.
+  { id: "queue-edit", title: "37 edit a waiting message", only: ["claude"] },
   // The space border (M98 spec 06): an agent's message stays in its space. Cases 30 to 33 start a throwaway
   // Claude as the sender, in the run's own space (30) or in another one (31 to 33), and send through the CLI.
   // Only 33 spends a model turn; the others hold what passes behind a draft, or are refused.

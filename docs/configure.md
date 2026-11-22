@@ -347,9 +347,11 @@ When Collie sees it there right after the key, the receipt says so, for example 
 message is back in the agent as a draft." In Chat the message moves to a **Back in the box** card.
 Messages that came back together share one card.
 
-The card has two buttons, and both read the box again first. **Send** sends the draft only when the
+The card has three buttons, and each reads the box again first. **Send** sends the draft only when the
 turn is idle and the box holds exactly that text. **Discard** empties the box only when it still
-holds that text; if you changed it, Discard removes the card and presses nothing. While the draft
+holds that text; if you changed it, Discard removes the card and presses nothing. **Edit** empties the
+agent's box the way Discard does, and only then puts the card's text into Collie's message box, above
+any text you had typed there, so you can change it before you send it. While the draft
 stands, a new message is refused, and the refusal points you to the card.
 
 Collie refuses before it presses when pressing could do harm:
@@ -1628,6 +1630,15 @@ When you queue a message while Claude Code works, Chat shows it on a **Waiting t
 the card's **Send now** button sends the whole queue to the running turn at once. Only Claude Code
 offers it, because the button presses Ctrl+Enter, the key that agent defines for this. The button is
 hidden on a read-only device and on a saved copy.
+
+On Claude Code the same card also has an **Edit** button, left of **Send now**. It takes all the
+waiting messages out of the agent's queue and puts them into Collie's message box, in the order they
+waited, above any text you had already typed there. Change them and send them as a new message.
+Collie presses Up, Claude Code's own key for this, once, and reads the session log to check that the
+queue came back. When a message went out in that moment, Collie says "It already went out." and
+types nothing. When it cannot tell, it says "The text may have reached the agent. Read the chat." A
+message with a picture or a pasted block cannot come back whole, so Edit refuses it and presses
+nothing. Edit is hidden where Send now is hidden, and needs no setting.
 
 Most other agents, OMP and pi among them, write nothing about a queued message into their log until
 the turn ends. For them Chat draws the messages Collie itself queued on the same **Waiting to send**

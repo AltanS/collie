@@ -14,8 +14,9 @@ function cells(leg: Leg): string[] {
 }
 
 describe("the browser leg's cases per leg", () => {
-  test("the solo leg prints thirty-nine cells: the twenty-two it printed before the crew leg, cases 16 to 18, case 22, the two take-backs, case 25, case 26, case 28, case 29, the four space cases 30 to 33, and Deliver now, case 36", () => {
-    expect(cells("solo")).toHaveLength(39);
+  test("the solo leg prints forty cells: the twenty-two it printed before the crew leg, cases 16 to 18, case 22, the two take-backs, case 25, case 26, case 28, case 29, the four space cases 30 to 33, Deliver now, case 36, and Edit on a waiting message, case 37", () => {
+    expect(cells("solo")).toHaveLength(40);
+    expect(cells("solo").filter((cell) => cell.endsWith(" queue-edit"))).toEqual(["claude queue-edit"]);
     expect(cells("solo").filter((cell) => cell.endsWith(" walky-deliver-now"))).toEqual(["claude walky-deliver-now"]);
     expect(cells("solo").filter((cell) => / walky-space-/.test(cell))).toEqual(["claude walky-space-in", "claude walky-space-refused", "claude walky-space-reply", "claude walky-space-outside"]);
     expect(cells("solo").filter((cell) => cell.endsWith(" queued-omp"))).toEqual(["omp queued-omp"]);

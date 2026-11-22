@@ -179,6 +179,52 @@ for a message the agent held, until the compaction ended.
   receipt does (the prompt in the journal, the prompt edge, `unconfirmed`), so it cannot stand beside
   the prompt row it became.
 
+## Edit takes the queue back (addendum, 2026-11-22)
+
+Point 12 is answered for Claude Code. Its dequeue key is Up: pressed over a box that holds no text while
+messages wait, it takes the whole queue back into the box and writes one `popAll` row into the session
+log. Collie now offers **Edit** on the journal's waiting card and on the returned card. pi, OMP and Muse
+keep point 12 until a lab run proves their key (OMP's pops only the newest message).
+
+1. **The key is data on the adapter.** `JournalAdapter.dequeue` is `{ keys: ["Up"], proof: "back" }` on
+   Claude Code alone. The live window sends it as `ChatWindowBody.dequeueQueued` (beside `sendQueuedNow`),
+   and the chat route drops it where the multiplexer cannot deliver the key. The phone shows Edit only
+   for a non-empty list on a pane it may write to; it never sends the key itself.
+2. **One bridge action, under the pane lock.** `POST /api/pane/:id/dequeue` takes a request id alone
+   (`bridge/surface/dequeue.ts`). It reads the screen (a dialog, an idle turn, a draft in the box or no
+   box refuse before the key), then the queue from the journal, read again past the live window's tick
+   floor (`LiveWindows.queueNow`). Only a queue whose every message the reducer holds whole is taken: a
+   place with no words, a paste, a picture marker, a masked text or a text over 3000 characters refuse
+   `not_whole`, because the box would come back with a marker in place of the words. Then a second screen
+   read, then the key, once, as the person's tap. The same request id answers the same receipt and never
+   presses twice.
+3. **The proof is the journal, tied to the queue that was read.** The reducer numbers every queue move
+   (`RowReducer.queueMark`). The proof is the first move after the one the read saw, and it must be a
+   `popAll` (`back`) whose words, when the row has any, equal the queue's texts joined with one newline,
+   space-free compared. Only plumbing moves (a task note) may come before it. A new log, a gap in the
+   numbering, or another move first is no proof. With the proof, the box must hold the same text; Collie
+   empties it with the profile's clear key in bounded rounds and answers `taken` with the texts, and the
+   Send Protocol forgets the matching open sends, so no receipt card stands for a text that left.
+4. **Why a box read is not proof.** Up over an empty box with no queue recalls the last prompt from the
+   agent's history. A turn that ends between the read and the key sends the queue and then makes Up a
+   history recall, so the box can show the waiting text while it went out. Only the journal can tell the
+   two apart. That case (the history trap) ends `too_late` only when the journal shows the queue went out
+   (a `dequeue` of the person's words) and no `popAll`: the box is emptied when it holds exactly the
+   recalled text, and Collie says "It already went out." Every other case with no proof ends `in_box`
+   (the box holds text after a `popAll`, and its returned card carries on) or `unknown`, and nothing more
+   is pressed. No receipt, log or audit line holds the text; the audit names the outcome and a count.
+5. **The merge rule.** `taken` puts the texts into the composer, in queue order, one newline between,
+   then one newline and whatever draft the box held. Nothing is dropped and nothing is sent. Where the
+   composer cannot take text (a sign-in code field, a prompt that does not echo, an open Undo window), the
+   text waits on the Put back notice.
+6. **Edit on the returned card is its Discard, then the merge.** The card's text goes into the composer
+   only when the bridge answers that it emptied the box. A masked text gets no Edit.
+7. **Cancel keeps text.** Cancel on a held send gave its words back only into an empty box and dropped
+   them over a draft. It now takes the Put back road (M104): an empty box takes them, a box with text
+   keeps its text and the words wait on the Put back notice. A WalkyTalky row still gives nothing back.
+8. **A crew member's pane goes through the lead,** as Clear does: the crew router forwards
+   `POST /crew/v1/pane/:id/dequeue` as a write (CREW_PROTOCOL.md).
+
 ## Assumptions
 
 - **One clock.** The journal's prompt time and the receipt's submit time are compared with a 2 s skew.
