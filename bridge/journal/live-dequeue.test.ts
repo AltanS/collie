@@ -51,13 +51,13 @@ describe("the chat answer's dequeueQueued", () => {
 
   test("the route drops it where the multiplexer cannot deliver the key, and keeps everything else", () => {
     const body: ChatWindowBody = { page: "live", gen: 1, session: "s1", rev: 3, head: 3, oldest: 1, hasOlder: false, upserts: [], queued: ["sign off"], sendQueuedNow: ["ctrl+Enter"], dequeueQueued: ["Up"] };
-    const mux = (supports: ("sendKeys" | "readGrid")[], unsupportedKeys: string[]) => declareCapabilities({ supports, unsupportedKeys, topologyLatency: { kind: "push" } });
+    const mux = (supports: ("sendKeys" | "paneGrid")[], unsupportedKeys: string[]) => declareCapabilities({ supports, unsupportedKeys, topologyLatency: { kind: "push" } });
     expect(chatBodyForMux(body, mux(["sendKeys"], []))).toBe(body);
     const noUp = chatBodyForMux(body, mux(["sendKeys"], ["Up"]));
     expect("dequeueQueued" in noUp).toBe(false);
     expect(noUp).toMatchObject({ sendQueuedNow: ["ctrl+Enter"] });
     // A multiplexer that sends no keys at all offers neither button.
-    const none = chatBodyForMux(body, mux(["readGrid"], []));
+    const none = chatBodyForMux(body, mux(["paneGrid"], []));
     expect(none).not.toHaveProperty("dequeueQueued");
     expect(none).not.toHaveProperty("sendQueuedNow");
   });

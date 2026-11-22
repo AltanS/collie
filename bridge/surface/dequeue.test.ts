@@ -19,7 +19,7 @@ import { crewRouteFor } from "../crew/forward.ts";
 import { muxAck, muxOk, muxRefused, type MuxAck, type MuxGrid, type MuxGridRequest, type MuxOutcome } from "../mux/types.ts";
 import { dequeueRoute, type DequeueRouteRuntime } from "../server.ts";
 import { loadProfiles, profileFor } from "../../web/src/lib/surface/profile.ts";
-import type { DequeueReceipt } from "../../web/src/lib/surface/dequeue.ts";
+import type { DequeueReason, DequeueReceipt } from "../../web/src/lib/surface/dequeue.ts";
 import { DequeueService, PROOF_GAPS_MS, proofOf, type DequeueAsk } from "./dequeue.ts";
 import { KeyGate } from "./key-gate.ts";
 import { RowRing, SendProtocol, SessionLocks } from "./protocol.ts";
@@ -366,7 +366,7 @@ describe("unknown: the key went in and Collie cannot tell", () => {
 });
 
 describe("a refusal before the key presses nothing", () => {
-  const cases: [string, (r: Rig) => void, string][] = [
+  const cases: [string, (r: Rig) => void, DequeueReason][] = [
     ["a dialog is up", (r) => void (r.pane.dialog = true), "dialog_open"],
     ["the turn already ended", (r) => void (r.pane.running = false), "turn_idle"],
     ["the agent's box holds a draft", (r) => void (r.pane.box = "half a thought"), "draft_present"],
