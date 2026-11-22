@@ -420,7 +420,7 @@ export class HerdrCoreMux implements MuxAdapter {
   private gridOf(paneId: string, read: WireRead, screen: WireRead, cut: { keep: number | null; truncated: boolean; note?: string | undefined }): MuxGrid {
     const rows = read.text.replace(/\n$/u, "").split("\n");
     const text = (cut.keep === null ? rows : rows.slice(-cut.keep)).join("\n");
-    const grid: MutableGrid = { paneId, text, truncated: cut.truncated, revision: this.revisionFor(paneId, screen.text.replace(/\n$/u, "")) };
+    const grid: MutableGrid = { paneId, text, truncated: cut.truncated, unstyled: true, revision: this.revisionFor(paneId, screen.text.replace(/\n$/u, "")) };
     if (!read.complete) grid.partial = true;
     if (cut.note !== undefined) grid.olderNote = cut.note;
     return grid;

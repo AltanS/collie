@@ -380,10 +380,11 @@ export class StateEngine {
   // quit, then a bare `muse` in the same pane changes the argv and binds nothing, and the old
   // session's name must not stay on the new one.
   private readonly museBindings = new Map<string, string>();
-  // Revision at which each pane was last enriched. enrichSessionNames skips the readGrid /
-  // foreground RPC for any pane whose revision hasn't moved — O(enriched panes) socket calls
-  // per poll → O(changed).
-  private readonly enrichedAt = new Map<string, number>();
+  // Revision and session-ref presence at which each pane was last enriched. enrichSessionNames
+  // skips the readGrid / foreground RPC when neither has moved — O(enriched panes) socket calls
+  // per poll → O(changed), while still re-checking if a hook attaches a session ref at the same
+  // revision.
+  private readonly enrichedAt = new Map<string, string>();
   private readonly transitionListeners = new Set<TransitionListener>();
   private readonly removeListeners = new Set<RemoveListener>();
   private readonly updateListeners = new Set<UpdateListener>();
@@ -867,16 +868,25 @@ export class StateEngine {
     revisions: Map<string, number>,
   ): Promise<void> {
     const journal = new Map(agents.map((a) => [a.paneId, this.titles?.(a)]));
+    // Drop any older screen-read cache once the journal names the person, so clearing that name
+    // later never resurrects a stale screen fallback.
+    for (const a of agents) {
+      if (journal.get(a.paneId)?.person !== undefined) this.sessionNames.delete(a.paneId);
+    }
     const fallback = agents.filter((a) => journal.get(a.paneId)?.person === undefined);
     const screened = fallback.filter((a) => SCREEN_NAME_READERS.has(a.agent));
     const argvBound = fallback.filter((a) => this.argvNames[a.agent] !== undefined);
-    const unchanged = (a: AgentView): boolean => {
+    const enrichKey = (a: AgentView): string | undefined => {
       const rev = revisions.get(a.paneId);
-      return rev !== undefined && this.enrichedAt.get(a.paneId) === rev;
+      return rev === undefined ? undefined : `${String(rev)}:${a.agentSession === undefined ? "0" : "1"}`;
+    };
+    const unchanged = (a: AgentView): boolean => {
+      const key = enrichKey(a);
+      return key !== undefined && this.enrichedAt.get(a.paneId) === key;
     };
     const markRead = (a: AgentView): void => {
-      const rev = revisions.get(a.paneId);
-      if (rev !== undefined) this.enrichedAt.set(a.paneId, rev);
+      const key = enrichKey(a);
+      if (key !== undefined) this.enrichedAt.set(a.paneId, key);
     };
     await Promise.all([
       ...screened.map(async (a) => {
@@ -894,6 +904,14 @@ export class StateEngine {
             styling: "preserve",
           });
           if (!grid.ok) return;
+          if (grid.value.unstyled === true || (this.titles !== undefined && a.agentSession !== undefined && !grid.value.text.includes(ESC))) {
+            // Without ANSI colour a mode badge in the input rule (such as `ultracode`) cannot be
+            // told from a `/rename` name. Skip plain-text guessing when the multiplexer declares
+            // unstyled grids or when the journal tracker already has a session id for this pane.
+            this.sessionNames.delete(a.paneId);
+            markRead(a);
+            return;
+          }
           const name = read(grid.value.text);
           // An input box in view with no name forgets the old one: a name renamed away, or a badge
           // once mistaken for a name, must not outlive the screen that showed it.
