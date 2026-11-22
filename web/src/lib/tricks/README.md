@@ -22,7 +22,7 @@ contract 1 trick (`TRICK_CONTRACT_DEFAULT`), and `collie trick init` writes `con
 
 **The manifest**, `trick.toml`: `id`, `name`, `run`, `every`, `icon`, `places`, `env`, `contract`,
 `inputs` (contract 2), `field` (contract 3, see "Settings a person keeps"), `decides` (see "Decisions"), `watch` and `on` (a trick that reacts: bridge/tricks/triggers.ts, watch.ts; both are rights), the later `mode = "serve"`, and two texts for a person, `description` (one
-line, at most 140 characters, shown under the name in Settings → Tricks and the Hill) and `about` (at most 1200
+line, at most 140 characters, shown under the name in Settings → Tricks) and `about` (at most 1200
 characters, paragraphs split by a blank line, shown in the trick's About sheet). Both are plain text, with
 no markdown, HTML or link drawn, and both are allowed in contract 1 and 2. An optional `version` (1 to 24
 characters of letters, digits, `.`, `+` and `-`, `VERSION_MAX`) is the author's own word for the version;
@@ -67,7 +67,7 @@ trick. The bridge copies the new code to `.collie-pending/` and the row says "A 
 yes."; switching the trick on again approves it, and so does the card on the Hill (see "The new version
 card" below). A new version whose `env` and `places` are unchanged, and in which the text search finds no warning
 kind the approved copy did not have (network, spawn, write, model, import), is taken without asking when the
-trick has `collie trick auto <id> on`, or the switch "Update this trick without asking" in Settings → Tricks and the Hill. So a program must not write
+trick has `collie trick auto <id> on`, or the switch "Update this trick without asking" in Settings → Tricks. So a program must not write
 into its own code folder: the copy's code files are read-only (not on Windows, where the hash check
 alone catches it), and a change there stops the trick with "The approved copy changed on disk". It keeps its notes in `trick.state`, the
 state folder, which is never copied. `media/` and `captures/` are seeded into the copy once (at most
@@ -112,7 +112,7 @@ any is. Past 8 cards, for a file that is not text, or without git, the summary s
 is asked) and "Keep the old version". A tap acts on exactly the hash on the card: when the folder moved
 since, the tap is refused with "The trick changed again since this card. A new card replaces this one."
 and the card stays open. A newer change replaces the card; approving elsewhere, the folder going back,
-or the trick going off withdraws it. After a change taken without asking, the row in Settings → Tricks and the Hill
+or the trick going off withdraws it. After a change taken without asking, the row in Settings → Tricks
 says when, with Undo, which brings back the version before (`POST /api/tricks/<host>/<id>/undo`).
 
 **Strict at write, tolerant at read.** What a trick writes is checked strictly where a person or an
@@ -412,7 +412,7 @@ read by the CLI and the bridge alike. `collie trick on` prints its warnings abov
 one line that they come from a text search and are not a proof, and still switches on. The bridge puts
 them on the row of a trick that is off or changed (`WireTrickInfo.warnings`: one `{ kind, text }` per
 kind, at most 8; a waiting version carries the ones new since the approved copy in
-`WireTrickInfo.pending.warnings`), and Settings → Tricks and the Hill lists them under that trick before the switch. They never
+`WireTrickInfo.pending.warnings`), and Settings → Tricks lists them under that trick before the switch. They never
 refuse, and the switch stays one tap.
 
 ## Official tricks: the list on the phone
@@ -427,7 +427,7 @@ whose manifest says otherwise), and `rules`: the SHA-256 of the instructions a c
 already covers that file; the pin lets the phone say "Gives your agents instructions written by its
 author." before Add without a fetch, and the add (and an update) refuses a folder whose rules differ. The
 list carries no rules text, so the not-added About sheet says "Read the instructions after you add it. It
-stays off until you switch it on." The added trick's own About sheet shows them before the switch. Settings, Tricks and the Hill shows
+stays off until you switch it on." The added trick's own About sheet shows them before the switch. Settings, Tricks shows
 one list (`lib/tricks/list-order.ts`): the official entries first in this list's order, Morph first, each
 not added one with an Add button in its place, then every other trick by name; a row says "Official" or
 "Community", and a state change never moves a row. On a fresh install, with no tricks
@@ -477,7 +477,7 @@ shows nothing. There is no switch for it; the install ping's off switches do not
 (`components/trick-detail.tsx`) the facts are a second small line inside the repository's link row in
 "Where it comes from". The row is 44 px with or without them, so their arrival moves nothing in a sheet
 anchored at the bottom. The link row follows the Hill Decision link (`isWebLink`, `linkHost`), with the host
-in full (`HostWords`), and shows only for an https source URL. Settings, Tricks and the Hill reads the official list once
+in full (`HostWords`), and shows only for an https source URL. Settings, Tricks reads the official list once
 more 3 s after a first answer that lacked a GitHub repository's facts, and never again.
 
 **The trust root is the binary.** The commit pins what git fetches, and the hash pins what Collie
@@ -939,9 +939,9 @@ the phone labels the trick "Uses agent tokens" before its first Decision (`token
 file, caption? }`: `file` names an image in the trick's own folder by a relative path with no `..`
 (`shots/red.png`), and `caption` is up to 80 characters.
 
-With the Hill switched off (`bridge/hill/switch.ts`, Settings → Tricks and the Hill, `collie hill on|off`) the
+With the Hill switched off (`bridge/hill/switch.ts`, Settings → Tricks, `collie hill on|off`) the
 bridge posts, replaces and withdraws none of a trick's Decisions and keeps its map of the posted ones
-as it was. The trick still runs, and its row in Settings → Tricks and the Hill says its Decisions are not shown, and a new version that waits says to switch the Hill on in Settings, Tricks and the Hill, to read it.
+as it was. The trick still runs, and its row in Settings → Tricks says its Decisions are not shown, and a new version that waits says to switch the Hill on in Settings, Tricks, to read it.
 The first run after the Hill is back on syncs the list again.
 
 The crew state (`bridge/hill/crew-state.ts`, 1.29.0: `here`, `quiet` or `away`, set at the top of the

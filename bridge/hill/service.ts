@@ -133,7 +133,8 @@ import { digestDiffers, payloadDigest, withDigest } from "../worktree-receipts.t
 import { HILL_GROUP_NOT_YOURS, readPostFields } from "./parse.ts";
 import { makeGroup } from "./group.ts";
 import { mintMediaId, type HillImageBytes, type HillMediaFile, type HillMediaStore } from "./media.ts";
-import { HILL_PUSH_RATE, hillPushTag, type HillPushPort } from "./push.ts";
+import { HILL_PUSH_RATE, hillPushTag, hillRingBlock, type HillPushPort, type HillRingBlock, type HillRingFacts } from "./push.ts";
+import { HILL_TEST_DELAY_MS, testCard, testSender, type HillTestTimer } from "./test-card.ts";
 import { hillAnswerDigest, type HillAnswerOutcome, type HillReceiptRecord, type HillReceiptSurface } from "./receipts.ts";
 import type { HillStore, HillTombstone } from "./store.ts";
 import type { HillLeadForward, HillListAnswer } from "./crew.ts";
@@ -203,6 +204,9 @@ export interface HillCollieSender {
   /** The trick's display name from its manifest (`from.name`); {@link cardName} cleans it as the card is made. Optional. */
   readonly name?: string;
 }
+
+/** What `requestTest` answers: the seconds until the card is posted and the first reason no notification would be sent, or a refusal. */
+export type HillTestAnswer = { readonly ok: true; readonly inSeconds: number; readonly rings: HillRingBlock | null } | { readonly ok: false; readonly code: "hill_off" | "not_on_lead"; readonly error: string };
 
 /** What the answer to a Collie Decision did: done, or refused in plain words (the card then stays open). */
 /**
@@ -307,6 +311,14 @@ export interface HillServiceDeps {
   readonly removed?: (address: string) => boolean;
   /** The phone push of a `now` decision (push.ts). Absent: no decision pushes. */
   readonly push?: HillPushPort;
+  /**
+   * The facts of the push gates that only the bridge knows (push.ts `hillRingBlock`), read on each use, for
+   * the test Decision's verdict of why a notification would not be sent. Absent: every gate is open and a
+   * device is subscribed (a test seam; bridge/index.ts always wires it).
+   */
+  readonly ringFacts?: () => Pick<HillRingFacts, "push" | "pref" | "snoozed" | "member" | "devices">;
+  /** The timer of the test Decision's delay. Absent: `setTimeout`. A test seam. */
+  readonly timer?: { set(fn: () => void, ms: number): HillTestTimer };
   /**
    * The Hill's own switch (switch.ts `HillSwitch`), read on each use, and written by the phone's route
    * (`set`, true when written). `reading` tells unset (no file) from off; a switch that gives none reads
@@ -469,9 +481,9 @@ export interface HillClearAnswer {
 }
 
 /** The sentence a bridge with the Hill switched off answers a post with: what is off, and the way back on. */
-export const HILL_OFF = "the Hill is off on this Collie; your person can switch it on in Settings, Tricks and the Hill, on the phone, or with: collie hill on";
+export const HILL_OFF = "the Hill is off on this Collie; your person can switch it on in Settings, Tricks, on the phone, or with: collie hill on";
 /** What the lead of a crew answers a member's post or image with while its own Hill is off (the lead's switch decides). */
-export const HILL_OFF_ON_LEAD = "the Hill is off on the lead of this crew; your person can switch it on in Settings, Tricks and the Hill, on the phone";
+export const HILL_OFF_ON_LEAD = "the Hill is off on the lead of this crew; your person can switch it on in Settings, Tricks, on the phone";
 /** The sentence a bridge with WalkyTalky off answers a post with. */
 export const HILL_WALKY_OFF = "WalkyTalky is off on this machine (COLLIE_WALKY=off), so no answer could reach you";
 /** The closed reason of a withdrawn decision. */
@@ -796,6 +808,8 @@ export class HillService {
   private answering = new Set<string>();
   /** How many answers to each decision run now, from the tap to the receipt: no quiet close takes one under its answer. */
   private claiming = new Map<string, number>();
+  /** The test Decision that waits to be posted: when, and its timer. One at a time; a restart drops it. */
+  private testPending: { readonly at: number } | null = null;
 
   constructor(private readonly deps: HillServiceDeps) {
     this.now = deps.now ?? Date.now;
@@ -1205,6 +1219,47 @@ export class HillService {
    */
   adoptCarried(decisions: readonly HillDecision[], media: ReadonlyMap<string, readonly HillMediaFile[]>): string[] {
     return adoptCarriedInto(this.deps.store, this.deps.media, decisions, media);
+  }
+
+  /**
+   * The test Decision (test-card.ts): the person pressed "Send a test Decision". It is posted
+   * HILL_TEST_DELAY_MS later, so the phone that pressed can leave the app first and is no longer "looking" when
+   * the push is decided (bridge/push.ts `LOOKING_MS`). Answers at once with the seconds to wait and why the
+   * notification would not be sent, if it would not (push.ts `hillRingBlock`, evaluated now). One test waits at
+   * a time: a second press schedules nothing and answers with the seconds that remain. Refused with the Hill off
+   * and on a machine that is not the lead. One `hill.test` audit line for a press that scheduled the post.
+   */
+  requestTest(device: string | null = null): HillTestAnswer {
+    if (this.refusesHere()) return { ok: false, code: "hill_off", error: HILL_OFF };
+    if (this.deps.crewMode() === "peer" || this.deps.deposed?.() === true) return { ok: false, code: "not_on_lead", error: NOT_ON_LEAD };
+    const now = this.now();
+    const rings = this.testRings();
+    if (this.testPending !== null) return { ok: true, inSeconds: Math.max(1, Math.ceil((this.testPending.at - now) / 1000)), rings };
+    const timer = this.deps.timer ?? { set: (fn: () => void, ms: number) => setTimeout(fn, ms) };
+    // A bridge that has nothing else to do may exit: the test is not worth holding it open.
+    timer.set(() => this.postTest(), HILL_TEST_DELAY_MS).unref?.();
+    this.testPending = { at: now + HILL_TEST_DELAY_MS };
+    this.deps.audit?.({ action: "hill.test", device, detail: { rings: rings ?? "yes" } });
+    return { ok: true, inSeconds: Math.ceil(HILL_TEST_DELAY_MS / 1000), rings };
+  }
+
+  /** Why a Decision marked Now from the test sender would send no notification now, or null. */
+  private testRings(): HillRingBlock | null {
+    if (this.deps.push === undefined) return "push_off";
+    const facts = this.deps.ringFacts?.() ?? { push: true, pref: true, snoozed: false, member: false, devices: 1 };
+    const state = this.crewState().state;
+    return hillRingBlock({ ...facts, crewState: state, verdict: this.deps.push.check(collieKey(testSender().ref), null) });
+  }
+
+  /** The delay is over: post the card, replacing an open test card. Posts nothing with the Hill off. */
+  private postTest(): void {
+    this.testPending = null;
+    if (this.refusesHere()) return;
+    const old = this.collieDecisions("test").find((decision) => decision.state === "open");
+    let posted = this.postCollie(testSender(), testCard(this.now(), old?.id ?? null));
+    // The old card's answer runs now: it closes by itself, so post without replacing it.
+    if (!posted.ok && posted.code === "bad_supersedes") posted = this.postCollie(testSender(), testCard(this.now(), null));
+    if (!posted.ok) this.deps.audit?.({ action: "hill.test.refused", detail: { reason: posted.code ?? "plain" } });
   }
 
   /** Whether the Decision `id` is being answered right now (its claim runs). */

@@ -483,7 +483,7 @@ A durable agent you attached has its own checks, reasons and cases. Start with `
 
 ## Tricks and the Hill
 
-A trick that does not run shows why in its row in Settings → Tricks and the Hill, and in `collie trick list`. The
+A trick that does not run shows why in its row in Settings → Tricks, and in `collie trick list`. The
 lines Collie prints, and what fixes each, are in [Tricks](tricks.md#troubleshooting). A Decision that
 does not show on the Hill is usually the Hill switch or a refused post. Run `collie hill list` in the
 agent's pane, and read [When a post fails](hill.md#when-a-post-fails).

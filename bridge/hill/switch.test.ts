@@ -174,12 +174,12 @@ describe("the switch file", () => {
 });
 
 describe("the Hill is off by default", () => {
-  test("with no switch file a post is refused hill_off in the words that name Settings, Tricks and the Hill; switched on, it posts", () => {
+  test("with no switch file a post is refused hill_off in the words that name Settings, Tricks; switched on, it posts", () => {
     const r = rig();
     rmSync(hillSwitchPath(r.dir));
     expect(r.hill.isOn()).toBe(false);
     expect(r.hill.post(POSTER, input(1))).toEqual({ ok: false, code: "hill_off", error: HILL_OFF });
-    expect(HILL_OFF).toBe("the Hill is off on this Collie; your person can switch it on in Settings, Tricks and the Hill, on the phone, or with: collie hill on");
+    expect(HILL_OFF).toBe("the Hill is off on this Collie; your person can switch it on in Settings, Tricks, on the phone, or with: collie hill on");
     expect(r.store.all()).toEqual([]);
     expect(r.hill.switchTo(true, "Pixel 9")).toBe(true);
     posted(r.hill.post(POSTER, input(1)));
@@ -371,9 +371,9 @@ describe("with the Hill off, a card of Collie's own about a trick", () => {
   const card = (n: number): HillPostInput => ({ requestId: uuid(n), title: "Switch on the trick legs?", summary: "A session on desk proposes it.", options: [{ intent: "on", label: "Switch it on" }, { intent: "later", label: "Not now" }], text: "none" });
   const snapshot: SnapshotResponse = { bridge: "connected", agents: [], shellPanes: [], workspaces: [], tabs: [], sessions: [], ts: 5 };
 
-  test("every kind of Collie's own card is a trick card, and neither an agent nor a trick is one", () => {
+  test("every kind of Collie's own card is listed, all but the test Decision are trick cards, and neither an agent nor a trick is one", () => {
     expect(Object.keys(HILL_OFF_TRICK_CARDS).toSorted()).toEqual([...HILL_COLLIE_REF_TYPES].toSorted());
-    for (const type of HILL_COLLIE_REF_TYPES) expect(isTrickCard(collie(type))).toBe(true);
+    for (const type of HILL_COLLIE_REF_TYPES) expect(isTrickCard(collie(type))).toBe(type !== "test");
     expect(isTrickCard(POSTER)).toBe(false);
     expect(isTrickCard(TRICK)).toBe(false);
     // A `ref` on another kind, or a kind of ref nobody listed, opens nothing.
@@ -385,11 +385,14 @@ describe("with the Hill off, a card of Collie's own about a trick", () => {
   test("is posted for each kind; in the same Hill an agent's post and a trick's own Decision are still refused hill_off", () => {
     const r = rig();
     r.sw.set(false);
-    for (const [n, type] of HILL_COLLIE_REF_TYPES.entries()) posted(r.hill.postCollie(collie(type, `t${String(n)}`), card(n + 1)));
-    expect(r.store.all().map((d) => d.from.ref?.type)).toEqual([...HILL_COLLIE_REF_TYPES]);
+    const tricky = HILL_COLLIE_REF_TYPES.filter((type) => HILL_OFF_TRICK_CARDS[type]);
+    for (const [n, type] of tricky.entries()) posted(r.hill.postCollie(collie(type, `t${String(n)}`), card(n + 1)));
+    expect(r.store.all().map((d) => d.from.ref?.type)).toEqual([...tricky]);
     expect(r.hill.post(POSTER, input(10))).toEqual({ ok: false, code: "hill_off", error: HILL_OFF });
     expect(r.hill.postDecision(TRICK, input(11), {})).toEqual({ ok: false, code: "hill_off", error: HILL_OFF });
-    expect(r.store.all()).toHaveLength(HILL_COLLIE_REF_TYPES.length);
+    // The test Decision is about no trick (wire.ts): with the Hill off nothing posts it.
+    expect(r.hill.postCollie(collie("test", "test"), card(12))).toEqual({ ok: false, code: "hill_off", error: HILL_OFF });
+    expect(r.store.all()).toHaveLength(tricky.length);
     // Nothing rings: Collie's own card is a "today" card, with the Hill on as with it off.
     expect(r.pushes).toEqual([]);
   });

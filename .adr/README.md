@@ -355,6 +355,7 @@ The rule today: Tricks that react and the local API stand on one internal event 
 | [0155](./0155-the-local-api-answers-a-run-token.md) | The local API answers a trick's own run: a token per run in its facts, named in `hello`, at the level the bridge holds. | Accepted |
 | [0156](./0156-approving-a-tricks-code-is-a-hold-and-reading-is-offered.md) | The yes to a trick's code is a hold of three seconds; reading is offered, not required; the bridge asks for the digest only. | Accepted |
 | [0168](./0168-a-trick-that-is-off-is-removed-on-its-machine-through-one-function.md) | One function removes a trick that is off and that no run holds, for `collie trick remove` and `POST /api/tricks/<host>/<id>/remove`; real-path checks, a receipt per `rid`, one audit line, this machine only. | Accepted |
+| [0175](./0175-collie-can-post-a-test-decision.md) | Collie posts one test Decision, marked Now, 20 seconds after a press on the Hill's page, and the answer names the first reason no notification would be sent. | Accepted |
 
 ### Process, lint and tests
 

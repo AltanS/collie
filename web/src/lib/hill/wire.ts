@@ -83,10 +83,11 @@ export const HILL_MEDIA_ROUTE = "/api/hill/media/";
 /**
  * What a Decision of Collie's own is about: a trick's new version (crew slice 3), a proposal (crew slice
  * 8), a carried trick that did not start after a takeover (crew slice 10, OK only), or a trick stopped
- * because it asks for a right its approval did not hold (fault B, bridge/tricks/rights-card.ts, OK only).
+ * because it asks for a right its approval did not hold (fault B, bridge/tricks/rights-card.ts, OK only), or
+ * the test Decision the person sends from the Hill's page (bridge/hill/test-card.ts, "It works" only).
  */
-export type HillCollieRefType = "version" | "proposal" | "carried" | "rights";
-export const HILL_COLLIE_REF_TYPES: readonly HillCollieRefType[] = ["version", "proposal", "carried", "rights"];
+export type HillCollieRefType = "version" | "proposal" | "carried" | "rights" | "test";
+export const HILL_COLLIE_REF_TYPES: readonly HillCollieRefType[] = ["version", "proposal", "carried", "rights", "test"];
 
 /**
  * THE CARDS THAT WORK WITH THE HILL OFF (M96 spec 14, 2026-11-16). The Hill's switch gates what agents
@@ -101,6 +102,9 @@ export const HILL_OFF_TRICK_CARDS = {
   version: true,
   rights: true,
   carried: true,
+  // The test Decision is about no trick: with the Hill off nothing posts, serves or answers it (the page
+  // disables its button then), so it is no approval that must stay reachable.
+  test: false,
 } as const satisfies { readonly [K in HillCollieRefType]: boolean };
 
 /**

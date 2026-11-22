@@ -4,7 +4,7 @@
 
 This page lists every place, part, manifest key, limit and command of a ColliePWA trick, and it is complete. It is generated from the code, so it cannot drift. It is the one list: other pages link here and do not repeat its tables.
 
-Tricks are experimental. They may change, lose settings, or be withdrawn in a patch release. They are off until you switch them on at the top of Settings → Tricks and the Hill, or with `collie tricks on`.
+Tricks are experimental. They may change, lose settings, or be withdrawn in a patch release. They are off until you switch them on at the top of Settings → Tricks, or with `collie tricks on`.
 
 ## Places
 
@@ -529,7 +529,7 @@ The agent passes `show` this file:
 
 ## The Hill
 
-A page of Decisions: questions that a program or an agent asks the person, each answered with one tap. It ships with Collie as an experiment, off until the person switches it on in Settings → Tricks and the Hill. A trick does not list it in `places`.
+A page of Decisions: questions that a program or an agent asks the person, each answered with one tap. It ships with Collie as an experiment, off until the person switches it on in Settings → Tricks. A trick does not list it in `places`.
 
 **From a program.** A program lists Decisions in the `decisions` key of its output (the helper's `t.decide`). The list is declarative: after each run that succeeded, Collie makes the Hill agree with it, as [The list is the truth](#the-list-is-the-truth) says below. A document lists at most 20.
 
@@ -1803,7 +1803,7 @@ Every verb of `collie trick`.
 | `helper` | `collie trick helper <id\|folder>` | Rewrites a trick's `trick.ts` with the helper this Collie carries. |
 | `skill` | `collie trick skill [<id>]` | Prints what a trick that is on asks of an agent. With no id, prints how to write a trick. |
 | `guide` | `collie trick guide [--json]` | Prints how to write a trick and hand it to the person, as plain text for an agent. |
-| `propose` | `collie trick propose <folder> [--request-id <uuid>] [--json]` | Hands a trick folder to the person as a card of Collie's own on the lead: in the proposing session on the phone and in Settings, Tricks and the Hill, and on the Hill while it is on. Nothing runs before their yes. It brings the code and the pictures of `media/` and `captures/`; `config.toml` stays behind. |
+| `propose` | `collie trick propose <folder> [--request-id <uuid>] [--json]` | Hands a trick folder to the person as a card of Collie's own on the lead: in the proposing session on the phone and in Settings, Tricks, and on the Hill while it is on. Nothing runs before their yes. It brings the code and the pictures of `media/` and `captures/`; `config.toml` stays behind. |
 | `view` | `collie trick view <trick> <verb> [args]` | Runs one verb of an agent view, from the agent's pane. The verbs are the `trick view` commands below. |
 
 | Verb | Flag | What it does |

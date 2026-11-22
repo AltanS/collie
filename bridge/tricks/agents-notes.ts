@@ -24,13 +24,15 @@ export const NOTES_FILE = "AGENTS.md";
  * v7 (1.29.1): a button with `does: "draft"` fills an empty reply box and needs `drafts = "session"`.
  * v8 (1.29.1, 2026-11-18): `collie trick propose` brings the pictures of `media/` and `captures/`, and the card
  * names them.
- * v9 (2026-11-21, ADR 0170): the Settings page that shows a proposal's card is "Tricks and the Hill" now, so the
- * draft's last step names it so. "Settings, Tricks" was a page that no longer exists.
+ * v9 (1.30.0, ADR 0170): the Settings page that shows a proposal's card is "Tricks and the Hill" now, so the
+ * draft's last step names it so.
+ * v10 (2026-11-22, ADR 0170 addendum): the page is named "Tricks" again, and the Hill is its first row. The draft's
+ * last step says "Settings, Tricks", which are v8's bytes, so a draft that init wrote at v8 is named as v10 now.
  */
-export const NOTES_VERSION = 9;
+export const NOTES_VERSION = 10;
 
 /** Every version of the notes a Collie shipped. A proposal names an older one byte for byte as that version. */
-const NOTES_VERSIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9] as const;
+const NOTES_VERSIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const;
 type NotesVersion = (typeof NOTES_VERSIONS)[number];
 
 /**
@@ -43,8 +45,10 @@ function handOff(id: string, draft: boolean, version: NotesVersion): string {
   if (version === 1) return `Run \`collie trick propose .\` to send this draft to the Hill. This folder is your own work folder,\n   and nothing is added to this machine's tricks before the person's yes. Never switch the trick on yourself:\n   \`collie trick on\` refuses inside an agent's pane.`;
   if (version === 2 || version === 3) return `Run \`collie trick propose .\` to send this draft to the person. They read it on the Hill, or in\n   Settings, Tricks, while the Hill is off. This folder is your own work folder,\n   and nothing is added to this machine's tricks before the person's yes. Never switch the trick on yourself:\n   \`collie trick on\` refuses inside an agent's pane.`;
   if (version === 4) return `Run \`collie trick propose .\` to send this draft to the person. Its card shows in this session on the\n   phone and in Settings, Tricks (on the Hill too, while it is on). This folder is your own work folder,\n   and nothing is added to this machine's tricks before the person's yes. Never switch the trick on yourself:\n   \`collie trick on\` refuses inside an agent's pane.`;
-  if (version <= 8) return `Run \`collie trick propose .\` to send this draft to the person. Its card shows in this session on the\n   phone and in Settings, Tricks (on the Hill too, while it is on). This folder is your own work folder,\n   and nothing is added to this machine's tricks before the person's yes. Never switch the trick on yourself, and never run\n   \`collie tricks on\` or \`collie hill on\`: all three refuse inside an agent's pane.`;
-  return `Run \`collie trick propose .\` to send this draft to the person. Its card shows in this session on the\n   phone and in Settings, Tricks and the Hill (on the Hill too, while it is on). This folder is your own work folder,\n   and nothing is added to this machine's tricks before the person's yes. Never switch the trick on yourself, and never run\n   \`collie tricks on\` or \`collie hill on\`: all three refuse inside an agent's pane.`;
+  // v9's words, kept so a draft that init wrote at v9 (1.30.0) is still named, as v9.
+  if (version === 9) return `Run \`collie trick propose .\` to send this draft to the person. Its card shows in this session on the\n   phone and in Settings, Tricks and the Hill (on the Hill too, while it is on). This folder is your own work folder,\n   and nothing is added to this machine's tricks before the person's yes. Never switch the trick on yourself, and never run\n   \`collie tricks on\` or \`collie hill on\`: all three refuse inside an agent's pane.`;
+  // v5 to v8, and v10 with them: the same words.
+  return `Run \`collie trick propose .\` to send this draft to the person. Its card shows in this session on the\n   phone and in Settings, Tricks (on the Hill too, while it is on). This folder is your own work folder,\n   and nothing is added to this machine's tricks before the person's yes. Never switch the trick on yourself, and never run\n   \`collie tricks on\` or \`collie hill on\`: all three refuse inside an agent's pane.`;
 }
 
 /** The loop and the helper's table, for a TypeScript trick. */

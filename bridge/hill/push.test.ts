@@ -7,7 +7,7 @@ import type { AuditEntry } from "../audit.ts";
 import { PUSH_LINE_MAX, PUSH_TITLE_MAX } from "../mux/durable/clean.ts";
 import { hillTopic, type PushMessage } from "../push.ts";
 import type { HillPostInput } from "../../web/src/lib/hill/wire.ts";
-import { HILL_PUSH_RATE, HillPush, hillPushMessage, hillPushTag, isHillPushTag, pushLine } from "./push.ts";
+import { HILL_PUSH_RATE, HillPush, hillPushMessage, hillPushTag, hillRingBlock, isHillPushTag, pushLine } from "./push.ts";
 import { memoryHillReceipts } from "./receipts.ts";
 import { HillService, type HillAgentSender, type HillPlace, type HillPostAnswer, type HillTrickSender } from "./service.ts";
 import { HillStore } from "./store.ts";
@@ -276,5 +276,39 @@ describe("the message", () => {
     expect(isHillPushTag(hillPushTag("dc_aaaaaaaaaaaa"))).toBe(true);
     expect(isHillPushTag("collie:hill:../etc")).toBe(false);
     expect(isHillPushTag("collie:herd")).toBe(false);
+  });
+});
+
+// `ready()` of the Hill's push and the test Decision's verdict ask one function (hillRingBlock, 2026-11-22). Over every
+// combination of the facts, a Decision rings exactly when it did before: nothing that rang is silent, nothing silent rings.
+describe("hillRingBlock and the old gates", () => {
+  test("ready() on its four facts is the old boolean, in all 16 combinations", () => {
+    for (const bits of Array.from({ length: 16 }, (_, i) => i)) {
+      const [push, pref, snoozed, member] = [(bits & 1) !== 0, (bits & 2) !== 0, (bits & 4) !== 0, (bits & 8) !== 0];
+      expect(hillRingBlock({ push, pref, snoozed, member }) === null).toBe(push && pref && !snoozed && !member);
+    }
+  });
+
+  test("with the crew state and the check's verdict, a Decision rings exactly when the old gates let it through", () => {
+    let combos = 0;
+    for (const bits of Array.from({ length: 16 }, (_, i) => i)) {
+      const [push, pref, snoozed, member] = [(bits & 1) !== 0, (bits & 2) !== 0, (bits & 4) !== 0, (bits & 8) !== 0];
+      const ready = push && pref && !snoozed && !member;
+      for (const crewState of ["here", "quiet", "away"] as const) {
+        for (const spent of [null, "sender", "member", "crew", "total"] as const) {
+          // What HillPush.check answers: "off" when not ready, else the rate's verdict.
+          const verdict = !ready ? "off" : (spent ?? "send");
+          const before = crewState === "here" && verdict === "send";
+          expect(hillRingBlock({ push, pref, snoozed, member, devices: 1, crewState, verdict }) === null).toBe(before);
+          combos += 1;
+        }
+      }
+    }
+    expect(combos).toBe(240);
+  });
+
+  test("no subscribed device is a reason for the verdict only: it is never a gate of a real send", () => {
+    expect(hillRingBlock({ push: true, pref: true, snoozed: false, member: false, devices: 0 })).toBe("no_devices");
+    expect(hillRingBlock({ push: true, pref: true, snoozed: false, member: false })).toBeNull();
   });
 });

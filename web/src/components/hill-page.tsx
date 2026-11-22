@@ -2,12 +2,14 @@ import type { ReactNode } from "react";
 
 import { ExperimentalBadge } from "@/components/experimental-badge";
 import { HillArmedNote, useHillSwitchArm, useHillSwitchValue, type HillSwitchValue } from "@/components/hill-switch-arm";
+import { HillTestGroup } from "@/components/hill-test-group";
 import { Icon } from "@/components/icons/icon";
 import { SettingSlot } from "@/components/setting-slot";
 import { FeatureTokenChip } from "@/components/token-use-label";
 import { AboutGroup, BuiltInLabel, DetailHead, FactGroup, HeadSwitch, SECTION, type FactRow } from "@/components/trick-detail";
 import { valueSentence } from "@/components/trick-value";
 import { ListGroup } from "@/components/ui/list-group";
+import { HILL_TEST_IDLE, useHillTest, type HillTestControl } from "@/hooks/use-hill-test";
 import { useLocale } from "@/hooks/use-locale";
 import { t } from "@/lib/i18n";
 
@@ -17,9 +19,11 @@ import { t } from "@/lib/i18n";
 // folds and no Remove: the Hill has an author that Collie checks, nothing to update and nothing to take away.
 //
 // WHAT IT ANSWERS. A person who switched the Hill on and got no message did not know that no agent posts until it is told to.
-// So the page says what a Decision is, who can ask (an agent by `collie hill post`, a trick, Collie), when the phone rings
+// So the page says what a Decision is, who can ask (an agent by `collie hill post`, a trick, Collie), when you get a notification
 // (only a Decision marked Now, and not under Quiet or Away), and what to do when nothing arrives. The words are the
 // catalog's (`settings.hill.*`); a command inside a sentence is a slot (`{command}`) drawn on a chip, as the trick pages do.
+//
+// "TRY IT" (components/hill-test-group.tsx) sits between "If nothing arrives" and "Where it comes from": one button sends a test Decision.
 //
 // The head's switch is the row's switch (components/hill-row.tsx): the same value, the same armed second tap and the same
 // warning line, drawn below the switch only while armed (so nothing moves under the thumb; the content below moves down). The page does not depend on the Tricks switch, and it never redirects.
@@ -32,7 +36,7 @@ export const HILL_POST_COMMAND = "collie hill post";
 export const SKILL_STATUS_COMMAND = "collie skill status";
 
 /** The page, every value handed in, so a test and the playground draw the real markup. */
-export function HillDetail({ on, disabled, waiting, onToggle }: HillSwitchValue): ReactNode {
+export function HillDetail({ on, disabled, waiting, onToggle, test = HILL_TEST_IDLE }: HillSwitchValue & { test?: HillTestControl }): ReactNode {
   useLocale();
   const arm = useHillSwitchArm({ on, waiting, onToggle });
   const name = t("settings.hill.label");
@@ -81,6 +85,7 @@ export function HillDetail({ on, disabled, waiting, onToggle }: HillSwitchValue)
       <FactGroup slot="who" label={t("settings.hill.who.title")} rows={who} />
       <FactGroup slot="rings" label={t("settings.hill.rings.title")} rows={rings} />
       <FactGroup slot="quiet" label={t("settings.hill.quiet.title")} rows={quiet} />
+      <HillTestGroup on={on} disabled={disabled} test={test} />
       <FactGroup slot="from" label={t("settings.tricks.about.from")} rows={from} />
       <SettingSlot ids={["tricks.hill.docs"]} className={SECTION}>
         <ListGroup>
@@ -102,5 +107,5 @@ export function HillDetail({ on, disabled, waiting, onToggle }: HillSwitchValue)
 
 /** The page with the Hill's own value: the bridge's switch and the open count. */
 export function HillDetailControl() {
-  return <HillDetail {...useHillSwitchValue()} />;
+  return <HillDetail {...useHillSwitchValue()} test={useHillTest()} />;
 }

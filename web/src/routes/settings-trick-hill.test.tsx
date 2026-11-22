@@ -113,12 +113,12 @@ describe("the page's words", () => {
     expect(who.querySelector('[data-line="who-collie"]')).toHaveTextContent("Collie posts its own cards: a trick that an agent proposes, and a new version of a trick's code.");
   });
 
-  it("says when the phone rings, and names the Notifications page and its row by their own words", () => {
+  it("says when a notification is sent, and names the Notifications page and its row by their own words", () => {
     page({});
     const rings = section("rings");
-    expect(within(rings).getByText("When your phone rings")).toBeInTheDocument();
+    expect(within(rings).getByText("When you get a notification")).toBeInTheDocument();
     expect(rings.querySelector('[data-line="rings-now"]')).toHaveTextContent("Only a Decision marked Now sends a notification.");
-    expect(rings.querySelector('[data-line="rings-state"]')).toHaveTextContent("While your crew state is Quiet or Away, nothing rings.");
+    expect(rings.querySelector('[data-line="rings-state"]')).toHaveTextContent("While your crew state is Quiet or Away, no notification is sent.");
     // The page's name and the row's label are the catalog's own, so the sentence never drifts from the page it points at.
     expect(rings.querySelector('[data-line="rings-setting"]')?.textContent).toBe(`The notification has its own switch in Settings, ${en["settings.page.notifications.title"]}: ${en["settings.notify.decisionNow.label"]}.`);
     expect(en["settings.page.notifications.title"]).toBe("Notifications");
@@ -150,7 +150,7 @@ describe("the page's words", () => {
 
   it("holds the sections in order and none of a trick's own: no Updates, no code folds, no Remove, no rules", () => {
     page({});
-    expect([...detail().querySelectorAll("[data-section]")].map((el) => el.getAttribute("data-section"))).toEqual(["head", "about-group", "about", "who", "rings", "quiet", "from"]);
+    expect([...detail().querySelectorAll("[data-section]")].map((el) => el.getAttribute("data-section"))).toEqual(["head", "about-group", "about", "who", "rings", "quiet", "test", "from"]);
     expect(screen.queryByText(/Update this trick/)).toBeNull();
     expect(detail().querySelector('[data-slot="trick-remove"], [data-section="code"], [data-section="remove"]')).toBeNull();
     expect(screen.queryByRole("button", { name: /Remove/ })).toBeNull();
