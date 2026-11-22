@@ -25,7 +25,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Added
 
-- **Two pi panes in one folder each get their own Chat on the Herdr core.** Collie could not tell their logs apart, so both showed the empty card. A pi extension now labels its terminal with the path of its session file, and Collie opens that file for that pane. To turn it on, copy `pi-extension/collie-session-label.ts` into `~/.pi/agent/extensions/` and start pi again (see `pi-extension/README.md`). To turn it off, delete that file. Thanks @GGGODLIN (#846), based on @ibrmora's port (#780).
+- **Two pi panes in one folder each get their own Chat on the Herdr core.** This is for the experimental `herdr-core` backend only. Collie could not tell the two logs apart, so both panes showed the empty card. A pi extension now labels its terminal with the path of its session file, which holds your home folder and project name, and Collie opens that file for that pane. To turn it on, copy `pi-extension/collie-session-label.ts` into `~/.pi/agent/extensions/` and start pi again (see `pi-extension/README.md`). To turn it off, delete that file and start pi again. Thanks @GGGODLIN (#846), based on @ibrmora's port (#780).
 
 ## [1.30.0] - 2026-11-21
 

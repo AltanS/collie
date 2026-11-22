@@ -1,38 +1,53 @@
 # Collie session label for pi
 
-A [pi](https://github.com/badlogic/pi-mono) extension that names the session file on its herdr-core terminal, so Collie can tell two pi panes in one folder apart (#809, based on @ibrmora's port of `omp-extension/` from #675 in #780).
+A [pi](https://github.com/badlogic/pi-mono) extension for people who run pi on the experimental Herdr core backend (`COLLIE_MUX=herdr-core`) with two or more pi panes in the same folder. In that case Collie cannot tell the panes' logs apart, and both panes show the empty card where Chat should be. This extension fixes that (#809, based on @ibrmora's port of `omp-extension/` from #675 in #780).
 
-What it does:
+On tmux, zellij and the normal Herdr you do not need it. It does nothing there.
 
-- It sets the terminal label `pi.session_file` to the absolute path of the session's `.jsonl`, and Collie's pi journal reads that label first when resolving the pane's conversation.
-- It writes on `session_start` (`startup`, `reload`, `new`, `resume`, `fork`) and again at the end of every turn (`agent_end`), which retries a write that failed and catches any file change that arrived without an event.
-- Because pi replaces its extension runtime across `/new`, `/resume`, `/fork` and `/reload`, write state is shared across runtimes in the same process and the label is cleared when `session_shutdown` runs with `reason: "quit"` or when an interactive session update has no usable absolute session file (such as `--no-session`).
-- It writes through `hc label`, one write at a time, always the newest value. A value counts as written only once `hc` succeeded.
+## What it does
 
-The label is a best-effort lookup hint, not proof of which session a pane runs:
+- It writes the terminal label `pi.session_file`, set to the absolute path of the pane's session file (a `.jsonl` file), when pi starts and after each turn. It removes the label when pi quits.
+- Collie's pi journal reads that label first, and opens that file for that pane.
+- The label is a hint, not proof. Collie checks that the file is in pi's own log folder for that working directory before it opens it.
 
-- A brand-new session stays empty until pi writes its `.jsonl` file on disk after the first reply.
-- During a switch, the old path can show until the new write lands.
-- A process killed outright leaves its last label behind.
-- The reader confines the path to pi's own log folder for that working directory and checks it like any other session ref.
-
-The value is an absolute path, so it shows your home folder and project names to anything that reads the terminal's labels.
-
-It does nothing outside herdr-core (no `HC_TERMINAL_ID`), in a nested pi started from another pi's bash tool (`PI_SESSION_ID`), and outside TUI mode (`print`, `json`, `rpc`).
+It does nothing outside a Herdr core terminal, in a pi started from another pi's shell, and outside the pi TUI (`print`, `json` and `rpc` modes). Windows is not checked.
 
 ## Install
+
+With a checkout of Collie:
 
 ```sh
 mkdir -p ~/.pi/agent/extensions
 cp pi-extension/collie-session-label.ts ~/.pi/agent/extensions/
 ```
 
-Start pi again to load it, and copy it again after each Collie upgrade. To check that it works, run this in another terminal while pi is open:
+A packaged install (the release tarball or an OS package) does not ship this folder. Download the file from https://github.com/AltanS/collie/blob/main/pi-extension/collie-session-label.ts and put it in `~/.pi/agent/extensions/`.
+
+Start pi again to load it. Copy the file again after each Collie upgrade, because the file can change with a release. An old copy keeps working until then.
+
+If `hc` is not on the PATH of the shell that starts pi, set `COLLIE_HC_BIN` to the absolute path of the `hc` executable.
+
+To remove it, delete `~/.pi/agent/extensions/collie-session-label.ts` and start pi again.
+
+## Check that it works
+
+In the pane's own shell, the terminal id is in `$HC_TERMINAL_ID`. Print it before you start pi (`echo "$HC_TERMINAL_ID"`). While pi is open, run this in another terminal, with that id in place of `<terminal>`:
 
 ```sh
 hc get <terminal> --json | jq '.labels["pi.session_file"]'
 ```
 
-If `hc` is not on the PATH of the shell that starts pi, set `COLLIE_HC_BIN` to the absolute path of the `hc` executable.
+`jq` is optional. Without it, run `hc get <terminal> --json` and look for `pi.session_file` under `labels`.
 
-To remove it, delete `~/.pi/agent/extensions/collie-session-label.ts`. If a previous process was killed abruptly and left a stale label on the terminal, clear it with `hc label "$HC_TERMINAL_ID" pi.session_file=`.
+A good result is a path that ends in `.jsonl`. Chat shows the conversation after pi's first reply.
+
+## If it does not work
+
+- No label at all: the file is not in `~/.pi/agent/extensions/`, pi was not started again, pi does not run in a Herdr core terminal, or `hc` is not on the PATH (set `COLLIE_HC_BIN`).
+- An empty card on a brand-new session is normal until pi's first reply. Pi writes its session file only then.
+- Chat shows another conversation after pi crashed or was killed: the old label stayed behind. Clear it with `hc label "$HC_TERMINAL_ID" pi.session_file=`.
+- A pi started from another pi's shell is skipped on purpose. `PI_SESSION_ID` is set there.
+
+## Privacy
+
+The value is an absolute path, so it holds your home folder and project name. Anything that can read the terminals of your Herdr core on this machine can read it, for example `hc get`. Collie reads the label to find the log. It does not put the label in what it sends to the phone or to other machines of a crew.
