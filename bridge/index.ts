@@ -385,7 +385,8 @@ import { LOCAL_TIER_RIGHTS } from "./api/operations.ts";
 import { apiListedPane } from "./api/listed.ts";
 import { apiTable, buildApiWorld } from "./api/world.ts";
 import { deniedFoldersSync, HillMediaStore } from "./hill/media.ts";
-import { HillPush } from "./hill/push.ts";
+import { HillPush, hillRingBlock } from "./hill/push.ts";
+import { answerTest } from "./hill/test-card.ts";
 import { HillReceiptStore } from "./hill/receipts.ts";
 import { HillService } from "./hill/service.ts";
 import { viewPaneMark, viewPaneOf, viewQuestion, viewWorking } from "./agent-view/mark.ts";
@@ -2739,6 +2740,8 @@ let trickProposals: TrickProposals | undefined;
 // and handed to the tricks runner, whose every door asks it. The local API asks `tricks.switchedOn()` and
 // listens with `tricks.onSwitchChange()`.
 const tricksFeature = new TricksFeatureSwitch(cfg.stateDir);
+// The facts `ready()` of the Hill's push reads: push live, the "Decisions that need you now" switch, snooze, and a crew member.
+const hillPushGates = () => ({ push: push.enabled, pref: notifyPrefs.current().decisions, snoozed: snooze.isMuted(), member: crew.mode === "peer" });
 const hill = new HillService({
   store: new HillStore(hillDir(cfg.stateDir), Date.now, undefined, (ids) => {
     for (const id of ids) hillMedia.remove(id);
@@ -2788,17 +2791,22 @@ const hill = new HillService({
   // A Decision of Collie's own (crew slice 3): its answer acts here, on exactly the version the card shows.
   // A trick proposal's card (crew slice 8) goes to the proposals, a new version's to its card.
   onCollieAnswer: (ref, intent) =>
-    ref.type === "carried"
-      ? Promise.resolve(answerCarried(intent))
-      : ref.type === "rights"
-        ? Promise.resolve(answerRights(intent))
-        : ((ref.type === "proposal" ? trickProposals?.answer(ref, intent) : versionCards?.answer(ref, intent)) ?? Promise.resolve({ ok: false, reason: "Tricks are not running on this bridge." })),
+    ref.type === "test"
+      ? Promise.resolve(answerTest(intent))
+      : ref.type === "carried"
+        ? Promise.resolve(answerCarried(intent))
+        : ref.type === "rights"
+          ? Promise.resolve(answerRights(intent))
+          : ((ref.type === "proposal" ? trickProposals?.answer(ref, intent) : versionCards?.answer(ref, intent)) ?? Promise.resolve({ ok: false, reason: "Tricks are not running on this bridge." })),
   // A `now` Decision rings the phone once (hill/push.ts): push live, its switch on, not snoozed. A crew
   // member refuses posts anyway; the lead holds the subscriptions, as for every other push.
   push: new HillPush({
-    ready: () => push.enabled && notifyPrefs.current().decisions && !snooze.isMuted() && crew.mode !== "peer",
+    // The same function the test Decision's verdict asks (hill/push.ts `hillRingBlock`), with the four facts of a real send.
+    ready: () => hillRingBlock(hillPushGates()) === null,
     send: (message) => void push.send(message),
   }),
+  // What only the bridge knows of the push gates, for the test Decision's verdict: the four of `ready()` and the subscribed devices.
+  ringFacts: () => ({ ...hillPushGates(), devices: push.listSubscriptions().length }),
   // The Hill's switch (hill/switch.ts): an experiment, off by default. `<stateDir>/hill/switch.json` exists
   // once the phone or `collie hill on|off` moved it; with no file a crew member follows its lead. Read
   // behind a stat check, so a switch needs no restart. This is the one production wiring of the switch; a real

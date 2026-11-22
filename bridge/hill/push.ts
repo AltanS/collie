@@ -26,7 +26,7 @@
 
 import { PUSH_LINE_MAX, PUSH_TITLE_MAX } from "../mux/durable/clean.ts";
 import { hillTopic, type PushMessage } from "../push.ts";
-import type { HillDecision } from "../../web/src/lib/hill/wire.ts";
+import type { HillCrewState, HillDecision } from "../../web/src/lib/hill/wire.ts";
 
 /**
  * How often `now` Decisions may ring the phone: at most `perSender` an hour from one sender (an agent's
@@ -67,6 +67,51 @@ export function hillPushMessage(decision: Pick<HillDecision, "id" | "title" | "s
     decision: decision.id,
     topic: hillTopic(tag),
   };
+}
+
+/**
+ * WHY A DECISION MARKED NOW WOULD SEND NO NOTIFICATION, as one pure function (2026-11-22, the test Decision).
+ * The reasons used to be folded: `ready()` in bridge/index.ts is one boolean of four facts, {@link HillPush.check}
+ * answers "off" for all of them, and the crew state gate sits in the hill service's `pushPlan`. The page that
+ * sends a test Decision names the reason, so the first one is found here, in this order, and `ready()` asks
+ * the same function for its four facts, so the two cannot drift.
+ */
+export type HillRingBlock = "push_off" | "no_devices" | "pref_off" | "snoozed" | "crew_member" | "quiet" | "away" | "rate";
+
+/**
+ * The facts of {@link hillRingBlock}. The first four are what `ready()` reads. The last three are for a
+ * verdict only: a real send does not ask whether a device is subscribed (a push to none goes nowhere), and
+ * its crew state and rate gates run in the hill service. An absent fact is not asked.
+ */
+export interface HillRingFacts {
+  /** Push is live (VAPID keys, `web-push` installed). */
+  readonly push: boolean;
+  /** The "Decisions that need you now" switch (`decisions`, notify-prefs). */
+  readonly pref: boolean;
+  /** Notifications are snoozed. */
+  readonly snoozed: boolean;
+  /** This bridge is a crew member: it forwards its posts, and the lead holds the subscriptions. */
+  readonly member: boolean;
+  /** How many devices are subscribed. */
+  readonly devices?: number;
+  /** The crew state the person set. */
+  readonly crewState?: HillCrewState;
+  /** {@link HillPush.check}'s verdict for the sender. */
+  readonly verdict?: HillPushVerdict;
+}
+
+/** The first reason a Decision marked Now would send no notification, or null when it would. */
+export function hillRingBlock(facts: HillRingFacts): HillRingBlock | null {
+  if (!facts.push) return "push_off";
+  if (facts.devices !== undefined && facts.devices < 1) return "no_devices";
+  if (!facts.pref) return "pref_off";
+  if (facts.snoozed) return "snoozed";
+  if (facts.member) return "crew_member";
+  if (facts.crewState === "quiet") return "quiet";
+  if (facts.crewState === "away") return "away";
+  if (facts.verdict === "off") return "push_off";
+  if (facts.verdict !== undefined && facts.verdict !== "send") return "rate";
+  return null;
 }
 
 /** Whether a `now` push may go: yes, or which gate holds it. */
