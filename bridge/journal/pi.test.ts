@@ -591,7 +591,7 @@ describe("parsePiTranscript — the structured call", () => {
   test("a toolCall carries pi's own call id and its classified call", () => {
     const part = partOf(call("call_1", "read", { path: "/repo/x.ts", offset: 10, limit: 20 }));
     expect(part.id).toBe("call_1");
-    expect(part.call).toEqual({ kind: "read", path: "/repo/x.ts", range: [10, 30] });
+    expect(part.call).toEqual({ kind: "read", path: "/repo/x.ts", range: [10, 29] });
   });
 
   // The shape OpenClaw's normaliser writes for an answered `ask_user` (journal/openclaw.ts): one list

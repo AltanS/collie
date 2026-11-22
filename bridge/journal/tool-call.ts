@@ -437,7 +437,9 @@ export function classifyToolCall(name: string, input: JsonValue | undefined, sum
         kind: "read",
         path: str(o, "file_path", "path", "filePath", "Path", "AbsolutePath") ?? "",
       };
-      if (offset !== undefined && limit !== undefined) call.range = [offset, offset + limit];
+      // `limit` counts lines and the range's last line is inclusive, so 20 lines from line 10 end on 29.
+      // A limit below one reads no line, so it names no range.
+      if (offset !== undefined && limit !== undefined && limit >= 1) call.range = [offset, offset + limit - 1];
       else if (start !== undefined && end !== undefined && end >= start) call.range = [start, end];
       return call;
     }
