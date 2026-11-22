@@ -108,12 +108,21 @@ test("a cold deep link to Settings shows the boot screen, then the page", async 
   const held = new Promise<void>((resolve) => {
     waiting.push(resolve);
   });
+  const asked: string[] = [];
   await page.route("**/assets/settings-*.js", async (route) => {
+    asked.push(route.request().url());
     await held;
     await route.continue();
   });
-  await page.goto("/settings");
+  // Wait for the navigation to commit, not for `load`. The chunk is a dynamic `import()` the first render
+  // starts, and WebKit holds the document's `load` event until every such fetch is in: a `goto` that waits for
+  // `load` waits on the chunk this case holds. Chromium fires `load` without it. Nothing in the app waits for
+  // `load`, so the boot screen, then the page, is the same in both engines.
+  await page.goto("/settings", { waitUntil: "commit" });
   await expect(page.getByText(en["error.boot.connecting"])).toBeVisible();
+  // The boot screen is up while the screen's own code is held, not for some other reason.
+  await expect.poll(() => asked.length).toBeGreaterThan(0);
+  await expect(page.getByRole("heading", { name: en["settings.title"] })).toHaveCount(0);
   for (const release of waiting) release();
   await expect(page.getByRole("heading", { name: en["settings.title"] }).first()).toBeVisible();
   await expect(page.getByText(en["error.root.title"])).toHaveCount(0);
