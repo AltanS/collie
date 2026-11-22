@@ -50,6 +50,7 @@
       "below": {
         "maxRows": 2,
         "footerMaxRows": 2,
+        "losesText": true,
         "hints": [
           "^\\s*← for agents · \\? for shortcuts(?:\\s{2,}\\S.*)?$",
           "^\\s*\\? for shortcuts(?:\\s{2,}\\S.*)?$",

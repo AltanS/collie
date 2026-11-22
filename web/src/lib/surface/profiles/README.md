@@ -45,6 +45,11 @@ need a rule to be read right.
 - `commandList.inEdgeRun` says the list stands in the box's own edge run, right over the top edge. The interior walk ends at the list's lowest entry.
 - A list in that run that is not the typed command's own reads as holding Enter, like a dialog over the box.
 
+## Rows under the box
+
+- `idle.volatile.below.hints` lists the rows under the box that the harness hides or swaps while the box holds text. The Send Protocol leaves them out of its count of rows under the box.
+- `idle.volatile.below.losesText: true` says a hint row may lose words when the box gets its first character, and keep the rest (Codex hides `? for shortcuts` and keeps a notice after it). A later row under the box then counts as that hint row when its words are the hint row's words with some left out, in the same order, at least one kept. Each hint row stands for at most one later row. A row with a word added or changed, and a row that no hint row of the first read gives, still count. The field needs `hints` and may only be `true`.
+
 ## Paste
 
 - `paste.block` says the harness takes one bracketed paste of a whole text and folds a long one into `collapse.pattern`.
