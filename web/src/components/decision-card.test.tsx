@@ -718,13 +718,25 @@ describe("after the tap", () => {
     expect(container.querySelector('[data-slot="decision-collie-mark"]')).toBeNull();
   });
 
-  it.each<["carried" | "rights"]>([["carried"], ["rights"]])("a %s card of Collie's own keeps the Collie mark and its sender name", (type) => {
+  it.each<["carried" | "rights" | "test"]>([["carried"], ["rights"], ["test"]])("a %s card of Collie's own keeps the Collie mark and its sender name", (type) => {
     const from: HillDecision["from"] = { kind: "collie", address: null, trickId: null, trickKey: null, memberId: "lodge", harness: null, label: "Collie", host: "lodge", trickHost: null, ref: { type, id: "legs", hash: "a".repeat(64) } };
     const { slot, container } = renderCard(hillDecision({ from, target: null }));
     expect(slot("decision-meta")).toHaveTextContent("Collie");
     expect(slot("decision-meta")).not.toHaveTextContent("Collie tricks");
     expect(container.querySelector('[data-slot="decision-collie-mark"]')).not.toBeNull();
     expect(container.querySelector('[data-icon="tricks"]')).toBeNull();
+  });
+
+  it("the test Decision wears Collie's mark and the label Collie, and says Done. after It works", () => {
+    const from: HillDecision["from"] = { kind: "collie", address: null, trickId: null, trickKey: null, memberId: "lodge", harness: null, label: "Collie", host: "lodge", trickHost: null, ref: { type: "test", id: "test", hash: "b".repeat(64) } };
+    const card = hillDecision({ from, target: null, priority: "now", title: "Does the Hill reach you?", summary: "You sent this test from Settings. Tap the answer to close it.", options: [{ intent: "ok", label: "It works" }], text: "none" });
+    const open = renderCard(card);
+    expect(open.slot("decision-meta")).toHaveTextContent("Collie");
+    expect(open.container.querySelector('[data-slot="decision-collie-mark"]')).not.toBeNull();
+    expect(open.option("ok")).toHaveTextContent("It works");
+    open.unmount();
+    const done = renderCard(card, answered(hillReceipt({ delivery: "none" }), "ok"));
+    expect(done.slot("decision-receipt")).toHaveTextContent("Done.");
   });
 
   it("says an answer to a crew machine that is not answering was not sent, and keeps the card answerable", () => {

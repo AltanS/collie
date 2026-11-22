@@ -112,6 +112,10 @@ export const ACK_MANIFEST = {
     channel: "inline",
     why: "The Hill's switch in Settings and on the Hill's own off state (M96): the switch itself is the receipt, it holds the new place while the call runs and the snapshot's `hillOff` then confirms it; a failed call puts the switch back and lands as a line under it, because the operator asked for something that did not happen.",
   },
+  sendHillTest: {
+    channel: "inline",
+    why: "Send a test Decision on the Hill's page (2026-11-22): the button holds disabled while the call runs and for the seconds the bridge names, and the sentence under it, which stays, is the receipt: when the card arrives and, if no notification would be sent, why not; a refusal or a failed call lands in the same place as one line, because a status line would be gone before the person read why nothing came.",
+  },
   setTricksSwitch: {
     channel: "inline",
     why: "The switch for tricks as a whole, a card in Settings, Tricks: the switch itself is the receipt, it holds the new place while the call runs and the snapshot's `tricksOff` then confirms it; a failed call puts the switch back and lands as a line under it, because the operator asked for something that did not happen.",

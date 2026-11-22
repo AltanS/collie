@@ -132,6 +132,7 @@
   "tricks.enabled",
   "tricks.hill",
   "tricks.hill.docs",
+  "tricks.hill.test",
   "tricks.list",
   "tricks.official.add",
   "tricks.official.update",

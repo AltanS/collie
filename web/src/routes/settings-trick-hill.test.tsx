@@ -150,7 +150,7 @@ describe("the page's words", () => {
 
   it("holds the sections in order and none of a trick's own: no Updates, no code folds, no Remove, no rules", () => {
     page({});
-    expect([...detail().querySelectorAll("[data-section]")].map((el) => el.getAttribute("data-section"))).toEqual(["head", "about-group", "about", "who", "rings", "quiet", "from"]);
+    expect([...detail().querySelectorAll("[data-section]")].map((el) => el.getAttribute("data-section"))).toEqual(["head", "about-group", "about", "who", "rings", "quiet", "test", "from"]);
     expect(screen.queryByText(/Update this trick/)).toBeNull();
     expect(detail().querySelector('[data-slot="trick-remove"], [data-section="code"], [data-section="remove"]')).toBeNull();
     expect(screen.queryByRole("button", { name: /Remove/ })).toBeNull();
