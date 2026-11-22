@@ -15,7 +15,7 @@ import type { PageDef } from "@/lib/settings/types";
 
 // The rows are the registry's pages (lib/settings/pages.ts, ADR 0170), in its order, after Updates and about, which
 // both drawings put first because its line changes without you (a release lands). Every page is always offered, with
-// one exception: Profiles, only while the machine answers the accounts route. Tricks and the Hill is always there now
+// one exception: Profiles, only while the machine answers the accounts route. Tricks is always there now
 // (2026-11-21): the Tricks switch is on that page, so a row that went away with the switch took the switch with it.
 // Machines is no row of its own any more: it is a row of Devices and machines, whose line names it.
 

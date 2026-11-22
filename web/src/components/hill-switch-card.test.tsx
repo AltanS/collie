@@ -13,7 +13,7 @@ import { groupDecision, hillDecision, trickDecision } from "@/test/hill-fixtures
 import { server } from "@/test/setup";
 import { tapAtFirstPaint } from "@/test/tap-at-first-paint";
 
-// Settings → Tricks and the Hill → The Hill (bridge/hill/switch.ts): one row, drawn from the snapshot's `hillOff`
+// Settings → Tricks → The Hill (bridge/hill/switch.ts): one row, drawn from the snapshot's `hillOff`
 // in the root data, a tap that writes `POST /api/hill/switch` and reads the snapshot again, and a
 // refusal that puts the switch back and says so.
 

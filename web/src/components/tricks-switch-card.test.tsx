@@ -16,7 +16,7 @@ import { hillDecision, trickDecision } from "@/test/hill-fixtures";
 import { server } from "@/test/setup";
 import { tapAtFirstPaint } from "@/test/tap-at-first-paint";
 
-// The switch for tricks as a whole (bridge/tricks/feature-switch.ts), a card in Settings, Tricks and the Hill: drawn from the
+// The switch for tricks as a whole (bridge/tricks/feature-switch.ts), a card in Settings, Tricks: drawn from the
 // snapshot's `tricksOff`, a tap that writes `POST /api/tricks/switch`, the armed second tap while a trick's
 // Decision is open, and the Windows line.
 

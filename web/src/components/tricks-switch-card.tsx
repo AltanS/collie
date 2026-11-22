@@ -12,10 +12,10 @@ import { t, tn } from "@/lib/i18n";
 import { tricksStore, useTricksState, type TricksState } from "@/lib/tricks/store";
 import { cn } from "@/lib/utils";
 
-// Settings → Tricks and the Hill, under the Hill's card (moved there from the top of Settings, Tricks and the Hill on 2026-11-18): one card, one
+// Settings → Tricks, under the Hill's card (moved there from the top of Settings, Tricks on 2026-11-18): one card, one
 // switch for tricks AS A WHOLE (bridge/tricks/feature-switch.ts). While it is on, the Settings index shows a Tricks row for the list.
 // Tricks are an experiment and OFF by default (2026-11-17). Off, no trick runs, none draws a part, and the list
-// of Settings, Tricks and the Hill is out of reach (a link to it lands here) and cannot be changed. Each trick keeps its own switch as it was; the big switch never
+// of Settings, Tricks is out of reach (a link to it lands here) and cannot be changed. Each trick keeps its own switch as it was; the big switch never
 // moves them. The value rides on the snapshot (`tricksOff`), so the card is drawn from the first frame with no
 // reading of its own, and it always renders: it does not wait for the tricks reply.
 //

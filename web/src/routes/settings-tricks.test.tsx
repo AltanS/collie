@@ -12,7 +12,7 @@ import { withHeaderHost } from "@/test/header-host";
 import { SettingsRoute } from "./settings";
 import { SettingsTricksRoute } from "./settings-sections";
 
-// Settings → Tricks and the Hill (ADR 0170): both experiments on one page, always on the index. The switch for tricks
+// Settings → Tricks (ADR 0170): both experiments on one page, always on the index. The switch for tricks
 // as a whole stands first and the list of your tricks under it while that switch is on; the Hill's switch ends the
 // page. Each experiment wears the Experimental badge on its own card; there is no notice for the page.
 //
@@ -40,16 +40,16 @@ function mount(path: string, data: Partial<HomeData> = {}) {
 
 const precedes = (a: Element, b: Element) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
 
-describe("Settings → Tricks and the Hill", () => {
+describe("Settings → Tricks", () => {
   it("has its row on the index with tricks off and on, with its line", async () => {
     mount("/settings", { tricksOff: true });
-    const row = await screen.findByRole("button", { name: /^Tricks and the Hill/ });
-    expect(row).toHaveTextContent("The Tricks switch, your tricks, the Hill");
+    const row = await screen.findByRole("button", { name: /^Tricks/ });
+    expect(row).toHaveTextContent("The Tricks switch and your tricks");
   });
 
   it("stays on the page while tricks are off, with both switches and no list", async () => {
     const router = mount("/settings/tricks", { tricksOff: true });
-    expect(await screen.findByRole("heading", { name: "Tricks and the Hill" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Tricks" })).toBeInTheDocument();
     expect(router.state.location.pathname).toBe("/settings/tricks");
     expect(await screen.findByRole("switch", { name: "Tricks" })).not.toBeChecked();
     expect(screen.getByRole("switch", { name: "The Hill" })).toBeInTheDocument();

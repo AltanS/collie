@@ -29,6 +29,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Changed
 
+- **The Settings page "Tricks and the Hill" is named Tricks, and the Hill is the first row of its trick list.** The Hill is a trick that ships with Collie, so it sits in the list with the other tricks, with its own switch, which works as before and also when the Tricks switch is off. A tap on the row opens a page that says what the Hill is, who can ask, when your phone rings and what to do when no question arrives. The Hill's own card at the foot of the page is gone.
 - **The other eleven languages have the texts of the large-screen layout, Settings, the keyboard shortcuts, Actions and trick removal.** German, Spanish, French, Italian, Japanese, Korean, Portuguese, Russian, Turkish, Simplified Chinese and Traditional Chinese now show these screens in their own words, where the last release showed them in English.
 
 ### Fixed

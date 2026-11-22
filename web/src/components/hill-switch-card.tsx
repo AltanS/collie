@@ -12,11 +12,11 @@ import { useHillCount } from "@/lib/hill/store";
 import { t, tn } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
-// Settings → Tricks and the Hill → The Hill: one row, one switch (bridge/hill/switch.ts). The Hill is an experiment
+// Settings → Tricks → The Hill: one row, one switch (bridge/hill/switch.ts). The Hill is an experiment
 // and OFF by default (2026-11-13); the switch turns it on. Off, agents and tricks cannot post and the Hill
 // leaves the bar; the open Decisions stay on the bridge and come back when it is on again. It is the one
 // place the switch lives: it is no longer on Settings, Alerts, and the Hill's row and About sheet left
-// Settings, Tricks and the Hill. The value rides on the snapshot, so the row is drawn from the first frame with no
+// Settings, Tricks. The value rides on the snapshot, so the row is drawn from the first frame with no
 // reading of its own.
 //
 // THE ARMED SECOND TAP (moved here from the Tricks card's About sheet). Off blocks every answer: the Decisions

@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { useEntryScroll } from "./use-entry-scroll";
 
 // The list keeps its place for its history entry (2026-11-21): Back from a trick's details page lands where the
-// person left Settings, Tricks and the Hill; a fresh visit starts at the top.
+// person left Settings, Tricks; a fresh visit starts at the top.
 
 /** A scroller whose scrollTop holds what is written, as a real one does (jsdom keeps it at 0). */
 function Scroller() {

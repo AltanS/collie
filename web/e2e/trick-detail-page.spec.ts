@@ -7,7 +7,7 @@ import type { AgentView } from "@/lib/types";
 import { installApiStub } from "./fixtures/api";
 
 // A TRICK'S DETAILS PAGE (2026-11-21), in a real engine at 390 x 844 and at 1440 x 900: a tap on a name in
-// Settings, Tricks and the Hill opens the page and Back returns to the list where it was; the header button of a trick's own
+// Settings, Tricks opens the page and Back returns to the list where it was; the header button of a trick's own
 // page opens the same page and Back returns there; nothing on the page is wider than the window. The Remove section
 // (ADR 0168) has its own spec, trick-remove.spec.ts.
 

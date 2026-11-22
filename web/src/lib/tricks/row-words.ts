@@ -1,4 +1,4 @@
-// THE WORDS OF A TRICK'S ROW, shared by Settings → Tricks and the Hill (components/tricks-settings-card.tsx) and a trick's
+// THE WORDS OF A TRICK'S ROW, shared by Settings → Tricks (components/tricks-settings-card.tsx) and a trick's
 // details page (components/trick-detail.tsx), so the two say a place, a read, a warning and an origin in the
 // same words. Pure: the phone's own English (or the person's language), and the wire's facts.
 

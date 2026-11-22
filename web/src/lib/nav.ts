@@ -315,7 +315,7 @@ export function accountPath(id: string, scope?: Scope): string {
 }
 
 /**
- * A trick's details page, below Settings → Tricks and the Hill: what the trick does, where it comes from, its code and its
+ * A trick's details page, below Settings → Tricks: what the trick does, where it comes from, its code and its
  * settings. The key is `<host>:<id>` for a trick on a machine, the same two parts its own page's id names
  * (`trick:<host>:<id>`), and the bare `<id>` for an entry of this machine's official list that is not added
  * yet. Neither a host nor a trick id holds a colon (lib/tricks/schema.ts `HOST`, `TRICK_ID`), so the key splits
@@ -367,7 +367,7 @@ export function hillPath(scope?: Scope): string {
 
 /**
  * One card of Collie's own about a trick (M96 spec 14): a proposal, a new version, a trick's rights. Its own
- * page, with no Hill around it, so it works with the Hill off. Opened from Settings, Tricks and the Hill and from the
+ * page, with no Hill around it, so it works with the Hill off. Opened from Settings, Tricks and from the
  * Dashboard's line; Back steps back to either, else to the Dashboard. Carries the scope like the others.
  */
 export function trickCardPath(decisionId: string, scope?: Scope): string {
@@ -588,7 +588,7 @@ export function ancestorsOf(pathname: string): string[] {
   // from a trick's Session, where the bar stays too (amended 2026-11-10). A sideways move carries `from`,
   // so the Dashboard is its only parent either way.
   if (head === "hill" && seg.length === 1) return ["/"];
-  // A trick's card (M96 spec 14) is opened from Settings, Tricks and the Hill and from the Dashboard's line.
+  // A trick's card (M96 spec 14) is opened from Settings, Tricks and from the Dashboard's line.
   if (head === "trick-card" && seg.length === 2) return ["/", "/settings/tricks"];
   // The approver's page (ADR 0139) is opened from a QR, from outside the app: the Dashboard is its parent.
   if (head === "pair" && seg.length === 2 && id === "approve") return ["/"];

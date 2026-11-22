@@ -1,4 +1,4 @@
-// The Trick settings section of the states playground (M94 slice 04): the card behind Settings → Tricks and the Hill in
+// The Trick settings section of the states playground (M94 slice 04): the card behind Settings → Tricks in
 // each state a list can be in. Every card mounts the REAL card at 390 px over a store of its own, and
 // the switches talk to a stand-in that answers after a moment, so a flip shows the held position and
 // stays. The provenance times read against a fixed clock.
@@ -37,7 +37,7 @@ import { Card, Group, Section, type SectionDef } from "../layout";
 export const DEF: SectionDef = {
   id: "trick-settings",
   title: "Trick settings",
-  intent: "The Tricks list on Settings, and its switch card in Settings, Tricks and the Hill, in each state a list of tricks can be in, at 390 px.",
+  intent: "The Tricks list on Settings, and its switch card in Settings, Tricks, in each state a list of tricks can be in, at 390 px.",
 };
 
 const NOW = Date.parse("2026-11-08T09:41:00Z");
@@ -416,7 +416,7 @@ function RepoSheetBox({ n, state, label, initialUrl, readOnMount = false }: { n:
   );
 }
 
-/** The tricks switch card as Settings, Tricks and the Hill draws it (under the Hill's), in a 390px column, with a switch that flips in place. */
+/** The tricks switch card as Settings, Tricks draws it (under the Hill's), in a 390px column, with a switch that flips in place. */
 function SwitchCardCase({ n, state, label, initial, waiting = 0, windows = false, startAgain }: { n: number; state: string; label: string; initial: boolean; waiting?: number; windows?: boolean; startAgain?: readonly string[] }) {
   const [on, setOn] = useState(initial);
   return (
@@ -428,7 +428,7 @@ function SwitchCardCase({ n, state, label, initial, waiting = 0, windows = false
   );
 }
 
-/** Settings, Tricks and the Hill with both switches, the one for tricks as a whole and the Hill's, each flipping in place. */
+/** Settings, Tricks with both switches, the one for tricks as a whole and the Hill's, each flipping in place. */
 function ExperimentsCase({ n, state, label, hillOn, tricksOn }: { n: number; state: string; label: string; hillOn: boolean; tricksOn: boolean }) {
   const [hill, setHill] = useState(hillOn);
   const [tricks, setTricks] = useState(tricksOn);
@@ -452,17 +452,17 @@ export function TrickSettingsSection(): ReactNode {
   useRepoRoutes();
   return (
     <Section def={DEF}>
-      {/* The switch for tricks as a whole (bridge/tricks/feature-switch.ts), a card in Settings, Tricks and the Hill since 2026-11-18. Off by default. While it is on, the Settings index shows the Tricks row; off, the row and a deep link to Settings, Tricks and the Hill are gone. */}
+      {/* The switch for tricks as a whole (bridge/tricks/feature-switch.ts), a card in Settings, Tricks since 2026-11-18. Off by default. While it is on, the Settings index shows the Tricks row; off, the row and a deep link to Settings, Tricks are gone. */}
       <Group title="The switch for tricks as a whole">
-        <ExperimentsCase n={66} state="settings-experiments-off" label="Settings, Tricks and the Hill with both cards, both off (the default)" hillOn={false} tricksOn={false} />
-        <ExperimentsCase n={67} state="settings-experiments-on" label="Settings, Tricks and the Hill with both cards, both on: the Settings index now shows the Tricks row" hillOn tricksOn />
+        <ExperimentsCase n={66} state="settings-experiments-off" label="Settings, Tricks with both cards, both off (the default)" hillOn={false} tricksOn={false} />
+        <ExperimentsCase n={67} state="settings-experiments-on" label="Settings, Tricks with both cards, both on: the Settings index now shows the Tricks row" hillOn tricksOn />
         <SwitchCardCase n={47} state="tricks-switch-on" label="tricks on" initial />
         <SwitchCardCase n={48} state="tricks-switch-off" label="tricks off (the default)" initial={false} />
         <SwitchCardCase n={49} state="tricks-switch-armed" label="3 questions from tricks wait: tap once, it arms; tap again inside four seconds, it goes off" initial waiting={3} />
         <SwitchCardCase n={50} state="tricks-switch-windows" label="a Windows bridge: the line, and the switch cannot move" initial={false} windows />
         <SwitchCardCase n={64} state="tricks-switch-off-starts" label="tricks off, three tricks on: the line names them; switch on and it goes" initial={false} startAgain={["Release Gates", "Tracker", "Browser leg"]} />
         <SwitchCardCase n={65} state="tricks-switch-off-starts-many" label="tricks off, seven tricks on: five names, then 'and 2 more'" initial={false} startAgain={["Release Gates", "Tracker", "Browser leg", "Todo list", "Usage line", "Morph", "Notes"]} />
-        <ListCard n={51} state="trick-settings-tricks-off" label="a moment after tricks go off, before the page leaves for Settings, Tricks and the Hill: the list stays readable, every switch is disabled, one line says why" tricks={[HEALTHY[0] ?? trick("x", "x"), { ...(HEALTHY[2] ?? trick("y", "y")), on: false, state: "off" }]} tricksOff />
+        <ListCard n={51} state="trick-settings-tricks-off" label="a moment after tricks go off, before the page leaves for Settings, Tricks: the list stays readable, every switch is disabled, one line says why" tricks={[HEALTHY[0] ?? trick("x", "x"), { ...(HEALTHY[2] ?? trick("y", "y")), on: false, state: "off" }]} tricksOff />
       </Group>
       <Group title="The list">
         <ListCard n={1} state="trick-settings-healthy" label="three tricks, three origins" tricks={HEALTHY} />
@@ -739,9 +739,9 @@ export function TrickSettingsSection(): ReactNode {
         />
       </Group>
       {/* M96 spec 14: a card of Collie's own about a trick needs no Hill. With the Hill off the phone reaches it from
-          Settings, Tricks and the Hill (the group, and a waiting version's row) and from the Dashboard's line. */}
+          Settings, Tricks (the group, and a waiting version's row) and from the Dashboard's line. */}
       <Group title="Waiting for your yes (spec 14)">
-        <Card state="trick-settings-waiting" label="43 · the first group of Settings, Tricks and the Hill: one row per open card, oldest first (Hill on or off)">
+        <Card state="trick-settings-waiting" label="43 · the first group of Settings, Tricks: one row per open card, oldest first (Hill on or off)">
           <div className="w-[390px] max-w-full bg-background p-4">
             <TrickCardsWaitingList cards={WAITING_CARDS} onOpen={noop} />
           </div>
@@ -770,7 +770,7 @@ export function TrickSettingsSection(): ReactNode {
       </Group>
       {/* A Windows bridge runs no trick (bridge/tricks/service.ts `gated`): the list card draws nothing; the switch card (case 50) says the line once. */}
       <Group title="A Windows bridge">
-        <ListCard n={36} state="trick-settings-windows-gate" label="a Windows bridge: no list card, the switch card (50) in Settings, Tricks and the Hill says the line once" tricks={[]} gate="windows" />
+        <ListCard n={36} state="trick-settings-windows-gate" label="a Windows bridge: no list card, the switch card (50) in Settings, Tricks says the line once" tricks={[]} gate="windows" />
       </Group>
       {/* Add from a repository (2026-11-17): the row is the last of every list above; here is its sheet, and the row with tricks off. */}
       <Group title="Add from a repository">

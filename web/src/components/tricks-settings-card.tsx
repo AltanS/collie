@@ -33,7 +33,7 @@ import { useOpenTrickCard } from "@/components/trick-cards";
 import { useTrickCards } from "@/lib/hill/store";
 import type { HillDecision } from "@/lib/hill/wire";
 
-// Settings → Tricks and the Hill (M94 slice 04). One row per trick on this machine, each with one switch. Collie draws
+// Settings → Tricks (M94 slice 04). One row per trick on this machine, each with one switch. Collie draws
 // this page, not the trick: the words are Collie's, the trick's own name is the only text a trick supplies,
 // and the switch works whatever state the trick is in, because it only writes the bridge's switch file
 // (the same one `collie trick on|off` writes).
@@ -98,7 +98,7 @@ import type { HillDecision } from "@/lib/hill/wire";
 // it costs the bridge a read of its own folder, never a fetch.
 //
 // THE HILL IS NOT HERE. It had a built-in row above the person's tricks from 2026-11-11 to 2026-11-13; the Hill
-// is an experiment now, and its one switch is on Settings, Tricks and the Hill (components/hill-switch-card.tsx). A row
+// is an experiment now, and its one switch is on Settings, Tricks (components/hill-switch-card.tsx). A row
 // here says only that a trick's own Decisions wait for the Hill (`hillOff`). A card of Collie's own about a
 // trick needs no Hill (M96 spec 14): a row whose new version waits opens that card from its slot line, and the
 // cards about new tricks are a group of their own above this card (components/trick-cards.tsx).

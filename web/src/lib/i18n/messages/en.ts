@@ -3594,7 +3594,7 @@ export const en = {
   // The header button of a trick's page that opens its details page (2026-11-21).
   "tricks.session.details": "Trick details",
   "tricks.link.gone": "That pane is not here any more.",
-  // --- Settings → Tricks and the Hill (M94 slice 04) ---
+  // --- Settings → Tricks (M94 slice 04) ---
   "settings.tricks.none": "No tricks yet",
   "settings.tricks.foot": "A trick runs as you.",
   "settings.tricks.runsOn": "Tricks run on the lead of this crew. This machine runs none.",
@@ -4282,8 +4282,8 @@ export const en = {
   "settings.page.notifications.blurb": "Push, cache and load alerts, do not disturb",
   "settings.page.dashboard.title": "Dashboard and projects",
   "settings.page.dashboard.blurb": "Pane order, repo search, worktree folder",
-  "settings.page.tricks.title": "Tricks and the Hill",
-  "settings.page.tricks.blurb": "The Tricks switch, your tricks, the Hill",
+  "settings.page.tricks.title": "Tricks",
+  "settings.page.tricks.blurb": "The Tricks switch and your tricks",
   "settings.page.devices.title": "Devices and machines",
   "settings.page.devices.blurb": "Pairing, paired devices, your machines, the connection",
   "settings.page.privacy.title": "Privacy and data",
@@ -4375,9 +4375,9 @@ export const en = {
   "settings.where.machinesSheet": "On the Dashboard: the Machines sheet",
   "settings.where.filesDiff": "In Files: on a changed file's row",
   "machines.alerts.pushLinkNotifications": "Settings, Notifications",
-  "settings.tricks.switch.offLineTricks": "Tricks are switched off on this machine; switch them on in Settings, Tricks and the Hill.",
-  "tricks.menu.moreSee.one": "{count} more trick has rows. See Settings, Tricks and the Hill.",
-  "tricks.menu.moreSee.other": "{count} more tricks have rows. See Settings, Tricks and the Hill.",
+  "settings.tricks.switch.offLineTricks": "Tricks are switched off on this machine; switch them on in Settings, Tricks.",
+  "tricks.menu.moreSee.one": "{count} more trick has rows. See Settings, Tricks.",
+  "tricks.menu.moreSee.other": "{count} more tricks have rows. See Settings, Tricks.",
   "settings.voice.phoneSpeech.hint": "Where this phone turns your speech into text. Other devices keep their own choice.",
   "settings.words.colours": "colours colors",
   "settings.words.darkMode": "dark mode night",
@@ -4430,7 +4430,15 @@ export type Messages = typeof en;
  * already carries, so the list cannot outlive its translations. Never a way to skip translating a
  * key for good: a key stays here only between a feature and its translation pass.
  */
-export const PENDING_TRANSLATION = ["chat.stream.edit", "chat.stream.editAria", "chat.stream.returnedEditAria"] as const satisfies readonly MessageKey[];
+export const PENDING_TRANSLATION = [
+  "chat.stream.edit",
+  "chat.stream.editAria",
+  "chat.stream.returnedEditAria",
+  "settings.page.tricks.blurb",
+  "settings.tricks.switch.offLineTricks",
+  "tricks.menu.moreSee.one",
+  "tricks.menu.moreSee.other",
+] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */
 export type PendingKey = (typeof PENDING_TRANSLATION)[number];
