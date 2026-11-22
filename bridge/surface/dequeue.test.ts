@@ -20,7 +20,7 @@ import { muxAck, muxOk, muxRefused, type MuxAck, type MuxGrid, type MuxGridReque
 import { dequeueRoute, type DequeueRouteRuntime } from "../server.ts";
 import { loadProfiles, profileFor } from "../../web/src/lib/surface/profile.ts";
 import type { DequeueReason, DequeueReceipt } from "../../web/src/lib/surface/dequeue.ts";
-import { DequeueService, PROOF_GAPS_MS, proofOf, type DequeueAsk } from "./dequeue.ts";
+import { DEQUEUE_SPAN_MS, DequeueService, PROOF_GAPS_MS, proofOf, SPAN_MARGIN_MS, type DequeueAsk } from "./dequeue.ts";
 import { KeyGate } from "./key-gate.ts";
 import { RowRing, SendProtocol, SessionLocks } from "./protocol.ts";
 import { RequestStore } from "./requests.ts";
@@ -59,6 +59,17 @@ class ClaudePane {
   /** Backspace does nothing: a box that will not empty. */
   deaf = false;
   refuseKeys = false;
+  /** The multiplexer refuses every key after Up: the clear key never leaves. */
+  refuseAfterUp = false;
+  /** Backspace removes at most this many characters per press of a batch (null: one per key). */
+  eatsPerBatch: number | null = null;
+  /** Runs after each clear batch: a dialog coming up, the clock moving. */
+  afterClear: (() => void) | null = null;
+  /** Runs on each read of the screen. */
+  onRead: (() => void) | null = null;
+  /** Journal rows written at the key are held back here until the test lets them in: a slow log. */
+  slowJournal = false;
+  held: string[] = [];
   revision = 1;
 
   enqueue(...texts: string[]): void {
@@ -79,27 +90,38 @@ class ClaudePane {
 
   readGrid = (paneId: string, request: MuxGridRequest): Promise<MuxOutcome<MuxGrid>> => {
     void request;
+    this.onRead?.();
     return Promise.resolve(muxOk({ paneId, text: this.screen, truncated: false, revision: this.revision }));
   };
 
   writeKeys = (paneId: string, keys: readonly string[]): Promise<MuxAck> => {
     void paneId;
-    if (this.refuseKeys) return Promise.resolve(muxRefused("refused"));
+    if (this.refuseKeys || (this.refuseAfterUp && !keys.includes("Up"))) return Promise.resolve(muxRefused("refused"));
     this.keysSeen.push([...keys]);
     this.revision++;
+    let eaten = 0;
     for (const key of keys) {
       if (key === "Up") this.up();
-      if (key === "Backspace" && !this.deaf) this.box = [...this.box].slice(0, -1).join("");
+      if (key === "Backspace" && !this.deaf && (this.eatsPerBatch === null || eaten < this.eatsPerBatch)) {
+        this.box = [...this.box].slice(0, -1).join("");
+        eaten++;
+      }
     }
+    if (keys.includes("Backspace")) this.afterClear?.();
     return Promise.resolve(muxAck());
   };
+
+  private write(row: string): void {
+    if (this.slowJournal) this.held.push(row);
+    else this.journal.push(row);
+  }
 
   private up(): void {
     if (this.turnEndsAtKey) {
       // The turn ended and the next one started with the queue: a dequeue row and the prompt in the log.
       const prompt = this.queue.join("\n");
-      this.journal.push(queueOp("dequeue"));
-      this.journal.push(JSON.stringify({ type: "user", uuid: `u-${String(this.journal.length)}`, timestamp: "2026-11-22T10:00:02.000Z", message: { role: "user", content: prompt } }));
+      this.write(queueOp("dequeue"));
+      this.write(JSON.stringify({ type: "user", uuid: `u-${String(this.journal.length)}`, timestamp: "2026-11-22T10:00:02.000Z", message: { role: "user", content: prompt } }));
       this.history.push(prompt);
       this.queue = [];
       this.turnEndsAtKey = false;
@@ -129,7 +151,12 @@ interface Rig {
   readonly service: DequeueService;
   readonly protocol: SendProtocol;
   readonly forgotten: string[][];
+  /** The texts the service turned the box match off for (`DequeueDeps.blind`). */
+  readonly blinded: string[][];
   readonly sleeps: number[];
+  /** Every press, with the clock at it. */
+  readonly pressedAt: number[];
+  readonly clock: { now: number };
   readonly lines: string[];
   readonly ask: DequeueAsk;
   readonly take: (requestId: string, paneId?: string) => Promise<DequeueReceipt>;
@@ -150,7 +177,15 @@ function rig(pane = new ClaudePane()): Rig {
     return Promise.resolve();
   };
   const profile = (harness: string) => Promise.resolve(profileFor(harness, "2.1.319", { log: () => undefined, profiles: new Map([["claude", CLAUDE]]) }));
-  const gate = new KeyGate(pane, now);
+  const pressedAt: number[] = [];
+  // Read at each press, so a test that swaps the pane's writeKeys is still the one that answers.
+  const timed = {
+    writeKeys: (paneId: string, keys: readonly string[]) => {
+      pressedAt.push(clock.now);
+      return pane.writeKeys(paneId, keys);
+    },
+  };
+  const gate = new KeyGate(timed, now);
   const protocol = new SendProtocol({
     mux: { readGrid: pane.readGrid, typeText: () => Promise.resolve(muxAck()), pasteText: () => Promise.resolve(muxAck()) },
     gate,
@@ -163,6 +198,7 @@ function rig(pane = new ClaudePane()): Rig {
     sleep,
   });
   const forgotten: string[][] = [];
+  const blinded: string[][] = [];
   const service = new DequeueService({
     mux: pane,
     gate,
@@ -172,7 +208,12 @@ function rig(pane = new ClaudePane()): Rig {
       forgotten.push([...texts]);
       protocol.takenBack("main", paneId, texts);
     },
+    blind: (paneId, texts) => {
+      blinded.push([...texts]);
+      protocol.blindToBox("main", paneId, texts);
+    },
     sleep,
+    now,
   });
   // The journal: the real reducer over the rows the pane wrote, read on each call (LiveWindows.queueNow).
   let reducer: RowReducer = createClaudeReducer();
@@ -182,7 +223,10 @@ function rig(pane = new ClaudePane()): Rig {
     service,
     protocol,
     forgotten,
+    blinded,
     sleeps,
+    pressedAt,
+    clock,
     lines: [],
     gen: 1,
     masks: false,
@@ -498,5 +542,102 @@ describe("the route", () => {
       expect(logged.join("\n")).not.toContain(text);
       expect(onDisk.join("\n")).not.toContain(text);
     }
+  });
+});
+
+// The lead's review of 2026-11-22: once the person's words left the agent's queue they are never lost, and
+// never offered for a second send.
+describe("a clear that started but was not proved", () => {
+  test("the clear key never leaves: the box still holds exactly the queue, `in_box`, nothing forgotten", async () => {
+    const r = rig();
+    r.pane.refuseAfterUp = true;
+    r.pane.enqueue(FIRST);
+    expect(await r.take("dq-clear-01")).toEqual({ requestId: "dq-clear-01", outcome: "in_box" });
+    expect(r.pane.box).toBe(FIRST);
+    expect(r.forgotten).toEqual([]);
+  });
+
+  test("a clear that removed nothing leaves exactly the queue in the box: `in_box`", async () => {
+    const r = rig();
+    r.pane.deaf = true;
+    r.pane.enqueue(FIRST);
+    expect(await r.take("dq-clear-02")).toEqual({ requestId: "dq-clear-02", outcome: "in_box" });
+    expect(r.forgotten).toEqual([]);
+  });
+
+  test("a clear that shrank the box and then met a dialog: `taken` with the texts and `leftover`, the sends forgotten", async () => {
+    const r = rig();
+    r.pane.eatsPerBatch = 5;
+    r.pane.afterClear = () => void (r.pane.dialog = true);
+    r.pane.enqueue(FIRST, SECOND);
+    expect(await r.take("dq-clear-03")).toEqual({ requestId: "dq-clear-03", outcome: "taken", texts: [FIRST, SECOND], leftover: true });
+    expect(r.forgotten).toEqual([[FIRST, SECOND]]);
+    // One clear press only: nothing is pressed into a dialog.
+    expect(r.pane.keysSeen.length).toBe(2);
+  });
+
+  test("a clear that shrank the box and then stopped shrinking: `taken` and `leftover`", async () => {
+    const r = rig();
+    r.pane.eatsPerBatch = 3;
+    r.pane.afterClear = () => void (r.pane.deaf = true);
+    r.pane.enqueue(FIRST);
+    expect(await r.take("dq-clear-04")).toMatchObject({ outcome: "taken", texts: [FIRST], leftover: true });
+  });
+
+  test("the route's audit line says leftover and never the text", async () => {
+    const r = rig();
+    r.pane.eatsPerBatch = 5;
+    r.pane.afterClear = () => void (r.pane.dialog = true);
+    r.pane.enqueue(FIRST);
+    const res = await r.route({ requestId: "dq-clear-05" });
+    expect(await res.json()).toMatchObject({ outcome: "taken", leftover: true });
+    expect(JSON.parse(r.lines[0]!)).toMatchObject({ detail: { outcome: "taken", leftover: true, count: 1 } });
+    expect(r.lines[0]).not.toContain(FIRST);
+  });
+});
+
+describe("the lock's span: no key after the deadline", () => {
+  test("a clear that would run past the span stops before the next press, under the leftover rule", async () => {
+    const r = rig();
+    const long = "x".repeat(2_000);
+    r.pane.enqueue(long);
+    r.pane.eatsPerBatch = 256;
+    // Each clear batch costs nine seconds of the clock: the third would start past the deadline.
+    r.pane.afterClear = () => void (r.clock.now += 9_000);
+    const start = r.clock.now;
+    expect(await r.take("dq-span-01")).toMatchObject({ outcome: "taken", texts: [long], leftover: true });
+    const deadline = start + DEQUEUE_SPAN_MS - SPAN_MARGIN_MS;
+    expect(r.pressedAt.every((at) => at <= deadline)).toBe(true);
+    expect(r.pressedAt.length).toBeGreaterThan(2);
+  });
+
+  test("reads that eat the span before the key: refused `busy`, no key", async () => {
+    const r = rig();
+    r.pane.enqueue(FIRST);
+    r.pane.onRead = () => void (r.clock.now += 15_000);
+    expect(await r.take("dq-span-02")).toEqual({ requestId: "dq-span-02", outcome: "refused", reason: "busy" });
+    expect(r.pane.keysSeen).toEqual([]);
+  });
+});
+
+describe("the history trap with a slow journal", () => {
+  test("the queue went out, Up recalled it, the log shows it only after the proof window: `unknown`, and the box match is off for it", async () => {
+    const r = rig();
+    r.pane.enqueue(FIRST);
+    r.pane.turnEndsAtKey = true;
+    r.pane.slowJournal = true;
+    expect(await r.take("dq-slow-01")).toEqual({ requestId: "dq-slow-01", outcome: "unknown" });
+    // The box holds the recalled copy, untouched; the person's words went out as a prompt.
+    expect(r.pane.box).toBe(FIRST);
+    expect(r.forgotten).toEqual([]);
+    expect(r.blinded).toEqual([[FIRST]]);
+  });
+
+  test("a `back` move, tied or not, leaves the box match on: that box is the queue given back", async () => {
+    const r = rig();
+    r.pane.enqueue(FIRST);
+    r.pane.boxShows = "something else entirely";
+    await r.take("dq-slow-02");
+    expect(r.blinded).toEqual([]);
   });
 });

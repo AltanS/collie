@@ -11,7 +11,8 @@ import { canonicalMuxKey } from "../mux/keys.ts";
 import { QueuedSends } from "../surface/queued.ts";
 import { createClaudeReducer } from "./claude.ts";
 import { decodeCursor, encodeCursor } from "./cursor.ts";
-import { LiveWindows, type ChatWindowBody } from "./live.ts";
+import { LiveWindows, redactChatBody, type ChatWindowBody } from "./live.ts";
+import { receiptQueue } from "./receipt-queue.ts";
 import { buildJournalRegistry } from "./registry.ts";
 import { TranscriptStore } from "./store.ts";
 import type { AgentSessionRef, JournalAdapter, TranscriptSource } from "./types.ts";
@@ -124,5 +125,89 @@ describe("QueuedSends.takenBack", () => {
     expect(q.of("main", "%1").map((card) => card.requestId)).toEqual(["a2", "a3"]);
     q.takenBack("main", "%2", ["other"]);
     expect(q.of("main", "%1").map((card) => card.requestId)).toEqual(["a2", "a3"]);
+  });
+});
+
+describe("the box match after a take-back that proved no `back` move (QueuedSends.blindToBox)", () => {
+  const sends = () =>
+    new QueuedSends({
+      store: { list: () => [], markReturned: () => true },
+      generation: () => "claude:s",
+      matches: (box, lines) => box.replace(/\s+/gu, "") === lines.join("").replace(/\s+/gu, ""),
+      now: () => 2_000,
+      busy: () => false,
+    });
+  const add = (q: QueuedSends, id: string, text: string) => q.add({ id, session: "main", paneId: "%1", generation: "claude:s", text, collapse: null, at: 1_000 });
+  const idleBox = (box: string) => ({ box, at: 2_000, turn: "idle" as const, poll: true });
+
+  test("without it, a box that shows the recalled text would make the send `returned`, with a Send button", () => {
+    const q = sends();
+    add(q, "a1", "the words that went out");
+    expect(q.boxRead("main", "%1", idleBox("the words that went out"))).toEqual(["a1"]);
+    expect(q.of("main", "%1")[0]?.state).toBe("returned");
+  });
+
+  test("with it, the same box changes nothing: the send stays queued and no card offers it again", () => {
+    const q = sends();
+    add(q, "a1", "the words that went out");
+    q.blindToBox("main", "%1", ["the words that went out"]);
+    expect(q.boxRead("main", "%1", idleBox("the words that went out"))).toEqual([]);
+    expect(q.of("main", "%1").map((card) => card.state)).toEqual(["queued"]);
+  });
+
+  test("it takes one send per text, oldest first, on this pane only", () => {
+    const q = sends();
+    add(q, "a1", "same");
+    add(q, "a2", "same");
+    q.blindToBox("main", "%2", ["same"]);
+    q.blindToBox("main", "%1", ["same"]);
+    // The second send of the same words is still matched; the blind one is not.
+    expect(q.boxRead("main", "%1", idleBox("same"))).toEqual(["a2"]);
+  });
+});
+
+describe("a returned card says whether its text is whole (Edit on the Back in the box card)", () => {
+  const sends = () =>
+    new QueuedSends({
+      store: { list: () => [], markReturned: () => true },
+      generation: () => "claude:s",
+      matches: (box, lines) => box === lines.join("\n"),
+      now: () => 2_000,
+      busy: () => false,
+    });
+  const SECRET = `use the key sk-or-v1-${"a".repeat(48)} now`;
+
+  test("a returned card carries whole; a queued one does not", () => {
+    const q = sends();
+    q.add({ id: "a1", session: "main", paneId: "%1", generation: "claude:s", text: "plain words", collapse: null, at: 1_000 });
+    q.add({ id: "a2", session: "main", paneId: "%1", generation: "claude:s", text: "still waiting", collapse: null, at: 1_000 });
+    q.boxRead("main", "%1", { box: "plain words", at: 2_000, turn: "idle", poll: false });
+    const cards = q.of("main", "%1");
+    expect(cards.find((card) => card.requestId === "a1")).toMatchObject({ state: "returned", whole: true });
+    expect(cards.find((card) => card.requestId === "a2")).not.toHaveProperty("whole");
+    expect(receiptQueue(cards, [], true, [])).toEqual([{ requestId: "a1", state: "returned", text: "plain words", whole: true }]);
+  });
+
+  test("the mask drops whole from a secret-shaped text and keeps it on a plain one", () => {
+    const body: ChatWindowBody = {
+      page: "live",
+      gen: 1,
+      session: "s1",
+      rev: 1,
+      head: 1,
+      oldest: 1,
+      hasOlder: false,
+      upserts: [],
+      queued: [],
+      queuedSends: [
+        { requestId: "a1", state: "returned", text: SECRET, whole: true },
+        { requestId: "a2", state: "returned", text: "plain words", whole: true },
+      ],
+    };
+    const masked = redactChatBody(body);
+    if (masked.page !== "live") throw new Error("a live body");
+    expect(masked.queuedSends![0]!.text).not.toBe(SECRET);
+    expect(masked.queuedSends![0]).not.toHaveProperty("whole");
+    expect(masked.queuedSends![1]).toEqual({ requestId: "a2", state: "returned", text: "plain words", whole: true });
   });
 });

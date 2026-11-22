@@ -10550,6 +10550,7 @@ export async function dequeueRoute(
   const detail: AuditDetail = { requestId, outcome: receipt.outcome, replayed: answer.replayed, pressed: answer.pressed };
   if (receipt.reason !== undefined) detail.reason = receipt.reason;
   if (receipt.texts !== undefined) detail.count = receipt.texts.length;
+  if (receipt.leftover === true) detail.leftover = true;
   context.audit.record({ action: "dequeue", paneId, session: context.session, device: context.device, detail });
   // A replay pressed nothing this time; a first tap that pressed makes the engine look again soon.
   if (answer.pressed && !answer.replayed) {

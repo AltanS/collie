@@ -101,6 +101,17 @@ interface Entry {
   readonly steer: boolean;
   /** A submitted send (see the header): a prompt edge does not end it. */
   readonly submitted: boolean;
+  /**
+   * The text is the request's own, whole: false for an entry read back from a request file after a restart,
+   * whose text is the one kept line. Only a whole text may go into the person's composer (Edit on its card).
+   */
+  readonly whole: boolean;
+  /**
+   * A take-back pressed its key and the log showed no `back` move (ADR 0122, the 2026-11-22 addendum): a box
+   * that shows this text now holds a copy the key recalled from history, so no box read makes it `returned`.
+   * It leaves when the journal shows it sent, or on the clock.
+   */
+  boxBlind?: true;
 }
 
 /** One card the live window is handed for a pane, oldest first. A returned run is one card. */
@@ -111,6 +122,8 @@ export interface ReceiptQueued {
   readonly text: string;
   readonly at: number;
   readonly state: QueuedSendState;
+  /** Every text of the card is its request's own text, whole (see `Entry.whole`); absent means not known whole. */
+  readonly whole?: true;
 }
 
 /** What `add` takes from a settled run. */
@@ -187,6 +200,7 @@ export class QueuedSends {
       idleEmpty: 0,
       steer: input.steer === true || input.submitted === true,
       submitted: input.submitted === true,
+      whole: true,
     });
     this.age();
   }
@@ -223,7 +237,9 @@ export class QueuedSends {
       // A steer that nobody gave back is no card: the harness took it, it does not wait.
       if (entry.steer && entry.state !== "returned") continue;
       const run = this.runOf(entry, mine);
-      cards.push({ requestId: entry.id, text: run.map((e) => e.text).join("\n"), at: entry.at, state: entry.state });
+      const card: ReceiptQueued = { requestId: entry.id, text: run.map((e) => e.text).join("\n"), at: entry.at, state: entry.state };
+      // Said on a returned card only, the one card Edit may act on.
+      cards.push(entry.state === "returned" && run.every((e) => e.whole) ? { ...card, whole: true } : card);
     }
     return cards;
   }
@@ -248,6 +264,18 @@ export class QueuedSends {
       const want = text.replace(/\s+/gu, "");
       const entry = this.entries.find((e) => e.session === session && e.paneId === paneId && !e.submitted && e.text.replace(/\s+/gu, "") === want);
       if (entry !== undefined) this.drop(entry.id);
+    }
+  }
+
+  /**
+   * A take-back pressed its key and the log showed no `back` move: for each text, the oldest open queued send of
+   * the pane with the same text (white space folded) that is not blind yet stops matching the box (`Entry.boxBlind`).
+   */
+  blindToBox(session: string, paneId: string, texts: readonly string[]): void {
+    for (const text of texts) {
+      const want = text.replace(/\s+/gu, "");
+      const entry = this.entries.find((e) => e.session === session && e.paneId === paneId && e.state === "queued" && !e.steer && e.boxBlind !== true && e.text.replace(/\s+/gu, "") === want);
+      if (entry !== undefined) entry.boxBlind = true;
     }
   }
 
@@ -299,7 +327,8 @@ export class QueuedSends {
       this.age();
       return [];
     }
-    const held = this.heldRun(reading.box, open);
+    // A send a take-back left blind is no candidate: the box holds a recalled copy of it, not the queue.
+    const held = this.heldRun(reading.box, open.filter((entry) => entry.boxBlind !== true));
     const leader = held.length > 1 ? held[0]!.id : undefined;
     for (const entry of held) {
       entry.seenAt = readAt;
@@ -431,6 +460,7 @@ export class QueuedSends {
         idleEmpty: 0,
         steer: false,
         submitted: false,
+        whole: false,
       });
     }
     this.entries.sort((a, b) => a.at - b.at);

@@ -3440,6 +3440,14 @@ export class SendProtocol {
   }
 
   /**
+   * A take-back pressed its key and the log showed no `back` move: the open queued sends with these texts stop
+   * turning `returned` on a box match, because a box that shows one holds a recalled copy (QueuedSends.blindToBox).
+   */
+  blindToBox(session: string, paneId: string, texts: readonly string[]): void {
+    this.queuedSends.blindToBox(session, paneId, texts);
+  }
+
+  /**
    * The newest settled requests for a pane, newest first, as the session page lists them (M56 spec 09).
    * The request files hold receipts and the line Sent would keep (requests.ts), so no row of the screen
    * can come out of here, and of the text only that line.

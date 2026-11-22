@@ -2409,6 +2409,7 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
           profile: paneProfile,
           lock: (paneId, owner, spanMs, work, busy) => send.underPaneLock(name, paneId, owner, spanMs, work, busy),
           forget: (paneId, texts) => send.takenBack(name, paneId, texts),
+          blind: (paneId, texts) => send.blindToBox(name, paneId, texts),
         })
       : undefined;
   const withDequeue = dequeue === undefined ? withClear : { ...withClear, dequeue };

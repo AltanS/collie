@@ -67,6 +67,11 @@ export interface DequeueReceipt {
    * logs them, never puts them on the audit line or into a trace.
    */
   readonly texts?: readonly string[];
+  /**
+   * Set on `taken` and `too_late` when a clear key left and the agent's box did not read back empty: the
+   * texts left the queue all the same, and the agent's box may still hold a cut-off rest of them.
+   */
+  readonly leftover?: true;
 }
 
 /** The texts of a `taken` receipt as one composer text: in queue order, joined by one newline. */

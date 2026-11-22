@@ -30,7 +30,10 @@
 //           key, as many times as the box has characters plus its slack (the Send Protocol's discard
 //           step), in batches, each one only after a read showed the box shorter, and a read-back that
 //           shows it empty -> `taken` with the texts. A box that never held exactly the texts, or that
-//           does not read back empty, is left as it is -> `in_box`
+//           still holds exactly them after the clear (no key left, or none removed anything), is left as
+//           it is -> `in_box`. A clear that removed something and did not read back empty (it stopped
+//           shrinking, a dialog came up, the span ran out) -> `taken` with the texts and `leftover`: the
+//           words left the queue, so they go to the person; the box may hold a cut-off rest
 //   not     the queue went out, or the log cannot tell:
 //           a `back` move that did not tie                -> nothing pressed again; `in_box` when the box
 //                                                            holds text, else `unknown`
@@ -40,6 +43,13 @@
 //           that does not read back empty -> `unknown`)
 //           the words left and the box is empty, the queue now empty -> `too_late`
 //           anything else                                  -> nothing pressed again; `unknown`
+//           With no `back` move at all, the Send Protocol stops matching those texts' queued sends to the
+//           box (`blind`): a box that shows one now holds a recalled copy of a text that went out, and a
+//           "Back in the box" card would offer to send it a second time. They leave when the journal
+//           shows them sent.
+//
+// THE SPAN. Every press checks a deadline, the lock's span less a margin: no key leaves after it. Before
+// the dequeue key that refuses `busy`; during the clear it stops the clear, under the rule above.
 //
 // The same request id answers the same receipt and presses once; a request id still in flight is joined,
 // never pressed twice. The receipts live in memory, with the texts, for that replay only; a bridge
@@ -73,6 +83,8 @@ const CLEAR_BATCH = 256;
 const CLEAR_ROUNDS = 12;
 /** The longest a take-back holds the pane's send lock: its reads, the key, the proof and the clear end well inside it. */
 export const DEQUEUE_SPAN_MS = 30_000;
+/** No key leaves later than this before the span ends: the lock may pass to another send at the span's end. */
+export const SPAN_MARGIN_MS = 2_000;
 /** How many settled receipts a bridge keeps for a replay, newest kept. */
 const KEPT = 256;
 
@@ -105,7 +117,14 @@ export interface DequeueDeps {
   readonly lock: <T>(paneId: string, owner: string, spanMs: number, work: () => Promise<T>, busy: () => T) => Promise<T>;
   /** The taken texts: the Send Protocol forgets its queued sends of them, so no card stands for them later (SendProtocol.takenBack). */
   readonly forget: (paneId: string, texts: readonly string[]) => void;
+  /**
+   * A key left and the log showed no `back` move: the Send Protocol stops matching these texts' queued sends
+   * to the box, so a recalled copy never makes a "Back in the box" card (SendProtocol.blindToBox).
+   */
+  readonly blind?: (paneId: string, texts: readonly string[]) => void;
   readonly sleep?: (ms: number) => Promise<void>;
+  /** The clock the span's deadline reads; `Date.now` by default. */
+  readonly now?: () => number;
 }
 
 /** What a take-back answers: the receipt, whether it is the stored one of an earlier tap, and whether a key left this time. */
@@ -142,9 +161,12 @@ function refusal(requestId: string, reason: DequeueReason): Settled {
   return { receipt: { requestId, outcome: "refused", reason }, pressed: false };
 }
 
-function ended(requestId: string, outcome: "in_box" | "too_late" | "unknown"): Settled {
-  return { receipt: { requestId, outcome }, pressed: true };
+function ended(requestId: string, outcome: "in_box" | "too_late" | "unknown", leftover = false): Settled {
+  return { receipt: leftover ? { requestId, outcome, leftover: true } : { requestId, outcome }, pressed: true };
 }
+
+/** What a clear did: the box read back empty, or it stopped, with whether a key left and the last box it read (null when the last read showed none). */
+type Emptied = { readonly empty: true } | { readonly empty: false; readonly pressed: boolean; readonly box: string | null };
 
 function boxText(frame: Frame): string {
   return frame.placeholder ? "" : frame.interior.text;
@@ -245,6 +267,10 @@ export class DequeueService {
 
   private async run(requestId: string, paneId: string, harness: string, match: ProfileMatch, ask: DequeueAsk): Promise<Settled> {
     const sleep = this.deps.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+    const now = this.deps.now ?? Date.now;
+    // The lock is held from here: no key leaves after its span less the margin.
+    const deadline = now() + DEQUEUE_SPAN_MS - SPAN_MARGIN_MS;
+    const inTime = (): boolean => now() <= deadline;
     // 1. The read before the key: the screen, the log, the screen again right before the press.
     const first = refusalOf(await this.look(paneId, harness, match));
     if (first !== null) return refusal(requestId, first);
@@ -256,7 +282,8 @@ export class DequeueService {
     if (!texts.every((text) => ask.sendable(text))) return refusal(requestId, "not_whole");
     const again = refusalOf(await this.look(paneId, harness, match));
     if (again !== null) return refusal(requestId, again);
-    // 2. The key, once.
+    // 2. The key, once, and only inside the span.
+    if (!inTime()) return refusal(requestId, "busy");
     const sent: MuxAck = await this.deps.gate.press(paneId, [...ask.keys], "person_tap");
     // A key not confirmed in time may still land (M100 spec 03): it counts as pressed, and the proof decides.
     if (!sent.ok && sent.reason !== "unconfirmed") return refusal(requestId, "press_failed");
@@ -273,21 +300,31 @@ export class DequeueService {
     if (proof === "proved") {
       const shown = await this.boxHolding(paneId, harness, match, texts, sleep);
       if (shown === null) return ended(requestId, "in_box");
-      if (!(await this.empty(paneId, harness, match, shown, texts, sleep))) return ended(requestId, "in_box");
+      const cleared = await this.empty(paneId, harness, match, shown, texts, sleep, inTime);
+      // The box still holds exactly the queue: no clear key left, or none removed anything. Its card carries on.
+      if (!cleared.empty && (!cleared.pressed || (cleared.box !== null && wsFree(cleared.box) === wsFree(texts.join("\n"))))) return ended(requestId, "in_box");
+      // Emptied, or a clear that started and was not proved: the words left the queue and go to the person.
       this.forget(paneId, texts);
-      return { receipt: { requestId, outcome: "taken", texts: [...texts] }, pressed: true };
+      const receipt: DequeueReceipt = cleared.empty ? { requestId, outcome: "taken", texts: [...texts] } : { requestId, outcome: "taken", texts: [...texts], leftover: true };
+      return { receipt, pressed: true };
     }
     // 5. Not proved: the queue went out, or the log cannot tell.
-    const now = await this.look(paneId, harness, match);
-    const box = now?.frame == null ? null : boxText(now.frame);
+    const look = await this.look(paneId, harness, match);
+    const box = look?.frame == null ? null : boxText(look.frame);
     if (backSeen(before.mark, after)) return ended(requestId, box !== null && box.trim() !== "" ? "in_box" : "unknown");
+    // No `back` move: whatever the box shows of these texts now is no queue given back. The sends leave on the journal.
+    this.blind(paneId, texts);
     if (proof !== "went_out" || box === null) return ended(requestId, "unknown");
     if (box.trim() === "") return ended(requestId, after !== null && after.mark.texts !== null && after.mark.texts.length === 0 ? "too_late" : "unknown");
     // The box was empty before the key and holds one of the texts now, or all of them: the key recalled the
     // last prompt from the agent's history. It is emptied again; any other text is left alone.
     const recalled = [...texts, texts.join("\n")].find((text) => wsFree(text) === wsFree(box));
     if (recalled === undefined) return ended(requestId, "unknown");
-    return ended(requestId, (await this.empty(paneId, harness, match, now!.frame!, [recalled], sleep)) ? "too_late" : "unknown");
+    const cleared = await this.empty(paneId, harness, match, look!.frame!, [recalled], sleep, inTime);
+    if (cleared.empty) return ended(requestId, "too_late");
+    // A clear that removed part of the recalled copy: it went out all the same, and the box holds a rest.
+    const untouched = !cleared.pressed || (cleared.box !== null && wsFree(cleared.box) === wsFree(recalled));
+    return untouched ? ended(requestId, "unknown") : ended(requestId, "too_late", true);
   }
 
   /** The box, read until it holds exactly the texts (white space folded), or null when no read shows that. */
@@ -306,31 +343,48 @@ export class DequeueService {
   /**
    * The box emptied with the profile's clear key: as many keys as it holds characters (or the texts, when they
    * are longer) plus the key's slack, in batches; a further batch only after a fresh read showed the box
-   * shorter than before the last one, so no press is blind. True once a read-back shows it empty with no dialog.
+   * shorter than before the last one, so no press is blind, and none after the span's deadline (`inTime`).
+   * Empty once a read-back shows it empty with no dialog; otherwise whether any clear key left and the last box
+   * read (null when the last read showed no box, a dialog, or nothing).
    */
-  private async empty(paneId: string, harness: string, match: ProfileMatch, shown: Frame, texts: readonly string[], sleep: (ms: number) => Promise<void>): Promise<boolean> {
+  private async empty(paneId: string, harness: string, match: ProfileMatch, shown: Frame, texts: readonly string[], sleep: (ms: number) => Promise<void>, inTime: () => boolean): Promise<Emptied> {
     const clear = match.profile.keys.clear;
     let length = Math.max([...boxText(shown)].length, [...texts.join("\n")].length);
+    let pressed = false;
+    let box: string | null = boxText(shown);
     for (let round = 0; round < CLEAR_ROUNDS; round++) {
+      if (!inTime()) return { empty: false, pressed, box };
       const count = Math.min(CLEAR_BATCH, length + clear.slack);
       const sent = await this.deps.gate.press(paneId, Array.from({ length: count }, () => clear.key), "person_tap");
-      if (!sent.ok && sent.reason !== "unconfirmed") return false;
+      if (!sent.ok && sent.reason !== "unconfirmed") return { empty: false, pressed, box };
+      pressed = true;
       let left: number | null = null;
       for (const gap of CLEAR_GAPS_MS) {
         await sleep(gap);
         const look = await this.look(paneId, harness, match);
-        if (look === null) return false;
-        if (look.surface.modal !== "none" && look.surface.modal !== "unknown") return false;
-        if (look.frame === null) continue;
-        if (look.surface.composer === "empty") return true;
-        left = [...boxText(look.frame)].length;
+        if (look === null || (look.surface.modal !== "none" && look.surface.modal !== "unknown")) return { empty: false, pressed, box: null };
+        if (look.frame === null) {
+          box = null;
+          continue;
+        }
+        if (look.surface.composer === "empty") return { empty: true };
+        box = boxText(look.frame);
+        left = [...box].length;
         if (count === CLEAR_BATCH && left < length) break;
       }
       // A box that did not shrink, or a batch that should have emptied it, is left as it is.
-      if (left === null || left >= length || count < CLEAR_BATCH || !sent.ok) return false;
+      if (left === null || left >= length || count < CLEAR_BATCH || !sent.ok) return { empty: false, pressed, box };
       length = left;
     }
-    return false;
+    return { empty: false, pressed, box };
+  }
+
+  private blind(paneId: string, texts: readonly string[]): void {
+    try {
+      this.deps.blind?.(paneId, texts);
+    } catch (err) {
+      console.warn(`[dequeue] the box match on ${paneId} could not be turned off: ${err instanceof Error ? err.name : "error"}`);
+    }
   }
 
   private forget(paneId: string, texts: readonly string[]): void {

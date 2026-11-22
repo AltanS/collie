@@ -304,7 +304,15 @@ export function redactChatBody(body: ChatBody): ChatBody {
   const upserts = body.upserts.map(redactEntry);
   if (body.page === "older") return { ...body, upserts };
   const masked: ChatWindowBody = { ...body, upserts, queued: body.queued.map(redactText) };
-  if (body.queuedSends !== undefined) masked.queuedSends = body.queuedSends.map((row) => ({ ...row, text: redactText(row.text) }));
+  if (body.queuedSends !== undefined) {
+    masked.queuedSends = body.queuedSends.map((row) => {
+      const text = redactText(row.text);
+      if (text === row.text) return { ...row, text };
+      // A masked text is dots, not the message: it is never whole, so Edit never takes it.
+      const { whole: _whole, ...rest } = row;
+      return { ...rest, text };
+    });
+  }
   if (body.lastPrompt !== undefined) {
     masked.lastPrompt = { ...body.lastPrompt, text: redactText(body.lastPrompt.text) };
   }
