@@ -3862,6 +3862,29 @@ replaced with `/home/demo/sandbox/collie-labs/codex-v0166-logo-arts/project`, a 
 | `codex--v0166-warning-art-empty--w120.txt` | `idle` | Started with a `-c` override: the logo, the empty box, and `? for shortcuts` with `⚠ 1 warning · f2 to view` after wide spacing |
 | `codex--v0166-warning-typed--w120.txt` | `draft` | `x` typed: the logo is gone, and `⚠ 1 warning · f2 to view` stands alone on the footer row |
 
+## Codex 0.171.0 after a goal that ended achieved (captured 2026-11-22, issue 847, tmux, 120x40)
+
+After a `/goal` that Codex marked achieved, the footer row holds `← for agents · ? for shortcuts` at the left and, at
+the right edge, `Goal achieved (Ns)`; started with a `-c` override it also holds `⚠ 1 warning · f2 to view` after it.
+Once the box holds a character Codex hides the shortcut text and leaves the right segment alone, in the same place, no
+word added or changed; Backspace brings the row back as it was. The seconds count did not move in any read, also 30 s
+later. The segment matches no hint pattern, so the probe counted one more row under the box and every send was held,
+then refused `probe_failed`, until `idle.volatile.below.losesText` let a hint row lose words.
+
+Taken with `tmux capture-pane -e -p` on a scratch tmux socket. The probed reads were taken 100 ms, 400 ms and 2 s
+after the probe character and were alike; the files keep the 100 ms one. The backspace reads match the idle reads byte
+for byte. The lab's folder was replaced with `~/sandbox/codex-v0171-goals/project`, a path of the same length; nothing
+else was changed.
+
+| Fixture | State | What it shows |
+| --- | --- | --- |
+| `codex--v0171-goal-achieved-empty--w120.txt` | `idle` | Plain `codex`: the achieved goal, the empty dim box, the status row, and the hint row with `Goal achieved (2s)` at its right edge |
+| `codex--v0171-goal-achieved-probe--w120.txt` | `draft` | The probe character `⌁` in the box: only `Goal achieved (2s)` stays on the footer row, in the same place |
+| `codex--v0171-goal-achieved-backspace--w120.txt` | `idle` | After Backspace: the same as the idle read |
+| `codex--v0171-goal-achieved-warning-empty--w120.txt` | `idle` | Started with a `-c` override: the hint row with `Goal achieved (1s) · ⚠ 1 warning · f2 to view` at its right edge |
+| `codex--v0171-goal-achieved-warning-probe--w120.txt` | `draft` | The probe character in the box: only `Goal achieved (1s) · ⚠ 1 warning · f2 to view` stays, in the same place |
+| `codex--v0171-goal-achieved-warning-backspace--w120.txt` | `idle` | After Backspace: the same as the idle read |
+
 ## herdr-core corpus (captured 2026-10-30, M78 spec 04, hc 0.1.14, Claude Code 2.1.314, pi 1.3.0, omp 18.6.1)
 
 The first captures taken through a bridge on `COLLIE_MUX=herdr-core`: a scratch core (`HC_SESSION=m78-lab`,

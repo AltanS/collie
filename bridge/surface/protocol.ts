@@ -964,8 +964,12 @@ interface Snap {
   readonly cuesUnderBox: boolean;
   /** The notice the profile names over the frame ({@link noticeOver}), left out of every cue read; null with none. */
   readonly notice: AboveNotice | null;
-  /** The rows under the frame that count, the profile's hint rows left out ({@link countBelow}); 0 with no frame. */
+  /** The rows under the frame that count, the profile's hint rows left out ({@link readBelow}); 0 with no frame. */
   readonly below: number;
+  /** The rows under the frame behind {@link below}: the hint rows and the rows that count ({@link readBelow}). */
+  readonly belowRows: BelowRows;
+  /** The profile's `idle.volatile.below.losesText`: a later row that only lost words of this read's hint row is no new row ({@link belowCount}). */
+  readonly belowLosesText: boolean;
   /** The chrome rows of the accepted named footer run ({@link chromeRows}): no count, no settle key and no rows hash reads them. Empty with no frame. */
   readonly chrome: ReadonlySet<number>;
   /** The name of the other screen whose own row stands under the frame ({@link otherScreenOf}); null with no frame. */
@@ -1341,7 +1345,7 @@ function typedBoxVerdict(s0: Snap, snap: Snap, prefix: string, lines: readonly s
   if (s0.frame === null || snap.frame === null) return "changed";
   if (snap.otherScreen !== null) return "other_screen";
   if (boxHolds(snap.frame, prefix, lines, collapse, whole) === null) return "mismatch";
-  if (rowsBelow(s0, s0.frame) !== rowsBelow(snap, snap.frame)) return "changed";
+  if (!belowKept(s0, snap)) return "changed";
   return "pass";
 }
 
@@ -1356,7 +1360,7 @@ function probeBoxPasses(s0: Snap, snap: Snap, prefix: string, probe: string): bo
   if (s0.frame === null || snap.frame === null) return false;
   if (snap.otherScreen !== null) return false;
   if (modalAtBox(snap) || framedCueGrew(s0, snap)) return false;
-  if (rowsBelow(s0, s0.frame) !== rowsBelow(snap, snap.frame)) return false;
+  if (!belowKept(s0, snap)) return false;
   return wsFree(boxText(snap.frame)) === wsFree(prefix) + probe;
 }
 
@@ -1371,7 +1375,7 @@ function probeBoxPasses(s0: Snap, snap: Snap, prefix: string, probe: string): bo
 function landsAtStart(s0: Snap, snap: Snap, draft: string, probe: string): boolean {
   if (s0.frame === null || snap.frame === null || snap.otherScreen !== null || !readIsUnstyled(snap.rows)) return false;
   if (modalAtBox(snap) || framedCueGrew(s0, snap) || cueAppeared(s0, snap)) return false;
-  if (rowsBelow(s0, s0.frame) !== rowsBelow(snap, snap.frame)) return false;
+  if (!belowKept(s0, snap)) return false;
   if (countIn(snap.texts, probe) !== countIn(s0.texts, probe) + 1) return false;
   const box = wsFree(boxText(snap.frame));
   return box.startsWith(probe) && box.slice(probe.length) !== wsFree(draft);
@@ -1511,11 +1515,82 @@ function cuesInsideFrame(snap: Snap, frame: Frame): boolean {
   return snap.cues.length > 0 && snap.cues.every((cue) => cue.row >= frame.top && cue.row <= frame.bottom);
 }
 
-/** The non-blank rows under a frame's bottom edge. */
-function rowsBelow(snap: Snap, frame: Frame): number {
-  void frame;
-  return snap.below;
+/**
+ * How many rows under the box of `after` count against `before` (#847): {@link Snap.below}, less the
+ * rows that a hint row of `before` gives by losing words only ({@link excusedBelow}), when the profile
+ * says its hint rows may lose text (`idle.volatile.below.losesText`). Every compare of the rows under the
+ * box against S0 reads this one count, so the rule holds at the probe, its second read, S1, the turn's
+ * compares and a held send's next try alike.
+ */
+function belowCount(before: Snap, after: Snap): number {
+  if (!after.belowLosesText) return after.below;
+  return after.below - excusedBelow(before.belowRows.hints, after.belowRows.counted);
 }
+
+/** Whether the rows under the box of `after` keep the count of `before`'s ({@link belowCount}). */
+function belowKept(before: Snap, after: Snap): boolean {
+  return belowCount(before, after) === before.below;
+}
+
+/** The words of a row: its runs of non-blank characters. */
+function wordsOf(row: string): string[] {
+  return row.split(/\s+/u).filter((word) => word.length > 0);
+}
+
+/**
+ * Whether `after` is `before` with words left out and nothing else (#847): the words of `after` stand,
+ * in order, among the words of `before`, at least one is kept and at least one went. A word added, or
+ * changed by one character, is no lost text.
+ */
+export function lostWordsOnly(before: string, after: string): boolean {
+  const had = wordsOf(before);
+  const kept = wordsOf(after);
+  if (kept.length === 0 || kept.length >= had.length) return false;
+  let at = 0;
+  for (const word of kept) {
+    while (at < had.length && had[at] !== word) at++;
+    if (at === had.length) return false;
+    at++;
+  }
+  return true;
+}
+
+/**
+ * How many of the rows `counted` (rows under a later box that match no hint) a hint row of S0 (`hints`)
+ * gives by losing words only ({@link lostWordsOnly}). Each hint row gives at most one row: the most
+ * rows that can be paired, one to one.
+ */
+export function excusedBelow(hints: readonly string[], counted: readonly string[]): number {
+  if (hints.length === 0 || counted.length === 0) return 0;
+  const owner: Array<number | null> = hints.map(() => null);
+  const pair = (row: number, seen: boolean[]): boolean => {
+    for (let h = 0; h < hints.length; h++) {
+      if (seen[h] === true || !lostWordsOnly(hints[h]!, counted[row]!)) continue;
+      seen[h] = true;
+      const held = owner[h] ?? null;
+      if (held === null || pair(held, seen)) {
+        owner[h] = row;
+        return true;
+      }
+    }
+    return false;
+  };
+  let n = 0;
+  for (let row = 0; row < counted.length; row++) if (pair(row, [])) n++;
+  return n;
+}
+
+/** The rows under a frame's bottom edge as {@link readBelow} sorts them. */
+interface BelowRows {
+  /** How many rows count. */
+  readonly count: number;
+  /** The rows a hint pattern took, trailing blanks cut. */
+  readonly hints: readonly string[];
+  /** The rows that count, trailing blanks cut. */
+  readonly counted: readonly string[];
+}
+
+const NO_BELOW: BelowRows = { count: 0, hints: [], counted: [] };
 
 /**
  * The non-blank rows under a frame's bottom edge, the profile's hint rows left out
@@ -1527,10 +1602,12 @@ function rowsBelow(snap: Snap, frame: Frame): number {
  * after `/s` in pi's box closes pi's fuzzy list, and that is no moved screen (issue 638). The rows
  * of the named footer run that the profile marks as chrome ({@link chromeRows}) are left out too:
  * Claude Code's agents panel gains a row when a background agent starts or resumes, on its own.
+ * The hint rows and the rows that count are kept by text, for {@link belowCount}.
  */
-function countBelow(texts: readonly string[], frame: Frame | null, hints: readonly RegExp[], list: CommandListRead | null = null, popup: PopupRead | null = null, chrome: ReadonlySet<number> = new Set()): number {
-  if (frame === null) return 0;
-  let n = 0;
+function readBelow(texts: readonly string[], frame: Frame | null, hints: readonly RegExp[], list: CommandListRead | null = null, popup: PopupRead | null = null, chrome: ReadonlySet<number> = new Set()): BelowRows {
+  if (frame === null) return NO_BELOW;
+  const hinted: string[] = [];
+  const counted: string[] = [];
   for (let i = frame.bottom + 1; i < texts.length; i++) {
     // A chrome row of the accepted named footer run (`footerRows[].chrome`) comes and goes on its own.
     if (chrome.has(i)) continue;
@@ -1539,9 +1616,11 @@ function countBelow(texts: readonly string[], frame: Frame | null, hints: readon
     // A typeahead popup (`volatile.below.popups`) comes and goes with the text: its rows are not a screen that moved.
     if (popup !== null && i >= popup.first && i <= popup.last) continue;
     const text = texts[i]!.trimEnd();
-    if (text.trim().length > 0 && !hints.some((hint) => hint.test(text))) n++;
+    if (text.trim().length === 0) continue;
+    if (hints.some((hint) => hint.test(text))) hinted.push(text);
+    else counted.push(text);
   }
-  return n;
+  return { count: counted.length, hints: hinted, counted };
 }
 
 /**
@@ -1599,7 +1678,7 @@ function transcriptAbove(snap: Snap, frame: Frame): string[] {
 function outsideUnchanged(before: Snap, after: Snap, losesText = false): boolean {
   if (before.frame === null || after.frame === null) return false;
   if (cueAppeared(before, after)) return false;
-  if (rowsBelow(before, before.frame) !== rowsBelow(after, after.frame)) return false;
+  if (!belowKept(before, after)) return false;
   if (aboveUnchanged(before, after)) return true;
   return losesText && lostTextOnly(transcriptAbove(before, before.frame), transcriptAbove(after, after.frame), SCROLLBACK_SLACK);
 }
@@ -1653,7 +1732,7 @@ const SCROLLBACK_SLACK = 3;
 function turnOutsideUnchanged(before: Snap, after: Snap): boolean {
   if (before.frame === null || after.frame === null) return false;
   if (framedCueGrew(before, after)) return false;
-  return rowsBelow(before, before.frame) === rowsBelow(after, after.frame);
+  return belowKept(before, after);
 }
 
 /** The non-blank rows above a frame's top edge, as the compares see them (a spinner row steadied). */
@@ -6085,7 +6164,7 @@ export class SendProtocol {
     // in where the harness queues commands or runs that one at once, and never where it would wait.
     if (mode !== "send" && mode !== "append" && mode !== "replace" && mode !== "command") return false;
     if (s0.frame === null || snap.frame === null || aboveUnchanged(s0, snap)) return false;
-    if (snap.cueStrength !== s0.cueStrength || framedCueGrew(s0, snap) || rowsBelow(s0, s0.frame) !== rowsBelow(snap, snap.frame) || modalAtBox(snap)) return false;
+    if (snap.cueStrength !== s0.cueStrength || framedCueGrew(s0, snap) || !belowKept(s0, snap) || modalAtBox(snap)) return false;
     if (!this.bandScrolled(state, snap)) return false;
     // The text is in the box now: only something open under the box stops it, never the turn's answer above.
     if (snap.belowCues === "strong" || turnRefusal(state, s0, s0.frame, "below") !== null) return false;
@@ -6258,6 +6337,14 @@ export class SendProtocol {
     // A notice over the box (`idle.notices`) is left out of every read as well: its keys act only on a
     // box holding one of its digits, so its key row is no prompt that holds the keys.
     const notice = noticeOver(texts, frame, idle);
+    const underBox = readBelow(
+      texts,
+      frame,
+      (idle?.volatile.below.hints ?? []).map((source) => new RegExp(source, "u")),
+      frame === null ? null : (staleListUnder(texts, frame.bottom, frame.interior.text, idle?.volatile.below.commandList) ?? (ownList?.side === "under" ? ownList : null)),
+      popup,
+      chrome,
+    );
     const read: Snap = {
       revision: grid.value.revision,
       gateRevision,
@@ -6285,14 +6372,9 @@ export class SendProtocol {
               readCues(frame === null ? bare : [...bare.slice(0, frame.interior.first), ...bare.slice(frame.interior.last + 1)], null, notice).strength,
       belowCues: frame === null ? "none" : readCues(bare.slice(frame.bottom + 1), null, null).strength,
       notice,
-      below: countBelow(
-        texts,
-        frame,
-        (idle?.volatile.below.hints ?? []).map((source) => new RegExp(source, "u")),
-        frame === null ? null : (staleListUnder(texts, frame.bottom, frame.interior.text, idle?.volatile.below.commandList) ?? (ownList?.side === "under" ? ownList : null)),
-        popup,
-        chrome,
-      ),
+      below: underBox.count,
+      belowRows: underBox,
+      belowLosesText: idle?.volatile.below.losesText === true,
       chrome,
       otherScreen: otherScreenOf(texts, frame, idle?.volatile.below.otherScreens ?? []),
       popup,
@@ -6557,7 +6639,7 @@ export class SendProtocol {
         if (!holdsProbe) return "fail";
         if (outside) return "pass";
         // A cue or another count of rows under the box may be one frame; rows above that moved are not.
-        return inBox && (cueAppeared(s0, snap) || rowsBelow(s0, s0.frame) !== rowsBelow(snap, snap.frame)) ? strike(snap) : "fail";
+        return inBox && (cueAppeared(s0, snap) || !belowKept(s0, snap)) ? strike(snap) : "fail";
       }
       if (snap.plain.join("\n") === s0.plain.join("\n")) return "wait";
       landing = probeLanding(s0.plain, snap.plain, probe, { freeBelow: state.manual });
@@ -6649,7 +6731,7 @@ export class SendProtocol {
     }
     if (fresh.frame === null || fresh.surface.turn !== "idle" || fresh.surface.modal !== "none") return null;
     if (boxText(fresh.frame) !== boxText(s0.frame)) return null;
-    if (cueAppeared(s0, fresh) || fresh.below > s0.below) return null;
+    if (cueAppeared(s0, fresh) || belowCount(s0, fresh) > s0.below) return null;
     return fresh;
   }
 
