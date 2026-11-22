@@ -35,7 +35,7 @@ export const TOKEN_USE_FEATURES: readonly TokenUseFeature[] = [
   // bridge/walky/deliver.ts: one typed line per message to this session. Off: other agents cannot reach it.
   { id: "walky-talky", reason: "agent-messages", place: "session-sheet", component: "components/walky-sheet.tsx WalkyOffSwitch" },
   // bridge/hill/service.ts: an answer is typed to `replyTo` or the poster. Off: posts and answers are refused.
-  { id: "hill", reason: "decision-answers", place: "settings", component: "components/hill-switch-card.tsx" },
+  { id: "hill", reason: "decision-answers", place: "settings", component: "components/hill-row.tsx" },
   // bridge/agent-view/service.ts: a tap types `[view:<trick> <address>] from operator: tapped "<label>"`.
   // Not drawn on that switch yet: at 360 px the chip does not fit the hint's second line (2026-11-12). The
   // trick's own row in Settings, Tricks carries it, and the playground's "Uses agent tokens" section shows it.

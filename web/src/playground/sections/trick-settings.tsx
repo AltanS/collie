@@ -16,7 +16,6 @@ import { HILL_IDLE } from "@/hooks/use-hill-answer";
 import { OfficialTrickDetail, TrickDetail } from "@/components/trick-detail";
 import { RepoAddSheet } from "@/components/tricks-repo-sheet";
 import { TricksSettingsCard } from "@/components/tricks-settings-card";
-import { HillSwitchCard } from "@/components/hill-switch-card";
 import { TricksSwitchCard } from "@/components/tricks-switch-card";
 import { addOfficialTrick, addRepoTrick, listRepoTricks } from "@/lib/api";
 import { syncHill } from "@/lib/hill/store";
@@ -33,6 +32,8 @@ import { CODE_INDEX, CODE_INDEX_LONG, CODE_INDEX_NEXT, codeFileOf } from "../fix
 
 import { RootRouter } from "../harness";
 import { Card, Group, Section, type SectionDef } from "../layout";
+import { HillRow, HillRowCard } from "@/components/hill-row";
+import { HillRowFlipping } from "./hill-row-preview";
 
 export const DEF: SectionDef = {
   id: "trick-settings",
@@ -142,6 +143,7 @@ function ListCard({ n, state, label, tricks, readOnly, hillOff, tricksOff, gate 
             readOnly={readOnly}
             hillOff={hillOff}
             tricksOff={tricksOff}
+            hill={<HillRowFlipping initial={false} />}
           />
         </RootRouter>
       </div>
@@ -428,6 +430,15 @@ function SwitchCardCase({ n, state, label, initial, waiting = 0, windows = false
   );
 }
 
+/** The Hill's row in its list card, its position held by the caller (the page's two switches flip in place). */
+function HillRowInCardControlled({ on, onToggle }: { on: boolean; onToggle: (next: boolean) => void }) {
+  return (
+    <HillRowCard>
+      <HillRow on={on} disabled={false} waiting={0} onToggle={onToggle} to="/settings/tricks/hill" />
+    </HillRowCard>
+  );
+}
+
 /** Settings, Tricks with both switches, the one for tricks as a whole and the Hill's, each flipping in place. */
 function ExperimentsCase({ n, state, label, hillOn, tricksOn }: { n: number; state: string; label: string; hillOn: boolean; tricksOn: boolean }) {
   const [hill, setHill] = useState(hillOn);
@@ -439,7 +450,7 @@ function ExperimentsCase({ n, state, label, hillOn, tricksOn }: { n: number; sta
           <AppHeaderHost bridge="connected" error={false}>
             <SettingsPage title="settings.page.tricks.title">
               <TricksSwitchCard on={tricks} disabled={false} onToggle={setTricks} />
-              <HillSwitchCard on={hill} disabled={false} onToggle={setHill} />
+              <HillRowInCardControlled on={hill} onToggle={setHill} />
             </SettingsPage>
           </AppHeaderHost>
         </RootRouter>

@@ -326,6 +326,13 @@ export function trickDetailPath(key: string, scope?: Scope): string {
   return `/settings/tricks/${encodeURIComponent(key)}${scopeSearch(scope)}`;
 }
 
+/**
+ * The details page key of the Hill (`/settings/tricks/hill`). The Hill is Collie's own page and no trick, but it stands in
+ * the trick list and opens a details page like one. `hill` is in `RESERVED_TRICK_IDS`, so no trick can take the key and
+ * the page never shadows one; an official entry cannot be named `hill` either.
+ */
+export const HILL_DETAIL_KEY = "hill";
+
 /** The details page key of a trick on a machine: `<host>:<id>`. */
 export function trickDetailKey(host: string, id: string): string {
   return `${host}:${id}`;

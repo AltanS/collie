@@ -1,15 +1,15 @@
 import type { ReactNode } from "react";
-import { Link, useLocation } from "react-router";
-
 import { Icon } from "@/components/icons/icon";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Collapse } from "@/components/ui/collapse";
 import { OneOf } from "@/components/ui/one-of";
-import { ROW_OPEN_BUTTON, ROW_OPEN_CONTROL, ROW_OPEN_ROW, ROW_OPEN_SWITCH } from "@/components/ui/row-open";
+import { ROW_OPEN_CONTROL, ROW_OPEN_SWITCH } from "@/components/ui/row-open";
 import { Switch } from "@/components/ui/switch";
 import { TokenUseChip } from "@/components/token-use-label";
+import { HillRowCard } from "@/components/hill-row";
 import { OriginLabel } from "@/components/trick-detail";
+import { TrickRowFrame } from "@/components/trick-row-frame";
 import { RepoAddRow, type RepoAddCall, type RepoListCall } from "@/components/tricks-repo-sheet";
 import { useArm, useDisarmOn } from "@/hooks/use-arm";
 import { useLocale } from "@/hooks/use-locale";
@@ -97,9 +97,10 @@ import type { HillDecision } from "@/lib/hill/wire";
 // by name and labels none. The list is read when the card mounts and again when the installed tricks change;
 // it costs the bridge a read of its own folder, never a fetch.
 //
-// THE HILL IS NOT HERE. It had a built-in row above the person's tricks from 2026-11-11 to 2026-11-13; the Hill
-// is an experiment now, and its one switch is on Settings, Tricks (components/hill-switch-card.tsx). A row
-// here says only that a trick's own Decisions wait for the Hill (`hillOff`). A card of Collie's own about a
+// THE HILL IS THE FIRST ROW (2026-11-22). It ships with Collie and is no trick, but it stands in this list like one: its row comes in as
+// `hill` (components/hill-row.tsx) and is drawn above the official and community rows, with its own switch and details page.
+// It does not depend on the tricks switch, so where this card is not drawn (no reply, a Windows bridge) it stands alone in a card of its own.
+// A row says only that a trick's own Decisions wait for the Hill (`hillOff`). A card of Collie's own about a
 // trick needs no Hill (M96 spec 14): a row whose new version waits opens that card from its slot line, and the
 // cards about new tricks are a group of their own above this card (components/trick-cards.tsx).
 //
@@ -200,6 +201,8 @@ export interface TricksSettingsCardProps extends TrickWriteCalls {
   tricksOff?: boolean;
   /** The official list read. The real route by default. */
   onOfficialList?: (signal?: AbortSignal) => Promise<OfficialTricksReply>;
+  /** The Hill's row (components/hill-row.tsx), drawn first in the list, and alone in its own card where the list is not drawn. None: no row. */
+  hill?: ReactNode;
   /** The read of a repository's trick list ("Add from a repository"). The real route by default. */
   onRepoList?: RepoListCall;
   /** The add of one trick of that list. The real route by default. */
@@ -210,10 +213,12 @@ export interface TricksSettingsCardProps extends TrickWriteCalls {
 export function TricksSettingsCard(props: TricksSettingsCardProps) {
   const store = props.store ?? tricksStore;
   const state = useTricksState(store);
-  if (state.rev === null) return null;
+  // The Hill's row needs no tricks reply: with none, and on a Windows bridge, it stands alone.
+  const alone = props.hill === undefined ? null : <HillRowCard>{props.hill}</HillRowCard>;
+  if (state.rev === null) return alone;
   // A Windows bridge runs no trick (bridge/tricks/service.ts `gated`): no rows and no list read. The switch
-  // card above says the Windows line, once on the page (components/tricks-switch-card.tsx), so this card draws nothing.
-  if (state.gate === "windows") return null;
+  // card above says the Windows line, once on the page (components/tricks-switch-card.tsx), so this card draws nothing but the Hill's row.
+  if (state.gate === "windows") return alone;
   return <TricksList {...props} tricks={state.tricks} runsOn={state.runsOn} replyOff={state.off === true} />;
 }
 
@@ -328,44 +333,10 @@ function OfficialButton({ word, label, slot, busy, canWrite, onTap }: { word: st
   );
 }
 
-/**
- * THE NAME LINE OF A ROW (2026-11-12): the name with its chevron, then the labels (Official or Community, and
- * "Uses agent tokens") as ONE group. The line wraps: the labels stay beside the name while they fit, else
- * the whole group moves to a line of its own right under the name. So a name is never cut while a second
- * line has room; only a name wider than the line alone truncates, and the chip cuts its words only when the
- * group alone is wider than the row. The labels are the trick's facts, the same before and after Add and
- * whether it is on, so a row's height follows its width and language, never its state.
- */
-const NAME_LINE = "flex w-full flex-wrap items-center gap-x-2 gap-y-0.5 text-left font-medium";
-
-/** The labels' group: one flex item, never split across lines; the chip inside it shrinks last. */
-const LABELS = "flex max-w-full min-w-0 items-center gap-1";
-
-/** The name and the chevron: the name keeps its width up to the line's, then truncates. */
-function RowName({ name }: { name: string }) {
-  return (
-    <span data-slot="row-name" className="flex max-w-full min-w-0 items-center gap-1">
-      <span className="min-w-0 truncate">{name}</span>
-      {/* The cue that the name opens something: the app's own "this row opens another screen" glyph. */}
-      <Icon name="row-go" className="size-4 shrink-0 text-muted-foreground" aria-hidden />
-    </span>
-  );
-}
-
 /** The quiet line of a community trick whose id an official entry names: why that entry is not added here. */
 export function takenLine(entry: Pick<WireOfficialTrick, "changed" | "unlisted">): string {
   if (entry.changed === true) return t("settings.tricks.official.changed");
   return t(entry.unlisted === true ? "settings.tricks.official.takenRepo" : "settings.tricks.official.taken");
-}
-
-/** The link a row's name is: to the details page, with the list as the entry it came from, so Back steps back here. */
-function RowLink({ to, name, slot, children }: { to: string; name: string; slot: string; children: ReactNode }) {
-  const { pathname, search } = useLocation();
-  return (
-    <Link to={to} state={{ from: `${pathname}${search}` }} data-slot={slot} data-row-open="" aria-label={t("settings.tricks.about.open", { name })} className={cn(ROW_OPEN_BUTTON, NAME_LINE)}>
-      {children}
-    </Link>
-  );
 }
 
 /**
@@ -376,31 +347,29 @@ function OfficialRow({ entry, busy, canWrite, onAdd, to }: { entry: WireOfficial
   const places = entry.places ?? [];
   const view = entry.agentView === true;
   return (
-    <div data-official={entry.id} className={cn(ROW_OPEN_ROW, "px-4 py-3")}>
-      <div className="flex min-h-11 items-center justify-between gap-4">
-        <div className="min-w-0 flex-1">
-          <RowLink to={to} name={entry.name} slot="official-about">
-            <RowName name={entry.name} />
-            <span data-slot="row-labels" className={LABELS}>
-              <OriginLabel origin="official" />
-              {trickTokenUse(entry) !== null && <TokenUseChip />}
-            </span>
-          </RowLink>
-          <p data-line="description" className="line-clamp-2 break-words text-sm text-muted-foreground">
-            {entry.description}
-          </p>
-          {(places.length > 0 || view) && (
-            <p data-line="places" className="truncate text-sm text-muted-foreground">
-              {placesLine(places, view)}
-            </p>
-          )}
-          <p data-line="slot" className="truncate text-xs text-muted-foreground">
-            {t("settings.tricks.by.repo", { repo: entry.repoName, sha: entry.commit.slice(0, 7) })}
-          </p>
-        </div>
-        <OfficialButton word={t("settings.tricks.official.add")} label={t("settings.tricks.official.addAria", { name: entry.name })} slot="official-add" busy={busy} canWrite={canWrite} onTap={onAdd} />
-      </div>
-    </div>
+    <TrickRowFrame
+      rowData={{ "data-official": entry.id }}
+      to={to}
+      name={entry.name}
+      linkSlot="official-about"
+      labels={
+        <>
+          <OriginLabel origin="official" />
+          {trickTokenUse(entry) !== null && <TokenUseChip />}
+        </>
+      }
+      description={entry.description}
+      control={<OfficialButton word={t("settings.tricks.official.add")} label={t("settings.tricks.official.addAria", { name: entry.name })} slot="official-add" busy={busy} canWrite={canWrite} onTap={onAdd} />}
+    >
+      {(places.length > 0 || view) && (
+        <p data-line="places" className="truncate text-sm text-muted-foreground">
+          {placesLine(places, view)}
+        </p>
+      )}
+      <p data-line="slot" className="truncate text-xs text-muted-foreground">
+        {t("settings.tricks.by.repo", { repo: entry.repoName, sha: entry.commit.slice(0, 7) })}
+      </p>
+    </TrickRowFrame>
   );
 }
 
@@ -444,67 +413,66 @@ function TrickRow({ trick, clock, checked, canWrite, hillOff, undoing, onFlip, o
   const warnings = warningLines(trick);
   // Before the switch: off, or on with code nobody approved yet. A tap on the switch closes the list.
   const showWarnings = warnings.length > 0 && (!checked || trick.changed === true);
+  const labelled = origin !== undefined || trickTokenUse(trick) !== null;
   return (
-    <div data-trick={trick.id} className={cn(ROW_OPEN_ROW, "px-4 py-3")}>
-      <div className="flex min-h-11 items-center justify-between gap-4">
-        <div className="min-w-0 flex-1">
-          {/* The name is the link to the details page, and its stretched layer is the whole row (ui/row-open.ts): the
-              lines under it are no controls, so a tap on any of them opens the page. */}
-          <RowLink to={to} name={trick.name} slot="trick-about">
-            <RowName name={trick.name} />
-            {(origin !== undefined || trickTokenUse(trick) !== null) && (
-              <span data-slot="row-labels" className={LABELS}>
-                {origin !== undefined && <OriginLabel origin={origin} />}
-                {trickTokenUse(trick) !== null && <TokenUseChip />}
-              </span>
-            )}
-          </RowLink>
-          {trick.description !== undefined && (
-            <p data-line="description" className="line-clamp-2 break-words text-sm text-muted-foreground">
-              {trick.description}
-            </p>
-          )}
-          <p data-line="places" className="truncate text-sm text-muted-foreground">
-            {placesLine(trick.places, trick.agentView === true)}
-          </p>
-          {trick.rulesUnshown === true && (
-            <p data-line="rules-unshown" className="break-words text-xs text-muted-foreground">
-              {t("settings.tricks.about.rulesUnshown")}
-            </p>
-          )}
-          {trick.access === ACCESS_UNKNOWN && (
-            <p data-line="access-unknown" className="break-words text-xs text-muted-foreground">
-              {t("settings.tricks.about.access.unknown")}
-            </p>
-          )}
-          {trick.inputs !== undefined && (
-            <p data-line="reads" className="break-words text-xs text-muted-foreground">
-              {readsLine(trick.inputs)}
-            </p>
-          )}
-          {slot.waits === true && onCard !== undefined ? (
-            <button type="button" data-line="slot" data-slot="trick-card-open" onClick={onCard} className={SLOT_OPENS}>
-              <span className={SLOT_OPENS_TEXT}>{slot.text}</span>
-            </button>
-          ) : (
-            <p data-line="slot" data-trouble={slot.trouble ? "true" : undefined} className="truncate text-xs text-muted-foreground">
-              {slot.text}
-            </p>
-          )}
-          {taken !== undefined && (
-            <p data-line="taken" className="text-xs text-muted-foreground">
-              {takenLine(taken)}
-            </p>
-          )}
-          <Collapse open={showWarnings}>{showWarnings ? <TrickWarnings lines={warnings} /> : null}</Collapse>
-        </div>
-        {/* Rules this phone cannot show (review 8 V-N5), or a level of access it does not know (review 3, item 4): no
-            yes from here; a trick that is on can still go off. */}
-        <Switch checked={checked} onCheckedChange={onFlip} disabled={!canWrite || ((trick.rulesUnshown === true || trick.access === ACCESS_UNKNOWN) && !checked)} aria-label={trick.name} className={ROW_OPEN_SWITCH} />
-      </div>
-      {trick.on && changed !== null && <TrickChanges autoAt={trick.autoAt} line={changed} canWrite={canWrite} undoing={undoing} onUndo={onUndo} />}
-      {update !== undefined && <OfficialUpdateLine name={trick.name} busy={update.busy} canWrite={canWrite} onUpdate={update.onUpdate} />}
-    </div>
+    <TrickRowFrame
+      rowData={{ "data-trick": trick.id }}
+      to={to}
+      name={trick.name}
+      linkSlot="trick-about"
+      labels={
+        labelled ? (
+          <>
+            {origin !== undefined && <OriginLabel origin={origin} />}
+            {trickTokenUse(trick) !== null && <TokenUseChip />}
+          </>
+        ) : null
+      }
+      description={trick.description}
+      // Rules this phone cannot show (review 8 V-N5), or a level of access it does not know (review 3, item 4): no
+      // yes from here; a trick that is on can still go off.
+      control={<Switch checked={checked} onCheckedChange={onFlip} disabled={!canWrite || ((trick.rulesUnshown === true || trick.access === ACCESS_UNKNOWN) && !checked)} aria-label={trick.name} className={ROW_OPEN_SWITCH} />}
+      below={
+        <>
+          {trick.on && changed !== null && <TrickChanges autoAt={trick.autoAt} line={changed} canWrite={canWrite} undoing={undoing} onUndo={onUndo} />}
+          {update !== undefined && <OfficialUpdateLine name={trick.name} busy={update.busy} canWrite={canWrite} onUpdate={update.onUpdate} />}
+        </>
+      }
+    >
+      <p data-line="places" className="truncate text-sm text-muted-foreground">
+        {placesLine(trick.places, trick.agentView === true)}
+      </p>
+      {trick.rulesUnshown === true && (
+        <p data-line="rules-unshown" className="break-words text-xs text-muted-foreground">
+          {t("settings.tricks.about.rulesUnshown")}
+        </p>
+      )}
+      {trick.access === ACCESS_UNKNOWN && (
+        <p data-line="access-unknown" className="break-words text-xs text-muted-foreground">
+          {t("settings.tricks.about.access.unknown")}
+        </p>
+      )}
+      {trick.inputs !== undefined && (
+        <p data-line="reads" className="break-words text-xs text-muted-foreground">
+          {readsLine(trick.inputs)}
+        </p>
+      )}
+      {slot.waits === true && onCard !== undefined ? (
+        <button type="button" data-line="slot" data-slot="trick-card-open" onClick={onCard} className={SLOT_OPENS}>
+          <span className={SLOT_OPENS_TEXT}>{slot.text}</span>
+        </button>
+      ) : (
+        <p data-line="slot" data-trouble={slot.trouble ? "true" : undefined} className="truncate text-xs text-muted-foreground">
+          {slot.text}
+        </p>
+      )}
+      {taken !== undefined && (
+        <p data-line="taken" className="text-xs text-muted-foreground">
+          {takenLine(taken)}
+        </p>
+      )}
+      <Collapse open={showWarnings}>{showWarnings ? <TrickWarnings lines={warnings} /> : null}</Collapse>
+    </TrickRowFrame>
   );
 }
 
@@ -528,6 +496,7 @@ function TricksList({
   onOfficialList,
   onRepoList,
   onRepoAdd,
+  hill,
   now,
   readOnly,
   hillOff,
@@ -571,6 +540,7 @@ function TricksList({
         </p>
       )}
       <div data-slot="list-group">
+        {hill}
         {/* No trick and no official entry: the empty line and the command. */}
         {official.settled && rows.length === 0 && (
           <div className="px-4 py-3">
