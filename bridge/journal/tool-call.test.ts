@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { classifyToolCall, type ToolCall } from "./tool-call.ts";
+import type { JsonObject } from "../json.ts";
 import { summarizeToolInput } from "./text.ts";
 
 // The classifier is pure and harness-blind: name plus input in, one branch of the union out. It gets
@@ -57,13 +58,27 @@ describe("classifyToolCall", () => {
     expect(classifyToolCall("Read", { file_path: "/a.ts", offset: 10, limit: 20 }, "/a.ts")).toEqual({
       kind: "read",
       path: "/a.ts",
-      range: [10, 30],
+      range: [10, 29],
     });
     // `offset` alone means "to the end", which has no last line to name.
     expect(classifyToolCall("Read", { file_path: "/a.ts", offset: 10 }, "/a.ts")).toEqual({
       kind: "read",
       path: "/a.ts",
     });
+  });
+
+  // Issue 845: `limit` is a number of lines and `range` ends on its last line, so a request for 20
+  // lines from line 10 ends on line 29, not 30.
+  test("a read range ends on the last line the limit reaches", () => {
+    const range = (input: JsonObject) => {
+      const call = classifyToolCall("Read", { file_path: "/a.ts", ...input }, "/a.ts");
+      return call.kind === "read" ? call.range : undefined;
+    };
+    expect(range({ offset: 1, limit: 1 })).toEqual([1, 1]);
+    expect(range({ offset: 100, limit: 2000 })).toEqual([100, 2099]);
+    expect(range({ line: 5, count: 3 })).toEqual([5, 7]);
+    // A limit of zero reads no line, so there is no last line to name.
+    expect(range({ offset: 10, limit: 0 })).toBeUndefined();
   });
 
   test("a grep's pattern outranks its path, as it does in the one-line summary", () => {
