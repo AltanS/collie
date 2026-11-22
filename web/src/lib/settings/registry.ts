@@ -264,6 +264,7 @@ export const NOT_SETTINGS: ReadonlyMap<string, string> = new Map([
   ["collie:project-picture-copies:v1", "cached project pictures"],
   ["collie:project-picture-panes:v1", "which pane shows which picture"],
   ["collie:strips-collapsed:v1", "a strip folded on the Dashboard: a view's state"],
+  ["collie:folded-parents:v1", "sub-agent trees folded on this device: a view's state"],
   ["collie:trouble-signalled:v1", "trouble already reported"],
   ["collie:wide-layout:v1", "the large screen's remembered layout: a view's state"],
   ["collie:wide-sidebar:v1", "the large screen's sidebar width: a view's state"],

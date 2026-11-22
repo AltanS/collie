@@ -10,7 +10,7 @@ import { fixtureServers } from "@/test/handlers";
 import { withHeaderHost } from "@/test/header-host";
 import { server } from "@/test/msw";
 import type { StartLaunchBody } from "@/lib/api";
-import { SpaceRoute } from "./space";
+import { landingPane, SpaceRoute } from "./space";
 
 // The space screen on a crew. The one thing asserted here is the HOST the space is read on: a lead's
 // merged snapshot unions the peers' spaces and tags each pane with the machine it is on, and pane
@@ -174,5 +174,30 @@ describe("SpaceRoute, the tab row's '+'", () => {
     expect(launches).toHaveLength(1);
     expect(launches[0]!.host).toBe(PEER);
     expect(launches[0]!.body).toMatchObject({ harness: "codex", paneId: "wA:p2" });
+  });
+});
+
+describe("landingPane", () => {
+  it("picks the visible shell parent over an unpaned agent child listed first in the active tab", () => {
+    const childAgent: AgentView = {
+      ...peerAgent,
+      paneId: "wA:p3",
+      tabId: "wA:t1",
+      parentPaneId: "wA:p4",
+      unpaned: true,
+      host: undefined,
+    };
+    const shellParent: AgentView = {
+      ...peerAgent,
+      paneId: "wA:p4",
+      tabId: "wA:t1",
+      agent: "shell",
+      kind: "shell",
+      status: "unknown",
+      paneLabel: undefined,
+      host: undefined,
+    };
+    const ws: WorkspaceView = { ...workspaces[1]!, host: undefined };
+    expect(landingPane(ws, [childAgent, shellParent], undefined)?.paneId).toBe("wA:p4");
   });
 });

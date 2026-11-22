@@ -5,12 +5,14 @@ interface MadePane {
   tabId: string;
   host?: string;
   session?: string;
+  unpaned?: true;
 }
 
-const pane = (paneId: string, tabId: string, host?: string, session?: string) => {
+const pane = (paneId: string, tabId: string, host?: string, session?: string, unpaned?: true) => {
   const made: MadePane = { paneId, tabId };
   if (host !== undefined) made.host = host;
   if (session !== undefined) made.session = session;
+  if (unpaned !== undefined) made.unpaned = unpaned;
   return made;
 };
 
@@ -80,5 +82,23 @@ describe("the pane each tab was last open on", () => {
     forgetAllTabPanes();
     expect(rememberedPaneId({ tabId: "w6:tJ" })).toBeUndefined();
     expect(sessionStorage.length).toBe(0);
+  });
+
+  it("prefers a visible (non-unpaned) pane when an unpaned child appears first on an unvisited tab", () => {
+    const child = pane("w6:pChild", "w6:tJ", undefined, undefined, true);
+    const parent = pane("w6:pParent", "w6:tJ");
+    expect(pickTabPane([child, parent], { tabId: "w6:tJ" })).toBe(parent);
+  });
+
+  it("falls back to the first unpaned pane when no visible pane exists", () => {
+    const child = pane("w6:pChild", "w6:tJ", undefined, undefined, true);
+    expect(pickTabPane([child], { tabId: "w6:tJ" })).toBe(child);
+  });
+
+  it("still returns a remembered unpaned pane when it was explicitly opened", () => {
+    const child = pane("w6:pChild", "w6:tJ", undefined, undefined, true);
+    const parent = pane("w6:pParent", "w6:tJ");
+    rememberTabPane(child);
+    expect(pickTabPane([child, parent], { tabId: "w6:tJ" })).toBe(child);
   });
 });

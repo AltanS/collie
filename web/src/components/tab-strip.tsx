@@ -401,6 +401,7 @@ export function TabStrip({
             )}
             {wsTabs.map((t) => {
               const inTab = here.filter((a) => a.tabId === t.tabId);
+              const visibleInTab = inTab.filter((a) => !a.unpaned);
               return (
               <Tab
                 key={t.tabId}
@@ -411,7 +412,7 @@ export function TabStrip({
                 label={t.label}
                 // The tab's number is its key (`prefix+1..9`): the tabs past the ninth have none.
                 target={wsTabs.indexOf(t) < 9 ? shortcutTarget("switch_tab", { index: wsTabs.indexOf(t) + 1 }) : undefined}
-                title={tabCellTitle(t.label, inTab)}
+                title={tabCellTitle(t.label, visibleInTab)}
                 fade={tabKey(host, t.tabId)}
                 active={selected === t.tabId}
                 // What's actually going on in there — blocked / ready / working / idle — instead of a

@@ -46,7 +46,7 @@ import { useRootData } from "@/lib/route-data";
 import { paneScopeKey, type Scope } from "@/lib/scope";
 import { shortenHome } from "@/lib/shorten-home";
 import { COLUMN_SNAP_CLASSES, STRIP_SNAP_CLASSES, leftmostWholeColumn, shouldFollowFocus } from "@/lib/strip-snap";
-import { pickTabPane } from "@/lib/tab-pane-memory";
+import { firstVisiblePane, pickTabPane } from "@/lib/tab-pane-memory";
 import { shownStatus } from "@/lib/triage";
 import { isReadOnly, statusLabel, type AgentView, type WorkspaceView } from "@/lib/types";
 import { shortcutTarget } from "@/lib/shortcuts/target";
@@ -322,7 +322,8 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
     const mine = root.tabs.filter((tab) => tab.workspaceId === agent.workspaceId && hostKey(tab) === hostKey(agent));
     const at = mine.findIndex((tab) => tab.tabId === tabId);
     for (const tab of [...mine.slice(at + 1), ...mine.slice(0, Math.max(at, 0)).toReversed()]) {
-      const target = herd.find((p) => p.tabId === tab.tabId && p.workspaceId === agent.workspaceId && p.host === agent.host);
+      const inTab = herd.filter((p) => p.tabId === tab.tabId && p.workspaceId === agent.workspaceId && p.host === agent.host);
+      const target = firstVisiblePane(inTab);
       if (target !== undefined) return goTo(target);
     }
     nav.up(homePath({ host: scope.host, session: scope.session }));

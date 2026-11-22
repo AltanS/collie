@@ -5,6 +5,7 @@ import { createMemoryRouter, RouterProvider, useLocation } from "react-router";
 import { __resetActionsPalette, isActionsPaletteOpen } from "@/lib/actions-palette/state";
 import { __resetPins, setPinned, usePins } from "@/lib/pins";
 import { ROOT_ROUTE_ID } from "@/lib/loaders";
+import { __resetFoldedParents } from "@/lib/pane-tree";
 import { forgetRecentPanes, rememberRecentPane } from "@/lib/recent-panes";
 import { __resetShortcutRegistry, registerShortcutHandler, runShortcutAction } from "@/lib/shortcuts/registry";
 import type { AgentView, ServerSummary } from "@/lib/types";
@@ -80,6 +81,7 @@ beforeEach(() => {
   localStorage.clear();
   forgetRecentPanes();
   __resetPins();
+  __resetFoldedParents();
 });
 afterEach(() => {
   __resetShortcutRegistry();
@@ -285,6 +287,27 @@ describe("the Actions palette", () => {
     await user.keyboard("{Enter}");
     const key = row.getAttribute("data-pane-key") ?? "";
     await waitFor(() => expect(screen.getByTestId("where")).toHaveTextContent(`/pane/${encodeURIComponent(key.split("\u0000").at(-1) ?? "")}`));
+  });
+
+  it("does not open a highlighted child after its parent folds it away", async () => {
+    const user = userEvent.setup();
+    const parent = pane("p1", "parent");
+    const child = { ...pane("p2", "worker"), parentPaneId: parent.paneId };
+    mount("/", undefined, [parent, child]);
+    await user.click(screen.getByRole("button", { name: "Actions" }));
+    await user.keyboard("{ArrowDown}{ArrowDown}");
+    expect(highlighted()?.textContent).toContain("worker");
+
+    await user.click(screen.getByRole("button", { name: "Collapse sub-agents (1)" }));
+    expect(screen.queryByRole("button", { name: /worker/i })).toBeNull();
+    expect(highlighted()).toBeNull();
+    await user.click(field());
+    await user.keyboard("{Enter}");
+    expect(palette()).toBeInTheDocument();
+    expect(screen.getByTestId("where")).toHaveTextContent(/^\/$/);
+
+    await user.keyboard("{ArrowDown}{Enter}");
+    await waitFor(() => expect(screen.getByTestId("where")).toHaveTextContent("/pane/w1%3Ap1"));
   });
 
   it("drops all three parts for the one ranked list once something is typed", async () => {

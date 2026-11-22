@@ -1340,6 +1340,8 @@ export const es: Dictionary = {
   "home.workspaceFilter.count.other": "{count} espacios",
   "home.sidebar.shells": "Shells",
   "home.pinned.title": "Fijado",
+  "home.subagents.collapse": "Contraer subagentes ({count})",
+  "home.subagents.expand": "Expandir subagentes ({count})",
   "home.pinHint.hold": "Mantenga presionado un panel para fijarlo aquí.",
   "home.pinHint.rightClick": "Haga clic derecho en un panel para fijarlo aquí.",
   "home.pinHint.dismiss": "Descartar sugerencia",

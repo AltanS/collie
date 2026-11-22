@@ -19,6 +19,7 @@
 
 import { paneScope } from "@/lib/hosts";
 import { groupPanesByWorkspace, type GroupOptions, type WorkspaceGroup } from "@/lib/pane-groups";
+import { nestPanes } from "@/lib/pane-tree";
 import { paneScopeKey, scopeKey, type Scope } from "@/lib/scope";
 import type { AgentView, ServerSummary, SessionSummary } from "@/lib/types";
 
@@ -179,7 +180,10 @@ export function spacesInOrder(agents: readonly AgentView[], shells: readonly Age
     const at = sections.indexOf(g.key);
     return at < 0 ? sections.length : at;
   };
-  return all.map((g, i) => ({ g, i })).toSorted((a, b) => rank(a.g) - rank(b.g) || a.i - b.i).map(({ g }) => g);
+  return all
+    .map((g, i) => ({ g, i }))
+    .toSorted((a, b) => rank(a.g) - rank(b.g) || a.i - b.i)
+    .map(({ g }) => Object.assign({}, g, { panes: nestPanes(g.panes).map((entry) => entry.pane) }));
 }
 
 // ── One space's strip ───────────────────────────────────────────────────────────────────────────

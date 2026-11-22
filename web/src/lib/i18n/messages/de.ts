@@ -1341,6 +1341,8 @@ export const de: Dictionary = {
   "home.workspaceFilter.count.other": "{count} Spaces",
   "home.sidebar.shells": "Shells",
   "home.pinned.title": "Angeheftet",
+  "home.subagents.collapse": "Unteragenten einklappen ({count})",
+  "home.subagents.expand": "Unteragenten ausklappen ({count})",
   "home.pinHint.hold": "Einen Bereich gedrückt halten, um ihn hier anzuheften.",
   "home.pinHint.rightClick": "Einen Bereich mit der rechten Maustaste anklicken, um ihn hier anzuheften.",
   "home.pinHint.dismiss": "Hinweis verwerfen",

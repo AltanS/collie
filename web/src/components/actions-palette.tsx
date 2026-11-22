@@ -215,6 +215,8 @@ export function ActionsPalette({ openPane, onClose }: ActionsPaletteProps) {
 
   function runKey(key: string): void {
     if (key.startsWith(ALL_PANES_KEY)) {
+      // A parent may have folded the highlighted pane away since the last arrow key.
+      if (rowElement(key) === null) return;
       const pane = paneByKey.get(key.slice(ALL_PANES_KEY.length));
       if (pane !== undefined) openPaneRow(pane);
       return;

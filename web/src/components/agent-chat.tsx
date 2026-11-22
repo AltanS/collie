@@ -158,7 +158,7 @@ import { journalReadingOf, paneBody, type JournalReading } from "@/lib/chat-gate
 import { useActiveTheme } from "@/lib/theme/store";
 import { composerLayout } from "@/lib/composer-layout";
 import { useTabLook } from "@/lib/tab-look";
-import { pickTabPane } from "@/lib/tab-pane-memory";
+import { firstVisiblePane, pickTabPane } from "@/lib/tab-pane-memory";
 import { zoomPillShown } from "@/lib/zoom-pill";
 import { CrossfadeText } from "@/components/ui/crossfade-text";
 import { paneRowKey, paneScope, paneSpaceKey } from "@/lib/hosts";
@@ -2421,7 +2421,7 @@ export function AgentChat({
   // Jump to another tab in this space by opening one of its panes (the in-pane tab bar).
   function goToTab(tabId: string) {
     if (!agent || tabId === agent.tabId) return;
-    // The pane the tab was last open on, else its first (lib/tab-pane-memory.ts).
+    // The pane the tab was last open on, else its first visible one (lib/tab-pane-memory.ts).
     const target = pickTabPane(
       [...agents, ...shellPanes].filter((p) => p.tabId === tabId),
       { host: agent.host, session: agent.session, tabId },
@@ -2464,7 +2464,7 @@ export function AgentChat({
     const closedIndex = wsTabs.findIndex((tab) => tab.tabId === tabId);
     const candidates = [...wsTabs.slice(closedIndex + 1), ...wsTabs.slice(0, closedIndex).toReversed()];
     for (const candidate of candidates) {
-      const target = [...agents, ...shellPanes].find((p) => p.tabId === candidate.tabId);
+      const target = firstVisiblePane([...agents, ...shellPanes].filter((p) => p.tabId === candidate.tabId));
       if (target) return switchTo(target.paneId);
     }
     onBack();

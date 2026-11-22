@@ -44,7 +44,8 @@ export interface TriageSection {
  * Both timestamps absent (an older bridge) yields `false`, so the section is simply empty there.
  */
 export function isUnseen(a: AgentView): boolean {
-  return a.kind !== "shell" && (a.status === "done" || a.status === "idle") && settledUnseen(a);
+  // A child with a live parent reports its completion through that parent (ADR 0180).
+  return a.kind !== "shell" && a.parentPaneId === undefined && (a.status === "done" || a.status === "idle") && settledUnseen(a);
 }
 
 /**
