@@ -275,6 +275,7 @@ export const NOT_SETTINGS: ReadonlyMap<string, string> = new Map([
   ["collie:tab-pane:v1:", "the pane a tab showed last"],
   ["collie:chat-silhouette:v1:", "a Chat view's remembered height"],
   ["collie:send-intent:", "a send in flight"],
+  ["collie:dequeue-pending:", "a take-back in flight"],
   ["collie:create-intent:", "a start in flight"],
   ["collie:no-prompts-confirmed:v1", "a confirmation seen once"],
   ["collie:update-mode:closed:v1", "the update screen closed once"],

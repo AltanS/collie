@@ -36,12 +36,15 @@ import {
   createUnknownCounter,
   type KnownTypes,
   QUEUE_MAX,
+  QUEUE_MOVES_KEPT,
   NO_CHANGE,
   noteBlockTypes,
   parseWith,
   reduction,
   rememberPending,
   type PendingTool,
+  type QueueMark,
+  type QueueMove,
   type Reduction,
   type RowReducer,
 } from "./reduce.ts";
@@ -709,6 +712,8 @@ interface QueueTracker {
   readonly queued: () => readonly string[];
   /** How many places came from an `enqueue` with no content: a message waits, its words are not in the log. */
   readonly unnamed: () => number;
+  /** The queue for a take-back: the person's words whole, and the numbered moves (RowReducer.queueMark). */
+  readonly mark: () => QueueMark;
 }
 
 /** One place in the queue: a {@link QueueEntry} and the raw key an exact `remove` names it by. */
@@ -717,6 +722,31 @@ interface QueueSlot extends QueueEntry {
   readonly raw: string;
   /** The `enqueue` carried no content: a place with no words (a message queued during a compaction). */
   readonly blind: boolean;
+  /** The person's words whole, for a take-back ({@link wholeQueued}); null for plumbing and for words it cannot give whole. */
+  readonly whole: string | null;
+}
+
+/**
+ * The longest text a take-back gives back. The box is emptied with the profile's clear key, at most
+ * twelve batches of 256 keys (bridge/surface/clear.ts), so a longer text could not be cleared whole.
+ */
+const TAKE_MAX_CHARS = 3000;
+
+/** A picture's marker, as Claude Code writes it into a queued message (`liftedSpelling`'s grammar). */
+const IMAGE_MARKER = /\[Image #\d+\]/u;
+
+/**
+ * A queued message's words whole, as the person would edit them, or null when the log cannot give them
+ * whole: plumbing, a place with no words, a recorded paste (the box holds a marker for it, not its text),
+ * a picture (its marker is no text the composer could send back), or a text past {@link TAKE_MAX_CHARS}.
+ */
+function wholeQueued(content: JsonValue | undefined): string | null {
+  if (typeof content !== "string") return null;
+  if (readQueueEntry(content).kind !== null) return null;
+  const text = stripAnsi(content).trim();
+  if (text === "" || text.length > TAKE_MAX_CHARS) return null;
+  if (text.includes(PASTE_OPEN) || IMAGE_MARKER.test(text)) return null;
+  return text;
 }
 
 /**
@@ -741,11 +771,24 @@ function slotKey(content: string): string {
   return `${content.length}:${content.slice(0, QUEUE_ID_CHARS)}`;
 }
 
+/** A queue move that took or added `slot`: the person's words moved when the slot was theirs (a place with no words is theirs too). */
+function slotMove(slot: QueueSlot | undefined): QueueMove["kind"] {
+  return slot === undefined || slot.kind !== null ? "plumbing" : "words";
+}
+
 function createQueueTracker(): QueueTracker {
   let queue: QueueSlot[] = [];
   // Messages that left through a queue row, with the operation count they left at (step 2 above).
   let departed: { id: string; at: number }[] = [];
   let clock = 0;
+  // The moves a take-back ties its proof to (RowReducer.queueMark): numbered, the newest kept.
+  let moves = 0;
+  let recent: QueueMove[] = [];
+  const moved = (kind: QueueMove["kind"], words: string | null = null): void => {
+    moves += 1;
+    recent.push({ n: moves, kind, words });
+    if (recent.length > QUEUE_MOVES_KEPT) recent = recent.slice(-QUEUE_MOVES_KEPT);
+  };
 
   const depart = (slot: QueueSlot | undefined): void => {
     if (slot === undefined) return;
@@ -774,27 +817,47 @@ function createQueueTracker(): QueueTracker {
       const content = row.content;
       if (op === "enqueue") {
         const text = typeof content === "string" ? content : "";
-        queue.push({ ...readQueueEntry(text), raw: slotKey(text), blind: typeof content !== "string" });
+        const slot: QueueSlot = { ...readQueueEntry(text), raw: slotKey(text), blind: typeof content !== "string", whole: wholeQueued(content) };
+        queue.push(slot);
+        moved(slotMove(slot));
         if (queue.length > QUEUE_SLOTS_MAX) queue.shift();
       } else if (op === "dequeue") {
-        depart(queue.shift());
+        const slot = queue.shift();
+        moved(slotMove(slot));
+        depart(slot);
       } else if (op === "remove") {
-        // A `remove` with no content (older Claude Code) names nothing; its delivery row settles it.
-        if (typeof content !== "string") return;
+        // A `remove` with no content (older Claude Code) names nothing; its delivery row settles it. Whose
+        // message left is not known, so a take-back reads it as the person's.
+        if (typeof content !== "string") {
+          moved("words");
+          return;
+        }
         const at = removeAt(content);
         if (at !== -1) {
-          depart(queue.splice(at, 1)[0]);
+          const slot = queue.splice(at, 1)[0];
+          moved(slotMove(slot));
+          depart(slot);
           return;
         }
         // The operator's words that match no place: when a place with no words waits, it is that one
         // (its enqueue named nothing to match), so it goes and never sits at the head for the next
         // `dequeue` to take instead of the message really at the front. Plumbing never takes it.
-        if (readQueueEntry(content).kind !== null) return;
+        if (readQueueEntry(content).kind !== null) {
+          moved("plumbing");
+          return;
+        }
+        moved("words");
         const blind = queue.findIndex((slot) => slot.blind);
         if (blind !== -1) depart(queue.splice(blind, 1)[0]);
       } else if (op === "popAll") {
+        // The row names what went back when it carries `content` (measured 2026-11-22: 14 of 22 rows did,
+        // each one the message that was waiting); the take-back compares it with the queue it read.
+        moved("back", typeof content === "string" ? stripAnsi(content).trim() : null);
         queue = [];
         departed = [];
+      } else {
+        // An operation this reducer does not know leaves the queue alone, and a take-back cannot tie its proof across it.
+        moved("words");
       }
     },
     delivered(content) {
@@ -808,10 +871,17 @@ function createQueueTracker(): QueueTracker {
         return;
       }
       const at = queue.findIndex((slot) => slot.id === id);
-      if (at !== -1) queue.splice(at, 1);
+      if (at === -1) return;
+      moved(slotMove(queue[at]));
+      queue.splice(at, 1);
     },
     queued: () => queue.flatMap((slot) => (slot.text === null ? [] : [slot.text])).slice(-QUEUE_MAX),
     unnamed: () => queue.filter((slot) => slot.blind).length,
+    mark: () => {
+      const mine = queue.filter((slot) => slot.kind === null);
+      const texts = mine.every((slot) => slot.whole !== null) ? mine.map((slot) => slot.whole!) : null;
+      return { moves, texts, recent: [...recent] };
+    },
   };
 }
 
@@ -1130,7 +1200,7 @@ export function createClaudeReducer(opts: { includeSidechains?: boolean } = {}):
     return reduction(entries, changed);
   }
 
-  return { push, unknowns: unknown.tally, queued: queue.queued, unnamedQueued: queue.unnamed };
+  return { push, unknowns: unknown.tally, queued: queue.queued, unnamedQueued: queue.unnamed, queueMark: queue.mark };
 }
 
 /**
@@ -1610,6 +1680,9 @@ export function claudeJournal(roots: RootSource): JournalAdapter {
     // 3.6b or zellij 0.44.2, which deliver it as a plain Enter (mux/keys.ts `EXTENDED_ONLY_CHORDS`);
     // the chat route drops this list there (server.ts `chatBodyForMux`).
     sendQueuedNow: ["ctrl+Enter"],
+    // "Press up to edit queued messages": Up with an empty box puts the whole queue back into it, and the
+    // log writes a `popAll` row (createQueueTracker). The take-back route presses it (bridge/surface/dequeue.ts).
+    dequeue: { keys: ["Up"], proof: "back" },
     // The `queue-operation` rows are the queue (createQueueTracker): the cards come from them (ADR 0122).
     recordsQueue: true,
     // A picture's path is written `[Image #N]` in the queue row and the prompt (the paste grammar's own rule).

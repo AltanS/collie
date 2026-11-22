@@ -77,7 +77,10 @@ import { answerAsk, cardHashOf, type AskTapResult } from "@/lib/dialog-ask";
 import { askExitKey, cardExitKey, dialogExitKey, EXIT_SENTENCE, exitOfAsk, exitOfGuard, holdExitKey, type AnswerExitWhy } from "@/lib/answer-exit";
 import { holdAskOfNote, screenCardMayAnswer } from "@/lib/surface/hold";
 import { askOptionFor } from "@/lib/ask-reply";
-import { cancelHeldSend, cancelWalky, deliverWalky, dropWalky, isApiErrorStatus, refreshNow, setWalkyOff } from "@/lib/api";
+import { apiErrorStatus, cancelHeldSend, cancelWalky, deliverWalky, dequeuePane, dropWalky, isApiErrorStatus, refreshNow, setWalkyOff } from "@/lib/api";
+import { dequeueMove } from "@/lib/dequeue-words";
+import { claimPendingDequeue, landTaken, loadPendingDequeue, mergeIntoStoredDraft, registerTaker, savePendingDequeue, settleDequeue, type DequeueSettle } from "@/lib/dequeue-pending";
+import { mintRequestId } from "@/lib/worktree-name";
 import { describeThrownError } from "@/lib/api-error-message";
 import { sameKeys } from "@/lib/harness/prompt-model";
 import { askOf, type Ask } from "@/lib/surface/surface";
@@ -2188,6 +2191,93 @@ export function AgentChat({
     [refuseWrite, paneId, scope, revalidator],
   );
 
+  // Edit on the waiting card (ADR 0122, the 2026-11-22 addendum): ONE bridge request that takes the agent's whole
+  // queue back with its own dequeue key, proved from its journal. Its texts go into the composer; every other end
+  // is one status line or none. The same gates as Send now, and a dialog refuses it here too (the key would move in
+  // the dialog). The request id is minted on the phone and kept while no answer came back, so a second tap replays
+  // the first request and never presses the key twice; nothing here asks again by itself.
+  // The words of a take-back land in this pane's composer while this view is open (lib/dequeue-pending.ts): an
+  // answer that comes after a switch or a reload finds the composer that is open then, or the stored draft.
+  useEffect(
+    () =>
+      registerTaker(scope, paneId, (taken) => {
+        const composer = composerRef.current;
+        if (composer !== null) composer.takeIn(taken);
+        else mergeIntoStoredDraft(scope, paneId, taken);
+      }),
+    [scope, paneId],
+  );
+  // One take-back's end, acted on once: only the caller that claims the pending id moves words or says a line.
+  const applyDequeue = useCallback(
+    (requestId: string, settle: DequeueSettle): boolean => {
+      // No answer at all: the id stays, and the next open, return to view or reconnect asks again.
+      if (settle.kind === "lost") {
+        setStatus(t("composer.held.unknown"), "warn");
+        return false;
+      }
+      if (!claimPendingDequeue(scope, paneId, requestId)) return settle.kind === "receipt";
+      if (settle.kind === "stated") {
+        setStatus(describeThrownError(settle.error), "error");
+        return false;
+      }
+      revalidator.revalidate();
+      const move = dequeueMove(settle.receipt);
+      if (move.kind === "take") {
+        landTaken(scope, paneId, move.text);
+        if (move.note !== undefined) setStatus(t(move.note), "warn");
+        return true;
+      }
+      if (move.kind === "quiet") return true;
+      setStatus(t(move.key), "warn");
+      return false;
+    },
+    [paneId, scope, revalidator],
+  );
+  const askDequeue = useCallback(
+    (requestId: string, tap: boolean) =>
+      settleDequeue(requestId, tap, { post: (replay) => dequeuePane(paneId, requestId, scope, replay), statusOf: apiErrorStatus }),
+    [paneId, scope],
+  );
+  // A take-back whose answer was lost (a dead network, a reload, a pane switch): asked for again by itself, with
+  // the same id, when this view opens, when the page comes back into view and when the network comes back. A replay
+  // never presses a key, so this asks for words that left the agent, never for a new take-back.
+  useEffect(() => {
+    const resume = () => {
+      const requestId = loadPendingDequeue(scope, paneId);
+      if (requestId === null) return;
+      void askDequeue(requestId, false).then((settle) => applyDequeue(requestId, settle));
+    };
+    resume();
+    const onVisible = () => {
+      if (document.visibilityState === "visible") resume();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("online", resume);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("online", resume);
+    };
+  }, [paneId, scope, askDequeue, applyDequeue]);
+  const handleEditQueued = useCallback(async (): Promise<boolean> => {
+    const refusal = refuseWrite();
+    if (refusal) {
+      setStatus(refusal, "error");
+      return false;
+    }
+    if (dialogPresentRef.current) {
+      setStatus(t("chat.status.screenChanged"), "warn");
+      return false;
+    }
+    if (!isLive(paneId, scope)) {
+      setStatus(t("composer.send.reconnect"), "error");
+      return false;
+    }
+    // The id is kept before the post, so a lost answer can be asked for again from anywhere (lib/dequeue-pending.ts).
+    const requestId = loadPendingDequeue(scope, paneId) ?? mintRequestId();
+    savePendingDequeue(scope, paneId, requestId);
+    return applyDequeue(requestId, await askDequeue(requestId, true));
+  }, [refuseWrite, paneId, scope, askDequeue, applyDequeue]);
+
   // A tap on a receipt card (ADR 0122). Send or Discard on a returned card is a NEW request that names
   // the card in `resendOf` with an empty text: the bridge acts on its own copy of the text, never the
   // phone's (it may be masked), after a fresh read of the box under the pane lock. An answer that never
@@ -2258,8 +2348,11 @@ export function AgentChat({
           return false;
         }
       }
+      // Edit on a returned card (the 2026-11-22 addendum of ADR 0122) is that card's Discard, and only once the
+      // bridge emptied the box does the card's text go into the composer.
+      const mode = action === "edit" ? "discard" : action;
       const key = `${requestId}\u0000${action}`;
-      const result = await sendText({ paneId, scope, text: "", mode: action, resendOf: requestId, held: returnedIntents.current.get(key) ?? null });
+      const result = await sendText({ paneId, scope, text: "", mode, resendOf: requestId, held: returnedIntents.current.get(key) ?? null });
       if (result.status === "noAnswer") {
         returnedIntents.current.set(key, result.intent);
         setStatus(result.error, "error");
@@ -2271,8 +2364,12 @@ export function AgentChat({
         return false;
       }
       if (result.reading.clear || result.reading.note === "discarded") {
-        setStatus(t(action === "submit" ? "chat.status.sent" : "composer.protocol.discarded"), "success");
         revalidator.revalidate();
+        if (action === "edit") {
+          landTaken(scope, paneId, cardText);
+          return true;
+        }
+        setStatus(t(action === "submit" ? "chat.status.sent" : "composer.protocol.discarded"), "success");
         return true;
       }
       // Discard on a box that changed since: the bridge pressed nothing and dropped only the card.
@@ -3337,6 +3434,12 @@ export function AgentChat({
                     readOnly || hostBlock !== undefined || actsDisabledByCache || connecting || dialogPresent || !paneLive
                       ? undefined
                       : handleSendQueuedNow
+                  }
+                  // The same gates: Edit presses the agent's own dequeue key (ADR 0122, the 2026-11-22 addendum).
+                  onEditQueued={
+                    readOnly || hostBlock !== undefined || actsDisabledByCache || connecting || dialogPresent || !paneLive
+                      ? undefined
+                      : handleEditQueued
                   }
                   // The same gates: a returned card acts on the input box.
                   onReturned={

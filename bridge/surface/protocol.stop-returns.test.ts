@@ -133,7 +133,7 @@ describe("a Stop early in a turn on Claude Code 2.1.319 gives the prompt back to
     const stopped = await r.stop.handle("stop-req-000001", "%1", "claude");
     expect(stopped.kind === "receipt" && stopped.receipt).toMatchObject({ outcome: "stopped", returned: ["stop-ret-000001"] });
     expect(pane.keysSeen).toEqual(["Backspace", "Enter", "Escape"]);
-    expect(r.protocol.queuedOf("main", "%1")).toEqual([{ requestId: "stop-ret-000001", text: MESSAGE, at: expect.any(Number), state: "returned" }]);
+    expect(r.protocol.queuedOf("main", "%1")).toEqual([{ requestId: "stop-ret-000001", text: MESSAGE, at: expect.any(Number), state: "returned", whole: true }]);
     // The card's Send and Discard read the text from here (POST /api/send with resendOf).
     expect(r.protocol.returnedSource("main", "%1", "stop-ret-000001")).toBe(MESSAGE);
   });

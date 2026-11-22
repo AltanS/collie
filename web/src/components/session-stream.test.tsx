@@ -799,11 +799,12 @@ describe("SessionStream — queued sends from the receipts", () => {
     expect(screen.queryByRole("button", { name: "Send again" })).toBeNull();
   });
 
-  it("a returned run is one card with its joined text and one pair of buttons", () => {
-    const run = { requestId: "req-run-000001", state: "returned", text: "alpha one\nbeta two" } as const;
+  it("a returned run is one card with its joined text and one row of buttons", () => {
+    const run = { requestId: "req-run-000001", state: "returned", text: "alpha one\nbeta two", whole: true } as const;
     const { container } = renderReceipts({ queuedSends: [run] }, vi.fn(async () => true));
     expect(container.querySelectorAll("[data-slot='stream-returned']")).toHaveLength(1);
-    expect(container.querySelectorAll("[data-slot='stream-returned'] button")).toHaveLength(2);
+    // Discard, Edit, Send (ADR 0122, the 2026-11-22 addendum).
+    expect(container.querySelectorAll("[data-slot='stream-returned'] button")).toHaveLength(3);
     expect(screen.getByText(/alpha one/u)).toHaveTextContent("alpha one beta two");
   });
 

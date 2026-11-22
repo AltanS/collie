@@ -117,6 +117,12 @@ export interface ChatWindow {
    */
   readonly sendQueuedNow: readonly string[];
   /**
+   * The keys the bridge would press to take {@link queued} back into the agent's box (its take-back
+   * route), or empty when the harness declares none: non-empty means the waiting card may show Edit.
+   * Replaced with every answer like {@link sendQueuedNow}; a `?before=` page leaves it alone.
+   */
+  readonly dequeueQueued: readonly string[];
+  /**
    * The operator's newest prompt as the bridge last reported it, or `null` when it reported none (a
    * window with no prompt, a bridge one release behind, a saved copy). Replaced with every live
    * answer, like {@link queued}; a `?before=` page leaves it alone. The view pins it above a thread
@@ -174,6 +180,7 @@ export const EMPTY_CHAT_WINDOW: ChatWindow = {
   queued: EMPTY_QUEUE,
   queuedSends: EMPTY_SENDS,
   sendQueuedNow: EMPTY_QUEUE,
+  dequeueQueued: EMPTY_QUEUE,
   lastPrompt: null,
   savedAt: null,
 };
@@ -200,6 +207,7 @@ export function savedChatWindow(entries: readonly ChatEntry[], savedAt: number):
     queuedSends: EMPTY_SENDS,
     // What could be sent now then is not a thing a copy can do (nothing saved acts, M46).
     sendQueuedNow: EMPTY_QUEUE,
+    dequeueQueued: EMPTY_QUEUE,
     // The copy keeps turns only; a prompt it holds is still pinned from those turns by the view.
     lastPrompt: null,
     savedAt,
@@ -274,6 +282,7 @@ function mergeLive(held: ChatWindow, body: ChatWindowBody): ChatWindow {
     queued: nextQueue(held.queued, body.queued ?? EMPTY_QUEUE),
     queuedSends: nextSends(held.queuedSends, body.queuedSends ?? EMPTY_SENDS),
     sendQueuedNow: nextQueue(held.sendQueuedNow, body.sendQueuedNow ?? EMPTY_QUEUE),
+    dequeueQueued: nextQueue(held.dequeueQueued, body.dequeueQueued ?? EMPTY_QUEUE),
     lastPrompt: nextPrompt(held.lastPrompt, body.lastPrompt ?? null),
     // A live answer: whatever the window was before, it is current now.
     savedAt: null,
@@ -295,7 +304,7 @@ function nextQueue(held: readonly string[], next: readonly string[]): readonly s
 function nextSends(held: readonly QueuedSendRow[], next: readonly QueuedSendRow[]): readonly QueuedSendRow[] {
   const same =
     held.length === next.length &&
-    held.every((row, i) => row.requestId === next[i]?.requestId && row.state === next[i]?.state && row.text === next[i]?.text);
+    held.every((row, i) => row.requestId === next[i]?.requestId && row.state === next[i]?.state && row.text === next[i]?.text && row.whole === next[i]?.whole);
   return same ? held : next;
 }
 

@@ -55,6 +55,12 @@ export interface QueuedSendWire {
   requestId: string;
   state: QueuedSendState;
   text: string;
+  /**
+   * On a `returned` card only: the text is the bridge's own, whole and unmasked, so Edit may take it into the
+   * person's composer (ADR 0122, the 2026-11-22 addendum). Absent for a text kept as one line after a restart,
+   * and dropped wherever the bridge masks it (`redactChatBody`).
+   */
+  whole?: true;
 }
 
 /**
@@ -175,7 +181,7 @@ export function receiptQueue(
 ): QueuedSendWire[] {
   return unplaced(stillOpen(sends, entries, spells), journalQueued, spells)
     .filter((send) => !recordsQueue || send.state === "returned")
-    .map((send) => ({ requestId: send.requestId, state: send.state, text: send.text }));
+    .map((send) => (send.state === "returned" && send.whole === true ? { requestId: send.requestId, state: send.state, text: send.text, whole: true } : { requestId: send.requestId, state: send.state, text: send.text }));
 }
 
 /**

@@ -179,6 +179,79 @@ for a message the agent held, until the compaction ended.
   receipt does (the prompt in the journal, the prompt edge, `unconfirmed`), so it cannot stand beside
   the prompt row it became.
 
+## Edit takes the queue back (addendum, 2026-11-22)
+
+Point 12 is answered for Claude Code. Its dequeue key is Up: pressed over a box that holds no text while
+messages wait, it takes the whole queue back into the box and writes one `popAll` row into the session
+log. Collie now offers **Edit** on the journal's waiting card and on the returned card. pi, OMP and Muse
+keep point 12 until a lab run proves their key (OMP's pops only the newest message).
+
+1. **The key is data on the adapter.** `JournalAdapter.dequeue` is `{ keys: ["Up"], proof: "back" }` on
+   Claude Code alone. The live window sends it as `ChatWindowBody.dequeueQueued` (beside `sendQueuedNow`),
+   and the chat route drops it where the multiplexer cannot deliver the key. The phone shows Edit only
+   for a non-empty list on a pane it may write to; it never sends the key itself.
+2. **One bridge action, under the pane lock.** `POST /api/pane/:id/dequeue` takes a request id alone
+   (`bridge/surface/dequeue.ts`). It reads the screen (a dialog, an idle turn, a draft in the box or no
+   box refuse before the key), then the queue from the journal, read again past the live window's tick
+   floor (`LiveWindows.queueNow`). Only a queue whose every message the reducer holds whole is taken: a
+   place with no words, a paste, a picture marker, a masked text or a text over 3000 characters refuse
+   `not_whole`, because the box would come back with a marker in place of the words. Then a second screen
+   read, then the key, once, as the person's tap. The same request id answers the same receipt and never
+   presses twice. Every press checks a deadline, the lock's span less 2 s: past it before the key the
+   take-back refuses `busy`, and during the clear it stops (point 3).
+3. **The proof is the journal, tied to the queue that was read.** The reducer numbers every queue move
+   (`RowReducer.queueMark`). The proof is the first move after the one the read saw, and it must be a
+   `popAll` (`back`) whose words, when the row has any, equal the queue's texts joined with one newline,
+   space-free compared. Only plumbing moves (a task note) may come before it. A new log, a gap in the
+   numbering, or another move first is no proof. With the proof, the box must hold the same text; Collie
+   empties it with the profile's clear key in bounded rounds and answers `taken` with the texts, and the
+   Send Protocol forgets the matching open sends, so no receipt card stands for a text that left. The rule
+   that decides the clear: once the words left the queue they are never lost and never offered for a
+   second send. So `in_box` only while the box still holds exactly the texts (no clear key left, or none
+   removed anything), and its card carries on. A clear that removed something and was not proved empty
+   (it stopped shrinking, a dialog came up, the span ran out) answers `taken` with the texts and
+   `leftover: true`, and forgets the sends; the phone adds "The box held a draft.", because the agent's box
+   may hold a cut-off rest that no card matches.
+4. **Why a box read is not proof.** Up over an empty box with no queue recalls the last prompt from the
+   agent's history. A turn that ends between the read and the key sends the queue and then makes Up a
+   history recall, so the box can show the waiting text while it went out. Only the journal can tell the
+   two apart. That case (the history trap) ends `too_late` only when the journal shows the queue went out
+   (a `dequeue` of the person's words) and no `popAll`: the box is emptied when it holds exactly the
+   recalled text, and Collie says "It already went out." Every other case with no proof ends `in_box`
+   (the box holds text after a `popAll`, and its returned card carries on) or `unknown`, and nothing more
+   is pressed. No receipt, log or audit line holds the text; the audit names the outcome and a count.
+   With no `back` move at all, the open queued sends of those texts stop matching the box
+   (`QueuedSends.blindToBox`): when the log writes the queue's consumption late (after the 2.4 s proof
+   window), the box holds Up's recalled copy of a text that went out, and the poll's box read would have
+   made it a "Back in the box" card with Send, a second send. Those sends now leave when the journal shows
+   them as a prompt, or on the clock. The person sees "The text may have reached the agent. Read the
+   chat.", the waiting card leaves when the log catches up, the chat shows the message as sent, and the
+   recalled copy stays in the agent's box, so the next send is refused because the box holds a draft.
+5. **The merge rule.** `taken` puts the texts into the composer, in queue order, one newline between,
+   then one newline and whatever draft the box held. Nothing is dropped and nothing is sent. Where the
+   composer cannot take text (a sign-in code field, a prompt that does not echo, an open Undo window), the
+   text waits on the Put back notice.
+6. **Edit on the returned card is its Discard, then the merge.** The card's text goes into the composer
+   only when the bridge answers that it emptied the box. The text is the phone's copy, which the
+   decision's point 10 never lets act; Edit only reads it, and only where the bridge says it is its own text, whole and unmasked:
+   `QueuedSendWire.whole`, set on a returned card whose every text is the request's own (a send read back
+   from its kept line after a restart is not), and dropped by the mask from any text it changes.
+7. **A lost answer is asked for again, with the same id.** A `taken` answer is the only copy of words that
+   left the queue. The phone keeps the request id per pane before it posts (`lib/dequeue-pending.ts`,
+   sessionStorage, as `send-intent.ts` keeps a send's) and, after no answer (a network error, a timeout, a
+   5xx, a member's 504), asks again by itself with the same id, with backoff for about a minute, and again
+   when the pane view opens, the page comes back into view or the network comes back. Those asks carry
+   `replay: true`: the bridge answers a receipt it holds or joins one in flight, and for an id it does not
+   know (the first ask never arrived, or the bridge restarted) it answers `unknown` and starts nothing, so
+   no key ever leaves without a tap. One caller claims the id and acts, so a replayed `taken` never merges
+   twice; an answer that lands after a pane switch goes in front of that pane's stored draft. "Nothing
+   retries it by itself" in the first brief meant the key, and it still holds for the key.
+8. **Cancel keeps text.** Cancel on a held send gave its words back only into an empty box and dropped
+   them over a draft. It now takes the Put back road (M104): an empty box takes them, a box with text
+   keeps its text and the words wait on the Put back notice. A WalkyTalky row still gives nothing back.
+9. **A crew member's pane goes through the lead,** as Clear does: the crew router forwards
+   `POST /crew/v1/pane/:id/dequeue` as a write (CREW_PROTOCOL.md).
+
 ## Assumptions
 
 - **One clock.** The journal's prompt time and the receipt's submit time are compared with a 2 s skew.

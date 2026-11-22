@@ -346,7 +346,7 @@ export interface TapLog {
 }
 
 // `update/line` is the Release line control's one write (crew case 15): its receipt says `ok`.
-const WATCHED = /\/api\/(ask\/|send$|walky$|update\/line$|pane\/[^/]+\/(keys|reply|abort|clear)$)/;
+const WATCHED = /\/api\/(ask\/|send$|walky$|update\/line$|pane\/[^/]+\/(keys|reply|abort|clear|dequeue)$)/;
 
 /** Records the bridge's answer to every write the page makes, and the ask ids its snapshots carried. */
 export class TapRecorder {
@@ -418,13 +418,22 @@ export class TapRecorder {
       reason: leftOut ?? asJsonString(receipt.reason) ?? asJsonString(doc.error) ?? null,
       detail: (asJsonString(doc.detail) ?? asJsonString(receipt.detail) ?? (response.status() === 200 ? null : text.slice(0, 200))) || null,
       requestId,
-      receipt: text.slice(0, 2000),
+      receipt: path.endsWith("/dequeue") ? withoutTexts(doc) : text.slice(0, 2000),
     });
   }
 
   since(at: number): Answer[] {
     return this.answers.filter((answer) => answer.at >= at);
   }
+}
+
+/**
+ * A take-back's receipt as the trail keeps it (ADR 0122, the 2026-11-22 addendum): its `texts` are the person's
+ * own words that came back, so the trail holds how many came back and never the words.
+ */
+function withoutTexts(doc: JsonObject): string {
+  const { texts, ...rest } = doc;
+  return JSON.stringify(Array.isArray(texts) ? { ...rest, texts: texts.length } : rest).slice(0, 2000);
 }
 
 /** The walky talky states of a message the bridge took (lib/walky.ts wasTaken). */
@@ -441,11 +450,13 @@ export function accepted(answer: Answer): boolean {
   if (answer.path.endsWith("/abort")) return answer.outcome === "stopped";
   // A Clear (ADR 0116) is taken when its receipt says `cleared`: every refusal leaves the box as it was.
   if (answer.path.endsWith("/clear")) return answer.outcome === "cleared";
+  // A take-back (Edit on the waiting card) is taken when its receipt says `taken`: every other end left the text where it was.
+  if (answer.path.endsWith("/dequeue")) return answer.outcome === "taken";
   return answer.outcome === "ok";
 }
 
 export function answerWords(answer: Answer): string {
-  const where = answer.path.startsWith("/api/ask/") ? "ask" : answer.path.startsWith("/api/send") ? "send" : answer.path === "/api/walky" ? "walky" : answer.path.endsWith("/keys") ? "keys" : answer.path.endsWith("/abort") ? "stop" : answer.path.endsWith("/clear") ? "clear" : "reply";
+  const where = answer.path.startsWith("/api/ask/") ? "ask" : answer.path.startsWith("/api/send") ? "send" : answer.path === "/api/walky" ? "walky" : answer.path.endsWith("/keys") ? "keys" : answer.path.endsWith("/abort") ? "stop" : answer.path.endsWith("/clear") ? "clear" : answer.path.endsWith("/dequeue") ? "edit" : "reply";
   return `${where} ${String(answer.status)} ${answer.outcome ?? "-"}${answer.reason === null ? "" : ` (${answer.reason})`}`;
 }
 

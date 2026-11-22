@@ -23,12 +23,17 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Added
+
+- **A waiting message can come back into the message box to be edited.** On Claude Code, the "Waiting to send" card in Chat has an Edit button beside Send now. It takes all the waiting messages out of the agent's queue and puts them into Collie's message box, in order and before any text you had already typed there, so you can change them and send them again. Collie presses Claude Code's own key for this (Up) once and reads the session log to check that the queue really came back; when a message went out in that moment, it says "It already went out." and leaves nothing behind in the agent's box. The "Back in the box" card that a Stop leaves gets an Edit button too. Edit shows by itself on Claude Code and needs no setting.
+
 ### Changed
 
 - **The other eleven languages have the texts of the large-screen layout, Settings, the keyboard shortcuts, Actions and trick removal.** German, Spanish, French, Italian, Japanese, Korean, Portuguese, Russian, Turkish, Simplified Chinese and Traditional Chinese now show these screens in their own words, where the last release showed them in English.
 
 ### Fixed
 
+- **Cancel on a waiting message never drops its text.** When you cancel a message that Collie held for later and the message box already holds other text, that text stays, and the cancelled message waits on the Put back notice above the box. Before, Collie put the cancelled text back only into an empty box and lost it otherwise.
 - **On a narrow phone, in languages with long words, the font choices and the Light or dark choice stay inside their card.** The interface font and terminal font menus shrink and cut a long name with an ellipsis, and the three Light or dark buttons share the card width, instead of running past the card edge. Nothing changes in English.
 - **On Windows, a picture posted to the Hill is refused in Collie's own folders by every spelling of its path.** A picture that an agent posts to the Hill, an experimental feature, is refused when it lies in Collie's own state or config folder, whatever way Windows spells that path. Before, a short (8.3) name such as `C:\Users\NAME~1` or a mapped drive could get past that check. Linux and macOS were not affected. If you use Collie on Windows, update.
 - **A read card names the right last line.** When an agent reads 20 lines from line 10, the card says lines 10 to 29, where it said 10 to 30, one line too far. Thanks @soarkit (#845).

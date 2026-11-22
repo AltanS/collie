@@ -13,8 +13,8 @@ Tier 1's config ignores `e2e/rig/`.
 
 The leg is a gate. It runs in these places:
 
-- **Before every release tag**, on the release head. All forty-eight cases pass on the first tap:
-  thirty-nine on the solo leg (three harnesses with five cases each, fourteen walky talky cases, case 22, case 25, case 26, case 28, case 29, the four space cases 30 to 33, and Deliver now, case 36) and
+- **Before every release tag**, on the release head. All forty-nine cases pass on the first tap:
+  forty on the solo leg (three harnesses with five cases each, fourteen walky talky cases, case 22, case 25, case 26, case 28, case 29, the four space cases 30 to 33, Deliver now, case 36, and Edit on a waiting message, case 37) and
   nine on the crew leg (below). A case that fails, or is not reached, holds the tag.
 - **Before every release tag**, patch tags included, also on herdr-core (M79, "On herdr-core" below):
   the solo leg with `make browser-leg DIR=... MUX=herdr-core` (replay, about 30 minutes), and the crew
@@ -152,6 +152,7 @@ last column names. Cases 12 to 15, 19 to 21, 34 and 35 run on the crew leg only 
 | 34 | Crew leg. The border across the crew. A throwaway Claude on the lead sends `here`. A named space is one space on every machine, so the receipts name Claude's pane on the lead and pi's pane on the member (the member's pane is in the space of the same name), not the sender. The member's own receipt for pi says `in`. A draft in each box holds the message, the lead's hold is taken back, and pi's draft is left alone. No model turn | claude (lead), pi (member) | `walky-crew.spec.ts` |
 | 35 | Crew leg. An unnamed space on the member. A second pi on the member is in a space with no name of its own, so it never joins a space elsewhere. `here` from the same sender does not name it, a message to its address is refused `outside your space` by the member (which owns the pane and counts the refusal), and nothing is typed into it. No model turn | claude (lead), pi (member) | `walky-crew.spec.ts` |
 | 36 | Deliver now (M99 spec 05). A draft in the session pane's box holds an operator message (`accepted`, `draft present`). The phone opens with its clock installed and moves it past the mark's grace (`WALKY_MARK_GRACE_MS`, `web/src/lib/walky-grace.ts`), so no case sleeps 20 seconds; the mark must not show before. On the data run (`COLLIE_RIG_DATA=1`) the pane read says `linked`, the mark carries Deliver now, one tap ends the receipt `delivered` with `overDraft`, its send typed no key, the note "Message delivered. Your text stays here." shows, the draft is still in the box after the turn, and a second ask answers `repeat`. One Claude turn. On the default run the pane is not linked, the mark has no Deliver now, and the message is dropped by the route with the draft untouched. No model turn | claude | `walky.spec.ts` |
+| 37 | Edit a waiting message (ADR 0122, the 2026-11-22 addendum). A long numbered list streams (150 items). A send from the composer while it runs goes into Claude's own queue (`sent` + `queued`), and the Chat's "Waiting to send" card shows it with Edit. One tap on Edit posts one `POST /api/pane/:id/dequeue`: the receipt says `taken`, the composer holds the text, the card goes and Claude's box reads empty. The person changes one word and sends it after the list: Claude answers the changed text, it is in the log once, and the first text never became a prompt. Two model turns. Written on 2026-11-22 and not run yet: its first run is live and records it | claude | `queue-edit.spec.ts` |
 
 The walky talky path is the same bridge code for every harness, so Claude carries most of the cases and
 pi and omp prove that their screens take the message. The table prints a row only for a harness a case
