@@ -99,10 +99,44 @@ describe("the repository's own newest release", () => {
 		const doc = buildReleaseReading(changelog, newest, CREW_PROTOCOL_VERSION);
 		const read = parseReleaseReading(JSON.parse(JSON.stringify(doc)));
 		expect(doc.notes?.length ?? 0).toBeGreaterThan(0);
-		expect(read?.notes?.map((g) => g.name)).toEqual(doc.notes?.map((g) => g.name));
-		expect(read?.notes?.[0]?.leads[0]).toBe(doc.notes?.[0]?.leads[0]);
+		expectSameNotes(doc.notes, read?.notes);
+	});
+
+	test("the reader orders the groups its own way, and every group's lines still arrive", () => {
+		// The writer keeps the section's order (a patch may open with its fixes); the installed reader
+		// sorts to its fixed order. The order was never a promise of the trip; the names and lines are.
+		const patch = `# Changelog
+
+## [1.9.2] - 2026-09-25
+
+### Fixed
+
+- **The cache reaper keeps live entries.** It read the window backwards. ([abc1234](https://github.com/AltanS/collie/commit/abc1234))
+- **The crew list loads on a slow link.** ([abc1235](https://github.com/AltanS/collie/commit/abc1235))
+
+### Changed
+
+- **The update band shows one release at a time.** It used to stack them. ([abc1236](https://github.com/AltanS/collie/commit/abc1236))
+`;
+		const doc = buildReleaseReading(patch, "1.9.2", 2);
+		const read = parseReleaseReading(JSON.parse(JSON.stringify(doc)));
+		expect(doc.notes?.map((g) => g.name)).toEqual(["Fixed", "Changed"]);
+		expect(read?.notes?.map((g) => g.name)).toEqual(["Changed", "Fixed"]);
+		expectSameNotes(doc.notes, read?.notes);
 	});
 });
+
+/** The names, ignoring order, and for every group the reader's leads equal the writer's leads of the
+ *  group with the same name. */
+function expectSameNotes(
+	written: readonly { name: string; leads: string[] }[] | undefined,
+	read: readonly { name: string; leads: string[] }[] | undefined,
+): void {
+	expect(read?.map((g) => g.name).toSorted()).toEqual(written?.map((g) => g.name).toSorted());
+	for (const group of written ?? []) {
+		expect(read?.find((g) => g.name === group.name)?.leads).toEqual(group.leads);
+	}
+}
 
 describe("an Edge build's document (M60 spec 01)", () => {
 	test("carries the whole version, line edge, and its base version's notes", () => {
