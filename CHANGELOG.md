@@ -25,15 +25,15 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [1.30.1] - 2026-11-22
 
-### Changed
-
-- **The other eleven languages show the last release's new screens in their own words.** German, Spanish, French, Italian, Japanese, Korean, Portuguese, Russian, Turkish, Simplified Chinese and Traditional Chinese now have the texts of the large-screen layout, Settings, the keyboard shortcuts, Actions and trick removal, where 1.30.0 showed them in English. ([adbeca5](https://github.com/AltanS/collie/commit/adbeca5), [967f11c](https://github.com/AltanS/collie/commit/967f11c), [6e98856](https://github.com/AltanS/collie/commit/6e98856))
-
 ### Fixed
 
 - **On Windows, the Hill refuses a picture in Collie's own folders, however the path is spelled.** The Hill is an experimental feature where an agent can post a picture. A picture inside Collie's own state or config folder must be refused. On Windows it could get past that check when its path was spelled as a short (8.3) name, such as `C:\Users\NAME~1`, or went through a mapped drive. Collie now refuses it. Linux and macOS were not affected. If you use the Hill on Windows, update. ([e788f3e](https://github.com/AltanS/collie/commit/e788f3e))
 - **A read card names the right last line.** When an agent reads 20 lines from line 10, the card says lines 10 to 29, where it said 10 to 30. Thanks @soarkit (#845). ([0ad0547](https://github.com/AltanS/collie/commit/0ad0547))
 - **On a narrow phone, the font menus and the Light or dark buttons stay inside their card.** In languages with long words, the interface font and terminal font menus shrink and cut a long name with an ellipsis, and the three Light or dark buttons share the card width, where they ran past the card edge. Nothing changes in English. ([3e19005](https://github.com/AltanS/collie/commit/3e19005))
+
+### Changed
+
+- **The other eleven languages show the last release's new screens in their own words.** German, Spanish, French, Italian, Japanese, Korean, Portuguese, Russian, Turkish, Simplified Chinese and Traditional Chinese now have the texts of the large-screen layout, Settings, the keyboard shortcuts, Actions and trick removal, where 1.30.0 showed them in English. ([adbeca5](https://github.com/AltanS/collie/commit/adbeca5), [967f11c](https://github.com/AltanS/collie/commit/967f11c), [6e98856](https://github.com/AltanS/collie/commit/6e98856))
 
 ## [1.30.0] - 2026-11-21
 
