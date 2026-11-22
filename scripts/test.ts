@@ -15,7 +15,7 @@ import { FROZEN_BUN_IGNORE, IGNORE_ALWAYS, IGNORE_ENGINE_TESTS, ignoreFlags } fr
 
 const ROOT = join(import.meta.dir, "..");
 
-const BUN_SUITES = ["./bridge", "./cli", "./scripts", "./herdr-app-mod", "./omp-extension"];
+const BUN_SUITES = ["./bridge", "./cli", "./scripts", "./herdr-app-mod", "./omp-extension", "./pi-extension"];
 const SHELL_SUITES = [
   "scripts/collie-ctl.test.sh",
   "scripts/collie-cli.test.sh",
