@@ -37,8 +37,8 @@ describe("ThemeControl", () => {
       await whenLocaleReady("de");
     });
 
-    // The new group name has no German catalog entry yet, so it reads in English; the options are translated.
-    const group = screen.getByRole("radiogroup", { name: "Light or dark" });
+    // The group name and the options are translated.
+    const group = screen.getByRole("radiogroup", { name: "Hell oder dunkel" });
     const options = within(group).getAllByRole("radio");
     expect(options.map((o) => o.textContent)).toEqual(["System", "Hell", "Dunkel"]);
   });
