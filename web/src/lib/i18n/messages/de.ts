@@ -3960,7 +3960,7 @@ export const de: Dictionary = {
   "settings.page.look.title": "Darstellung",
   "settings.page.look.blurb": "Design, hell oder dunkel, Sprache, Schriften, Textgrößen",
   "settings.page.chat.title": "Chat und Terminal",
-  "settings.page.chat.blurb": "Was ein Pane zeigt: Werkzeugaufrufe, Zusammenfassungen, Umbruch, Statuszeile",
+  "settings.page.chat.blurb": "Pane-Inhalt: Werkzeugaufrufe, Zusammenfassungen, Umbruch, Statuszeile",
   "settings.page.keys.title": "Tasten und Touch",
   "settings.page.keys.blurb": "Enter sendet, das Tastenfeld, Tastenkürzel, Gesten, Haptik, Zen",
   "settings.page.notifications.title": "Mitteilungen",
