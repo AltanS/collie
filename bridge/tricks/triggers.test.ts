@@ -464,7 +464,7 @@ describe("the wire: what a program receives in `trigger`", () => {
     await writeFile(file, "a");
     const r = await onRig([OK], watchManifest(file));
     await writeFile(file, "ab");
-    await tick(300);
+    await ran(r, 2);
     expect(kinds(r)).toEqual(["start", "watch"]);
     const raw: { trigger: Record<string, string | number> } = JSON.parse(r.specs[1]?.stdin ?? "null");
     expect(Object.keys(raw.trigger).toSorted()).toEqual(["count", "kind", "path"]);
@@ -999,7 +999,7 @@ describe("`watch` runs a trick, and never loops on its own writes", () => {
     expect(r.warnings.some((line) => line.includes("react") && line.includes("ENOSPC") && line.includes("5 seconds"))).toBe(true);
     expect(r.service.reactionCounts()).toMatchObject({ watchers: 1, handles: 0, timers: 1 });
     await writeFile(file, "ab");
-    await tick(220);
+    await ran(r, 2);
     expect(kinds(r)).toEqual(["start", "watch"]);
     // Switched off: the poll and the note go.
     await r.service.setSwitch(HOST, "react", false);
