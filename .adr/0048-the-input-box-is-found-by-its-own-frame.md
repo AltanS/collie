@@ -365,3 +365,38 @@ command too. The rule is profile data, so no harness is named in shared code.
 
 Trail: `bridge/surface/protocol.ts` (`aboveMovedInTurn`, the header's turn paragraph) ·
 `bridge/surface/protocol.flush-after-menu.test.ts`.
+
+## Addendum 2026-11-22: a hint row under the box may lose words (#847)
+
+Three times one kind of footer change refused a probed Codex send. Codex draws `? for shortcuts` on its
+footer row, with other segments after wide spacing: a warning (0.166, acf36263c), the goal usage-limit
+notice (992ed67aa), and a goal-achieved notice (0.171.0, #847). At the first character Codex hides the
+shortcut text and leaves the rest. The row then matched no hint pattern, the count of rows under the
+box grew by one, and the probe failed. The probe's cleanup left the box clean, so the send was held
+"Something is open at the box", each try of the hold failed the same way, and the fifth ended
+`refused/probe_failed`. A pattern per segment fixed each case and not the cause.
+
+**A profile may say its hint rows lose text (`idle.volatile.below.losesText: true`).** A later row under
+the box that matches no hint pattern then counts as a hint row when a row that was a hint row under the
+box at S0 gives it by losing words only: split on white space, the later row's words stand in order
+among the S0 row's words, at least one is kept and at least one went. Each S0 hint row stands for at
+most one later row. A row with a word added or changed (a seconds count that ticks, a longer suffix), a
+row no S0 hint row gives, a menu, a dialog or a draft count as before. One function (`belowCount`) is
+the count every compare against S0 reads: the probe's first read and its second one, S1, the turn
+compares, the late probe's fresh baseline, and so the next try of a held send. Only Codex sets it; a
+profile without it counts exactly as before. The hint patterns stay.
+
+Proven on real Codex 0.171.0 captures (120x40, tmux, a goal that ended achieved, with and without a
+`-c` override, `codex--v0171-goal-achieved-*--w120.txt`): the probed reads at 100 ms, 400 ms and 2 s
+show the right segment alone in its place, no word added or changed, and the seconds count did not
+move. A message and a command go in on those reads; without the flag they end `refused/probe_failed`
+with the keys probe and Backspace, as the report saw. No hint pattern for the goal-achieved segment was
+added: the count does not need one, and no reader or the Surface reads that row.
+
+The rule is safe because it can only excuse text that left a row the profile already called a hint. It
+never lets a new word under the box through, and the probe character itself must still stand in the box
+as before. Shared code names no harness.
+
+Trail: `bridge/surface/protocol.ts` (`belowCount`, `lostWordsOnly`, `excusedBelow`, `readBelow`) ·
+`bridge/surface/protocol.codex-below-loses-text.test.ts` · `web/src/lib/surface/profile.below-loses-text.test.ts` ·
+`web/src/fixtures/panes/codex--v0171-goal-achieved-*--w120.txt`.

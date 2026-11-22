@@ -13,6 +13,13 @@ import { DIALOG, FakePane, OmpPane, PROBE, type Rig, nextId, omp, rig, surfaceFi
 
 useScratchDir();
 
+/** The rows under the box without `losesText` (#847): the profile as it was before that rule. */
+function withoutLostText(below: Profile["idle"]["volatile"]["below"]): Profile["idle"]["volatile"]["below"] {
+  const { losesText, ...rest } = below;
+  void losesText;
+  return rest;
+}
+
 describe("a send's profile is read for its pane", () => {
   test("the profile lookup gets the pane, and the receipt names the version and the file that was read", async () => {
     const { deps } = rig();
@@ -72,8 +79,9 @@ describe("a Codex 0.169.0 goal notice remains after the empty-box shortcuts disa
       version: "0.169.0",
       edit: (profile) => ({
         ...profile,
+        // The hint rows' lost-text rule (#847) is taken out too: it alone would let the notice through.
         idle: { ...profile.idle, volatile: { ...profile.idle.volatile, below: {
-          ...profile.idle.volatile.below,
+          ...withoutLostText(profile.idle.volatile.below),
           hints: (profile.idle.volatile.below.hints ?? []).filter((hint) => !hint.includes("Goal hit usage limits")),
         } } },
       }),
@@ -185,12 +193,12 @@ describe("a probed message into a tall Codex 0.166.0 pane (harness lab drift, 20
   const logo = (): FakePane => codex0166("codex--v0166-art-empty--w120.txt", "codex--v0166-art-typed--w120.txt", "codex--v0166-art-backspace--w120.txt");
   const warning = (): FakePane => codex0166("codex--v0166-warning-art-empty--w120.txt", "codex--v0166-warning-typed--w120.txt", "codex--v0166-warning-art-empty--w120.txt");
   const noLosesText = (profile: Profile): Profile => ({ ...profile, idle: { ...profile.idle, volatile: { ...profile.idle.volatile, above: { maxRows: profile.idle.volatile.above.maxRows } } } });
-  /** The Codex profile as it was before the warning row of its own took a hint. */
+  /** The Codex profile as it was before the warning row of its own took a hint, and before its hint rows could lose text (#847). */
   const noWarningHint = (profile: Profile): Profile => ({
     ...profile,
     idle: {
       ...profile.idle,
-      volatile: { ...profile.idle.volatile, below: { ...profile.idle.volatile.below, hints: (profile.idle.volatile.below.hints ?? []).filter((hint) => !hint.includes("⚠")) } },
+      volatile: { ...profile.idle.volatile, below: { ...withoutLostText(profile.idle.volatile.below), hints: (profile.idle.volatile.below.hints ?? []).filter((hint) => !hint.includes("⚠")) } },
     },
   });
 
