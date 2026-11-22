@@ -8,7 +8,7 @@ import { addRepoTrick } from "@/lib/api";
 import { REPO_INDEX_TERMINAL_LINE, type RepoAddReply, type RepoListReply } from "@/lib/tricks/repo-index";
 import { server } from "@/test/setup";
 
-// Settings, Tricks and the Hill, "Add from a repository": the row, the sheet, the list it reads and the Add of one trick.
+// Settings, Tricks, "Add from a repository": the row, the sheet, the list it reads and the Add of one trick.
 // The calls are injected here; one case runs the real `addRepoTrick` over msw to read the bridge's reason.
 
 const COMMIT = "5c3e9a17d02b48e6a1f7c9b0d4e8a2f61b7c3d90";
@@ -148,7 +148,7 @@ describe("RepoAddRow", () => {
   it("disables the row while tricks are off; the sentence is the card's, not the row's", async () => {
     render(<RepoAddRow tricksOff />);
     expect(screen.getByRole("button", { name: "Add a trick from a repository" })).toHaveProperty("disabled", true);
-    expect(screen.queryByText("Tricks are switched off on this machine; switch them on in Settings, Tricks and the Hill.")).toBeNull();
+    expect(screen.queryByText("Tricks are switched off on this machine; switch them on in Settings, Tricks.")).toBeNull();
   });
 
   it("disables the row for a device that may only read", () => {

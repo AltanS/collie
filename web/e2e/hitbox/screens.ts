@@ -85,7 +85,7 @@ export const SCREENS: ScreenRecipe[] = [
   { id: "settings-voice", group: "Settings", title: "Settings, Voice", world: "rich", path: "/settings/voice" },
   { id: "settings-notifications", group: "Settings", title: "Settings, Notifications", world: "rich", path: "/settings/notifications" },
   { id: "settings-dashboard", group: "Settings", title: "Settings, Dashboard and projects", world: "rich", path: "/settings/dashboard" },
-  { id: "settings-tricks", group: "Settings", title: "Settings, Tricks and the Hill", world: "rich", path: "/settings/tricks" },
+  { id: "settings-tricks", group: "Settings", title: "Settings, Tricks", world: "rich", path: "/settings/tricks" },
   { id: "settings-devices", group: "Settings", title: "Settings, Devices and machines (pairing)", world: "rich", path: "/settings/devices" },
   { id: "settings-privacy", group: "Settings", title: "Settings, Privacy and data", world: "rich", path: "/settings/privacy" },
   { id: "settings-updates", group: "Settings", title: "Settings, Updates and about", world: "rich", path: "/settings/updates" },

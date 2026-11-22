@@ -17,7 +17,7 @@ import { HandControl } from "@/components/hand-control";
 import { HapticsControl } from "@/components/haptics-control";
 import { HarnessBarControl } from "@/components/harness-bar-control";
 import { HarnessPrefsControl } from "@/components/harness-prefs-control";
-import { HillSwitchControl } from "@/components/hill-switch-card";
+import { HillRowCard, HillRowControl } from "@/components/hill-row";
 import { KeepChatControl } from "@/components/keep-chat-control";
 import { LanguageControl } from "@/components/language-control";
 import { MachineLoadCard, MachineLoadSettings } from "@/components/machine-load-settings";
@@ -417,10 +417,12 @@ export function SettingsDashboardRoute() {
   );
 }
 
-// ── 8. Tricks and the Hill ───────────────────────────────────────────────────────────────────────────────────────
-// Both experiments, each with its one switch, and while the Tricks switch is on, the list. The Experiments page's
-// notice moved onto the two switches: each says the whole of it and wears the Experimental badge. A bookmark of the
-// list while tricks are off lands here too, on the switch that turns them on.
+// ── 8. Tricks ─────────────────────────────────────────────────────────────────────────────────────────────────────
+// The Tricks switch, and while it is on, the cards that wait for a yes and the list. The Hill is the list's first
+// row (components/hill-row.tsx): it is a trick that ships with Collie, and it does not depend on the Tricks switch, so
+// with tricks off it stands alone in a card of the list's look, below the switch. The Experiments page's notice moved
+// onto the switch and the row: each says the whole of it and wears the Experimental badge. A bookmark of the list
+// while tricks are off lands here too, on the switch that turns them on.
 export function SettingsTricksRoute() {
   const root = useOptionalRootData();
   const on = root?.tricksOff !== true;
@@ -430,22 +432,21 @@ export function SettingsTricksRoute() {
         <SettingSlot ids={["tricks.enabled"]}>
           <TricksSwitchControl />
         </SettingSlot>
-        {on && (
+        {on ? (
           <>
             {/* The cards of Collie's own that wait for a yes (M96 spec 14): with the Hill off, the one list of them. */}
             <SettingSlot ids={["tricks.waiting"]}>
               <TrickCardsWaiting />
             </SettingSlot>
             <SettingSlot ids={["tricks.list", "tricks.addRepo", "tricks.addRepo.link", "tricks.official.add", "tricks.official.update"]}>
-              <TricksSettingsCard />
+              <TricksSettingsCard hill={<HillRowControl />} />
             </SettingSlot>
           </>
+        ) : (
+          <HillRowCard>
+            <HillRowControl />
+          </HillRowCard>
         )}
-      </Group>
-      <Group page="tricks" id="hill" bare>
-        <SettingSlot ids={["tricks.hill"]}>
-          <HillSwitchControl />
-        </SettingSlot>
       </Group>
     </Page>
   );

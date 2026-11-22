@@ -197,7 +197,7 @@ const PAGE_TITLES = [
   "Notifications",
   "Voice",
   "Dashboard and projects",
-  "Tricks and the Hill",
+  "Tricks",
   "Devices and machines",
   "Privacy and data",
 ] as const;
@@ -312,16 +312,16 @@ function renderIndex(over: Partial<HomeData>) {
   render(<RouterProvider router={router} />);
 }
 
-// THE TRICKS ROW STAYS (ADR 0170). The switch for tricks as a whole is on Tricks and the Hill, so the row is there
+// THE TRICKS ROW STAYS (ADR 0170). The switch for tricks as a whole is on Tricks, so the row is there
 // with tricks off and on, and the list keeps its length.
-describe("SettingsRoute — the Tricks and the Hill row", () => {
+describe("SettingsRoute — the Tricks row", () => {
   it.each([true, false])("is there with tricks off %s, before Devices and machines", async (tricksOff) => {
     writeAnswer("settings-accounts-row", false);
     serveAccountsStatus(404);
     renderIndex({ tricksOff });
     await screen.findByRole("button", { name: /Look and feel/ });
     const titles = listTitles();
-    expect(titles.indexOf("Tricks and the Hill")).toBe(titles.indexOf("Devices and machines") - 1);
+    expect(titles.indexOf("Tricks")).toBe(titles.indexOf("Devices and machines") - 1);
     expect(titles).toHaveLength(SETTLED_ROWS_WITHOUT_OPTIONAL);
   });
 });
@@ -446,7 +446,7 @@ describe("SettingsRoute — the list does not move while the page loads", () => 
     const titles = listTitles();
     expect(titles).toHaveLength(SETTLED_ROWS_WITHOUT_OPTIONAL);
     expect(titles).not.toContain("Profiles");
-    expect(titles).toContain("Tricks and the Hill");
+    expect(titles).toContain("Tricks");
   });
 
   it("the Updates caption changes its words on its own line and moves no row", async () => {

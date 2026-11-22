@@ -1219,9 +1219,9 @@
   },
   {
     "screen": "settings-tricks",
-    "selector": "div[data-slot=\"hill-switch\"] > div:nth-of-type(1) > button[data-slot=\"switch\"]",
+    "selector": "span[data-slot=\"hill-switch\"] > button[data-slot=\"switch\"]",
     "name": "The Hill",
-    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+    "why": "The Hill's row is a trick row (2026-11-22), so its switch has a trick row's reach, ROW_OPEN_SWITCH in ui/row-open.ts: 56x40 around the 44x24 switch, 4px short of the 44px floor. The same reach every trick row's switch has; it moves with that constant, not with this row."
   },
   {
     "screen": "settings-tricks",

@@ -90,3 +90,13 @@ decides the file:
 - A validator per row, so a file that names a wrong value is refused with a reason, not taken.
 - The address of a per-item row (`each`): how a file names one harness, machine, trick or profile, and what
   happens to an entry whose item is gone.
+
+## Addendum 2026-11-22: the page is named Tricks, and the Hill's row stands in the trick list
+
+The eighth page is named **Tricks**, not "Tricks and the Hill" (`settings.page.tricks.title`; its index line reads "The Tricks
+switch and your tricks"). The Hill ships with Collie and is a trick to the person, so it has no heading of its own: its row is the
+first row of the trick list, with the label "Built in", and a tap opens its details page at `settings/tricks/hill` (the id `hill`
+is reserved, so no trick can take the key). The row's setting id stays `tricks.hill`, with its label and words, so a search for
+"hill" and every saved link to `#tricks.hill` still land on its row. The page below it holds the same switch, one registered link
+to the docs (`tricks.hill.docs`) and words that say who can ask, when the phone rings and what to do when nothing arrives. The row
+and its page do not depend on the Tricks switch.

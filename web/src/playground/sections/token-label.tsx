@@ -10,7 +10,6 @@
 
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 
-import { HillSwitchCard } from "@/components/hill-switch-card";
 import { TokenUseLookProvider, type TokenUseLook } from "@/components/token-use-label";
 import { TrickDetail } from "@/components/trick-detail";
 import { TricksSettingsCard } from "@/components/tricks-settings-card";
@@ -25,6 +24,7 @@ import { homeSolo } from "../fixtures";
 import { VIEW_TRICK } from "../fixtures/agent-view";
 import { RootRouter } from "../harness";
 import { Card, CardControls, Group, Section, Segmented, type SectionDef } from "../layout";
+import { HillRowFlipping } from "./hill-row-preview";
 
 export const DEF: SectionDef = {
   id: "token-label",
@@ -163,12 +163,6 @@ function WalkyPlace() {
   );
 }
 
-/** The Hill's switch on Settings, Tricks and the Hill. */
-function HillPlace() {
-  const [on, setOn] = useState(true);
-  return <HillSwitchCard on={on} disabled={false} onToggle={setOn} />;
-}
-
 /** A trick's details page in a phone box that scrolls. */
 function AboutPlace({ trick, width }: { trick: WireTrickInfo; width: WidthId }) {
   const style: CSSProperties = { width: Number(width), height: 640 };
@@ -197,8 +191,7 @@ function LookCard({ n, title, look, store, width }: { n: string; title: string; 
       <TokenUseLookProvider value={look}>
         <RootRouter data={homeSolo}>
           <Column width={width}>
-            <TricksSettingsCard store={store} onSwitch={switchStandIn} onOfficialList={OFFICIAL} now={NOW} />
-            <HillPlace />
+            <TricksSettingsCard store={store} onSwitch={switchStandIn} onOfficialList={OFFICIAL} now={NOW} hill={<HillRowFlipping initial />} />
             <WalkyPlace />
             <AboutPlace trick={MORPH} width={width} />
             <AboutPlace trick={INBOX} width={width} />

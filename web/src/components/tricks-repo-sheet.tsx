@@ -13,7 +13,7 @@ import { readPhoneSource, shownIndexText, type RepoAddReply, type RepoListEntry,
 import { cn } from "@/lib/utils";
 import { mintRequestId } from "@/lib/worktree-name";
 
-// Settings, Tricks and the Hill: "Add from a repository" (2026-11-17, package J). One row at the foot of the list opens this
+// Settings, Tricks: "Add from a repository" (2026-11-17, package J). One row at the foot of the list opens this
 // sheet. A person pastes the https link of a repository, the bridge reads its `collie-tricks.json` (a list of
 // folders, and nothing more) and the sheet shows one row per trick with its own Add. An Add fetches that one
 // folder, checks it as any trick is checked, and lands it OFF: the trick appears in the main list, and its own

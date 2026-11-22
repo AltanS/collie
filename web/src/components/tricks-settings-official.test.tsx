@@ -15,7 +15,7 @@ import { clearStatus, currentStatus } from "@/lib/status";
 import { server } from "@/test/setup";
 import { renderTricksPages } from "@/test/tricks-pages";
 
-// Official tricks in Settings → Tricks and the Hill (M94; one list since 2026-11-12): the official tricks this release can
+// Official tricks in Settings → Tricks (M94; one list since 2026-11-12): the official tricks this release can
 // add and the installed ones as one list, each once, official first in the list's order, then the community's
 // by name. The routes are the real api.ts calls against msw, so the paths and bodies are checked too.
 

@@ -11,7 +11,7 @@ export const ENTRY_SCROLL_FRAMES = 120;
  * visit to the same page starts at the top. Keyed on the router's `location.key`, which the browser keeps for
  * the entry, in memory only (`lib/scroll-memory.ts`: a reload starts at the top).
  *
- * A list whose rows arrive after the first frame (Settings, Tricks and the Hill waits for the official list) is shorter than
+ * A list whose rows arrive after the first frame (Settings, Tricks waits for the official list) is shorter than
  * the place to restore, so the restore tries again each frame until it lands, for {@link ENTRY_SCROLL_FRAMES} at
  * most, and stops at once when the person touches, wheels or types: their own scroll wins.
  */

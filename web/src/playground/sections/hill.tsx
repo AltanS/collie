@@ -15,7 +15,6 @@ import { DecisionCard } from "@/components/decision-card";
 import { DashboardTabBar } from "@/components/dashboard-tab-bar";
 import { HillCrewStateBar } from "@/components/hill-crew-state";
 import { HillHeader, HillOff, HillView } from "@/components/hill-view";
-import { HillSwitchCard } from "@/components/hill-switch-card";
 import { ChatApprovalCard } from "@/components/session-trick-card";
 import { TrickDashboardStrip } from "@/components/trick-place-items";
 import { HILL_IDLE, type HillAnswerState } from "@/hooks/use-hill-answer";
@@ -76,6 +75,7 @@ import {
 import { RootRouter } from "../harness";
 import { isNet, MotionHill, NETS, type Net } from "../hill-motion";
 import { Card, CardControls, Group, Section, Segmented, type SectionDef } from "../layout";
+import { HillRowStandalone } from "./hill-row-preview";
 
 export const DEF: SectionDef = {
   id: "hill",
@@ -393,12 +393,11 @@ function HillOffPhone() {
   );
 }
 
-/** The row in Settings → Tricks and the Hill, in a 390px column, with a switch that flips in place. `waiting`: open Decisions (any arms the first tap off). */
+/** The Hill's row, the first of the trick list in Settings → Tricks, in a 390px column, with a switch that flips in place. `waiting`: open Decisions (any arms the first tap off). */
 function SwitchRow({ initial, waiting = 0 }: { initial: boolean; waiting?: number }) {
-  const [on, setOn] = useState(initial);
   return (
     <div className="w-[390px] max-w-full bg-background p-4">
-      <HillSwitchCard on={on} disabled={false} waiting={waiting} onToggle={setOn} />
+      <HillRowStandalone initial={initial} waiting={waiting} />
     </div>
   );
 }
@@ -915,11 +914,11 @@ export function HillSection() {
 
       <Group title="The switch">
         <Card state="hill-switch-on" label="43: Settings row, on">
-          <CardHead n={43} title="Settings → Tricks and the Hill: the Hill on" />
+          <CardHead n={43} title="Settings → Tricks: the Hill on" />
           <SwitchRow initial />
         </Card>
         <Card state="hill-switch-off" label="44: Settings row, off">
-          <CardHead n={44} title="Settings → Tricks and the Hill: the Hill off (the default)" />
+          <CardHead n={44} title="Settings → Tricks: the Hill off (the default)" />
           <SwitchRow initial={false} />
         </Card>
         <Card state="hill-switch-armed" label="67: Settings row, 3 waiting">

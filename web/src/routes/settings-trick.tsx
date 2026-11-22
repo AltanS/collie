@@ -1,5 +1,6 @@
 import { Navigate, useParams } from "react-router";
 
+import { HillDetailControl } from "@/components/hill-page";
 import { SettingsPage } from "@/components/settings-page";
 import { OfficialTrickDetail, TrickDetail } from "@/components/trick-detail";
 import { Button } from "@/components/ui/button";
@@ -9,7 +10,7 @@ import { useNav } from "@/hooks/use-nav";
 import { useOfficialList, useTrickWrites, type TrickWriteCalls } from "@/hooks/use-trick-writes";
 import { apiErrorFields, apiErrorStatus, fetchTrickCodeFile, fetchTrickCodeIndex, removeTrick } from "@/lib/api";
 import { t } from "@/lib/i18n";
-import { readTrickDetailKey, settingsSectionPath, type TrickDetailAddress } from "@/lib/nav";
+import { HILL_DETAIL_KEY, readTrickDetailKey, settingsSectionPath, type TrickDetailAddress } from "@/lib/nav";
 import { usePairing } from "@/lib/pairing";
 import { useOptionalRootData } from "@/lib/route-data";
 import { useScope } from "@/lib/session";
@@ -32,7 +33,8 @@ import { isReadOnly } from "@/lib/types";
 //
 // The header's title is "Trick details"; the trick's name is the page's `h1`, in the head (2026-11-21).
 // Back goes up one level (ADR 0067): to the list, or to the trick's own page when its header opened this one.
-// Tricks switched off as a whole send a deep link to Settings, Tricks and the Hill, as the list does.
+// Tricks switched off as a whole send a deep link to Settings, Tricks, as the list does. The key `hill` is the Hill's own page
+// (components/hill-page.tsx): it opens whatever the Tricks switch says.
 
 export interface SettingsTrickRouteProps extends TrickWriteCalls {
   /** The store the trick is read from. The app's own by default; a test passes its own. */
@@ -71,8 +73,22 @@ export function rowOfAddress(rows: readonly TrickListRow[], address: TrickDetail
 export function SettingsTrickRoute(props: SettingsTrickRouteProps) {
   const root = useOptionalRootData();
   const scope = useScope();
+  const { key = "" } = useParams<{ key: string }>();
+  // The Hill is Collie's own page: it needs no tricks reply and never redirects, with tricks off or on a crew member.
+  if (key === HILL_DETAIL_KEY) return <HillPage />;
   if (root?.tricksOff === true) return <Navigate to={settingsSectionPath("tricks", scope)} replace />;
   return <TrickPage {...props} />;
+}
+
+/** The Hill's details page (components/hill-page.tsx), in the shell of a trick's page, one level below the list. */
+function HillPage() {
+  useLocale();
+  const scope = useScope();
+  return (
+    <SettingsPage title="tricks.session.details" parent={settingsSectionPath("tricks", scope)} headingBelow crumbs={[t("settings.hill.label")]}>
+      <HillDetailControl />
+    </SettingsPage>
+  );
 }
 
 function TrickPage({ store = tricksStore, onOfficialList, readOnly, timeZone, onRemove = removeTrick, ...calls }: SettingsTrickRouteProps) {

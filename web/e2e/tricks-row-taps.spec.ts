@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
 import { fixtureSnapshot } from "@/test/handlers";
+import { hillDecision } from "@/test/hill-fixtures";
 import type { OfficialTricksReply, TricksReply, WireTrickInfo } from "@/lib/tricks/schema";
 
 import { installApiStub } from "./fixtures/api";
@@ -104,6 +105,68 @@ test("every line of a trick's row reaches its About link, and the switch keeps i
   await page.mouse.click(x, y);
   await expect(page).toHaveURL(/\/settings\/tricks\/lodge%3Alegs$/);
   await expect(page.locator('[data-slot="trick-detail-name"]')).toHaveText("Browser leg");
+});
+
+test("the Hill's row: its lines open its page, the switch keeps its own taps and a 44px reach", async ({ page }) => {
+  const posts: string[] = [];
+  await stubTricks(page, posts);
+  await page.route("**/api/hill/switch", (route) => {
+    posts.push("/api/hill/switch");
+    return route.fulfill({ contentType: "application/json", body: JSON.stringify({ on: false }) });
+  });
+  await page.goto("/settings/tricks");
+  const row = "[data-hill-row]";
+  await expect(page.locator(row)).toBeVisible();
+  for (const line of ["description"]) {
+    const { x, y } = await centre(page, `${row} [data-line="${line}"]`);
+    expect(await targetAt(page, x, y), line).toBe("About The Hill");
+  }
+  const sw = (await page.locator(`${row} [role="switch"]`).boundingBox())!;
+  expect(await targetAt(page, sw.x + sw.width / 2, sw.y + sw.height / 2)).toBe("The Hill");
+  // The reach: 44px tall in all, as a trick row's switch.
+  expect(await targetAt(page, sw.x + sw.width / 2, sw.y - 6)).toBe("The Hill");
+  expect(await targetAt(page, sw.x + sw.width / 2, sw.y + sw.height + 6)).toBe("The Hill");
+  await page.mouse.click(sw.x + sw.width / 2, sw.y + sw.height / 2);
+  await expect.poll(() => posts).toEqual(["/api/hill/switch"]);
+  await expect(page).toHaveURL(/\/settings\/tricks$/);
+  const { x, y } = await centre(page, `${row} [data-line="description"]`);
+  await page.mouse.click(x, y);
+  await expect(page).toHaveURL(/\/settings\/tricks\/hill$/);
+  await expect(page.locator('[data-slot="trick-detail-name"]')).toHaveText("The Hill");
+});
+
+test("the Hill's row with Decisions waiting: arming swaps the text for the note and moves nothing, the text opens the page while unarmed", async ({ page }) => {
+  const posts: string[] = [];
+  await stubTricks(page, posts);
+  const snap = { ...fixtureSnapshot, tricksRev: 1, hillRev: 1 };
+  await page.route("**/api/snapshot", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify(snap) }));
+  const open = [hillDecision({ title: "One" }), hillDecision({ title: "Two" }), hillDecision({ title: "Three" })];
+  await page.route((url) => url.pathname === "/api/hill", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ v: 1, rev: 1, open, closed: [] }) }));
+  await page.goto("/settings/tricks");
+  const row = "[data-hill-row]";
+  await expect(page.locator(`${row} [data-line="slot"]`)).toHaveText("3 Decisions wait on you");
+  // The token chip is drawn whole on the row (scrollWidth against clientWidth, chip and text).
+  const whole = await page.locator(`${row} [data-slot="token-use"]`).evaluate((el) => {
+    const text = el.querySelector("span")!;
+    return el.scrollWidth <= el.clientWidth && text.scrollWidth <= text.clientWidth;
+  });
+  expect(whole).toBe(true);
+  const rowBox = (await page.locator(row).boundingBox())!;
+  const swBox = (await page.locator(`${row} [role="switch"]`).boundingBox())!;
+  // Unarmed, a tap on the slot line reaches the stretched link.
+  const slot = await centre(page, `${row} [data-line="slot"]`);
+  expect(await targetAt(page, slot.x, slot.y)).toBe("About The Hill");
+  await page.locator(`${row} [role="switch"]`).click();
+  await expect(page.locator(`${row} [data-line="armed"]:not([aria-hidden])`)).toBeVisible();
+  await expect(page.locator(`${row} [data-layer="text"]`)).toHaveCSS("visibility", "hidden");
+  // Nothing moved by one pixel: the row, and its switch.
+  expect(await page.locator(row).boundingBox()).toEqual(rowBox);
+  expect(await page.locator(`${row} [role="switch"]`).boundingBox()).toEqual(swBox);
+  expect(posts).toEqual([]);
+  // The note shows on the text's place, inside the row.
+  const note = (await page.locator(`${row} [data-line="armed"]`).boundingBox())!;
+  expect(note.y).toBeGreaterThanOrEqual(rowBox.y);
+  expect(note.y + note.height).toBeLessThanOrEqual(rowBox.y + rowBox.height);
 });
 
 test("an official entry's lines open its details page, and Add adds without opening it", async ({ page }) => {

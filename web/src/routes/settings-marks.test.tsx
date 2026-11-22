@@ -30,7 +30,7 @@ import { UpdatesRoute } from "./updates";
 
 // EVERY SETTINGS ROW HAS A MARKED PLACE ON A PAGE, AND EVERY CONTROL SITS IN ONE (ADR 0170). Each page wraps the
 // control that draws a row in a `SettingSlot` naming its registry ids. This renders every Settings page, the Profiles
-// pages and a trick's details page, and reads them twice:
+// pages, a trick's details page and the Hill's, and reads them twice:
 //
 //   - the marks: an id no row has fails, and a row of a Settings page that no page marks fails;
 //   - the controls: a button, switch, field or link of a page that sits in no slot fails. That is the control of a row
@@ -141,6 +141,16 @@ async function readTrickPage(): Promise<Read> {
   return read;
 }
 
+/** The Hill's details page: its head switch and its docs link, each in a slot. It needs no tricks reply. */
+async function readHillPage(): Promise<Read> {
+  const store = createTricksStore({ fetchTricks: async () => ({ rev: 1, tricks: [], parts: [], present: [] }), tapTrick: async () => Promise.reject(new Error("no tap")), mintRequestId: () => "r" });
+  renderTricksPages({ store, entries: ["/settings/tricks/hill"] });
+  await screen.findByRole("heading", { name: "The Hill" });
+  const read = readPage(document.body, "/settings/tricks/hill");
+  cleanup();
+  return read;
+}
+
 async function readAll(): Promise<Read> {
   const all: Read = { marks: [], loose: [] };
   const add = (read: Read) => {
@@ -151,6 +161,7 @@ async function readAll(): Promise<Read> {
   serveAccounts(body({ accounts: [defaultRow(), workRow()], found: [FOUND_ALT] }));
   for (const each of ACCOUNT_PAGES) add(await readRoute(each.route, each.entry, each.page));
   add(await readTrickPage());
+  add(await readHillPage());
   return all;
 }
 

@@ -71,7 +71,7 @@ import { FOCUS_RING, HOVER_FILL } from "@/components/ui/button";
 //     send again.
 //
 // "Not now" here closes the card in this session only (lib/hill/session-later.ts) and sends nothing:
-// Settings, Tricks and the Hill keeps it under "Waiting for your yes". There is no Dismiss.
+// Settings, Tricks keeps it under "Waiting for your yes". There is no Dismiss.
 //
 // Only a NEW trick's or a new version's proposal (`ref.type === "proposal"`) shows here; no agent text
 // can make one, because only the bridge's own code posts a card of Collie's own.

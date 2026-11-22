@@ -110,7 +110,7 @@ const FACT_GLYPH = {
   warn: "warning",
 } as const satisfies Readonly<Record<FactKind, IconKey>>;
 
-interface FactRow {
+export interface FactRow {
   key: string;
   node: ReactNode;
   /** The row draws its own 44 px box (a link): the group adds no padding around it. */
@@ -277,7 +277,7 @@ function doesRows(trick: WireTrickInfo, tokens: boolean, opensPage = false): Fac
 }
 
 /** The space above a section of the page, and its label: the page's second level, under the head. */
-const SECTION = "pt-6";
+export const SECTION = "pt-6";
 const SECTION_LABEL = "mb-2 block";
 
 /** The tone of a fact's glyph: muted, and the caution tone of a flagged code line for a warning. */
@@ -294,7 +294,7 @@ function FactLine({ row }: { row: FactRow }) {
   );
 }
 
-function FactGroup({ label, rows, slot }: { label: string; rows: readonly FactRow[]; slot: string }) {
+export function FactGroup({ label, rows, slot }: { label: string; rows: readonly FactRow[]; slot: string }) {
   return (
     <section data-section={slot} className={SECTION}>
       <SectionLabel className={SECTION_LABEL}>{label}</SectionLabel>
@@ -372,27 +372,62 @@ export function OriginLabel({ origin }: { origin: TrickOrigin }) {
 }
 
 /**
+ * The label of the Hill: "Built in". It says where the row comes from, as Official and Community do, and nothing more: the
+ * neutral look of every label that is not the official accent, with no check mark, shield or colour that claims safety.
+ */
+export function BuiltInLabel() {
+  return (
+    <Badge variant="outline" data-slot="trick-origin" data-origin="builtin" className="px-1.5 py-0 text-[11px] leading-4 font-normal text-muted-foreground">
+      {t("settings.tricks.origin.builtin")}
+    </Badge>
+  );
+}
+
+/**
  * THE HEAD: the trick's icon in a tile, its name, and its labels, then, for a trick on this machine, its switch with
  * the state in words. The tile is a neutral frame, in the official accent for an official trick (`OFFICIAL_TONE`):
  * a fact of identity, never a status. The name is the page's heading (`h1`, 20 px, semibold); the header's
  * title says "Trick details", so the name stands once.
  */
-function DetailHead({ icon, name, origin, tokens, children }: { icon: string | undefined; name: string; origin: TrickOrigin | undefined; tokens: boolean; children?: ReactNode }) {
+export function DetailHead({
+  icon,
+  glyph,
+  name,
+  origin,
+  tokens,
+  labels,
+  children,
+}: {
+  icon?: string | undefined;
+  /** A glyph of its own for the tile (the Hill's mountain), in place of the trick's icon word. */
+  glyph?: ReactNode;
+  name: string;
+  origin?: TrickOrigin | undefined;
+  tokens?: boolean;
+  /** The labels under the name, in place of the origin label and the token chip. */
+  labels?: ReactNode;
+  children?: ReactNode;
+}) {
   const Glyph = trickIconOf(icon);
   return (
     <header data-section="head" className="flex flex-col gap-3">
       <div className="flex items-start gap-3">
         <span aria-hidden data-slot="trick-detail-icon" className={cn("inline-flex size-12 shrink-0 items-center justify-center rounded-sm border", origin === "official" ? OFFICIAL_TONE.tile : "border-border bg-card text-primary")}>
-          <Glyph className="size-6" />
+          {glyph ?? <Glyph className="size-6" />}
         </span>
         <div className="min-w-0 flex-1 pt-0.5">
           <h1 data-slot="trick-detail-name" className="text-xl leading-7 font-semibold tracking-tight break-words">
             {name}
           </h1>
-          {(origin !== undefined || tokens) && (
+          {labels !== undefined && (
+            <div data-slot="trick-detail-labels" className="mt-1 flex flex-wrap items-center gap-1">
+              {labels}
+            </div>
+          )}
+          {labels === undefined && (origin !== undefined || tokens === true) && (
             <div data-slot="trick-detail-labels" className="mt-1 flex flex-wrap items-center gap-1">
               {origin !== undefined && <OriginLabel origin={origin} />}
-              {tokens && <TokenUseChip />}
+              {tokens === true && <TokenUseChip />}
             </div>
           )}
         </div>
@@ -403,7 +438,7 @@ function DetailHead({ icon, name, origin, tokens, children }: { icon: string | u
 }
 
 /** The trick's own switch in the head, with its state in words: the list row's switch, the same tap and the same refusals. */
-function HeadSwitch({ name, checked, disabled, onFlip }: { name: string; checked: boolean; disabled: boolean; onFlip: (on: boolean) => void }) {
+export function HeadSwitch({ name, checked, disabled, onFlip }: { name: string; checked: boolean; disabled: boolean; onFlip: (on: boolean) => void }) {
   return (
     <ListGroup>
       <div data-slot="trick-detail-switch" className="flex min-h-11 items-center justify-between gap-4 px-3.5 py-2">
@@ -427,7 +462,7 @@ function HeadSwitch({ name, checked, disabled, onFlip }: { name: string; checked
  * neither an about nor a description, the one muted line, and no such note. `note` is false for an official entry
  * that is not added yet: its line is the list's, and the sheet drew no note under it either.
  */
-function AboutGroup({ description, paragraphs, note }: { description: string | undefined; paragraphs: readonly string[]; note: boolean }) {
+export function AboutGroup({ description, paragraphs, note }: { description: string | undefined; paragraphs: readonly string[]; note: boolean }) {
   return (
     <section data-section="about-group" className={SECTION}>
       <SectionLabel className={SECTION_LABEL}>{t("settings.tricks.detail.about")}</SectionLabel>

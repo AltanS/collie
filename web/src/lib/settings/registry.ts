@@ -150,7 +150,7 @@ const LIST = [
   { id: "accounts.login.open", label: "accounts.changeLogin.open", kind: "action", scope: "profile", page: "accounts", below: ":id/login", group: "login", store: none, find: false },
   { id: "accounts.login.finish", label: "accounts.changeLogin.finish", hint: "accounts.changeLogin.finishHint", kind: "action", scope: "profile", page: "accounts", below: ":id/login", group: "login", store: none, find: false },
 
-  // ── 8. Tricks and the Hill ────────────────────────────────────────────────────────────────────────
+  // ── 8. Tricks ────────────────────────────────────────────────────────────────────────────────
   { id: "tricks.enabled", label: "settings.section.tricks.title", hint: "settings.tricks.switch.about", kind: "switch", scope: "machine", page: "tricks", group: "tricks", store: route("/api/tricks"), experiment: true, words: words("settings.words.experiment") },
   { id: "tricks.waiting", label: "settings.tricks.waiting.title", kind: "info", scope: "machine", page: "tricks", group: "tricks", store: none, find: false },
   { id: "tricks.list", label: "settings.tricks.detail.on", kind: "switch", scope: "machine", page: "tricks", group: "tricks", store: route("/api/tricks/switch", "trick"), each: "trick", when: "tricks-on", find: false },
@@ -159,6 +159,8 @@ const LIST = [
   { id: "tricks.official.add", label: "settings.tricks.official.add", kind: "action", scope: "machine", page: "tricks", group: "tricks", store: route("/api/tricks/official"), each: "trick", when: "official-newer", find: false },
   { id: "tricks.official.update", label: "settings.tricks.official.update", kind: "action", scope: "machine", page: "tricks", group: "tricks", store: route("/api/tricks/official"), each: "trick", when: "official-newer", find: false },
   { id: "tricks.hill", label: "settings.hill.label", hint: "settings.hill.hint", kind: "switch", scope: "machine", page: "tricks", group: "hill", store: route("/api/hill/switch"), experiment: true, words: words("settings.words.experiment", "settings.words.decisions") },
+  // The Hill is the first row of the trick list; its id and words stay (a search for "hill" lands on its row). The page below it, `settings/tricks/hill`, holds the same switch and one link.
+  { id: "tricks.hill.docs", label: "settings.hill.docs", kind: "link", scope: "machine", page: "tricks", below: "hill", group: "hill", store: none, find: false },
   { id: "tricks.trick.autoUpdate", label: "settings.tricks.about.autoUpdate.label", hint: "settings.tricks.about.auto.hint", kind: "switch", scope: "machine", page: "tricks", below: ":key", group: "trick", store: route("/api/tricks", "trick"), each: "trick" },
   { id: "tricks.trick.undo", label: "settings.tricks.undo", kind: "action", scope: "machine", page: "tricks", below: ":key", group: "trick", store: route("/api/tricks", "trick"), each: "trick", find: false },
   { id: "tricks.trick.fields", label: "settings.tricks.about.settingsHeading", hint: "settings.tricks.fields.noSecrets", kind: "text", scope: "machine", page: "tricks", below: ":key", group: "trick", store: route("/api/tricks", "trick"), each: "trick" },

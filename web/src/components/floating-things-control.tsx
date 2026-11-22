@@ -9,7 +9,7 @@ import { t } from "@/lib/i18n";
 /**
  * Whether tricks may draw small moving pictures over the app (the `float` place, lib/tricks/float.ts).
  * ON by default: the pictures never cover a question and never block a tap, and each trick still has its
- * own switch in Settings → Tricks and the Hill. Off hides every picture at once, on this device only.
+ * own switch in Settings → Tricks. Off hides every picture at once, on this device only.
  */
 export function FloatingThingsControl() {
   useLocale();

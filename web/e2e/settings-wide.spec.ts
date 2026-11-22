@@ -143,7 +143,7 @@ test("a trick's details name their path in the header, and Back beside the title
   const page = await openAt(browser, testInfo, WIDTHS[0]);
   try {
     await openIn(page, "tricks", "/settings/tricks/lodge%3Aci");
-    await expect(page.locator('[data-slot="settings-path"]')).toHaveText("/Tricks and the Hill/CI");
+    await expect(page.locator('[data-slot="settings-path"]')).toHaveText("/Tricks/CI");
     await expect(row(page, "tricks")).toHaveAttribute("aria-current", "page");
     await expect(column(page).getByRole("heading", { level: 1 })).toHaveText("CI");
     await page.locator('[data-slot="settings-page-head"]').getByRole("button", { name: en["settings.nav.back"] }).click();
