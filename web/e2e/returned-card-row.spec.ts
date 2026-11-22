@@ -27,7 +27,8 @@ for (const width of [360, 390]) {
     await installPaneWorld(page, {
       paneId: KIRO_PANE_ID,
       snapshot: fixtureKiroSnapshot,
-      chat: { ...fixtureKiroChat, queuedSends: [RETURNED] },
+      // Object.assign keeps the fixture's own type and adds the live field the receipt card reads.
+      chat: Object.assign({}, fixtureKiroChat, { queuedSends: [RETURNED] }),
       screens: { idle: paneCapture("kiro--v3-idle-w120") },
       start: "idle",
     });
