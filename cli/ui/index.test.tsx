@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { render } from "ink-testing-library";
+import { render } from "./ink-test-render.ts";
 
 import type { DoctorView, StatusView, TonedLine, UpdateEvent } from "../render.ts";
 import { Doctor, Members, Status } from "./index.tsx";

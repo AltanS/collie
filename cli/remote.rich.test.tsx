@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { render } from "ink-testing-library";
+import { render } from "./ui/ink-test-render.ts";
 
 import { AuditLog, type AuditEntry } from "../bridge/audit.ts";
 import { CREW_PROTOCOL_VERSION } from "../bridge/crew/enrollment.ts";
