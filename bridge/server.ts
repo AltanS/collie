@@ -297,7 +297,7 @@ import { pinSessionKey } from "./pins/key.ts";
 import { PinKeys } from "./pins/keys.ts";
 import { pinsRoute, type PinsAnswer, type PinsSession } from "./pins/routes.ts";
 import { PinStore } from "./pins/store.ts";
-import { HILL_ANSWER_RIGHT, readAnswerRequest } from "./hill/parse.ts";
+import { HILL_ANSWER_RIGHT, readAnswerRequest, readAnswersRequest } from "./hill/parse.ts";
 import { HILL_ID_RE, HILL_MEDIA_ID_RE, isHillCrewState } from "../web/src/lib/hill/wire.ts";
 import { HILL_STATE_ON_LEAD, hillDeviceId, type HillService } from "./hill/service.ts";
 import type { AgentViewService } from "./agent-view/service.ts";
@@ -3841,6 +3841,21 @@ export function startServer(opts: {
           body = undefined;
         }
         return hillAnswerRoute(hill, body, { device: whois(req).device, deviceId: pairedDeviceId(req, pairingGate), acceptEncoding: req.headers.get("accept-encoding") });
+      }
+      // One Send per session (Asks, 2026-11-22): the answers to several asks, typed as ONE message. The
+      // same gate as the single answer, and this machine only.
+      if (pathname === "/api/hill/answers" && req.method === "POST") {
+        const denied = browserGate(HILL_ANSWER_RIGHT);
+        if (denied) return denied;
+        if (host.kind === "member") return text(HILL_LOCAL_TEXT, 400);
+        let body: JsonValue | undefined;
+        try {
+          // SAFETY: `Request.json()` output IS a JsonValue by construction; `readAnswersRequest` checks every field.
+          body = (await req.json()) as JsonValue;
+        } catch {
+          body = undefined;
+        }
+        return hillAnswersRoute(hill, body, { device: whois(req).device, deviceId: pairedDeviceId(req, pairingGate), acceptEncoding: req.headers.get("accept-encoding") });
       }
       // ── Agent views ───────────────────────────────────────────────────────
       // The screens agents drew on this bridge (a read), and the phone's per-session switch: a write that
@@ -10888,6 +10903,37 @@ export async function hillAnswerRoute(
       return text(HILL_SWITCHED_OFF_TEXT, 409);
     case "tricks-off":
       return text(TRICKS_OFF_LINE, 409);
+  }
+}
+
+/**
+ * `POST /api/hill/answers` (Asks, 2026-11-22): one Send, `{ rid, answers: [{ id, intent, text? }] }`, 1 to 5
+ * answers to open asks of one session, typed as ONE operator message (service.ts `answerAsks`). 200 with
+ * the result (an item per ask: answered, or gone with the reason), also for a repeat of the `rid`. 400 for
+ * a body of another shape; 409 with a JSON refusal (`too_long` with `over`, `mixed_sessions`,
+ * `not_an_ask`, `bad_answer`, `not_answering`, `not_typed`, `rid_reused`), when nothing was closed or
+ * typed; 503 when a receipt could not be written. The gates' own 401 and 403 come before this.
+ */
+export async function hillAnswersRoute(
+  hill: Pick<HillService, "answerAsks"> | undefined,
+  body: JsonValue | undefined,
+  context: { readonly device: string | null; readonly deviceId?: string | null; readonly acceptEncoding: string | null },
+): Promise<Response> {
+  if (hill === undefined) return text(HILL_OFF_TEXT, 404);
+  const read = readAnswersRequest(body);
+  if (!read.ok) return text(read.error, 400);
+  const outcome = await hill.answerAsks(read.request, context.device ?? "phone", context.deviceId ?? null);
+  switch (outcome.kind) {
+    case "done":
+      return json(outcome.result, context.acceptEncoding);
+    case "refused":
+      return json(outcome.refusal, context.acceptEncoding, 409);
+    case "unsaved":
+      return text(HILL_UNSAVED_TEXT, 503);
+    case "off":
+      return text(HILL_SWITCHED_OFF_TEXT, 409);
+    case "denied":
+      return text(outcome.error, 409);
   }
 }
 
