@@ -227,8 +227,12 @@ export class DequeueService {
 
   constructor(private readonly deps: DequeueDeps) {}
 
-  /** One take-back. `harness` is the agent string the multiplexer reports for the pane. */
-  async handle(requestId: string, paneId: string, harness: string, ask: DequeueAsk): Promise<DequeueAnswer> {
+  /**
+   * One take-back. `harness` is the agent string the multiplexer reports for the pane. With `replayOnly` (the
+   * phone asking by itself for a lost answer) an id this bridge does not know starts nothing: it answers
+   * `unknown`, pressed nothing, and keeps no receipt for it.
+   */
+  async handle(requestId: string, paneId: string, harness: string, ask: DequeueAsk, replayOnly = false): Promise<DequeueAnswer> {
     const stored = this.settled.get(requestId);
     if (stored !== undefined) {
       return stored.paneId === paneId ? { kind: "receipt", receipt: stored.receipt, replayed: true, pressed: stored.pressed } : { kind: "id_reused" };
@@ -239,6 +243,7 @@ export class DequeueService {
       const joined = await inflight.work;
       return { kind: "receipt", receipt: joined.receipt, replayed: true, pressed: joined.pressed };
     }
+    if (replayOnly) return { kind: "receipt", receipt: { requestId, outcome: "unknown" }, replayed: true, pressed: false };
     // Synchronous from the look above to this registration: two taps with one id must not both press.
     const work = this.start(requestId, paneId, harness, ask);
     this.running.set(requestId, { paneId, work });

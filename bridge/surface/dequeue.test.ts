@@ -641,3 +641,24 @@ describe("the history trap with a slow journal", () => {
     expect(r.blinded).toEqual([]);
   });
 });
+
+describe("a replay the phone asks by itself", () => {
+  test("answers the stored receipt of a known id, texts and all, and presses nothing more", async () => {
+    const r = rig();
+    r.pane.enqueue(FIRST);
+    await r.take("dq-replay-01");
+    const again = await r.service.handle("dq-replay-01", "%1", "claude", r.ask, true);
+    expect(again).toMatchObject({ kind: "receipt", receipt: { requestId: "dq-replay-01", outcome: "taken", texts: [FIRST] }, replayed: true });
+    expect(upPresses(r.pane)).toBe(1);
+  });
+
+  test("an id this bridge does not know (the first ask never came, or a restart) starts nothing: `unknown`, no key", async () => {
+    const r = rig();
+    r.pane.enqueue(FIRST);
+    const res = await r.route({ requestId: "dq-replay-02", replay: true });
+    expect(await res.json()).toEqual({ requestId: "dq-replay-02", outcome: "unknown" });
+    expect(r.pane.keysSeen).toEqual([]);
+    // Not kept: a later tap with a new id takes the queue as usual.
+    expect(await r.take("dq-replay-03")).toMatchObject({ outcome: "taken" });
+  });
+});

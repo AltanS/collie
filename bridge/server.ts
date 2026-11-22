@@ -10540,10 +10540,12 @@ export async function dequeueRoute(
   if (rt.dequeue === undefined) return text("dequeue is not available on this session", 404);
   const requestId = asJsonRecord(body)?.requestId;
   if (typeof requestId !== "string" || !REQUEST_ID.test(requestId)) return text("bad body", 400);
+  // The phone asking by itself for a lost answer: a receipt this bridge holds, never a new take-back.
+  const replayOnly = asJsonRecord(body)?.replay === true;
   const harness = replySendOf(rt).harnessOf(paneId);
   // A missing pane answers the take-back's own receipt, so the phone can tell it from the bare 404 of a build with none.
   if (harness === null) return json({ requestId, outcome: "refused", reason: "pane_gone" }, context.acceptEncoding, 404);
-  const answer = await rt.dequeue.handle(requestId, paneId, harness, ask ?? { keys: [], journal: async () => null, sendable: () => false });
+  const answer = await rt.dequeue.handle(requestId, paneId, harness, ask ?? { keys: [], journal: async () => null, sendable: () => false }, replayOnly);
   if (answer.kind === "id_reused") return json({ requestId, outcome: "refused", reason: "request-id-reused" }, context.acceptEncoding, 409);
   const { receipt } = answer;
   // Named fields only: the texts never reach the audit line.

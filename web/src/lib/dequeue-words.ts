@@ -29,8 +29,8 @@ const REFUSED = {
 
 /** What a take-back's receipt asks of the pane view. */
 export type DequeueMove =
-  /** Put `text` into the composer. */
-  | { readonly kind: "take"; readonly text: string }
+  /** Put `text` into the composer; `note` is a line to say beside it (a rest may stand in the agent's box). */
+  | { readonly kind: "take"; readonly text: string; readonly note?: MessageKey }
   /** Nothing to say: the agent's box holds the text, and its "Back in the box" card carries on. */
   | { readonly kind: "quiet" }
   /** One status line, a caution. */
@@ -39,8 +39,11 @@ export type DequeueMove =
 /** The move for one receipt. `taken` joins the texts in queue order with one newline. */
 export function dequeueMove(receipt: DequeueReceipt): DequeueMove {
   switch (receipt.outcome) {
-    case "taken":
-      return { kind: "take", text: (receipt.texts ?? []).join("\n") };
+    case "taken": {
+      const text = (receipt.texts ?? []).join("\n");
+      // The clear started and was not proved: the words are here, and the agent's box may still hold a rest.
+      return receipt.leftover === true ? { kind: "take", text, note: "composer.surface.draft" } : { kind: "take", text };
+    }
     case "in_box":
       return { kind: "quiet" };
     case "too_late":
@@ -50,14 +53,6 @@ export function dequeueMove(receipt: DequeueReceipt): DequeueMove {
     case "refused":
       return { kind: "say", key: REFUSED[receipt.reason ?? "unreadable"] };
   }
-}
-
-/**
- * Whether the next tap must ask with the same request id: no answer came back (or the answer could not tell),
- * so the key may have gone in, and only a replay of the same id can never press it twice.
- */
-export function keepsDequeueId(receipt: DequeueReceipt | null): boolean {
-  return receipt === null || receipt.outcome === "unknown";
 }
 
 /** The composer text after a take-back: the taken text first, then one newline, then the draft. Nothing is dropped. */

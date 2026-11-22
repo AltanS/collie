@@ -78,9 +78,8 @@ import { askExitKey, cardExitKey, dialogExitKey, EXIT_SENTENCE, exitOfAsk, exitO
 import { holdAskOfNote, screenCardMayAnswer } from "@/lib/surface/hold";
 import { askOptionFor } from "@/lib/ask-reply";
 import { apiErrorStatus, cancelHeldSend, cancelWalky, deliverWalky, dequeuePane, dropWalky, isApiErrorStatus, refreshNow, setWalkyOff } from "@/lib/api";
-import { dequeueMove, keepsDequeueId, mergedDraft } from "@/lib/dequeue-words";
-import { loadDraftEntry, saveDraft } from "@/lib/drafts";
-import type { DequeueReceipt } from "@/lib/surface/dequeue";
+import { dequeueMove } from "@/lib/dequeue-words";
+import { claimPendingDequeue, landTaken, loadPendingDequeue, mergeIntoStoredDraft, registerTaker, savePendingDequeue, settleDequeue, type DequeueSettle } from "@/lib/dequeue-pending";
 import { mintRequestId } from "@/lib/worktree-name";
 import { describeThrownError } from "@/lib/api-error-message";
 import { sameKeys } from "@/lib/harness/prompt-model";
@@ -2197,21 +2196,68 @@ export function AgentChat({
   // is one status line or none. The same gates as Send now, and a dialog refuses it here too (the key would move in
   // the dialog). The request id is minted on the phone and kept while no answer came back, so a second tap replays
   // the first request and never presses the key twice; nothing here asks again by itself.
-  const dequeueIntent = useRef<string | null>(null);
-  const takeIntoComposer = useCallback(
-    (taken: string) => {
-      const composer = composerRef.current;
-      if (composer !== null) {
-        composer.takeIn(taken);
-        return;
+  // The words of a take-back land in this pane's composer while this view is open (lib/dequeue-pending.ts): an
+  // answer that comes after a switch or a reload finds the composer that is open then, or the stored draft.
+  useEffect(
+    () =>
+      registerTaker(scope, paneId, (taken) => {
+        const composer = composerRef.current;
+        if (composer !== null) composer.takeIn(taken);
+        else mergeIntoStoredDraft(scope, paneId, taken);
+      }),
+    [scope, paneId],
+  );
+  // One take-back's end, acted on once: only the caller that claims the pending id moves words or says a line.
+  const applyDequeue = useCallback(
+    (requestId: string, settle: DequeueSettle): boolean => {
+      // No answer at all: the id stays, and the next open, return to view or reconnect asks again.
+      if (settle.kind === "lost") {
+        setStatus(t("composer.held.unknown"), "warn");
+        return false;
       }
-      // The pane's view went while the answer was on its way: the text goes into the pane's stored draft, in front
-      // of what it holds, so nothing that left the agent is lost.
-      const stored = loadDraftEntry(scope, paneId);
-      saveDraft(scope, paneId, mergedDraft(taken, stored?.text ?? ""), stored?.attachments ?? [], stored?.next ?? 1);
+      if (!claimPendingDequeue(scope, paneId, requestId)) return settle.kind === "receipt";
+      if (settle.kind === "stated") {
+        setStatus(describeThrownError(settle.error), "error");
+        return false;
+      }
+      revalidator.revalidate();
+      const move = dequeueMove(settle.receipt);
+      if (move.kind === "take") {
+        landTaken(scope, paneId, move.text);
+        if (move.note !== undefined) setStatus(t(move.note), "warn");
+        return true;
+      }
+      if (move.kind === "quiet") return true;
+      setStatus(t(move.key), "warn");
+      return false;
     },
+    [paneId, scope, revalidator],
+  );
+  const askDequeue = useCallback(
+    (requestId: string, tap: boolean) =>
+      settleDequeue(requestId, tap, { post: (replay) => dequeuePane(paneId, requestId, scope, replay), statusOf: apiErrorStatus }),
     [paneId, scope],
   );
+  // A take-back whose answer was lost (a dead network, a reload, a pane switch): asked for again by itself, with
+  // the same id, when this view opens, when the page comes back into view and when the network comes back. A replay
+  // never presses a key, so this asks for words that left the agent, never for a new take-back.
+  useEffect(() => {
+    const resume = () => {
+      const requestId = loadPendingDequeue(scope, paneId);
+      if (requestId === null) return;
+      void askDequeue(requestId, false).then((settle) => applyDequeue(requestId, settle));
+    };
+    resume();
+    const onVisible = () => {
+      if (document.visibilityState === "visible") resume();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("online", resume);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("online", resume);
+    };
+  }, [paneId, scope, askDequeue, applyDequeue]);
   const handleEditQueued = useCallback(async (): Promise<boolean> => {
     const refusal = refuseWrite();
     if (refusal) {
@@ -2226,29 +2272,11 @@ export function AgentChat({
       setStatus(t("composer.send.reconnect"), "error");
       return false;
     }
-    const requestId = dequeueIntent.current ?? mintRequestId();
-    dequeueIntent.current = requestId;
-    let receipt: DequeueReceipt | null = null;
-    try {
-      receipt = await dequeuePane(paneId, requestId, scope);
-    } catch (e) {
-      // A refusal the bridge stated (a 4xx) pressed nothing; anything else may have, so the id stays for a replay.
-      const status = apiErrorStatus(e);
-      if (status !== undefined && status >= 400 && status < 500) dequeueIntent.current = null;
-      setStatus(dequeueIntent.current === null ? describeThrownError(e) : t("composer.held.unknown"), "error");
-      return false;
-    }
-    if (!keepsDequeueId(receipt)) dequeueIntent.current = null;
-    revalidator.revalidate();
-    const move = dequeueMove(receipt);
-    if (move.kind === "take") {
-      takeIntoComposer(move.text);
-      return true;
-    }
-    if (move.kind === "quiet") return true;
-    setStatus(t(move.key), "warn");
-    return false;
-  }, [refuseWrite, paneId, scope, revalidator, takeIntoComposer]);
+    // The id is kept before the post, so a lost answer can be asked for again from anywhere (lib/dequeue-pending.ts).
+    const requestId = loadPendingDequeue(scope, paneId) ?? mintRequestId();
+    savePendingDequeue(scope, paneId, requestId);
+    return applyDequeue(requestId, await askDequeue(requestId, true));
+  }, [refuseWrite, paneId, scope, askDequeue, applyDequeue]);
 
   // A tap on a receipt card (ADR 0122). Send or Discard on a returned card is a NEW request that names
   // the card in `resendOf` with an empty text: the bridge acts on its own copy of the text, never the
@@ -2338,7 +2366,7 @@ export function AgentChat({
       if (result.reading.clear || result.reading.note === "discarded") {
         revalidator.revalidate();
         if (action === "edit") {
-          takeIntoComposer(cardText);
+          landTaken(scope, paneId, cardText);
           return true;
         }
         setStatus(t(action === "submit" ? "chat.status.sent" : "composer.protocol.discarded"), "success");
@@ -2353,7 +2381,7 @@ export function AgentChat({
       setStatus(readingRefusal(result.reading).sentence, "error");
       return false;
     },
-    [refuseWrite, paneId, scope, revalidator, takeIntoComposer],
+    [refuseWrite, paneId, scope, revalidator],
   );
 
   // NOTE: the composer is deliberately NOT auto-focused on open/switch — that would pop the Android

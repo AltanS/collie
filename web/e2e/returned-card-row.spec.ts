@@ -11,7 +11,7 @@ import { keepPhoneLayout } from "./fixtures/layout";
 
 test.use({ serviceWorkers: "block" });
 
-const RETURNED = { requestId: "req-back-00001", state: "returned", text: "second message, back in the agent's box" } as const;
+const RETURNED = { requestId: "req-back-00001", state: "returned", text: "second message, back in the agent's box", whole: true } as const;
 
 test.beforeEach(async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "app-phone", "a phone-width case");

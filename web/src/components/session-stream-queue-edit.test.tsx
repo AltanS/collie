@@ -114,7 +114,7 @@ describe("SessionStream: Edit on the waiting card", () => {
 });
 
 describe("SessionStream: Edit on the Back in the box card", () => {
-  const BACK = { requestId: "req-back-00001", state: "returned", text: "second message" } as const;
+  const BACK = { requestId: "req-back-00001", state: "returned", text: "second message", whole: true } as const;
   const EDIT_BACK = "Take this message back into the box to edit it";
 
   it("orders the buttons Discard, Edit, Send", () => {
@@ -140,8 +140,13 @@ describe("SessionStream: Edit on the Back in the box card", () => {
     expect(edit).toBeEnabled();
   });
 
+  it("is withheld where the bridge does not say the text is its own and whole (an older bridge, a kept line after a restart)", () => {
+    const { container } = draw({ queuedSends: [{ requestId: "req-back-00002", state: "returned", text: "second message" }] }, { returned: vi.fn(async () => true) });
+    expect([...container.querySelectorAll("[data-slot='stream-returned'] button")].map((button) => button.textContent)).toEqual(["Discard", "Send"]);
+  });
+
   it("is withheld for a text the bridge masked, because the dots are not the message", () => {
-    draw({ queuedSends: [{ requestId: "req-mask-00001", state: "returned", text: "use the key sk-o••••••••" }] }, { returned: vi.fn(async () => true) });
+    draw({ queuedSends: [{ requestId: "req-mask-00001", state: "returned", text: "use the key sk-o••••••••", whole: true }] }, { returned: vi.fn(async () => true) });
     expect(screen.getByRole("button", { name: "Discard this message from the agent's box" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: EDIT_BACK })).toBeNull();
   });

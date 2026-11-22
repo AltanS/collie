@@ -1,4 +1,4 @@
-import { dequeueMove, keepsDequeueId, mergedDraft } from "./dequeue-words";
+import { dequeueMove, mergedDraft } from "./dequeue-words";
 import { DEQUEUE_REASONS } from "./surface/dequeue";
 import { t } from "./i18n";
 
@@ -28,11 +28,14 @@ describe("dequeueMove", () => {
   });
 });
 
-describe("keepsDequeueId", () => {
-  it("keeps the id only while no answer could tell", () => {
-    expect(keepsDequeueId(null)).toBe(true);
-    expect(keepsDequeueId({ requestId: "r1", outcome: "unknown" })).toBe(true);
-    for (const outcome of ["taken", "in_box", "too_late", "refused"] as const) expect(keepsDequeueId({ requestId: "r1", outcome })).toBe(false);
+describe("a clear that started and was not proved", () => {
+  it("taken with leftover takes the words and says the draft sentence beside them", () => {
+    const move = dequeueMove({ requestId: "r1", outcome: "taken", texts: ["first"], leftover: true });
+    expect(move).toEqual({ kind: "take", text: "first", note: "composer.surface.draft" });
+  });
+  it("too_late with leftover still says it already went out", () => {
+    const move = dequeueMove({ requestId: "r1", outcome: "too_late", leftover: true });
+    expect(move.kind === "say" && t(move.key)).toBe("It already went out.");
   });
 });
 

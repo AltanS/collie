@@ -1616,16 +1616,21 @@ function dequeueReceiptOf(body: JsonObject | undefined, requestId: string): Dequ
   if (body[HTTP_STATUS] === 404) return dequeueMissed(body, 404, requestId);
   if (body[HTTP_STATUS] === 400) return dequeueMissed(body, 400, requestId);
   if (body[HTTP_STATUS] === 405) return dequeueMissed(body, 405, requestId);
-  // The lead could not hear the member's answer in time (`write_outcome_unknown`): the key may have gone in.
-  if (body[HTTP_STATUS] === 504) return { requestId, outcome: "unknown" };
+  // The id was used on another pane: nothing ran for this one, and asking again would not change that.
+  if (body[HTTP_STATUS] === 409) throw new ApiError("The take-back's request id was used for another pane.", 409);
+  // The lead could not hear the member's answer in time (`write_outcome_unknown`): the key may have gone in, and a
+  // `taken` answer would carry the only copy of the words. It is no answer: the caller asks again with the same id.
+  if (body[HTTP_STATUS] === 504) throw new ApiError("The machine that owns the pane did not answer in time.", 504);
   const outcome = DEQUEUE_OUTCOMES.find((word) => word === body.outcome);
   if (outcome === undefined) return null;
   const id = asJsonString(body.requestId) ?? requestId;
   if (outcome === "taken") {
     const texts = Array.isArray(body.texts) ? body.texts.flatMap((item) => asJsonString(item) ?? []) : [];
     // A `taken` with no text is no answer this phone can act on: the agent's box was emptied, so it must not read as done.
-    return texts.length === 0 ? null : { requestId: id, outcome, texts };
+    if (texts.length === 0) return null;
+    return body.leftover === true ? { requestId: id, outcome, texts, leftover: true } : { requestId: id, outcome, texts };
   }
+  if (outcome === "too_late" && body.leftover === true) return { requestId: id, outcome, leftover: true };
   if (outcome !== "refused") return { requestId: id, outcome };
   const reason = DEQUEUE_REASONS.find((word) => word === body.reason);
   return reason === undefined ? null : { requestId: id, outcome, reason };
@@ -1636,12 +1641,14 @@ function dequeueReceiptOf(body: JsonObject | undefined, requestId: string): Dequ
  * 2026-11-22 addendum). The request id alone: the bridge reads the screen and the journal, presses the
  * harness's dequeue key once as this person's tap, proves it from the journal and answers a
  * {@link DequeueReceipt}. The same request id answers the same receipt and presses once, so a caller whose
- * answer was lost asks again with the same id; nothing here asks twice by itself.
+ * answer was lost asks again with the same id (lib/dequeue-pending.ts does, with `replay`). Throws on no answer,
+ * including a 504 from a member the lead could not hear.
  */
-export async function dequeuePane(paneId: string, requestId: string, scope?: Scope): Promise<DequeueReceipt> {
+export async function dequeuePane(paneId: string, requestId: string, scope?: Scope, replay = false): Promise<DequeueReceipt> {
   // The operator is watching from the tap on, as every write to a pane assumes (poll-intent).
   stampSend(paneId);
-  const body: DequeueBody = { requestId };
+  // `replay`: the phone asking by itself for a lost answer (lib/dequeue-pending.ts); the bridge then starts nothing new.
+  const body: DequeueBody = replay ? { requestId, replay: true } : { requestId };
   const got = await req<JsonObject>(
     withScope(`/api/pane/${encodeURIComponent(paneId)}/dequeue`, scope),
     { method: "POST", body: JSON.stringify(body) },

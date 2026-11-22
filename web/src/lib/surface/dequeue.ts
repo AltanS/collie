@@ -7,9 +7,15 @@
 //
 // Pure: no DOM, no Bun API, no harness name.
 
-/** What the phone posts: one request id, the same shape as a Stop's and a Clear's. */
+/**
+ * What the phone posts: one request id, the same shape as a Stop's and a Clear's. `replay` is set when the
+ * phone asks by itself for the receipt of a tap whose answer it lost: the bridge then answers the stored or
+ * running receipt of that id and never starts a take-back for an id it does not know (after a restart it
+ * answers `unknown`, pressing nothing), because no person tapped for this ask.
+ */
 export interface DequeueBody {
   readonly requestId: string;
+  readonly replay?: true;
 }
 
 /**

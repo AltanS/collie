@@ -800,7 +800,7 @@ describe("SessionStream — queued sends from the receipts", () => {
   });
 
   it("a returned run is one card with its joined text and one row of buttons", () => {
-    const run = { requestId: "req-run-000001", state: "returned", text: "alpha one\nbeta two" } as const;
+    const run = { requestId: "req-run-000001", state: "returned", text: "alpha one\nbeta two", whole: true } as const;
     const { container } = renderReceipts({ queuedSends: [run] }, vi.fn(async () => true));
     expect(container.querySelectorAll("[data-slot='stream-returned']")).toHaveLength(1);
     // Discard, Edit, Send (ADR 0122, the 2026-11-22 addendum).

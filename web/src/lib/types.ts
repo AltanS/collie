@@ -1961,6 +1961,11 @@ export interface QueuedSendRow {
   requestId: string;
   state: "queued" | "returned" | "unconfirmed";
   text: string;
+  /**
+   * On a returned card only: the text is the bridge's own, whole and unmasked, so Edit may take it into the
+   * composer (ADR 0122, the 2026-11-22 addendum). Absent from an older bridge, and from a masked or kept-line text.
+   */
+  whole?: true;
 }
 
 /** The operator's newest prompt, capped by the bridge. Mirrors `ChatPrompt` in bridge/journal/live.ts. */

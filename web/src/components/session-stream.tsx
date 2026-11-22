@@ -368,9 +368,14 @@ function ReceiptCard({
   const [pending, setPending] = useState<QueuedCardAction | null>(null);
   // The card's one line under its words: a Send again that found the card gone says nothing was sent.
   const [gone, setGone] = useState(false);
-  // A text the bridge masked is dots, not the message: sending it again would type the dots, so no Send again,
-  // and taking it into the composer would put the dots there, so no Edit.
-  const shown = buttons.filter((button) => (button.action !== "sendAgain" && button.action !== "edit") || !holdsMask(row.text));
+  // A text the bridge masked is dots, not the message: sending it again would type the dots, so no Send again.
+  // Edit puts the card's text into the composer, so it shows only where the bridge says that text is its own,
+  // whole and unmasked (`whole`), and never over dots.
+  const shown = buttons.filter((button) => {
+    if (button.action === "sendAgain") return !holdsMask(row.text);
+    if (button.action === "edit") return row.whole === true && !holdsMask(row.text);
+    return true;
+  });
   useEffect(() => {
     if (pending === null) return;
     const timer = setTimeout(() => setPending(null), SEND_NOW_PENDING_MS);

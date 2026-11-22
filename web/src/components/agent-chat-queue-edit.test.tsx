@@ -15,6 +15,7 @@ vi.mock("@/lib/liveness", async (importOriginal) => ({
 }));
 
 import { clearStatus } from "@/lib/status";
+import { loadPendingDequeue, resetDequeuePendingForTests, savePendingDequeue, setDequeueReplayGapsForTests } from "@/lib/dequeue-pending";
 import { forgetHostVersions } from "@/hooks/use-host-version";
 import { resetPinsForTests } from "@/lib/loaders";
 import { fixtureAgents, FIXTURE_CHAT_GEN, FIXTURE_SEQ_BASE, fixtureTranscript, paneTextWithDraft, recordedSends, sendAnswer, sendHandler } from "@/test/handlers";
@@ -31,6 +32,9 @@ beforeEach(() => {
   clearStatus();
   forgetHostVersions();
   resetPinsForTests();
+  resetDequeuePendingForTests();
+  // The replays wait a few milliseconds here, not a minute.
+  setDequeueReplayGapsForTests([5, 5, 5]);
   localStorage.setItem("collie:dash-prefs:v1", JSON.stringify({ paneView: "chat", showToolCalls: true }));
 });
 
@@ -117,7 +121,7 @@ describe("AgentChat: Edit on the waiting card", () => {
     expect(screen.queryByText("It already went out.")).toBeNull();
   });
 
-  it("unknown says to read the chat, and the next tap replays the same request id", async () => {
+  it("unknown says to read the chat; it is the bridge's answer, so the next tap is a new request", async () => {
     const asked = mount(WAITING, (body) => receipt(body, { outcome: "unknown" }));
     const button = await screen.findByRole("button", { name: EDIT });
     await userEvent.click(button);
@@ -125,23 +129,73 @@ describe("AgentChat: Edit on the waiting card", () => {
     await waitFor(() => expect(button).toBeEnabled());
     await userEvent.click(button);
     await waitFor(() => expect(asked).toHaveLength(2));
-    expect(asked[1]!.requestId).toBe(asked[0]!.requestId);
+    expect(asked[1]!.requestId).not.toBe(asked[0]!.requestId);
   });
 
-  it("a lost answer keeps the id too, and a stated answer lets it go", async () => {
-    let lost = true;
-    const asked = mount(WAITING, (body) => (lost ? HttpResponse.error() : receipt(body, { outcome: "too_late" })));
-    const button = await screen.findByRole("button", { name: EDIT });
-    await userEvent.click(button);
-    await waitFor(() => expect(button).toBeEnabled());
-    lost = false;
-    await userEvent.click(button);
-    await waitFor(() => expect(asked).toHaveLength(2));
-    expect(asked[1]!.requestId).toBe(asked[0]!.requestId);
-    expect(await screen.findByText("It already went out.")).toBeInTheDocument();
-    await userEvent.click(button);
-    await waitFor(() => expect(asked).toHaveLength(3));
-    expect(asked[2]!.requestId).not.toBe(asked[0]!.requestId);
+  it("an answer lost once is asked for again by itself, with the same id as a replay, and the texts land exactly once", async () => {
+    let lost = 1;
+    const asked = mount(WAITING, (body) => {
+      if (lost-- > 0) return HttpResponse.error();
+      return receipt(body, { outcome: "taken", texts: ["first", "second"] });
+    });
+    await userEvent.click(await screen.findByRole("button", { name: EDIT }));
+    const box = screen.getByRole("textbox");
+    await waitFor(() => expect(box).toHaveValue("first\nsecond"));
+    expect(asked).toHaveLength(2);
+    expect(asked[1]).toEqual({ requestId: asked[0]!.requestId, replay: true });
+    // The first ask was the person's tap, not a replay.
+    expect(asked[0]).not.toHaveProperty("replay");
+    expect(loadPendingDequeue(undefined, "w1:p1")).toBeNull();
+  });
+
+  it("a 504 from a member the lead could not hear is no answer: asked again, same id", async () => {
+    let lost = 1;
+    const asked = mount(WAITING, (body) => (lost-- > 0 ? HttpResponse.json({ code: "write_outcome_unknown" }, { status: 504 }) : receipt(body, { outcome: "taken", texts: ["first"] })));
+    await userEvent.click(await screen.findByRole("button", { name: EDIT }));
+    await waitFor(() => expect(screen.getByRole("textbox")).toHaveValue("first"));
+    expect(asked.map((body) => body.requestId)).toEqual([asked[0]!.requestId, asked[0]!.requestId]);
+  });
+
+  it("every ask lost: the id stays, the line says to read the chat, and the next open asks again and lands the words", async () => {
+    let answering = false;
+    const asked = mount(WAITING, (body) => (answering ? receipt(body, { outcome: "taken", texts: ["first"] }) : HttpResponse.error()));
+    await userEvent.click(await screen.findByRole("button", { name: EDIT }));
+    expect(await screen.findByText("The text may have reached the agent. Read the chat.")).toBeInTheDocument();
+    const id = asked[0]!.requestId;
+    expect(loadPendingDequeue(undefined, "w1:p1")).toBe(id);
+    // The page comes back into view with the network back: one replay, and the words land.
+    answering = true;
+    document.dispatchEvent(new Event("visibilitychange"));
+    await waitFor(() => expect(screen.getByRole("textbox")).toHaveValue("first"));
+    expect(asked.at(-1)).toEqual({ requestId: id, replay: true });
+  });
+
+  it("a reload with a pending id: the view asks by itself, as a replay, and the words land in the composer", async () => {
+    savePendingDequeue(undefined, "w1:p1", "req-pending-0001");
+    const asked = mount(WAITING, (body) => receipt(body, { outcome: "taken", texts: ["from before the reload"] }));
+    await waitFor(() => expect(screen.getByRole("textbox")).toHaveValue("from before the reload"));
+    expect(asked).toEqual([{ requestId: "req-pending-0001", replay: true }]);
+    expect(loadPendingDequeue(undefined, "w1:p1")).toBeNull();
+  });
+
+  it("a replayed `taken` is not merged twice: two answers for one id put the words in once", async () => {
+    savePendingDequeue(undefined, "w1:p1", "req-pending-0002");
+    const asked = mount(WAITING, (body) => receipt(body, { outcome: "taken", texts: ["once"] }));
+    const box = await screen.findByRole("textbox");
+    await waitFor(() => expect(box).toHaveValue("once"));
+    // The page comes back into view: no pending id is left, so nothing is asked and nothing merges again.
+    document.dispatchEvent(new Event("visibilitychange"));
+    window.dispatchEvent(new Event("online"));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(box).toHaveValue("once");
+    expect(asked).toHaveLength(1);
+  });
+
+  it("taken with a rest left in the agent's box: the words land and the draft sentence says so", async () => {
+    mount(WAITING, (body) => receipt(body, { outcome: "taken", texts: ["first"], leftover: true }));
+    await userEvent.click(await screen.findByRole("button", { name: EDIT }));
+    await waitFor(() => expect(screen.getByRole("textbox")).toHaveValue("first"));
+    expect(await screen.findByText("The box held a draft.")).toBeInTheDocument();
   });
 
   it("a refusal says the existing sentence: a draft in the agent's box", async () => {
@@ -164,7 +218,7 @@ describe("AgentChat: Edit on the waiting card", () => {
 });
 
 describe("AgentChat: Edit on the Back in the box card", () => {
-  const BACK: JsonObject = { requestId: "req-back-00001", state: "returned", text: "second message" };
+  const BACK: JsonObject = { requestId: "req-back-00001", state: "returned", text: "second message", whole: true };
 
   it("discards the agent's box with the card's id, then takes the card's text into the composer, before the draft", async () => {
     mount({ queuedSends: [BACK] }, () => HttpResponse.json({}));
@@ -184,5 +238,15 @@ describe("AgentChat: Edit on the Back in the box card", () => {
     await waitFor(() => expect(recordedSends()).toHaveLength(1));
     await waitFor(() => expect(screen.getByRole("button", { name: EDIT_BACK })).toBeEnabled());
     expect(screen.getByRole("textbox")).toHaveValue("");
+  });
+});
+
+describe("AgentChat: a take-back answer after a pane switch", () => {
+  it("lands in that pane's stored draft, in front of what it held, when its view is gone", async () => {
+    const { landTaken } = await import("@/lib/dequeue-pending");
+    const { loadDraft, saveDraft } = await import("@/lib/drafts");
+    saveDraft(undefined, "w9:p9", "what I had there");
+    landTaken(undefined, "w9:p9", "taken back");
+    expect(loadDraft(undefined, "w9:p9")).toBe("taken back\nwhat I had there");
   });
 });
