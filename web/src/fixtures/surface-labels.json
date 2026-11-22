@@ -2480,6 +2480,36 @@
    "version": "0.166.0",
    "state": "draft"
   },
+  "codex--v0171-goal-achieved-empty--w120.txt": {
+   "harness": "codex",
+   "version": "0.171.0",
+   "state": "idle"
+  },
+  "codex--v0171-goal-achieved-probe--w120.txt": {
+   "harness": "codex",
+   "version": "0.171.0",
+   "state": "draft"
+  },
+  "codex--v0171-goal-achieved-backspace--w120.txt": {
+   "harness": "codex",
+   "version": "0.171.0",
+   "state": "idle"
+  },
+  "codex--v0171-goal-achieved-warning-empty--w120.txt": {
+   "harness": "codex",
+   "version": "0.171.0",
+   "state": "idle"
+  },
+  "codex--v0171-goal-achieved-warning-probe--w120.txt": {
+   "harness": "codex",
+   "version": "0.171.0",
+   "state": "draft"
+  },
+  "codex--v0171-goal-achieved-warning-backspace--w120.txt": {
+   "harness": "codex",
+   "version": "0.171.0",
+   "state": "idle"
+  },
   "codex--v0166-trust--w120.txt": {
    "harness": "codex",
    "version": "0.166.0",

@@ -386,9 +386,17 @@ the count every compare against S0 reads: the probe's first read and its second 
 compares, the late probe's fresh baseline, and so the next try of a held send. Only Codex sets it; a
 profile without it counts exactly as before. The hint patterns stay.
 
+Proven on real Codex 0.171.0 captures (120x40, tmux, a goal that ended achieved, with and without a
+`-c` override, `codex--v0171-goal-achieved-*--w120.txt`): the probed reads at 100 ms, 400 ms and 2 s
+show the right segment alone in its place, no word added or changed, and the seconds count did not
+move. A message and a command go in on those reads; without the flag they end `refused/probe_failed`
+with the keys probe and Backspace, as the report saw. No hint pattern for the goal-achieved segment was
+added: the count does not need one, and no reader or the Surface reads that row.
+
 The rule is safe because it can only excuse text that left a row the profile already called a hint. It
 never lets a new word under the box through, and the probe character itself must still stand in the box
 as before. Shared code names no harness.
 
 Trail: `bridge/surface/protocol.ts` (`belowCount`, `lostWordsOnly`, `excusedBelow`, `readBelow`) ·
-`bridge/surface/protocol.codex-below-loses-text.test.ts` · `web/src/lib/surface/profile.below-loses-text.test.ts`.
+`bridge/surface/protocol.codex-below-loses-text.test.ts` · `web/src/lib/surface/profile.below-loses-text.test.ts` ·
+`web/src/fixtures/panes/codex--v0171-goal-achieved-*--w120.txt`.

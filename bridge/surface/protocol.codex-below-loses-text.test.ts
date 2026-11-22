@@ -96,6 +96,76 @@ describe("a Codex hint row that loses words at the first character (#847), on th
   });
 });
 
+describe("Codex 0.171.0 after a goal that ended achieved (#847), on the real captures", () => {
+  // The footer row holds the shortcut text and, at its right edge, the goal-achieved segment (with a
+  // `-c` override also the warning segment). At the probe character only the right segment stays.
+  const states = [
+    { name: "plain codex", empty: "codex--v0171-goal-achieved-empty--w120.txt", probe: "codex--v0171-goal-achieved-probe--w120.txt", back: "codex--v0171-goal-achieved-backspace--w120.txt" },
+    { name: "with a warning", empty: "codex--v0171-goal-achieved-warning-empty--w120.txt", probe: "codex--v0171-goal-achieved-warning-probe--w120.txt", back: "codex--v0171-goal-achieved-warning-backspace--w120.txt" },
+  ] as const;
+  /** The three reads as captured: idle until the first key, the probed read while the box holds text, the backspace read once it is empty again. */
+  const goalPane = (state: (typeof states)[number]): FakePane => {
+    const before = capture(state.empty);
+    const holding = capture(state.probe);
+    const after = capture(state.back);
+    const at = holding.findLastIndex((row) => plain(row).startsWith("› "));
+    const fake = new FakePane("codex");
+    let touched = false;
+    fake.afterInput = () => {
+      touched = true;
+    };
+    fake.render = () => (fake.box !== "" ? holding.map((row, i) => (i === at ? `\u001b[1m›\u001b[0m ${fake.box}` : row)) : touched ? after : before).join("\n");
+    return fake;
+  };
+
+  test("the captured probe read is the idle read less the shortcut text: the probe character stands in the box", () => {
+    for (const state of states) {
+      const probed = capture(state.probe).map(plain);
+      expect(probed.some((row) => row === "› ⌁"), state.name).toBe(true);
+      expect(capture(state.back), state.name).toEqual(capture(state.empty));
+    }
+  });
+
+  for (const state of states) {
+    test(`${state.name}: a message is sent, the probe passing by the profile's rule`, async () => {
+      const fake = goalPane(state);
+      const answer = await rig({ pane: fake, harness: "codex", version: "0.171.0" }).send("reply with one word: ready");
+      expect(answer.receipt).toMatchObject({ outcome: "sent", profileStatus: "provisional", keys: ["probe", "Backspace", "Tab"] });
+      expect(fake.transcript.at(-1)).toBe("› reply with one word: ready");
+    });
+
+    test(`${state.name}: a command is sent`, async () => {
+      const fake = goalPane(state);
+      const answer = await rig({ pane: fake, harness: "codex", version: "0.171.0" }).send("/status", { mode: "command" });
+      expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "Enter"] });
+    });
+
+    test(`${state.name}: without the rule the send is refused as the report saw it`, async () => {
+      const fake = goalPane(state);
+      const answer = await rig({ pane: fake, harness: "codex", version: "0.171.0", edit: withoutHints(() => false, false) }).send("reply with one word: ready");
+      expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "probe_failed", keys: ["probe", "Backspace"], saw: { turn: "idle", modal: "none", composer: "empty" } });
+      expect(answer.receipt?.detail).toStartWith("The probe character changed more than the box.");
+      expect(fake.box).toBe("");
+      expect(fake.keysSeen.filter((key) => key === "Tab" || key === "Enter")).toEqual([]);
+    });
+  }
+
+  test("a draft still blocks on the captured screen: refused draft_present, the draft kept", async () => {
+    const fake = goalPane(states[1]);
+    fake.box = "x";
+    const answer = await rig({ pane: fake, harness: "codex", version: "0.171.0" }).send("reply with one word: ready");
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "draft_present" });
+    expect(fake.box).toBe("x");
+  });
+
+  test("a real dialog after the probe still blocks: no submit key", async () => {
+    const fake = capturedPane(capture(states[1].empty), capture("codex--approval-exec.txt"));
+    const answer = await rig({ pane: fake, harness: "codex", version: "0.171.0" }).send("reply with one word: ready");
+    expect(answer.receipt?.outcome).toBe("refused");
+    expect(fake.keysSeen.filter((key) => key === "Tab" || key === "Enter")).toEqual([]);
+  });
+});
+
 describe("a Codex 0.163.0 footer row whose words change, not only go (#847)", () => {
   // The idle capture's hint row is `? for shortcuts` with the warning after wide spacing; with the probe
   // typed the row reads `tab to queue message`. Those words were never on the S0 row.
