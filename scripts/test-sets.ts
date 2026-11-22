@@ -174,7 +174,7 @@ export const GUARD_WEB: readonly (readonly [file: string, rule: string])[] = [
 // are named after a changed source file: `foo.ts` gives `foo.test.ts` and `foo.<part>.test.ts`.
 // The web app uses `vitest --changed`, which follows imports.
 
-export const BUN_NEAR_AREAS = ["bridge", "cli", "scripts", "herdr-app-mod", "omp-extension"] as const;
+export const BUN_NEAR_AREAS = ["bridge", "cli", "scripts", "herdr-app-mod", "omp-extension", "pi-extension"] as const;
 /** Shell tests (`*.test.sh`) are picked the same way and run with `bash`. */
 export const SHELL_NEAR_AREAS = [...BUN_NEAR_AREAS, "packaging"] as const;
 
