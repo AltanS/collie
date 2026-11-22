@@ -193,7 +193,8 @@ test("the Hill's page: Send a test Decision taps, says when it arrives and why n
   await expect(button).toBeDisabled();
   expect(asked).toEqual(["POST {}"]);
   // The reserved slot held the sentence: nothing below it moved by one pixel.
-  expect((await page.locator('[data-section="from"]').boundingBox())!.y).toBe(fromBefore.y);
+  // The tap scrolled the page, so the distance from the slot to the group below is what must stay.
+  expect((await page.locator('[data-section="from"]').boundingBox())!.y - (await result.boundingBox())!.y).toBe(fromBefore.y - slotBefore.y);
   expect((await result.boundingBox())!.height).toBe(slotBefore.height);
   // The sentence stays, and a second tap does nothing while the button is held.
   await button.click({ force: true });
