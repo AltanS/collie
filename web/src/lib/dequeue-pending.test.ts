@@ -5,8 +5,10 @@ import type { DequeueReceipt } from "./surface/dequeue";
 // again with it, bounded, as a replay only, and one caller acts on the answer.
 
 class Failed extends Error {
-  constructor(readonly status: number | undefined) {
+  readonly status: number | undefined;
+  constructor(status: number | undefined) {
     super("failed");
+    this.status = status;
   }
 }
 const statusOf = <T,>(error: T): number | undefined => (error instanceof Failed ? error.status : undefined);
