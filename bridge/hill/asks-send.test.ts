@@ -4,6 +4,7 @@ import { ASKS_ANSWERS_SUBJECT, openLine } from "../../web/src/lib/hill/answers-m
 import { HILL_MORE_CONTEXT, type HillAnswersRequest } from "../../web/src/lib/hill/wire.ts";
 import { askAnswerRid } from "./answers.ts";
 import { askInput, askRig, ONE, posted, TWO, uuid } from "./ask-rig.ts";
+import { memoryHillReceipts } from "./receipts.ts";
 
 // One Send per session (`POST /api/hill/answers`, Asks 2026-11-22): many answers, one message, a receipt
 // per ask, and a repeat of the Send's rid that runs nothing.
@@ -128,5 +129,36 @@ describe("one Send", () => {
     const outcome = await r.hill.answerAsks(send(90, [{ id: a.id, intent: "edge", text: null }]), "Pixel 9");
     expect(outcome).toMatchObject({ kind: "done", result: { delivery: "none", items: [{ id: a.id, code: "gone", state: "undeliverable" }] } });
     expect(r.sent).toHaveLength(0);
+  });
+
+  test("an ask taken back while the receipts are written is reported gone, and the message leaves it out", async () => {
+    const receipts = memoryHillReceipts();
+    let hook: (() => void) | null = null;
+    const r = askRig({
+      ...receipts,
+      get: (rid) => receipts.get(rid),
+      record: (entry) => receipts.record(entry),
+      recordFirst: async (entry) => {
+        const first = await receipts.recordFirst(entry);
+        const run = hook;
+        hook = null;
+        run?.();
+        return first;
+      },
+    });
+    const a = posted(r.hill.post(ONE, askInput(1)));
+    const b = posted(r.hill.post(ONE, askInput(2)));
+    hook = () => void r.hill.withdraw(ONE, b.id);
+    const outcome = await r.hill.answerAsks(
+      send(90, [
+        { id: a.id, intent: "edge", text: null },
+        { id: b.id, intent: "edge", text: null },
+      ]),
+      "Pixel 9",
+    );
+    expect(outcome).toMatchObject({ kind: "done", result: { items: [{ id: a.id, code: "ok" }, { id: b.id, code: "gone", state: "withdrawn" }] } });
+    expect(r.sent).toHaveLength(1);
+    expect(r.sent[0]!.body).not.toContain(b.id);
+    expect(r.store.get(b.id)?.state).toBe("withdrawn");
   });
 });

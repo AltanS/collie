@@ -2381,12 +2381,21 @@ export class HillService {
       closed.push({ ...fresh, state: "answered", closedAt: now, closedReason: null, answer: device === null ? answer : { ...answer, deviceId: device } });
     }
     if (closed.length === 0) return { kind: "done", outcome: await this.settleSend(request, digest, now, gone, "none", false) };
-    if (closed.length < live.length) {
-      // One closed meanwhile: the message must not name it. Built again from what is still open.
-      return { kind: "done", outcome: refusedSend("not_typed", "an ask closed while the Send was written; look again and send again") };
-    }
+    // One closed while the receipts were written (a take back, the sweep): it is reported gone, its receipt
+    // is written again as gone, and the message is built again from the ones still to answer. Shorter, so
+    // it still fits.
+    const typed =
+      closed.length === live.length
+        ? body
+        : withCrewLine(
+            answersMessage(
+              live.filter((entry) => closed.some((decision) => decision.id === entry.decision.id)).map((entry) => ({ ask: entry.decision, intent: entry.intent, text: entry.text })),
+              this.deps.store.all().filter((decision) => decision.state === "open" && decision.ask !== undefined && keyOf(decision) === address && !answered.has(decision.id)).toSorted((a, b) => a.at - b.at),
+            ),
+            this.crewState().state,
+          );
     if (!this.save(...closed)) return { kind: "done", outcome: { kind: "unsaved" } };
-    return { kind: "deliver", to: address, body, closed, gone, now };
+    return { kind: "deliver", to: address, body: typed, closed, gone, now };
   }
 
   /** Write the records of a Send that typed nothing (every ask gone) and answer its result. */

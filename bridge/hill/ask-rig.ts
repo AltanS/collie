@@ -3,7 +3,7 @@
 // imports it.
 
 import type { HillDecision, HillPostInput } from "../../web/src/lib/hill/wire.ts";
-import { memoryHillReceipts } from "./receipts.ts";
+import { memoryHillReceipts, type HillReceiptSurface } from "./receipts.ts";
 import { HillService, type HillAgentSender, type HillPostAnswer, type HillSendResult } from "./service.ts";
 import { HillStore } from "./store.ts";
 
@@ -41,14 +41,14 @@ export interface AskRig {
   delivery: HillSendResult | "throw";
 }
 
-export function askRig(): AskRig {
+export function askRig(receipts: HillReceiptSurface = memoryHillReceipts()): AskRig {
   let n = 0;
   let a = 0;
   const store = new HillStore(null, () => state.clock);
   const state: Omit<AskRig, "hill"> = { store, clock: 1000, live: new Set([ONE.address, TWO.address]), sent: [], pushed: 0, delivery: "typed" };
   const hill = new HillService({
     store,
-    receipts: memoryHillReceipts(),
+    receipts,
     place: (address) => (state.live.has(address) ? { address, label: "repo", host: "desk", unattended: false } : null),
     send: async (to, body, by, subject) => {
       state.sent.push({ to, body, by, subject });
