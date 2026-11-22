@@ -101,15 +101,16 @@ const HC_LIMIT_MS = 1500;
  */
 function runHc(args: readonly string[]): Promise<boolean> {
   return new Promise<boolean>((resolve) => {
+    let done = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const stop = (): void => clearTimeout(timer);
+    const finish = (ok: boolean): void => {
+      if (done) return;
+      done = true;
+      stop();
+      resolve(ok);
+    };
     try {
-      let done = false;
-      let timer: ReturnType<typeof setTimeout> | undefined;
-      const finish = (ok: boolean): void => {
-        if (done) return;
-        done = true;
-        clearTimeout(timer);
-        resolve(ok);
-      };
       const child = spawn(process.env.COLLIE_HC_BIN || "hc", [...args], { stdio: "ignore" });
       timer = setTimeout(() => {
         try {
@@ -124,7 +125,7 @@ function runHc(args: readonly string[]): Promise<boolean> {
       child.on("error", () => finish(false));
       child.on("exit", (code) => finish(code === 0));
     } catch {
-      resolve(false);
+      finish(false);
     }
   });
 }
