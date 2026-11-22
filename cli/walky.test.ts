@@ -1104,7 +1104,7 @@ describe("reply, inbox, status, who", () => {
   test("a bare `walky` prints the sub-verbs and exits USAGE", () => {
     const io = capture();
     expect(cmdWalky({ io }, [])).toBe(EXIT.USAGE);
-    expect(io.stderr[0]).toBe("usage: collie walky {who|send|reply|inbox|status|cancel|off|on}");
+    expect(io.stderr[0]).toBe("usage: collie walky {who|send|reply|inbox|status|cancel|off|on|ask|asks}");
   });
 });
 

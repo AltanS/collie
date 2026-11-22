@@ -236,6 +236,7 @@ import { CLEAR_BURST_MS, Push } from "./push.ts";
 import { currentNotesReader } from "./release-notes.ts";
 import { pluginRoot } from "./root.ts";
 import { agentPaneFilesRoot, buildId, filesPrivateFolders, paneReadHint, recentRead, startServer } from "./server.ts";
+import { askFilesResolver } from "./hill/ask-files.ts";
 import {
   DEFAULT_SESSION_NAME,
   herdTagFor,
@@ -2781,6 +2782,13 @@ const hill = new HillService({
   // Hill of a lead whose store already names a new lead (after approve-promote, before its restart).
   deposed: () => hillMovedAway(deposed, trustStore.current()),
   walkyOn: () => cfg.walky,
+  // An ask's linked files (Asks, 2026-11-22): checked under the poster's pane's Files root by the Files
+  // view's own rules, and stored as pointers. Nothing is read; the phone opens them by the Files route.
+  askFiles: askFilesResolver({
+    paneRoot: (paneId) => agentPaneFilesRoot(registry.all().map((rt) => rt.engine.current()), paneId, homedir()),
+    home: homedir(),
+    privateFolders: filesPrivateFolders(cfg),
+  }),
   memberId: bridgeId.id,
   keepId: bridgeId.keep,
   machine: hostname(),

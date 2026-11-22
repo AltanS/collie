@@ -26,6 +26,12 @@
 //   hill.spoken.clear {}                       → { ok, cleared }    (1.29.0: withdraw and clear the open cards answered
 //                                                                     in the session; types nothing; refused from an
 //                                                                     agent's pane, and on a member)
+// Asks (2026-11-22, `collie walky ask`), hill ops too, so a refusal carries `hill: true`:
+//   ask.post   { requestId, title, summary, options, ask: { words, files } } → { ok, decision } | { ok: false, error, code }
+//   ask.list   {}                               → { ok, decisions }  (the asker's own OPEN asks, oldest first)
+//   ask.status { id }                           → { ok, decision }   (as hill.status)
+//   ask.cancel { id, answered?, because? }      → { ok, decision }   (withdrawn: "answered in the session", or
+//                                                                     "by the poster[: <reason>]")
 // A trick handed to the lead (crew slice 8), answered only by a bridge built with it:
 //   trick.propose { requestId, files }        → { ok, kind, id, hash, decision, replaced } | { ok: false, error, code, propose: true }
 //     From an agent's pane the proposer is that session; from a bare shell or with no markers, a terminal.
@@ -98,7 +104,7 @@ export type ViewSocket = Pick<AgentViewService, "start" | "show" | "clear" | "st
  * What the socket needs of the hill (M96). Absent: the bridge answers the four operations as unknown. The
  * `ask` calls answer from this bridge, or on a crew member from its lead (CREW_PROTOCOL §22).
  */
-export type HillSocket = Pick<HillService, "agentSender" | "postFields" | "askStatus" | "askWithdraw" | "askList" | "clear" | "askCrewState" | "setCrewState" | "clearSpoken">;
+export type HillSocket = Pick<HillService, "agentSender" | "postFields" | "askStatus" | "askWithdraw" | "askList" | "clear" | "askCrewState" | "setCrewState" | "clearSpoken" | "askPost" | "askOpen" | "askCancel">;
 
 /** The socket of one state dir. */
 export function walkySocketPath(stateDir: string): string {
@@ -306,6 +312,10 @@ export async function answerRequest(
     case "hill.status":
     case "hill.withdraw":
     case "hill.list":
+    case "ask.post":
+    case "ask.list":
+    case "ask.status":
+    case "ask.cancel":
       return await answerHill(service, request, pane, hill);
     case "hill.clear":
       // Answered above, before any pane is placed; kept so the switch stays exhaustive.
@@ -478,7 +488,12 @@ async function answerSpokenClear(service: WalkyService, markers: WalkyRequest["m
  * decision this bridge does not hold from the sender answers `not here` with the sentence in `missing`,
  * so the CLI asks the next bridge on the machine, as it does for a walky message id.
  */
-async function answerHill(service: WalkyService, request: Extract<WalkyRequest, { op: "hill.post" | "hill.status" | "hill.withdraw" | "hill.list" }>, pane: WalkyPane | null, hill: HillSocket | undefined): Promise<WalkyAnswer> {
+async function answerHill(
+  service: WalkyService,
+  request: Extract<WalkyRequest, { op: "hill.post" | "hill.status" | "hill.withdraw" | "hill.list" | "ask.post" | "ask.list" | "ask.status" | "ask.cancel" }>,
+  pane: WalkyPane | null,
+  hill: HillSocket | undefined,
+): Promise<WalkyAnswer> {
   if (hill === undefined) return { ok: false, error: unknownOp(request.op) };
   if (pane === null || !pane.agent) {
     service.noteRefusal("no pane");
@@ -486,19 +501,28 @@ async function answerHill(service: WalkyService, request: Extract<WalkyRequest, 
   }
   const sender = hill.agentSender(pane, service.addressOf(pane.paneId, pane.instance));
   switch (request.op) {
-    case "hill.post": {
-      const answer = await hill.postFields(sender, request.fields);
+    case "hill.post":
+    case "ask.post": {
+      const answer = request.op === "hill.post" ? await hill.postFields(sender, request.fields) : await hill.askPost(sender, request.fields);
       if (answer.ok) return answer;
       return answer.code === null ? { ok: false, error: answer.error, hill: true } : { ok: false, error: answer.error, hill: true, code: answer.code };
     }
     case "hill.status":
-    case "hill.withdraw": {
-      const answer = request.op === "hill.status" ? await hill.askStatus(sender, request.id) : await hill.askWithdraw(sender, request.id);
+    case "hill.withdraw":
+    case "ask.status":
+    case "ask.cancel": {
+      const answer =
+        request.op === "hill.status" || request.op === "ask.status"
+          ? await hill.askStatus(sender, request.id)
+          : request.op === "ask.cancel"
+            ? await hill.askCancel(sender, request.id, { answered: request.answered, because: request.because })
+            : await hill.askWithdraw(sender, request.id);
       if (answer.ok) return answer;
       return answer.missing ? { ok: false, error: "not here", hill: true, missing: answer.error } : { ok: false, error: answer.error, hill: true };
     }
-    case "hill.list": {
-      const answer = await hill.askList(sender);
+    case "hill.list":
+    case "ask.list": {
+      const answer = request.op === "hill.list" ? await hill.askList(sender) : await hill.askOpen(sender);
       return answer.ok ? { ok: true, decisions: answer.decisions } : { ok: false, error: answer.error, hill: true };
     }
   }

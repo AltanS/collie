@@ -137,6 +137,7 @@ import {
   type WalkyDeps,
 } from "./walky.ts";
 import { apiHelp, cmdApi, declaredOperations, type ApiDeps } from "./api.ts";
+import { ASK_HELP, cmdAskCancel, cmdAskStatus, cmdWalkyAsk, cmdWalkyAsks, namesAnAsk } from "./ask.ts";
 import { cmdHill, cmdHillClear, cmdHillList, cmdHillPost, cmdHillState, cmdHillOn, cmdHillStatus, cmdHillSwitch, cmdHillWithdraw, HILL_SUBCOMMANDS, hillPostHelp, type HillDeps } from "./hill.ts";
 import { cmdTrickView, viewTopLines, type ViewDeps } from "./trick-view.ts";
 import { cmdTricks, cmdTricksOn, cmdTricksStatus, cmdTricksSwitch, TRICKS_SUBCOMMANDS } from "./tricks-switch.ts";
@@ -448,13 +449,14 @@ const WALKY_TREE: readonly Subcommand[] = [
   },
   {
     name: "status",
-    summary: "a message's receipt: `walky status <id>`",
-    run: (args, s) => cmdWalkyStatus(walkyDeps(s.io), args),
+    summary: "a message's receipt, or an ask's state: `walky status <wt_ or ak_ id>`",
+    // The id's prefix says which: an ask (ak_, or dc_ for any Decision) or a message (wt_).
+    run: (args, s) => (namesAnAsk(args) ? cmdAskStatus(hillDeps(s.io), args) : cmdWalkyStatus(walkyDeps(s.io), args)),
   },
   {
     name: "cancel",
-    summary: "take back a held message you sent: `walky cancel <id>` (it stays in the inbox, not typed)",
-    run: (args, s) => cmdWalkyCancel(walkyDeps(s.io), args),
+    summary: "take back a held message you sent (`wt_`), or an ask (`ak_`, with --answered or --because <reason>)",
+    run: (args, s) => (namesAnAsk(args) ? cmdAskCancel(hillDeps(s.io), args) : cmdWalkyCancel(walkyDeps(s.io), args)),
   },
   {
     name: "off",
@@ -465,6 +467,17 @@ const WALKY_TREE: readonly Subcommand[] = [
     name: "on",
     summary: "turn this session's WalkyTalky on again",
     run: (args, s) => cmdWalkyOn(walkyDeps(s.io), args),
+  },
+  {
+    name: "ask",
+    summary: 'send one open question to your operator: `walky ask "<question>" --fact ... --option <id>=<label> --does <id>=<text>`; prints its id and card',
+    usage: () => ASK_HELP,
+    run: (args, s) => cmdWalkyAsk(hillDeps(s.io), args),
+  },
+  {
+    name: "asks",
+    summary: "the open asks of this session",
+    run: (args, s) => cmdWalkyAsks(hillDeps(s.io), args),
   },
 ];
 

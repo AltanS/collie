@@ -172,7 +172,13 @@ export type WalkyOp = "send" | "inbox" | "who" | "status" | "ack" | "cancel" | "
 export const HILL_BAD_CREW_STATE = "bad request: the crew state is here, quiet or away";
 
 /** The hill's operations (M96), beside walky's own. Added, never a change to one of them. */
-export type HillOp = "hill.post" | "hill.status" | "hill.withdraw" | "hill.list" | "hill.clear" | "hill.state" | "hill.spoken.clear";
+export type HillOp = "hill.post" | "hill.status" | "hill.withdraw" | "hill.list" | "hill.clear" | "hill.state" | "hill.spoken.clear" | AskOp;
+
+/** The ops of `collie walky ask` (Asks, 2026-11-22), beside the hill's. Added, never a change to one of them. */
+export type AskOp = "ask.post" | "ask.list" | "ask.status" | "ask.cancel";
+
+/** What an `ask.cancel` with a reason that is no text is refused with. */
+export const ASK_BAD_BECAUSE = "bad request: --because is text";
 
 export type WalkyRequest =
   | {
@@ -205,6 +211,11 @@ export type WalkyRequest =
   // The crew state (1.29.0): a read with no `state`, a person's write with one. A new op, so a bridge
   // before it answers it as unknown and never takes a write it cannot read.
   | { readonly op: "hill.state"; readonly markers: readonly BeaconMarker[]; readonly state: HillCrewState | null }
+  // Asks (2026-11-22): a post's fields are read by bridge/hill/parse.ts, with its `ask` field required.
+  | { readonly op: "ask.post"; readonly markers: readonly BeaconMarker[]; readonly fields: JsonObject }
+  | { readonly op: "ask.list"; readonly markers: readonly BeaconMarker[] }
+  | { readonly op: "ask.status"; readonly markers: readonly BeaconMarker[]; readonly id: string }
+  | { readonly op: "ask.cancel"; readonly markers: readonly BeaconMarker[]; readonly id: string; readonly answered: boolean; readonly because: string | null }
   // A trick handed to the lead (crew slice 8): its fields are read by bridge/tricks/propose-wire.ts.
   | { readonly op: "trick.propose"; readonly markers: readonly BeaconMarker[]; readonly fields: JsonObject }
   // Agent views: every op names the trick (`trick`, a trick id) whose view it writes or reads. The
@@ -236,7 +247,12 @@ export function isViewOp(op: string | null): op is ViewOp {
 
 /** Whether a request is one of the hill's operations (M96). */
 export function isHillOp(op: string | null): op is HillOp {
-  return op === "hill.post" || op === "hill.status" || op === "hill.withdraw" || op === "hill.list" || op === "hill.clear" || op === "hill.state" || op === "hill.spoken.clear";
+  return op === "hill.post" || op === "hill.status" || op === "hill.withdraw" || op === "hill.list" || op === "hill.clear" || op === "hill.state" || op === "hill.spoken.clear" || isAskOp(op);
+}
+
+/** Whether a request is one of the ask ops (Asks, 2026-11-22). */
+export function isAskOp(op: string | null): op is AskOp {
+  return op === "ask.post" || op === "ask.list" || op === "ask.status" || op === "ask.cancel";
 }
 
 /**
@@ -299,6 +315,17 @@ export function readWalkyRequest(line: string, max: number = WALKY_LINE_MAX): Wa
     const state = row.state ?? null;
     if (state !== null && !isHillCrewState(state)) return unread(HILL_BAD_CREW_STATE, markers);
     return done({ op, markers, state });
+  }
+  // Asks. A bridge built without them answers these as it answers any op it does not know.
+  if (op === "ask.post") return done({ op, markers, fields: row });
+  if (op === "ask.list") return done({ op, markers });
+  if (op === "ask.status" || op === "ask.cancel") {
+    const id = text(row, "id");
+    if (id === null || !HILL_ID_RE.test(id)) return unread(HILL_BAD_ID, markers);
+    if (op === "ask.status") return done({ op, markers, id });
+    const because = row.because === undefined || row.because === null ? null : asJsonString(row.because);
+    if (because === undefined) return unread(ASK_BAD_BECAUSE, markers);
+    return done({ op, markers, id, answered: asJsonBoolean(row.answered) === true, because });
   }
   if (op === "trick.propose") return done({ op, markers, fields: row });
   // Agent views. A bridge built without them answers these as it answers any op it does not know.
