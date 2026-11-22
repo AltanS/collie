@@ -262,7 +262,45 @@ export interface RowReducer {
    * leaves it out, and the window reads that as none.
    */
   unnamedQueued?(): number;
+  /**
+   * The queue as a take-back reads it (ADR 0122, the 2026-11-22 addendum): the person's waiting words in
+   * full, and the numbered moves the log recorded, so the bridge can tie the record of the queue going
+   * back into the input box to the queue it read before its key. OPTIONAL: only a reducer whose log
+   * records that move answers it (Claude Code's `popAll`). A SNAPSHOT, like {@link queued}.
+   */
+  queueMark?(): QueueMark;
 }
+
+/**
+ * One move of the harness's queue as its log recorded it, numbered in the order this reducer read them.
+ *
+ * `back`: the whole queue went back into the input box (Claude Code's `popAll`). `words`: the person's
+ * own words joined or left the queue, or the reducer could not tell (an operation it does not know).
+ * `plumbing`: only the harness's own messages moved (a task notice that came and went).
+ */
+export interface QueueMove {
+  readonly n: number;
+  readonly kind: "back" | "words" | "plumbing";
+  /** On a `back` move, the words its row says went back, read as {@link QueueMark.texts} are; null when the row names none. */
+  readonly words: string | null;
+}
+
+/** What {@link RowReducer.queueMark} answers. */
+export interface QueueMark {
+  /** How many moves this reducer has read. The next move is number `moves + 1`. */
+  readonly moves: number;
+  /**
+   * The person's waiting messages, oldest first, each whole: the words the log holds, with no cut. Null
+   * when one of them cannot be given whole (a place with no words, a cut text, a paste or a picture the
+   * log names only by a marker), and the take-back refuses before any key.
+   */
+  readonly texts: readonly string[] | null;
+  /** The newest moves, oldest first, at most {@link QUEUE_MOVES_KEPT}. */
+  readonly recent: readonly QueueMove[];
+}
+
+/** How many moves a {@link QueueMark} keeps. A take-back reads a few seconds of the log; far fewer move in that time. */
+export const QUEUE_MOVES_KEPT = 32;
 
 /** The answer for a row that did nothing. Frozen, because it is handed to every caller. */
 export const NO_CHANGE: Reduction = Object.freeze({

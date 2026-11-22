@@ -309,6 +309,7 @@ import { SurfaceShadow, type ShadowOptions } from "./surface/shadow.ts";
 import { AskAnswerer, AskBook } from "./surface/ask.ts";
 import { ClearService } from "./surface/clear.ts";
 import { StopService, type StopDeps } from "./surface/stop.ts";
+import { DequeueService } from "./surface/dequeue.ts";
 import { gateFor } from "./surface/key-gate.ts";
 import { RowRing, SendProtocol, SessionLocks, type PaneProfileMatch } from "./surface/protocol.ts";
 import { openPaneLock, paneLockDir, type PaneLockFiles } from "./surface/pane-lock.ts";
@@ -2398,7 +2399,20 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
   // A Clear of the harness's box (ADR 0116, the Clear paragraph): the same mux, key gate and profile as the Stop.
   const clear = endpoint.kind === "terminal" ? new ClearService({ mux: herdr, gate: gateFor(herdr), profile: paneProfile, staleFrame: (paneId, frame) => surface?.markStale(paneId, frame) }) : undefined;
   const withClear = clear === undefined ? withStop : { ...withStop, clear };
-  return driver === undefined ? withClear : { ...withClear, driver };
+  // The take-back of a waiting queue (ADR 0122, the 2026-11-22 addendum): the Stop's mux, key gate and profile,
+  // inside the Send Protocol's pane lock, so it needs the protocol on.
+  const dequeue =
+    endpoint.kind === "terminal" && send !== undefined
+      ? new DequeueService({
+          mux: herdr,
+          gate: gateFor(herdr),
+          profile: paneProfile,
+          lock: (paneId, owner, spanMs, work, busy) => send.underPaneLock(name, paneId, owner, spanMs, work, busy),
+          forget: (paneId, texts) => send.takenBack(name, paneId, texts),
+        })
+      : undefined;
+  const withDequeue = dequeue === undefined ? withClear : { ...withClear, dequeue };
+  return driver === undefined ? withDequeue : { ...withDequeue, driver };
 };
 
 const registry = new SessionRegistry({

@@ -3414,6 +3414,32 @@ export class SendProtocol {
   }
 
   /**
+   * Run `work` holding the pane's send lock, as one request of this protocol would (ADR 0122, the 2026-11-22
+   * addendum: the take-back of a waiting queue, bridge/surface/dequeue.ts). While it runs no send of this
+   * bridge types into the pane, and the poll's box reads leave the queued cards alone. Answers `busy()` with
+   * nothing run when another request holds the lock, here or on another bridge.
+   */
+  async underPaneLock<T>(session: string, paneId: string, owner: string, spanMs: number, work: () => Promise<T>, busy: () => T): Promise<T> {
+    const key = `${session}\u0000${paneId}`;
+    const { locks } = this.deps;
+    if (!locks.acquire(key, owner, this.now() + spanMs, this.now())) return busy();
+    try {
+      return await work();
+    } finally {
+      locks.release(key, owner);
+    }
+  }
+
+  /**
+   * A take-back moved these texts out of the agent's queue into the person's composer: the open queued
+   * sends of the pane with the same texts go, oldest first, one per text, so no card and no returned card
+   * stands for them later (QueuedSends.takenBack).
+   */
+  takenBack(session: string, paneId: string, texts: readonly string[]): void {
+    this.queuedSends.takenBack(session, paneId, texts);
+  }
+
+  /**
    * The newest settled requests for a pane, newest first, as the session page lists them (M56 spec 09).
    * The request files hold receipts and the line Sent would keep (requests.ts), so no row of the screen
    * can come out of here, and of the text only that line.

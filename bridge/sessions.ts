@@ -4,6 +4,7 @@ import type { SendProtocol } from "./surface/protocol.ts";
 import type { SurfaceShadow } from "./surface/shadow.ts";
 import type { ClearService } from "./surface/clear.ts";
 import type { StopService } from "./surface/stop.ts";
+import type { DequeueService } from "./surface/dequeue.ts";
 import type { AskAnswerer } from "./surface/ask.ts";
 import type { HoldNote } from "../web/src/lib/surface/hold.ts";
 import type { ProgramDriver } from "./surface/durable-driver.ts";
@@ -111,6 +112,11 @@ export interface SessionParts {
   stop?: StopService;
   /** Set on a terminal session: a Clear of the harness's input box (ADR 0116), `POST /api/pane/:id/clear`. */
   clear?: ClearService;
+  /**
+   * Set on a terminal session with the Send Protocol on: the take-back of a waiting queue into the phone's
+   * composer (ADR 0122, the 2026-11-22 addendum), `POST /api/pane/:id/dequeue`. It runs inside the pane's send lock.
+   */
+  dequeue?: DequeueService;
   /**
    * Set on a program session with the Send Protocol on (M56 spec 14): the structured driver. It
    * answers the pane's Surface, `POST /api/send` and `POST /api/ask/<id>` from the program's state.

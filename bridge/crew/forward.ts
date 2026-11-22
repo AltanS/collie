@@ -115,7 +115,7 @@ const FORWARDABLE: readonly RegExp[] = [
   // queue keeps the row. Additive-optional the same way: a member that predates it answers 404.
   // `arrived` (M102), the person's "It arrived" on a send Collie cannot tell, a WRITE to the member whose store
   // keeps the receipt; additive-optional, a member that predates it answers 404.
-  /^pane\/[^/]+(?:\/(?:reply|keys|upload|close|rename|history|chat|changes|files|focus|answer|send|abort|clear|action|pins|held|arrived))?$/,
+  /^pane\/[^/]+(?:\/(?:reply|keys|upload|close|rename|history|chat|changes|files|focus|answer|send|abort|clear|dequeue|action|pins|held|arrived))?$/,
   // One picture under the Files root, as bytes (ADR 0090): off the disk of the member that owns the
   // pane or the space, like the Files read it sits beside. Mirrors `PANE_FILES_IMAGE_ROUTE` and
   // `WORKSPACE_FILES_IMAGE_ROUTE` in bridge/server.ts one-for-one. Additive-optional (§7.1).

@@ -201,6 +201,7 @@ import { PANE_BUSY } from "./surface/pane-lock.ts";
 import { BOX_CHANGED, type SendProtocol, type SendRequest } from "./surface/protocol.ts";
 import type { AskAnswerer } from "./surface/ask.ts";
 import type { ClearService } from "./surface/clear.ts";
+import type { DequeueAsk, DequeueJournal, DequeueService } from "./surface/dequeue.ts";
 import type { StopService } from "./surface/stop.ts";
 import type { ReceiptQueued } from "./surface/queued.ts";
 import type { ProgramDriver } from "./surface/durable-driver.ts";
@@ -343,6 +344,7 @@ import type {
   WorkspaceChangesResponse,
   WorkspaceFilesResponse,
   ChatBody,
+  ChatWindowBody,
   PaneChatResponse,
   PaneHistoryResponse,
   DurableConversationItemsResponse,
@@ -547,7 +549,7 @@ export function isLoopbackPeer(address: string | null | undefined): boolean {
  * `pins` (M90) is the one segment with a read and writes: a GET lists the pins of the pane's session (a read), a
  * POST `{ itemId }` pins a block and a DELETE `?pin=<id>` drops one (writes). See `bridge/pins/routes.ts`.
  */
-const PANE_ROUTE = /^\/api\/pane\/([^/]+)(?:\/(reply|keys|upload|close|rename|history|chat|changes|files|focus|answer|send|abort|clear|action|pins|held|arrived))?$/;
+const PANE_ROUTE = /^\/api\/pane\/([^/]+)(?:\/(reply|keys|upload|close|rename|history|chat|changes|files|focus|answer|send|abort|clear|dequeue|action|pins|held|arrived))?$/;
 
 /**
  * A pairing claim's refusal, as an error code.
@@ -2853,6 +2855,19 @@ export function startServer(opts: {
           body = undefined;
         }
         return clearRoute(rt, paneId, body, { audit: audit_, device, session, acceptEncoding: req.headers.get("accept-encoding"), redact: cfg.redact });
+      }
+      // Edit on the chat's waiting card (ADR 0122, the 2026-11-22 addendum): a person's tap takes the agent's
+      // whole queue back into the phone's composer, with the harness's own dequeue key and the journal's proof.
+      if (action === "dequeue" && req.method === "POST" && rt.dequeue !== undefined && rawInputRefusal(herdr) === null) {
+        let body: JsonValue | undefined;
+        try {
+          // SAFETY: `Request.json()` output IS a JsonValue by construction; `dequeueRoute` checks every field.
+          body = (await req.json()) as JsonValue;
+        } catch {
+          body = undefined;
+        }
+        const ask = await paneDequeueAsk(cfg, journals, live, rt.engine, herdr, paneId);
+        return dequeueRoute(rt, paneId, body, ask, { audit: audit_, device, session, acceptEncoding: req.headers.get("accept-encoding") });
       }
       // A send or an abort that names the turn or ask the phone saw (ADR 0101), or a tap on one of the
       // program's belt buttons (M53 spec 07, the turn optional). The receipt is written before the control
@@ -5980,10 +5995,49 @@ export function chatBodyForMux(
   body: ChatBody,
   mux: Pick<MuxCapabilityDeclaration, "supports" | "unsupportedKeys">,
 ): ChatBody {
-  if (!("sendQueuedNow" in body) || body.sendQueuedNow === undefined) return body;
-  if (keysDeliverable(mux, body.sendQueuedNow)) return body;
-  const { sendQueuedNow: _undeliverable, ...rest } = body;
-  return rest;
+  if (body.page === "older") return body;
+  let out: ChatWindowBody = body;
+  if (out.sendQueuedNow !== undefined && !keysDeliverable(mux, out.sendQueuedNow)) {
+    const { sendQueuedNow: _undeliverable, ...rest } = out;
+    out = rest;
+  }
+  // The take-back's keys (ADR 0122, the 2026-11-22 addendum) by the same rule: no Edit where the key cannot go.
+  if (out.dequeueQueued !== undefined && !keysDeliverable(mux, out.dequeueQueued)) {
+    const { dequeueQueued: _undeliverable, ...rest } = out;
+    out = rest;
+  }
+  return out;
+}
+
+/**
+ * What a take-back on this pane needs of its journal (ADR 0122, the 2026-11-22 addendum): the harness's
+ * dequeue keys, a reader of the session's queue that reads the log again on each call, and whether a text
+ * may travel in the answer as it is. Null when the pane has no journal that declares a dequeue key, or when
+ * the multiplexer cannot deliver that key, the same filter `chatBodyForMux` applies to the chat answer's
+ * `dequeueQueued`, so the route refuses exactly where the phone shows no Edit. The session ref is resolved
+ * as the chat route resolves it.
+ */
+export async function paneDequeueAsk(
+  cfg: Config,
+  journals: Record<string, JournalAdapter> | null,
+  live: LiveWindows | null,
+  engine: StateEngine,
+  mux: Pick<MuxAdapter, "capabilities" | "readGrid" | "foregroundProcesses" | "paneLabels">,
+  paneId: string,
+): Promise<DequeueAsk | null> {
+  if (!cfg.transcript || live === null || journals === null) return null;
+  const { agents, shellPanes } = engine.current();
+  const panes = [...agents, ...shellPanes];
+  const pane = panes.find((a) => a.paneId === paneId);
+  if (pane === undefined) return null;
+  const adapter = adapterFor(journals, journalAgentOf(pane));
+  const dequeue = adapter?.dequeue;
+  if (adapter === undefined || dequeue === undefined || !keysDeliverable(mux.capabilities, dequeue.keys)) return null;
+  const ref = await journalRefOf(adapter, pane, panes, await discoveryHints(adapter, pane, mux, paneId));
+  if (ref === null) return null;
+  const journal: DequeueJournal = () => live.queueNow(adapter, ref);
+  // A text this bridge would mask on the wire cannot come back as it is: the take-back refuses before its key.
+  return { keys: dequeue.keys, journal, sendable: (words) => !cfg.redact || redactText(words) === words };
 }
 
 /** The snapshot a Changes route reads its root off. The state engine is one. */
@@ -10460,6 +10514,48 @@ export async function clearRoute(
   }
   // Another bridge writes into the pane (M102 spec 16): the phone also reads the code off the header.
   if (receipt.reason === "pane_busy") return withRefusal(json(receipt, context.acceptEncoding), "bridge", "pane_busy");
+  return json(receipt, context.acceptEncoding);
+}
+
+/** What `dequeueRoute` reads of a session runtime: a {@link SessionRuntime} is one. */
+export interface DequeueRouteRuntime extends Pick<SendRouteRuntime, "send" | "engine"> {
+  readonly dequeue?: DequeueService;
+}
+
+/**
+ * `POST /api/pane/:id/dequeue` on a pane with a screen (ADR 0122, the 2026-11-22 addendum): `{ requestId }`
+ * in, one receipt out (`taken` with the texts, `in_box`, `too_late`, `unknown`, or `refused` with a reason),
+ * always a 200; a body that is no request id is a 400. `ask` is the pane's journal as `paneDequeueAsk`
+ * found it; null refuses `no_key` with nothing pressed. The same request id answers the same receipt and
+ * presses once. One audit line per tap: request id, outcome, reason and how many texts came back, and
+ * never a text.
+ */
+export async function dequeueRoute(
+  rt: DequeueRouteRuntime,
+  paneId: string,
+  body: JsonValue | undefined,
+  ask: DequeueAsk | null,
+  context: { readonly audit: AuditLog; readonly device: string | null; readonly session: string; readonly acceptEncoding: string | null },
+): Promise<Response> {
+  if (rt.dequeue === undefined) return text("dequeue is not available on this session", 404);
+  const requestId = asJsonRecord(body)?.requestId;
+  if (typeof requestId !== "string" || !REQUEST_ID.test(requestId)) return text("bad body", 400);
+  const harness = replySendOf(rt).harnessOf(paneId);
+  // A missing pane answers the take-back's own receipt, so the phone can tell it from the bare 404 of a build with none.
+  if (harness === null) return json({ requestId, outcome: "refused", reason: "pane_gone" }, context.acceptEncoding, 404);
+  const answer = await rt.dequeue.handle(requestId, paneId, harness, ask ?? { keys: [], journal: async () => null, sendable: () => false });
+  if (answer.kind === "id_reused") return json({ requestId, outcome: "refused", reason: "request-id-reused" }, context.acceptEncoding, 409);
+  const { receipt } = answer;
+  // Named fields only: the texts never reach the audit line.
+  const detail: AuditDetail = { requestId, outcome: receipt.outcome, replayed: answer.replayed, pressed: answer.pressed };
+  if (receipt.reason !== undefined) detail.reason = receipt.reason;
+  if (receipt.texts !== undefined) detail.count = receipt.texts.length;
+  context.audit.record({ action: "dequeue", paneId, session: context.session, device: context.device, detail });
+  // A replay pressed nothing this time; a first tap that pressed makes the engine look again soon.
+  if (answer.pressed && !answer.replayed) {
+    rt.engine.noteInput();
+    rt.engine.pokeNow();
+  }
   return json(receipt, context.acceptEncoding);
 }
 

@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Added
+
+- **A waiting message can come back into the message box to be edited.** On Claude Code, the "Waiting to send" card in Chat has an Edit button beside Send now. It takes all the waiting messages out of the agent's queue and puts them into Collie's message box, in order and before any text you had already typed there, so you can change them and send them again. Collie presses Claude Code's own key for this (Up) once and reads the session log to check that the queue really came back; when a message went out in that moment, it says "It already went out." and leaves nothing behind in the agent's box. The "Back in the box" card that a Stop leaves gets an Edit button too. Edit shows by itself on Claude Code and needs no setting.
+
 ### Changed
 
 - **The other eleven languages have the texts of the large-screen layout, Settings, the keyboard shortcuts, Actions and trick removal.** German, Spanish, French, Italian, Japanese, Korean, Portuguese, Russian, Turkish, Simplified Chinese and Traditional Chinese now show these screens in their own words, where the last release showed them in English.

@@ -238,6 +238,19 @@ export class QueuedSends {
     return this.runOf(entry, this.entries).map((e) => e.text).join("\n");
   }
 
+  /**
+   * A take-back moved these texts into the person's composer (ADR 0122, the 2026-11-22 addendum): for each
+   * text, the oldest open send of the pane with the same text (white space folded) goes, with its run.
+   * A submitted send stays: it is no queued message.
+   */
+  takenBack(session: string, paneId: string, texts: readonly string[]): void {
+    for (const text of texts) {
+      const want = text.replace(/\s+/gu, "");
+      const entry = this.entries.find((e) => e.session === session && e.paneId === paneId && !e.submitted && e.text.replace(/\s+/gu, "") === want);
+      if (entry !== undefined) this.drop(entry.id);
+    }
+  }
+
   /** Discard on an unconfirmed card: the card goes and nothing is pressed. False when there is no such card. */
   dismissUnconfirmed(session: string, paneId: string, id: string): boolean {
     const entry = this.entries.find((e) => e.id === id && e.session === session && e.paneId === paneId);

@@ -315,8 +315,11 @@ describe("which routes cross a link", () => {
     // The list IS the inventory of what crosses a link; `chat` joined it with the live window, and
     // `files` with the Files view (ADR 0083), `held` with the Cancel and Dismiss on a member's queued row (issue 740).
     expect(paneActions).toEqual([
-      "abort", "action", "answer", "arrived", "changes", "chat", "clear", "close", "files", "focus", "held", "history", "keys", "pins", "rename", "reply", "send", "upload",
+      "abort", "action", "answer", "arrived", "changes", "chat", "clear", "close", "dequeue", "files", "focus", "held", "history", "keys", "pins", "rename", "reply", "send", "upload",
     ]);
+    // Edit on a member's waiting card (ADR 0122, the 2026-11-22 addendum) presses the member's key: a write, audited under the member's own name.
+    expect(forwardKind("pane/x/dequeue", "POST")).toBe("write");
+    expect(forwardAuditAction("pane/x/dequeue", "POST")).toBe("dequeue");
     // The Cancel or Dismiss on a member's queued row changes that member's hold queue: a write, audited on
     // the lead under the member's own name for the act (issue 740).
     expect(forwardKind("pane/x/held", "DELETE")).toBe("write");

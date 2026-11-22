@@ -381,6 +381,24 @@ export interface JournalAdapter {
    */
   readonly sendQueuedNow?: readonly string[];
   /**
+   * The key that takes this harness's whole queue back into its input box, and how its journal proves
+   * that it did (ADR 0122, the 2026-11-22 addendum). OPTIONAL, and set only where a test proved both:
+   * Claude Code, whose screen says "Press up to edit queued messages" and whose log writes a `popAll`
+   * row when the queue goes back to the box.
+   *
+   * `keys` in the neutral spelling (`bridge/mux/keys.ts`); the bridge presses them, never the phone. The
+   * live window's answer carries them as `dequeueQueued` so the phone learns that the Edit button may
+   * show, and the chat route drops them where the pane's multiplexer cannot deliver them, as for
+   * {@link sendQueuedNow}.
+   *
+   * `proof` names what the journal must show after the key: `back`, a `back` move of the reducer's
+   * {@link RowReducer.queueMark} for the queue read before the key. A box read is never the proof: on an
+   * idle box the same key recalls the last prompt from the harness's history.
+   *
+   * pi, Oh My Pi and Muse have their own dequeue keys; each needs its own lab proof before it is set.
+   */
+  readonly dequeue?: { readonly keys: readonly string[]; readonly proof: "back" };
+  /**
    * This harness's journal records its message queue (its reducer's `queued()` reads real queue rows),
    * so the live window takes its queued cards from the journal and never from Collie's own receipts
    * (ADR 0122, journal/receipt-queue.ts). OPTIONAL and set only where it is true: Claude Code

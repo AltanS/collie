@@ -38,7 +38,7 @@ import { createHash, randomBytes } from "node:crypto";
 
 import type { Cursor } from "./cursor.ts";
 import { NO_CURSOR } from "./cursor.ts";
-import type { RowReducer } from "./reduce.ts";
+import type { QueueMark, RowReducer } from "./reduce.ts";
 import type { TranscriptStore } from "./store.ts";
 import { receiptQueue, spelledQueue, unnamedFill, type QueuedSendWire, type ReceiptQueued } from "./receipt-queue.ts";
 import type { AgentSessionRef, JournalAdapter, TranscriptEntry } from "./types.ts";
@@ -211,6 +211,14 @@ export interface ChatWindowBody {
    * (`chatBodyForMux` in server.ts): tmux and zellij send `ctrl+Enter` as a plain Enter.
    */
   sendQueuedNow?: string[];
+  /**
+   * The keys that take {@link queued} back into the harness's input box, when this session's harness
+   * declares them (`JournalAdapter.dequeue`, ADR 0122's 2026-11-22 addendum). The phone reads the field
+   * only as "the Edit button may show"; it never sends these keys, the bridge's take-back route does.
+   * ABSENT for every other harness and from an older bridge, like {@link sendQueuedNow}, and dropped by
+   * the route where the pane's multiplexer cannot deliver them (`chatBodyForMux` in server.ts).
+   */
+  dequeueQueued?: string[];
   /**
    * The operator's newest prompt the window knows, so the phone can say which question the reply on
    * screen answers even when that question sits above the screenful a first paint sends. A long run
@@ -558,9 +566,10 @@ class LiveWindow {
    * move means there is nothing to ask the source for. The one case that must skip the pre-check is
    * the first tick, where there is no cursor yet and so nothing to compare against.
    */
-  async tick(key: string): Promise<void> {
+  async tick(key: string, fresh = false): Promise<void> {
     const now = this.now();
-    if (this.ticked && now - this.lastTickAt < TICK_FLOOR_MS) return;
+    // `fresh`: a take-back's read before and after its key (LiveWindows.queueNow) must see the log as it is now.
+    if (!fresh && this.ticked && now - this.lastTickAt < TICK_FLOOR_MS) return;
     this.ticked = true;
     this.lastTickAt = now;
     const seen = await this.adapter.source.stat(key);
@@ -748,6 +757,7 @@ class LiveWindow {
     };
     // Added only when declared, so every other harness's body is byte-identical to before.
     if (this.adapter.sendQueuedNow !== undefined) body.sendQueuedNow = [...this.adapter.sendQueuedNow];
+    if (this.adapter.dequeue !== undefined) body.dequeueQueued = [...this.adapter.dequeue.keys];
     // Collie's own queued sends (ADR 0122), checked against every prompt the window holds, not the page.
     if (receipts.length > 0) {
       const entries = this.rows.map((row) => row.entry);
@@ -788,6 +798,12 @@ class LiveWindow {
   /** This generation, for a `?before=` page that must land in the same numbering. */
   generation(): number {
     return this.gen;
+  }
+
+  /** The reducer's queue mark ({@link RowReducer.queueMark}), or null when it keeps none. A generation with no rows read has met no queue. */
+  queueMark(): QueueMark | null {
+    if (this.reducer === null) return this.adapter.reducer().queueMark?.() ?? null;
+    return this.reducer.queueMark?.() ?? null;
   }
 
   /**
@@ -925,6 +941,23 @@ export class LiveWindows {
       upserts: page.entries.map((entry, i) => chatEntry(entry, first + i)),
       hasOlder: page.hasMore,
     };
+  }
+
+  /**
+   * The session's queue as a take-back reads it (ADR 0122, the 2026-11-22 addendum): the log read again
+   * now, past the tick floor, and the reducer's {@link QueueMark}, with the window's generation, so a log
+   * that was rewritten between two reads never ties a proof. Null where a {@link window} answers null,
+   * and where the reducer keeps no mark. It holds no text beyond what the reducer holds.
+   */
+  async queueNow(adapter: JournalAdapter, ref: AgentSessionRef): Promise<{ readonly gen: number; readonly mark: QueueMark } | null> {
+    const key = await adapter.source.resolve(ref);
+    if (key === null) return null;
+    const window = this.reach(key, adapter);
+    window.refs.delete(ref.value);
+    window.refs.add(ref.value);
+    await window.tick(key, true);
+    const mark = window.queueMark();
+    return mark === null ? null : { gen: window.generation(), mark };
   }
 
   /**
