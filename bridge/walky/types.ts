@@ -289,6 +289,9 @@ export interface WalkySkipped {
  */
 export const HEADER_RE = /^\[walky-talky (wt_[a-z0-9]{12})\] from (agent|operator) (.*)$/u;
 
+/** How every message's header line starts, on the screen and in the log ({@link HEADER_RE}). */
+export const WALKY_HEADER_PREFIX = "[walky-talky ";
+
 /** The reply suffix: one space after the closing parenthesis, ASCII (M62 README, settled 2026-10-17). */
 const REPLY_SUFFIX_RE = / reply to (wt_[a-z0-9]{12})$/u;
 
@@ -407,7 +410,7 @@ export function formatHeader(message: Pick<WalkyMessage, "id" | "kind" | "from" 
   const about = message.subject !== undefined && isCleanSubject(message.subject) ? ` about "${message.subject}"` : "";
   // A reply id that is not WALKY_ID is left out: a reader takes the line as a plain message, as it does one with no reply.
   const reply = message.replyTo === null || !WALKY_ID.test(message.replyTo) ? "" : ` reply to ${message.replyTo}`;
-  return `[walky-talky ${lineId(message.id)}] from ${message.kind} ${who}${mark}${about}${reply}`;
+  return `${WALKY_HEADER_PREFIX}${lineId(message.id)}] from ${message.kind} ${who}${mark}${about}${reply}`;
 }
 
 /**

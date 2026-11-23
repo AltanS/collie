@@ -223,4 +223,11 @@ export interface EdgeRecord {
    * edge, and from a start that named none. Nothing else of the payload rides: no transcript path, no prompt.
    */
   readonly source?: string;
+  /**
+   * The agent session the hook's payload named (`session_id`), on every edge of the session's own (never a
+   * tool edge). The router keeps it per pane (`bridge/surface/edges.ts` `agentSessionOf`), so the reminder of
+   * open asks answers only that session (.adr/0178). Pattern-checked ({@link AGENT_SESSION_ID} in parse.ts);
+   * absent from an older emitter and from a payload that named none.
+   */
+  readonly session?: string;
 }

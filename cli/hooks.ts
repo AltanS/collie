@@ -141,9 +141,23 @@ export const ASKS_TIMEOUT_S = 3;
 const OLD_CHECK_VERB = " beacon check ";
 const OLD_CHECK_EVENT = "Stop";
 
-/** The reminder's command for an emitter command this build wrote: the same binary, the same marker. */
+/**
+ * The reminder's command for an emitter command this build wrote: the same binary, the same marker. Throws
+ * when the command does not hold the emitter's verb: a replace that found nothing would write a SECOND
+ * emitter under the reminder's name. The installer then writes no reminder entry ({@link ourGroup}).
+ */
 export function asksCommandFor(emitCommand: string): string {
+  if (!emitCommand.includes(HOOK_VERB)) throw new Error(`the emitter command does not hold \`${HOOK_VERB.trim()}\``);
   return emitCommand.replace(HOOK_VERB, ASKS_VERB);
+}
+
+/** The reminder's entry for an emitter command, or none when {@link asksCommandFor} refuses it. */
+function asksEntries(emitCommand: string): JsonObject[] {
+  try {
+    return [{ type: "command", command: asksCommandFor(emitCommand), timeout: ASKS_TIMEOUT_S }];
+  } catch {
+    return [];
+  }
 }
 
 /** Whether a group of ours with no matcher in `event` carries an entry of ours whose command has `verb`. */
@@ -386,7 +400,7 @@ function ourGroup(registration: HookRegistration, command: string): JsonObject {
   // The `UserPromptSubmit` and `SessionStart` groups carry the reminder beside the emitter (.adr/0178). The
   // group is rebuilt on every run, so an install from before it gains it at the next byte comparison, and the
   // `Stop` group of an install with the old check loses that entry, with no marker bump.
-  const asks = ASKS_EVENTS.includes(registration.event) ? [{ type: "command", command: asksCommandFor(command), timeout: ASKS_TIMEOUT_S }] : [];
+  const asks = ASKS_EVENTS.includes(registration.event) ? asksEntries(command) : [];
   return {
     matcher: registration.matcher,
     hooks: [{ type: "command", command, timeout: 10 }, ...asks],

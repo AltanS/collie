@@ -1,8 +1,12 @@
 import type { JsonObject } from "../bridge/json.ts";
+import { AGENT_SESSION_ID } from "../bridge/beacon/parse.ts";
+import { withoutHidden } from "../bridge/hill/remind.ts";
+import { hillSwitchPath, parseHillSwitch } from "../bridge/hill/switch.ts";
 import { walkySocketPath } from "../bridge/walky/socket.ts";
+import { HEADER_RE, WALKY_HEADER_PREFIX } from "../bridge/walky/types.ts";
 import { asJsonObject, asJsonString, parseJsonObject } from "../web/src/lib/json.ts";
 import { HILL_ASK_ID_RE } from "../web/src/lib/hill/wire.ts";
-import { edgeStateDirs, promptHashOf, readEnvMarkers, type EdgeTargetDeps } from "./beacon.ts";
+import { edgeStateDirs, promptHashOf, readEnvMarkers, unwrapPrompt, type EdgeTargetDeps } from "./beacon.ts";
 import { holdSocketSafe } from "./hold.ts";
 import { EXIT } from "./io.ts";
 import { askSocket } from "./walky.ts";
@@ -19,11 +23,20 @@ import { askSocket } from "./walky.ts";
 //    the terminal. It never prints a `decision`, never blocks a prompt, never changes the prompt.
 //  - It has a hard time limit of its own, {@link ASKS_LIMIT_MS}, for the whole verb (the socket walk too),
 //    below the timeout the install writes. After it, it prints nothing and exits, whatever is still pending.
+//    One bridge gets at most {@link ASKS_BRIDGE_MS} of it, so a bridge that hangs leaves time for the next.
 //  - The gates, in this order, each one silent with exit 0: the payload is not JSON; the event is neither
 //    `UserPromptSubmit` nor `SessionStart`; the payload names a subagent or a teammate (`agent_id`); a
 //    session start whose source gets nothing (`startup`, or any other than clear, compact, resume, fork);
-//    no multiplexer markers; no bridge answers a valid list (every other answer, a refusal or "none" too,
-//    leads to the next bridge, since bridges of different releases can share a machine and a pane).
+//    a prompt that another agent sent (its first line is a WalkyTalky header `from agent`, or starts with
+//    `[walky-talky ` and is no header the hook can read; a header `from operator` is the operator's words and
+//    is asked as any prompt, the bridge's own "Answers to your asks" message among them); no
+//    multiplexer markers; no bridge whose own Asks switch reads on (a local file read, before any socket:
+//    off, missing or unreadable skips the bridge, and with none left no socket is opened); no bridge
+//    answers a valid list (every other answer, a refusal or "none" too, leads to the next bridge, since
+//    bridges of different releases can share a machine and a pane).
+//  - It sends the payload's `session_id` (pattern-checked; none, none sent). The bridge answers a list, and
+//    applies the `/clear` rule, only for the pane's current agent session as its hook edges name it, so a
+//    second Claude process in the same pane gets nothing and closes nothing.
 //  - It never decides. The bridge decides (bridge/hill/service.ts `askRemind`), and only it closes asks on
 //    `/clear`. The prompt text never leaves this process: the bridge gets only its salted hash, salted with
 //    that bridge's own send salt, as `beacon emit` hashes it for the prompt edge.
@@ -32,6 +45,9 @@ import { askSocket } from "./walky.ts";
 
 /** The hook's own time limit, for the whole verb. The install writes `timeout: 3` (seconds). */
 export const ASKS_LIMIT_MS = 1000;
+
+/** The most one bridge of the walk may take of {@link ASKS_LIMIT_MS}. A bridge that does not answer in it is left behind. */
+export const ASKS_BRIDGE_MS = 300;
 
 /** How many asks the text lists, and how long a question may be in it. */
 const LISTED_MAX = 5;
@@ -71,18 +87,12 @@ export interface BeaconAsksDeps extends EdgeTargetDeps {
   readonly after?: (ms: number, run: () => void) => () => void;
 }
 
-/** Whether a code point is a control character (C0, DEL, C1), a bidi control or a line or paragraph separator. */
-function controlPoint(code: number): boolean {
-  if (code < 0x20 || (code >= 0x7f && code <= 0x9f)) return true;
-  if (code === 0x2028 || code === 0x2029) return true;
-  return (code >= 0x200e && code <= 0x200f) || (code >= 0x202a && code <= 0x202e) || (code >= 0x2066 && code <= 0x2069);
-}
-
-/** A question as the text shows it: control characters removed, white space folded, quotes made safe, cut to 60 characters. */
+/**
+ * A question as the text shows it: every hidden code point gone (remind.ts `withoutHidden`: Cc, Zl and Zp
+ * as a space; Cf and the tag block removed), white space folded, quotes made safe, cut to 60 characters.
+ */
 export function shownQuestion(title: string): string {
-  let clean = "";
-  for (const ch of title) clean += controlPoint(ch.codePointAt(0) ?? 0) ? " " : ch;
-  const flat = clean.replace(/\s+/gu, " ").trim().replaceAll('"', "'");
+  const flat = withoutHidden(title).replace(/\s+/gu, " ").trim().replaceAll('"', "'");
   const points = [...flat];
   return points.length <= QUESTION_SHOWN_MAX ? flat : `${points.slice(0, QUESTION_SHOWN_MAX - 1).join("")}…`;
 }
@@ -127,7 +137,25 @@ export function remindListOf(raw: string | null): { readonly form: "full" | "sho
 }
 
 /** What the payload asks of the bridges, or null when the verb stays silent without asking any. */
-export type AsksAsk = { readonly event: "UserPromptSubmit" } | { readonly event: "SessionStart"; readonly source: string };
+export type AsksAsk = ({ readonly event: "UserPromptSubmit" } | { readonly event: "SessionStart"; readonly source: string }) & {
+  /** The payload's `session_id` when it has the shape `beacon emit` accepts, else null (then none is sent). */
+  readonly sessionId: string | null;
+};
+
+/**
+ * Whether a prompt is a message another AGENT sent through WalkyTalky. The first line (after the paste wrapper
+ * and the leading white space) is read with `HEADER_RE`: `from agent` is another agent; `from operator` is not
+ * (the operator's own message from the phone, and the bridge's own "Answers to your asks", are typed so); a line
+ * that starts with the prefix and is no valid header counts as another agent's, the careful side.
+ */
+export function fromAnotherAgent(prompt: string | undefined): boolean {
+  if (prompt === undefined) return false;
+  const text = unwrapPrompt(prompt).trimStart();
+  if (!text.startsWith(WALKY_HEADER_PREFIX)) return false;
+  const first = text.split(/\r?\n/u, 1)[0] ?? "";
+  const header = HEADER_RE.exec(first);
+  return header === null || header[2] !== "operator";
+}
 
 /** The payload's question for the bridges, or null for every payload the verb answers with silence at once. */
 export function asksOfPayload(payload: JsonObject): AsksAsk | null {
@@ -135,9 +163,25 @@ export function asksOfPayload(payload: JsonObject): AsksAsk | null {
   if (event === undefined) return null;
   // A subagent or a teammate is not the pane's session: its prompt and its start get nothing.
   if (payload.agent_id !== undefined && payload.agent_id !== null) return null;
-  if (event === "UserPromptSubmit") return { event };
+  const raw = asJsonString(payload.session_id)?.trim();
+  const sessionId = raw !== undefined && AGENT_SESSION_ID.test(raw) ? raw : null;
+  if (event === "UserPromptSubmit") {
+    // "If this message settles one, close it" is for the operator's words, not another agent's message
+    // (a WalkyTalky header `from operator` is the operator's, and is asked).
+    if (fromAnotherAgent(asJsonString(payload.prompt))) return null;
+    return { event, sessionId };
+  }
   const source = asJsonString(payload.source);
-  return source !== undefined && ASKS_START_SOURCES.includes(source) ? { event, source } : null;
+  return source !== undefined && ASKS_START_SOURCES.includes(source) ? { event, source, sessionId } : null;
+}
+
+/** Whether a bridge's own Asks switch reads on: the file the bridge writes, read by the bridge's own parser. Never throws. */
+function asksOnAt(deps: BeaconAsksDeps, stateDir: string): boolean {
+  try {
+    return parseHillSwitch(deps.files.read(hillSwitchPath(stateDir))).on;
+  } catch {
+    return false;
+  }
 }
 
 /** This install's own bridge first, then every bridge the hook target registry lists, as the hold walks them. */
@@ -147,7 +191,8 @@ function bridgesOf(deps: BeaconAsksDeps): AsksBridge[] {
   return listed.filter((bridge) => {
     if (seen.has(bridge.socket)) return false;
     seen.add(bridge.socket);
-    return holdSocketSafe(deps, bridge.socket);
+    // Asks off on that bridge (or no switch file, or one that does not read): no socket call at all.
+    return asksOnAt(deps, bridge.stateDir) && holdSocketSafe(deps, bridge.socket);
   });
 }
 
@@ -170,8 +215,9 @@ async function decide(deps: BeaconAsksDeps, deadline: number): Promise<string | 
     const left = deadline - now();
     if (left <= 0) return null;
     const event: JsonObject = asked.event === "SessionStart" ? { event: "start", source: asked.source } : { event: "prompt", promptHash: promptHashOf(deps, bridge.stateDir, payload), at: now() };
-    const line = `${JSON.stringify({ v: 1, markers, op: "ask.remind", ...event })}\n`;
-    const list = remindListOf(await deps.ask(bridge.socket, line, left).catch(() => null));
+    const session: JsonObject = asked.sessionId === null ? {} : { sessionId: asked.sessionId };
+    const line = `${JSON.stringify({ v: 1, markers, op: "ask.remind", ...event, ...session })}\n`;
+    const list = remindListOf(await deps.ask(bridge.socket, line, Math.min(left, ASKS_BRIDGE_MS)).catch(() => null));
     if (list === null) continue;
     const text = list.form === "short" ? shortReminder(list.asks) : fullReminder(list.asks, deps.binary());
     return asksOutput(asked.event, text);

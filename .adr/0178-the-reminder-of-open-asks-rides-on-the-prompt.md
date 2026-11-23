@@ -47,13 +47,16 @@ prints. Nothing is confirmed: an ask stays open until the person answers it or t
    is neither of the two; the payload names an `agent_id`; a `SessionStart` whose source is not `clear`, `compact`,
    `resume` or `fork`; no multiplexer markers; no bridge answers a valid list. Its own limit is 1 s for the whole
    verb; the install writes `timeout: 3`. It walks the bridges on the machine and goes on after every answer that is
-   not a valid list. The prompt text never leaves the process: the bridge gets its hash, salted with that bridge's
-   send salt, as `beacon emit` hashes it for the prompt edge.
-2. **The text.** The full form: "Collie: your open asks.", each ask with its id and its question (control characters
+   not a valid list, 300 ms at most per bridge; it skips, with no socket call, a bridge whose Asks switch file is not
+   on, and a prompt whose first line is a WalkyTalky header `from agent` (`from operator` is asked). The bridge
+   answers only the call's `session_id` when the pane's hook edges name it, and never an ask another
+   conversation posted. The prompt text never leaves the process: the bridge gets its hash, salted with that bridge's send salt, as `beacon emit` hashes it for prompts.
+2. **The text.** The full form: "Collie: your open asks.", each ask with its id and its question (hidden characters
    removed, cut to 60 characters), then how to close one with the binary the skill names, then "Still true: do
    nothing." The short form, the ids only: "Collie: open ask ak_1." or "Collie: open asks ak_1, ak_2." A list
    gets the full form when at least one of its asks is new to the session, which is one it was not shown in an
-   earlier list; else the short form, so an ask that closed does not bring the full form back. One switch
+   earlier list; else the short form, so an ask that closed does not bring the full form back. After 20 short forms
+   in a row the next is full again (the bridge cannot know a hook's output reached the model). One switch
    (`ASK_REMIND_SHORT_FORM`) turns the short form off: then every list is full. No answer of the person's is ever
    in it. The owner asked for this trim on 2026-11-23, because the first form cost too many tokens.
 3. **When it speaks.** At every prompt of the pane's own session with open asks; at `compact`, `resume` and `fork`
@@ -68,8 +71,9 @@ prints. Nothing is confirmed: an ask stays open until the person answers it or t
    nothing reads `carried` from a guess. A stop confirms once, and not while a newer hand-out waits unpaired. A start
    or end edge resets the pane's turn. A restart forgets the turns and never makes a `carried`.
 5. **`/clear` closes the pane's asks.** Only a `SessionStart` with source exactly `clear`, from a pane the socket
-   placed. Only the asks of that session (the address with its instance token) that are open and not busy; each is
-   withdrawn with the reason "conversation cleared", as every withdrawn ask is. Then the next list is the full one.
+   placed, once its hook edges name the call's new session id, moved to from the cleared one. Only the asks of that
+   session (the address with its instance token) that the cleared conversation posted (or unstamped), open and not
+   busy; each is withdrawn with the reason "conversation cleared". Then the next list is the full one.
 6. **Closing.** `collie walky cancel <id>...` takes 1 to 5 ids with one flag for all (`--answered` or
    `--because`). One id goes as `id`, as an older bridge reads it; more go as `ids`, and the bridge answers one result
    per id, in order, so one bad id stops none. `collie walky keep` and `ask.keep` are gone.
@@ -87,7 +91,7 @@ carries no answer, no body, no file and nothing of another session.
 
 - Cost: one process start per prompt and per session start, and no model step. The tokens of the text only when the
   session has open asks: the full form once per ask (and after `compact`, `resume` and `fork`), then one line of
-  ids.
+  ids, with the full form again after every 20 short ones.
 - Codex and the other harnesses get no reminder. Their asks read `fresh` or `unchecked`, never `carried`.
 - A running Claude reloads its hooks from the settings files, so an install reaches running sessions. One with hooks
   turned off gets no reminder.

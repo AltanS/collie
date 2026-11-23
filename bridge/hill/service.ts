@@ -148,7 +148,20 @@ import { HILL_CREW_STATE_DEFAULT, type HillCrewStateFile } from "./crew-state.ts
 import type { HillSwitchReading } from "./switch.ts";
 import { askRuleRefusal, HILL_ASK_LIMITS, HILL_LIMITS, tooManyAsks, type HillPostLimits } from "./ask-rules.ts";
 import type { HillAskFilesAnswer } from "./ask-files.ts";
-import { ASK_REMIND_CLOCK_MS, ASK_REMIND_LISTED_MAX, ASK_REMIND_START_SOURCES, remindItem, type AskPane, type AskRemindAnswer, type AskRemindBook, type AskRemindEvent } from "./remind.ts";
+import {
+  ASK_REMIND_CLEAR_WAIT_MS,
+  ASK_REMIND_CLOCK_MS,
+  ASK_REMIND_LISTED_MAX,
+  ASK_REMIND_START_SOURCES,
+  remindItem,
+  remindKey,
+  withoutHidden,
+  type AskPane,
+  type AskRemindAnswer,
+  type AskRemindBook,
+  type AskRemindEvent,
+  type PaneAgentSession,
+} from "./remind.ts";
 import { askAnswerRid, resultOf, sendDigest, sendRecord } from "./answers.ts";
 import { answersMessage, ASKS_ANSWERS_SUBJECT } from "../../web/src/lib/hill/answers-message.ts";
 
@@ -303,6 +316,12 @@ export interface HillServiceDeps {
    * on this bridge, or null when no such pane is live: the asks a hook edge of that pane is about.
    */
   readonly paneAddress?: (session: string, paneId: string) => string | null;
+  /**
+   * The agent session the pane's hook edges name now, and the one the same process named before it
+   * (bridge/surface/edges.ts `agentSessionOf`), or null when the bridge knows none. The reminder lists and
+   * closes only for that session; absent, `ask.remind` answers "none" and `/clear` closes nothing.
+   */
+  readonly paneAgentSession?: (session: string, paneId: string) => PaneAgentSession | null;
   readonly audit?: (entry: AuditEntry) => void;
   /**
    * Run a trick's program with an answer as its tap (bridge/index.ts wires it to the tricks runner).
@@ -635,9 +654,9 @@ export function readItLine(id: string): string {
  * and {@link readItLine}. A dismiss is `Answer to <id>` and `Dismissed.` only.
  */
 export function answerMessage(decision: Pick<HillDecision, "id" | "title">, intent: string, label: string | null, text: string | null, toPoster = true): string {
-  const lines = [toPoster ? `Answer to ${decision.id} "${messageTitle(decision.title)}"` : `Answer to ${decision.id}`];
+  const lines = [toPoster ? `Answer to ${decision.id} "${messageTitle(withoutHidden(decision.title))}"` : `Answer to ${decision.id}`];
   if (intent === "dismiss") return [...lines, DISMISSED].join("\n");
-  if (intent !== "answer") lines.push(toPoster ? `Option: ${intent} (${label ?? intent})` : `Option: ${intent}`);
+  if (intent !== "answer") lines.push(toPoster ? `Option: ${intent} (${label === null ? intent : withoutHidden(label)})` : `Option: ${intent}`);
   if (text !== null && text !== "") lines.push(text);
   if (!toPoster) lines.push(readItLine(decision.id));
   return lines.join("\n");
@@ -693,6 +712,31 @@ export function hillDeviceId(tokenHash: string): string {
 }
 
 /** The key a sender's decisions are filed under: its address, the trick's id, or what Collie asks about. */
+/**
+ * An ask as the typed "Answers to your asks" message quotes it: its question and its option labels, text the
+ * agent wrote, with nothing hidden in them (remind.ts `withoutHidden`). The stored ask stays as it is.
+ */
+function messageAsk<T extends Pick<HillDecision, "id" | "title" | "recommends" | "options">>(decision: T): T {
+  return { ...decision, title: withoutHidden(decision.title), options: decision.options.map((option) => ({ ...option, label: withoutHidden(option.label) })) };
+}
+
+/** A `/clear` asked by a pane's hook, waiting until the pane's edges name the new conversation. */
+interface PendingClear {
+  readonly sender: HillAgentSender;
+  /** The new conversation the clear's call named. */
+  readonly sessionId: string;
+  /** The conversation that was cleared, as the pane's edges named it, or null when the bridge knew none. */
+  readonly cleared: string | null;
+  readonly at: number;
+}
+
+/** How many panes' waiting clears the service keeps. */
+const PENDING_CLEARS_MAX = 64;
+
+function paneKeyOf(where: AskPane): string {
+  return `${where.session}\u0000${where.paneId}`;
+}
+
 function senderKey(sender: AnySender): string {
   if (sender.kind === "agent") return sender.address;
   if (sender.kind === "trick") return `trick:${sender.trickId}`;
@@ -883,6 +927,8 @@ export class HillService {
   private claiming = new Map<string, number>();
   /** The Sends (`answerAsks`) that run now, by `rid`, with their digest: a second call with one rid joins the first. */
   private sends = new Map<string, { readonly digest: string; readonly work: Promise<HillAnswersOutcome> }>();
+  /** The `/clear`s that wait for the pane's edges to name the new conversation, by pane ({@link askClear}). */
+  private readonly clears = new Map<string, PendingClear>();
 
   constructor(private readonly deps: HillServiceDeps) {
     this.now = deps.now ?? Date.now;
@@ -2034,7 +2080,7 @@ export class HillService {
     // The crew state at this moment rides on the typed answer as one last line, while it is not `here`.
     // An ask's answer is the one-line form of a Send (answers-message.ts); a dismiss of one says only that.
     const message =
-      decision.ask !== undefined && intent !== "dismiss" ? answersMessage([{ ask: decision, intent, text }]) : answerMessage(decision, intent, option?.label ?? null, text, this.answersThePoster(decision) || decision.from.kind === "collie");
+      decision.ask !== undefined && intent !== "dismiss" ? answersMessage([{ ask: messageAsk(decision), intent, text }]) : answerMessage(decision, intent, option?.label ?? null, text, this.answersThePoster(decision) || decision.from.kind === "collie");
     let body = withCrewLine(message, this.crewState().state);
     if (codePoints(body) > WALKY_BODY_MAX) return this.final(request, id, by, digest, receiptOf(rid, now, "rejected", "text is too long for one message", "open", null));
 
@@ -2106,7 +2152,7 @@ export class HillService {
    * here, {@link ASK_FILES_LEAD_ONLY}); a lead that does not know asks posts a plain Decision, which the
    * member takes back at once and refuses `lead_too_old`.
    */
-  async askPost(from: HillAgentSender, fields: JsonObject): Promise<HillPostAnswer> {
+  async askPost(from: HillAgentSender, fields: JsonObject, where: AskPane | null = null): Promise<HillPostAnswer> {
     const read = readPostFields(fields);
     if (!read.ok) return refuse(read.code, read.error);
     const ask = read.input.ask;
@@ -2124,7 +2170,11 @@ export class HillService {
     if (this.refusesHere()) return refuse("hill_off", HILL_OFF);
     const files = this.deps.askFiles === undefined ? null : await this.deps.askFiles(from.address, ask.files);
     if (files !== null && !files.ok) return refuse("bad_file", files.error);
-    return this.withCrewState(this.postDecision(from, read.input, files === null ? {} : { askFiles: { root: files.root, files: files.files } }));
+    const answer = this.withCrewState(this.postDecision(from, read.input, files === null ? {} : { askFiles: { root: files.root, files: files.files } }));
+    // The agent session the pane runs now posted it (remind.ts, the stamp): another conversation is not reminded of it.
+    const session = answer.ok && where !== null ? this.paneSession(where) : null;
+    if (answer.ok && session !== null) this.deps.reminders?.stamp(answer.decision.id, session.current);
+    return answer;
   }
 
   /** `ask.list` from the socket: the sender's own OPEN asks, oldest first, from this bridge or the lead. */
@@ -2163,49 +2213,120 @@ export class HillService {
       if (this.forwardOf() !== null || this.deps.crewMode() === "peer" || this.deps.deposed?.() === true) return { kind: "none" };
       if (this.refusesHere()) return { kind: "none" };
       const key = senderKey(sender);
-      const open = this.openAsksOf(key);
-      if (event.kind === "start") return this.remindAtStart(book, sender, key, open, event.source);
+      const sessionId = event.sessionId ?? null;
+      const known = this.paneSession(where);
+      if (event.kind === "start" && event.source === "clear") {
+        this.askClear(sender, where, sessionId, known);
+        return { kind: "none" };
+      }
+      this.applyClears(where, known);
+      // The bridge's own "Answers to your asks" prompt is taken first, so it answers once whoever asks.
+      const own = event.kind === "prompt" && event.hash !== null ? book.takeOwn(where.session, where.paneId, event.hash) : null;
+      // ONE AGENT SESSION (remind.ts): the call names the pane's current agent session, or it gets nothing.
+      if (sessionId === null || known === null || known.current !== sessionId) return { kind: "none" };
+      // An ask another conversation posted is not this one's to see.
+      const open = this.openAsksOf(key).filter((decision) => {
+        const stamp = book.stampOf(decision.id);
+        return stamp === undefined || stamp === sessionId;
+      });
+      const shownKey = remindKey(key, sessionId);
+      if (event.kind === "start") return this.remindAtStart(book, shownKey, open, event.source);
       const now = this.now();
       // The hook's clock is this machine's; one that is far off is not believed.
       const at = Math.abs(event.at - now) <= ASK_REMIND_CLOCK_MS ? event.at : now;
       const before = open.filter((decision) => decision.at < at);
-      const own = event.hash === null ? null : book.takeOwn(where.session, where.paneId, event.hash);
       if (own !== null) {
         // The bridge typed this prompt: its message listed the session's asks that were open when it was made.
         const listed = before.filter((decision) => decision.at <= own.composedAt).map((decision) => decision.id);
         book.handOut(where.session, where.paneId, { address: key, hash: event.hash, at, ids: listed });
-        book.shown(key, listed);
+        book.shown(shownKey, listed);
         return { kind: "none" };
       }
       if (before.length === 0) return { kind: "none" };
       const listed = before.slice(0, ASK_REMIND_LISTED_MAX);
       const ids = listed.map((decision) => decision.id);
       book.handOut(where.session, where.paneId, { address: key, hash: event.hash, at, ids });
-      return { kind: "list", form: book.form(key, ids), asks: listed.map(remindItem) };
+      return { kind: "list", form: book.form(shownKey, ids), asks: listed.map(remindItem) };
     } catch {
       return { kind: "none" };
     }
   }
 
-  /** The `SessionStart` half of {@link askRemind}. */
-  private remindAtStart(book: AskRemindBook, sender: HillAgentSender, key: string, open: readonly HillDecision[], source: string): AskRemindAnswer {
-    // THE /clear RULE (.adr/0178): a destructive path, so every condition is exact. The event is a start, its
-    // source is exactly `clear`, the markers named a pane of this bridge (the socket placed it, or nothing
-    // reached here), and only that pane's own asks close: the sender key is the pane's address with its
-    // instance token, so another pane, another session in the same pane id, another machine's pane, a
-    // closed ask, are all outside it.
-    if (source === "clear") {
-      book.forget(key);
-      this.clearAsks(sender, open);
-      return { kind: "none" };
-    }
+  /** The `SessionStart` half of {@link askRemind}, for a source that is not `clear`. */
+  private remindAtStart(book: AskRemindBook, shownKey: string, open: readonly HillDecision[], source: string): AskRemindAnswer {
     if (!ASK_REMIND_START_SOURCES.includes(source) || open.length === 0) return { kind: "none" };
     const listed = open.slice(0, ASK_REMIND_LISTED_MAX);
     book.shown(
-      key,
+      shownKey,
       listed.map((decision) => decision.id),
     );
     return { kind: "list", form: "full", asks: listed.map(remindItem) };
+  }
+
+  /** The pane's current agent session as its hook edges name it, or null. Never throws. */
+  private paneSession(where: AskPane): PaneAgentSession | null {
+    try {
+      return this.deps.paneAgentSession?.(where.session, where.paneId) ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * THE /clear RULE (.adr/0178): a destructive path, so every condition is exact. The event is a start, its
+   * source is exactly `clear`, the markers named a pane of this bridge (the socket placed it, or nothing
+   * reached here), and only that pane's own asks close: the sender key is the pane's address with its
+   * instance token, so another pane, another session in the same pane id, another machine's pane, a
+   * closed ask, are all outside it.
+   *
+   * And it is ONE AGENT SESSION's clear: the call names the new conversation (`/clear` mints a new session
+   * id), and the clear applies only once the pane's own hook edges name that same id, moved to from the
+   * conversation that was cleared by the same process ({@link applyClears}). The hook and the emitter run at
+   * once, so this usually happens a moment after the call, on the start edge; it waits at most
+   * {@link ASK_REMIND_CLEAR_WAIT_MS}. Only the asks the cleared conversation posted close, and the unstamped
+   * ones; a process the edges never name (a `claude -p` in the same pane) closes nothing.
+   */
+  private askClear(sender: HillAgentSender, where: AskPane, sessionId: string | null, known: PaneAgentSession | null): void {
+    if (sessionId === null) return;
+    // The conversation that was cleared: the one the pane's edges named before the new one.
+    const cleared = known === null ? null : known.current !== sessionId ? known.current : known.previous;
+    const pane = paneKeyOf(where);
+    this.clears.delete(pane);
+    this.clears.set(pane, { sender, sessionId, cleared, at: this.now() });
+    if (this.clears.size > PENDING_CLEARS_MAX) {
+      const oldest = this.clears.keys().next();
+      if (oldest.done !== true) this.clears.delete(oldest.value);
+    }
+    this.applyClears(where, known);
+  }
+
+  /** A waiting `/clear` of the pane, applied when the pane's edges name its new conversation ({@link askClear}). */
+  private applyClears(where: AskPane, known: PaneAgentSession | null = this.paneSession(where)): void {
+    const pane = paneKeyOf(where);
+    const pending = this.clears.get(pane);
+    if (pending === undefined) return;
+    if (this.now() - pending.at > ASK_REMIND_CLEAR_WAIT_MS) {
+      this.clears.delete(pane);
+      return;
+    }
+    if (known === null || known.current !== pending.sessionId) return;
+    this.clears.delete(pane);
+    // The cleared conversation is the one the same process named just before the new one. When the call
+    // already knew it, it must be that one; with none known, only the unstamped asks close.
+    const cleared = known.previous;
+    if (pending.cleared !== null && cleared !== pending.cleared) return;
+    const book = this.deps.reminders;
+    if (book === undefined) return;
+    const key = senderKey(pending.sender);
+    // The pane must still hold the same session instance the clear was asked from.
+    if (this.deps.paneAddress !== undefined && this.deps.paneAddress(where.session, where.paneId) !== key) return;
+    if (cleared !== null) book.forget(remindKey(key, cleared));
+    book.forget(remindKey(key, pending.sessionId));
+    const open = this.openAsksOf(key).filter((decision) => {
+      const stamp = book.stampOf(decision.id);
+      return stamp === undefined || (cleared !== null && stamp === cleared);
+    });
+    this.clearAsks(pending.sender, open);
   }
 
   /** Close the open asks of `sender`'s own session as {@link HILL_ASK_CLEARED}, as a take back closes one. */
@@ -2230,6 +2351,8 @@ export class HillService {
     try {
       const book = this.deps.reminders;
       if (book === undefined) return;
+      // A `/clear` that waits for the pane's edges to name the new conversation applies on them.
+      this.applyClears(where);
       if (kind === "start" || kind === "end") {
         book.reset(where.session, where.paneId);
         return;
@@ -2383,8 +2506,8 @@ export class HillService {
       .filter((decision) => decision.state === "open" && decision.ask !== undefined && keyOf(decision) === address && !answered.has(decision.id))
       .toSorted((a, b) => a.at - b.at);
     const message = answersMessage(
-      live.map((entry) => ({ ask: entry.decision, intent: entry.intent, text: entry.text })),
-      others,
+      live.map((entry) => ({ ask: messageAsk(entry.decision), intent: entry.intent, text: entry.text })),
+      others.map(messageAsk),
     );
     const body = withCrewLine(message, this.crewState().state);
     const over = codePoints(body) - WALKY_BODY_MAX;
@@ -2428,8 +2551,12 @@ export class HillService {
         ? body
         : withCrewLine(
             answersMessage(
-              live.filter((entry) => closed.some((decision) => decision.id === entry.decision.id)).map((entry) => ({ ask: entry.decision, intent: entry.intent, text: entry.text })),
-              this.deps.store.all().filter((decision) => decision.state === "open" && decision.ask !== undefined && keyOf(decision) === address && !answered.has(decision.id)).toSorted((a, b) => a.at - b.at),
+              live.filter((entry) => closed.some((decision) => decision.id === entry.decision.id)).map((entry) => ({ ask: messageAsk(entry.decision), intent: entry.intent, text: entry.text })),
+              this.deps.store
+                .all()
+                .filter((decision) => decision.state === "open" && decision.ask !== undefined && keyOf(decision) === address && !answered.has(decision.id))
+                .toSorted((a, b) => a.at - b.at)
+                .map(messageAsk),
             ),
             this.crewState().state,
           );

@@ -5,7 +5,7 @@ import { join } from "node:path";
 
 import type { BeaconMatcher } from "../bridge/beacon/decorate.ts";
 import { memoryHillReceipts } from "../bridge/hill/receipts.ts";
-import { AskRemindBook } from "../bridge/hill/remind.ts";
+import { AskRemindBook, type PaneAgentSession } from "../bridge/hill/remind.ts";
 import { HillService } from "../bridge/hill/service.ts";
 import { HillStore } from "../bridge/hill/store.ts";
 import { HillSwitch, writeHillSwitch } from "../bridge/hill/switch.ts";
@@ -17,11 +17,12 @@ import { WalkyLog } from "../bridge/walky/log.ts";
 import { WalkyService } from "../bridge/walky/service.ts";
 import { walkySocketPath, WalkyServer, type PlaceTarget } from "../bridge/walky/socket.ts";
 import { spaceOf } from "../bridge/walky/space.ts";
+import { formatHeader } from "../bridge/walky/types.ts";
 import type { JsonObject } from "../bridge/json.ts";
 import { parseJsonObject } from "../web/src/lib/json.ts";
 import { HILL_ASK_CLEARED } from "../web/src/lib/hill/wire.ts";
 import { cmdAskCancel, cmdWalkyAsk } from "./ask.ts";
-import { ASKS_LIMIT_MS, asksOfPayload, cmdBeaconAsks, fullReminder, shortReminder, shownQuestion, socketAsk, type BeaconAsksDeps } from "./beacon-asks.ts";
+import { ASKS_BRIDGE_MS, ASKS_LIMIT_MS, asksOfPayload, cmdBeaconAsks, fullReminder, shortReminder, shownQuestion, socketAsk, type BeaconAsksDeps } from "./beacon-asks.ts";
 import { promptHashOf } from "./beacon.ts";
 import { capture, context, fakeFiles } from "./fakes.ts";
 import type { HillDeps } from "./hill.ts";
@@ -52,11 +53,16 @@ interface Fake {
   asked: string[];
 }
 
+/** Each fake bridge's own Asks switch, on: the hook reads it before it asks that bridge. */
+function switchesOn(sockets: readonly string[]): Record<string, string> {
+  return Object.fromEntries(sockets.map((socket) => [`/state${socket}/asks/switch.json`, JSON.stringify({ v: 1, on: true, at: "2026-11-23T00:00:00.000Z" })]));
+}
+
 function fake(over: { payload?: string; env?: Record<string, string>; answers?: Record<string, string | null | "hang">; fire?: boolean } = {}): Fake {
   const printed: string[] = [];
   const asked: string[] = [];
   const answers = over.answers ?? { "/s/one": JSON.stringify(LIST) };
-  const files = fakeFiles({});
+  const files = fakeFiles(switchesOn(Object.keys(answers)));
   files.entryTypes.set("/", "directory");
   files.entryTypes.set("/s", "directory");
   for (const path of Object.keys(answers)) files.entryTypes.set(path, "other");
@@ -116,7 +122,7 @@ describe("the gates, each silent with exit 0", () => {
       expect(f.asked).toEqual([]);
     }
     // `agent_type` alone is `claude --agent`: the main session, which is asked.
-    expect(asksOfPayload({ ...PROMPT, agent_type: "reviewer" })).toEqual({ event: "UserPromptSubmit" });
+    expect(asksOfPayload({ ...PROMPT, agent_type: "reviewer" })).toEqual({ event: "UserPromptSubmit", sessionId: "s1" });
   });
 
   test("SessionStart: startup and any unknown source ask no bridge; clear, compact, resume and fork do", async () => {
@@ -128,7 +134,7 @@ describe("the gates, each silent with exit 0", () => {
     const f = fake({ payload: JSON.stringify({ hook_event_name: "SessionStart" }) });
     await silent(f);
     expect(f.asked).toEqual([]);
-    for (const source of ["clear", "compact", "resume", "fork"]) expect(asksOfPayload(START(source))).toEqual({ event: "SessionStart", source });
+    for (const source of ["clear", "compact", "resume", "fork"]) expect(asksOfPayload(START(source))).toEqual({ event: "SessionStart", source, sessionId: "s1" });
   });
 
   test("no multiplexer markers", async () => {
@@ -196,7 +202,7 @@ describe("what it prints", () => {
     const f = fake({ payload: JSON.stringify(START("compact")) });
     expect(await cmdBeaconAsks(f.deps)).toBe(EXIT.OK);
     expect(f.printed).toEqual([JSON.stringify({ hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: FULL_TEXT } })]);
-    expect(lineOf(f.asked[0]!)).toEqual({ v: 1, markers: [{ namespace: "tmux", pane: "%1", scope: "/tmp/tmux-1/default" }], op: "ask.remind", event: "start", source: "compact" });
+    expect(lineOf(f.asked[0]!)).toEqual({ v: 1, markers: [{ namespace: "tmux", pane: "%1", scope: "/tmp/tmux-1/default" }], op: "ask.remind", event: "start", source: "compact", sessionId: "s1" });
   });
 
   test("the short form", async () => {
@@ -218,7 +224,7 @@ describe("what it prints", () => {
   });
 
   test("the prompt goes as its hash only, salted with each bridge's own salt; never the prompt text", async () => {
-    const salted = fakeFiles({ "/state/s/one/sends/.salt": "salt-one\n", "/state/s/two/sends/.salt": "salt-two\n" });
+    const salted = fakeFiles({ ...switchesOn(["/s/one", "/s/two"]), "/state/s/one/sends/.salt": "salt-one\n", "/state/s/two/sends/.salt": "salt-two\n" });
     const f = fake({ answers: { "/s/one": JSON.stringify({ ok: true, remind: "none" }), "/s/two": JSON.stringify(LIST) } });
     for (const [path, type] of f.files.entryTypes) salted.entryTypes.set(path, type);
     const deps = { ...f.deps, files: salted };
@@ -265,7 +271,8 @@ describe("what it prints", () => {
     };
     expect(await cmdBeaconAsks(deps)).toBe(EXIT.OK);
     expect(f.printed).toEqual([]);
-    expect(budgets).toEqual([ASKS_LIMIT_MS, ASKS_LIMIT_MS / 2]);
+    // Each bridge gets at most its share of what is left (fix of 2026-11-23: 300 ms each).
+    expect(budgets).toEqual([ASKS_BRIDGE_MS, ASKS_BRIDGE_MS]);
   });
 
   test("the question is cleaned and cut; five asks stay small", () => {
@@ -299,7 +306,8 @@ describe("what it prints", () => {
 
   test("shownQuestion: control characters and quotes at the cut", () => {
     expect(shownQuestion(`${"x".repeat(56)}\n\n\u0007"q"${"y".repeat(10)}`)).toBe(`${"x".repeat(56)} 'q…`);
-    expect(shownQuestion('"a"\tb\u202ec')).toBe("'a' b c");
+    // U+202E is a format character (Cf): removed, not a space (2026-11-23).
+    expect(shownQuestion('"a"\tb\u202ec')).toBe("'a' bc");
   });
 
   test("fullReminder: the exact text for one ask and for five; five stay under 1,000 bytes", () => {
@@ -343,7 +351,11 @@ function dir(prefix: string): string {
   return made;
 }
 
+/** What the rig pane's hook edges name: the payloads' `s1`, until a test moves it. */
+let agentSessionNow: PaneAgentSession = { current: "s1", previous: null };
+
 async function bridge(clock: { now: number }): Promise<{ readonly socket: string; readonly stateDir: string; readonly hill: HillService }> {
+  agentSessionNow = { current: "s1", previous: null };
   const stateDir = dir("beacon-asks-");
   mkdirSync(join(stateDir, "sends"), { recursive: true });
   writeFileSync(join(stateDir, "sends", ".salt"), "rig-salt\n");
@@ -365,6 +377,8 @@ async function bridge(clock: { now: number }): Promise<{ readonly socket: string
     hillSwitch: new HillSwitch(stateDir, null, () => undefined),
     reminders: new AskRemindBook(() => clock.now),
     paneAddress: (session, paneId) => (session === "main" && paneId === "%1" ? walky.addressOf("%1", "aaaa") : null),
+    // The pane's agent session as its hook edges name it: the payloads' `s1`, until a test moves it.
+    paneAgentSession: (session, paneId) => (session === "main" && paneId === "%1" ? agentSessionNow : null),
   });
   const server = new WalkyServer({ socketPath: walkySocketPath(stateDir), service: walky, targets: () => [target], log: () => undefined, hill });
   expect(await server.start()).toBe(true);
@@ -438,9 +452,13 @@ describe("the whole round over the socket", () => {
     await cmdBeaconAsks(hookDeps(b, START("compact"), compact, clock));
     expect(contextOf(compact[0]!)).toContain("Collie: your open asks.");
 
+    // `/clear` mints a new session id; the clear applies once the pane's own start edge names it.
     const cleared: string[] = [];
-    await cmdBeaconAsks(hookDeps(b, START("clear"), cleared, clock));
+    await cmdBeaconAsks(hookDeps(b, { ...START("clear"), session_id: "s2" }, cleared, clock));
     expect(cleared).toEqual([]);
+    expect(b.hill.list().open).toHaveLength(2);
+    agentSessionNow = { current: "s2", previous: "s1" };
+    b.hill.askEdge({ session: "main", paneId: "%1" }, "start", clock.now + 100, null);
     expect(b.hill.list().open).toEqual([]);
     for (const id of ["ak_rmnd00000001", "ak_rmnd00000002"]) expect(b.hill.list().closed.find((decision) => decision.id === id)).toMatchObject({ state: "withdrawn", closedReason: HILL_ASK_CLEARED });
   });
@@ -458,6 +476,33 @@ describe("the whole round over the socket", () => {
     const second: string[] = [];
     await cmdBeaconAsks(hookDeps(b, { ...PROMPT, prompt: "next" }, second, clock));
     expect(contextOf(second[0]!)).toBe("Collie: open ask ak_rmnd00000001.");
+  });
+
+  // The bridge types its own "Answers to your asks" as a WalkyTalky message of kind `operator`, so the prompt starts
+  // with the header `from operator`. The hook must still ask the bridge (which answers none, and records the hand-out
+  // of the open rest), or the prompt edge marks that rest `unchecked` for good instead of `carried` at the stop.
+  socketTest("the bridge's own Answers prompt (header from operator): the hook prints nothing, the hand-out exists, the open rest is carried", async () => {
+    const clock = { now: 1_000_000 };
+    const b = await bridge(clock);
+    for (const n of [1, 2]) expect(await cmdWalkyAsk(cliDeps(b.socket, clock), ASK(n))).toBe(EXIT.OK);
+    clock.now += 60_000;
+    // One ask is answered; the message the bridge types lists the open rest (the other ask).
+    expect(await cmdAskCancel(cliDeps(b.socket, clock), ["ak_rmnd00000002", "--answered"])).toBe(EXIT.OK);
+    const header = formatHeader({ id: "wt_k3f9x2m8q1a0", kind: "operator", from: { memberId: null, address: null, harness: null, label: "Pixel 9" }, replyTo: null });
+    const typed = { ...PROMPT, prompt: `${header}\nAnswers to your asks\n\nShip the fix on Edge first, round 2? You chose: Ship it on Edge.` };
+    const hash = promptHashOf({ files: realFiles }, b.stateDir, typed);
+    expect(hash).not.toBeNull();
+    b.hill.typedAnswers({ session: "main", paneId: "%1" }, hash!, clock.now);
+    clock.now += 1000;
+
+    const printed: string[] = [];
+    expect(await cmdBeaconAsks(hookDeps(b, typed, printed, clock))).toBe(EXIT.OK);
+    expect(printed).toEqual([]);
+    // The emitter's edges for that prompt and its stop. The hand-out is what turns the mark to `carried`.
+    b.hill.askEdge({ session: "main", paneId: "%1" }, "prompt", clock.now, hash);
+    b.hill.askEdge({ session: "main", paneId: "%1" }, "stop", clock.now + 3000, null);
+    expect(b.hill.list().open).toHaveLength(1);
+    expect(b.hill.list().open[0]).toMatchObject({ id: "ak_rmnd00000001", ask: { mark: "carried", confirmedAt: clock.now + 3000 } });
   });
 
   socketTest("a stopped bridge: silent, exit 0, within the limit", async () => {

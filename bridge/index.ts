@@ -2818,6 +2818,9 @@ const hill = new HillService({
     const token = walkyInstances.peek(session, paneId);
     return token === null ? null : walky.addressOf(paneId, token);
   },
+  // The pane's current agent session as its own hook edges name it (surface/edges.ts): the reminder answers
+  // only that session, and a `/clear` closes only what the conversation it cleared posted.
+  paneAgentSession: (session, paneId) => edgeRouter?.agentSessionOf(session, paneId) ?? null,
   askFiles: askFilesResolver({
     paneRoot: (paneId) => agentPaneFilesRoot(registry.all().map((rt) => rt.engine.current()), paneId, homedir()),
     home: homedir(),

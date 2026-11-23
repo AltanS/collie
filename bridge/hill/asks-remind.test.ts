@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import { HILL_ASK_CLEARED, type HillDecision } from "../../web/src/lib/hill/wire.ts";
 import { askInput, askRig, ONE, posted, TWO, type AskRig } from "./ask-rig.ts";
-import { AskRemindBook } from "./remind.ts";
+import { AskRemindBook, type PaneAgentSession } from "./remind.ts";
 import type { HillAgentSender } from "./service.ts";
 
 // The reminder that rides on the prompt, in the service (.adr/0178): `ask.remind` for a prompt and for a
@@ -14,18 +14,32 @@ const P2 = { session: "main", paneId: "%2" };
 
 interface Rig extends AskRig {
   readonly book: AskRemindBook;
+  /** The agent session each pane's hook edges name (2026-11-23): `s1` on both panes until a test moves it. */
+  readonly sessions: Map<string, PaneAgentSession>;
 }
 
 function rig(over: { crewMode?: "solo" | "peer" } = {}): Rig {
   let book: AskRemindBook | null = null;
+  const sessions = new Map<string, PaneAgentSession>([
+    ["%1", { current: "s1", previous: null }],
+    ["%2", { current: "s1", previous: null }],
+  ]);
   const r = askRig(undefined, (clock) => {
     book = new AskRemindBook(clock);
     const paneAddress = (session: string, paneId: string): string | null => (session !== "main" ? null : paneId === "%1" ? ONE.address : paneId === "%2" ? TWO.address : null);
+    const paneAgentSession = (session: string, paneId: string): PaneAgentSession | null => (session === "main" ? (sessions.get(paneId) ?? null) : null);
     const crewMode = over.crewMode;
-    if (crewMode === undefined) return { reminders: book, paneAddress };
-    return { reminders: book, paneAddress, crewMode: () => crewMode };
+    if (crewMode === undefined) return { reminders: book, paneAddress, paneAgentSession };
+    return { reminders: book, paneAddress, paneAgentSession, crewMode: () => crewMode };
   });
-  return Object.assign(r, { book: book! });
+  return Object.assign(r, { book: book!, sessions });
+}
+
+/** `/clear` in pane P1: the hook's call names the new conversation, then the pane's own start edge names it too. */
+function clear(r: Rig): void {
+  r.hill.askRemind(ONE, P1, { kind: "start", source: "clear", sessionId: "s2" });
+  r.sessions.set("%1", { current: "s2", previous: "s1" });
+  r.hill.askEdge(P1, "start", r.clock, null);
 }
 
 function post(r: Rig, n: number, from: HillAgentSender = ONE): HillDecision {
@@ -35,7 +49,7 @@ function post(r: Rig, n: number, from: HillAgentSender = ONE): HillDecision {
 
 function prompt(r: Rig, hash: string | null = "h", where = P1, from: HillAgentSender = ONE) {
   r.clock += 1000;
-  return r.hill.askRemind(from, where, { kind: "prompt", hash, at: r.clock });
+  return r.hill.askRemind(from, where, { kind: "prompt", hash, at: r.clock, sessionId: "s1" });
 }
 
 function mark(r: Rig, id: string) {
@@ -51,7 +65,7 @@ describe("ask.remind for a prompt", () => {
     const at = r.clock + 1;
     r.clock += 5000;
     const late = posted(r.hill.post(ONE, askInput(3)));
-    const answer = r.hill.askRemind(ONE, P1, { kind: "prompt", hash: "h", at });
+    const answer = r.hill.askRemind(ONE, P1, { kind: "prompt", hash: "h", at, sessionId: "s1" });
     expect(answer).toEqual({ kind: "list", form: "full", asks: [{ id: a.id, title: a.title }, { id: b.id, title: b.title }] });
     expect(JSON.stringify(answer)).not.toContain(late.id);
   });
@@ -91,7 +105,7 @@ describe("ask.remind for a prompt", () => {
     const extra = { ...six[0]!, id: "ak_extra0000006", requestId: "00000000-0000-4000-8000-000000000066", at: r.clock + 10 };
     r.store.put(extra);
     r.clock += 100;
-    const answer = r.hill.askRemind(ONE, P1, { kind: "prompt", hash: "h", at: r.clock });
+    const answer = r.hill.askRemind(ONE, P1, { kind: "prompt", hash: "h", at: r.clock, sessionId: "s1" });
     expect(answer.kind === "list" && answer.asks.map((ask) => ask.id)).toEqual(six.map((ask) => ask.id));
   });
 
@@ -113,13 +127,13 @@ describe("ask.remind for a prompt", () => {
     const a = post(r, 1);
     r.clock += 1000;
     // An hour before the post by the hook's clock: believed, it would list nothing.
-    const answer = r.hill.askRemind(ONE, P1, { kind: "prompt", hash: "h", at: r.clock - 3_600_000 });
+    const answer = r.hill.askRemind(ONE, P1, { kind: "prompt", hash: "h", at: r.clock - 3_600_000, sessionId: "s1" });
     expect(answer).toMatchObject({ kind: "list", asks: [{ id: a.id }] });
   });
 
   test("a crew member answers none: the lead holds the asks", () => {
     const r = rig({ crewMode: "peer" });
-    expect(r.hill.askRemind(ONE, P1, { kind: "prompt", hash: "h", at: r.clock })).toEqual({ kind: "none" });
+    expect(r.hill.askRemind(ONE, P1, { kind: "prompt", hash: "h", at: r.clock, sessionId: "s1" })).toEqual({ kind: "none" });
   });
 
   test("on the lead, an ask a crew member forwarded is unchecked from its post, never fresh or carried", () => {
@@ -136,8 +150,8 @@ describe("ask.remind for a session start", () => {
     const r = rig();
     const a = post(r, 1);
     prompt(r, "h1");
-    for (const source of ["compact", "resume", "fork"]) expect(r.hill.askRemind(ONE, P1, { kind: "start", source })).toEqual({ kind: "list", form: "full", asks: [{ id: a.id, title: a.title }] });
-    for (const source of ["startup", "Compact", "", "clear "]) expect(r.hill.askRemind(ONE, P1, { kind: "start", source })).toEqual({ kind: "none" });
+    for (const source of ["compact", "resume", "fork"]) expect(r.hill.askRemind(ONE, P1, { kind: "start", source, sessionId: "s1" })).toEqual({ kind: "list", form: "full", asks: [{ id: a.id, title: a.title }] });
+    for (const source of ["startup", "Compact", "", "clear "]) expect(r.hill.askRemind(ONE, P1, { kind: "start", source, sessionId: "s1" })).toEqual({ kind: "none" });
     expect(r.store.get(a.id)?.state).toBe("open");
   });
 });
@@ -147,7 +161,9 @@ describe("the /clear rule", () => {
     const r = rig();
     const a = post(r, 1);
     const b = post(r, 2);
-    expect(r.hill.askRemind(ONE, P1, { kind: "start", source: "clear" })).toEqual({ kind: "none" });
+    expect(r.hill.askRemind(ONE, P1, { kind: "start", source: "clear", sessionId: "s2" })).toEqual({ kind: "none" });
+    r.sessions.set("%1", { current: "s2", previous: "s1" });
+    r.hill.askEdge(P1, "start", r.clock, null);
     for (const id of [a.id, b.id]) expect(r.store.get(id)).toMatchObject({ state: "withdrawn", closedReason: HILL_ASK_CLEARED });
     expect(r.hill.list().closed.map((decision) => decision.id).toSorted()).toEqual([a.id, b.id].toSorted());
   });
@@ -161,7 +177,7 @@ describe("the /clear rule", () => {
     const elsewhere: HillAgentSender = { ...ONE, address: "m_bbbbbbbbbb/%1#aaaa", memberId: "m_bbbbbbbbbb" };
     r.live.add(elsewhere.address);
     const far = post(r, 3, elsewhere);
-    r.hill.askRemind(ONE, P1, { kind: "start", source: "clear" });
+    clear(r);
     for (const id of [two.id, old.id, far.id]) expect(r.store.get(id)?.state).toBe("open");
   });
 
@@ -170,9 +186,9 @@ describe("the /clear rule", () => {
     const a = post(r, 1);
     const b = post(r, 2);
     r.hill.cancelAsk(ONE, b.id, { answered: true, because: null });
-    for (const source of ["Clear", "clear\n", "cleared", "compact"]) r.hill.askRemind(ONE, P1, { kind: "start", source });
+    for (const source of ["Clear", "clear\n", "cleared", "compact"]) r.hill.askRemind(ONE, P1, { kind: "start", source, sessionId: "s1" });
     expect(r.store.get(a.id)?.state).toBe("open");
-    r.hill.askRemind(ONE, P1, { kind: "start", source: "clear" });
+    clear(r);
     expect(r.store.get(a.id)?.closedReason).toBe(HILL_ASK_CLEARED);
     expect(r.store.get(b.id)?.closedReason).toBe("answered in the session");
   });
@@ -183,7 +199,9 @@ describe("the /clear rule", () => {
     prompt(r);
     expect(r.store.get(a.id)?.state).toBe("open");
     const m = rig({ crewMode: "peer" });
-    expect(m.hill.askRemind(ONE, P1, { kind: "start", source: "clear" })).toEqual({ kind: "none" });
+    expect(m.hill.askRemind(ONE, P1, { kind: "start", source: "clear", sessionId: "s2" })).toEqual({ kind: "none" });
+    m.sessions.set("%1", { current: "s2", previous: "s1" });
+    m.hill.askEdge(P1, "start", m.clock, null);
   });
 });
 
