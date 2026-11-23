@@ -6,7 +6,7 @@ import { DEVICES_SUBCOMMANDS } from "./pairing.ts";
 import { PUSH_SUBCOMMANDS } from "./push.ts";
 import { STT_SUBCOMMANDS } from "./stt.ts";
 import { CONFIG_SUBCOMMANDS } from "./config.ts";
-import { HILL_SUBCOMMANDS } from "./hill.ts";
+import { ASKS_SUBCOMMANDS } from "./hill.ts";
 import { VIEW_SUBCOMMANDS, viewTopLines } from "./trick-view.ts";
 import { WALKY_SUBCOMMANDS } from "./walky.ts";
 import { DURABLE_SUBCOMMANDS } from "./durable-attach.ts";
@@ -114,7 +114,7 @@ const SESSIONS_VERBS = [SESSIONS_VERB];
 // release, because Windows Terminal's binary is `wt.exe`.
 const WALKY_VERBS = ["walky"];
 // The hill (M96), declared right after `walky`: an agent posts a decision over the same socket.
-const HILL_VERBS = ["hill"];
+const HILL_VERBS = ["asks", "hill"];
 // The local API's command face (M105), declared right after `hill`.
 const API_VERBS = ["api"];
 // `theme check` (M59 spec 05), declared after `walky`. It reads files and touches no state.
@@ -164,6 +164,8 @@ describe("the verb table", () => {
       "_supervise",
       // The emitter is spelled by a hook, never typed — see cli/beacon.ts.
       "beacon",
+      // `collie hill` is gone (ADR 0179): it only names the new verb of each old one.
+      "hill",
       // The `crew` alias. Dispatchable, but never named in the usage line (ADR 0038).
       "pack",
     ]);
@@ -472,8 +474,9 @@ describe("the subcommand trees", () => {
     expect(findCommand("wt")).toBeUndefined();
   });
 
-  test("`hill` declares exactly `cli/hill.ts`'s sub-verbs, in its order", () => {
-    expect(findCommand("hill")?.subcommands?.map((s) => s.name)).toEqual([...HILL_SUBCOMMANDS]);
+  test("`asks` declares exactly `cli/hill.ts`'s sub-verbs, in its order; `hill` is gone, with no children", () => {
+    expect(findCommand("asks")?.subcommands?.map((s) => s.name)).toEqual([...ASKS_SUBCOMMANDS]);
+    expect(findCommand("hill")?.subcommands).toEqual([]);
   });
 
   test("there is no `morph` verb any more: an agent view is `trick view <trick> <verb>`", () => {
@@ -519,6 +522,7 @@ describe("the subcommand trees", () => {
       "mux",
       "harness",
       "walky",
+      "asks",
       "hill",
       "theme",
       "crew",

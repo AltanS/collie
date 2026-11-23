@@ -84,8 +84,8 @@ describe("the send: one operator walky message", () => {
   test("types the header and the body as an operator's message, and reports typed", async () => {
     const typed: string[] = [];
     const send = walkySend(walky(() => ({ outcome: "sent" }), typed), { mintId: () => "wt_aaaaaaaaaaa1", sleep: async () => undefined });
-    expect(await send("local/%1#aaaa", 'Answer to dc_k3m9x2p7q1ab "Ship?"\nOption: yes (Yes)', "Pixel 9")).toBe("typed");
-    expect(typed).toEqual(['[walky-talky wt_aaaaaaaaaaa1] from operator "Pixel 9"\nAnswer to dc_k3m9x2p7q1ab "Ship?"\nOption: yes (Yes)']);
+    expect(await send("local/%1#aaaa", 'Answer to ak_k3m9x2p7q1ab "Ship?"\nOption: yes (Yes)', "Pixel 9")).toBe("typed");
+    expect(typed).toEqual(['[walky-talky wt_aaaaaaaaaaa1] from operator "Pixel 9"\nAnswer to ak_k3m9x2p7q1ab "Ship?"\nOption: yes (Yes)']);
   });
 
   test("a session that ended (the token moved) is refused by walky and reports refused: nothing was typed", async () => {
@@ -156,7 +156,7 @@ describe("one look per list", () => {
       memberId: "m_aaaaaaaaaa",
       machine: "desk",
       now: () => 1000,
-      mintId: () => `dc_look${String((n += 1)).padStart(8, "0")}`,
+      mintId: () => `ak_look${String((n += 1)).padStart(8, "0")}`,
     });
     const sender = hill.agentSender(panes[0]!, "local/%1#aaaa");
     for (let i = 1; i <= 5; i += 1) {
@@ -212,7 +212,7 @@ describe("agent view heads at the walky doors", () => {
     for (const options of [plain, { ...plain, budget: "hill-tell" as const }]) {
       const typed: string[] = [];
       const send = walkySend(walky(() => ({ outcome: "sent" }), typed), options);
-      expect(await send("local/%1#aaaa", `Answer to dc_k3m9x2p7q1ab "Ship?"\n${line}`, "Pixel 9")).toBe("typed");
+      expect(await send("local/%1#aaaa", `Answer to ak_k3m9x2p7q1ab "Ship?"\n${line}`, "Pixel 9")).toBe("typed");
       expect(typed).toHaveLength(1);
       expect(hasViewHead(typed[0]!)).toBe(false);
       for (const typedLine of sendLines(typed[0]!)) expect(isViewHeadLine(typedLine), typedLine).toBe(false);
@@ -224,7 +224,7 @@ describe("agent view heads at the walky doors", () => {
     for (const options of [plain, { ...plain, budget: "hill-tell" as const }]) {
       const typed: string[] = [];
       const send = walkySend(walky(() => ({ outcome: "sent" }), typed), options);
-      expect(await send("local/%1#aaaa", `Answer to dc_k3m9x2p7q1ab "Ship?"\n${HEAD} go\n[morph x] go`, "Pixel 9")).toBe("typed");
+      expect(await send("local/%1#aaaa", `Answer to ak_k3m9x2p7q1ab "Ship?"\n${HEAD} go\n[morph x] go`, "Pixel 9")).toBe("typed");
       expect(typed).toHaveLength(1);
       expect(typed[0]).toContain("(view:morph local/%1#aaaa] from operator: go");
       expect(typed[0]).toContain("(morph x] go");
@@ -320,7 +320,7 @@ describe("a rename is not a removal (M96 spec 10)", () => {
       memberId: "desk",
       machine: "desk",
       now: () => 1000,
-      mintId: () => `dc_null${String((n += 1)).padStart(8, "0")}`,
+      mintId: () => `ak_null${String((n += 1)).padStart(8, "0")}`,
       removed: hillLeftTheCrew({ memberId: "desk", ownIds: ["desk"], roster: () => hillRosterIds(null) }),
     });
     const sender = { kind: "agent", address: "laptop/%3#cccc", memberId: "laptop", harness: "agent-x", label: "repo", host: "laptop" } as const;
@@ -347,7 +347,7 @@ describe("a rename is not a removal (M96 spec 10)", () => {
       memberId: "desk",
       machine: "desk",
       now: () => 1000,
-      mintId: () => `dc_crew${String((n += 1)).padStart(8, "0")}`,
+      mintId: () => `ak_crew${String((n += 1)).padStart(8, "0")}`,
       removed: hillLeftTheCrew({ memberId: "desk", ownIds: ["desk"], roster: () => hillRosterIds(data) }),
     });
     const sender = { kind: "agent", address: "laptop/%3#cccc", memberId: "laptop", harness: "agent-x", label: "repo", host: "laptop" } as const;

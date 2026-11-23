@@ -66,7 +66,7 @@ describe("the answers message", () => {
 });
 
 describe("the ask ids and words on the wire", () => {
-  it("takes dc_ and ak_ ids as Decision ids, and only ak_ as an ask id", () => {
+  it("takes ak_ and an old lead's dc_ as card ids, and only ak_ as an ask id", () => {
     expect(HILL_ID_RE.test("ak_000000000000")).toBe(true);
     expect(HILL_ID_RE.test("dc_000000000000")).toBe(true);
     expect(HILL_ID_RE.test("wt_000000000000")).toBe(false);

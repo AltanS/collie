@@ -31,7 +31,7 @@ const RIGHTS: readonly Right[] = ["see", "read", "send", "control"];
 const SESSION = encodeSessionId({ machine: "inst-test-a1", paneId: "w1:p2", instance: "k3f9" });
 
 const stub = async (): Promise<OpResult> => ({ ok: true, answer: { stub: true } });
-const READS: ReadHandlers = { sessions: stub, brief: stub, read: stub, accounts: stub, "hill.list": stub, machines: stub };
+const READS: ReadHandlers = { sessions: stub, brief: stub, read: stub, accounts: stub, "asks.list": stub, machines: stub };
 
 function newBus(): EventBus {
   return new EventBus({ machine: () => "inst-test-a1", bootId: "boot1" });
@@ -47,7 +47,7 @@ function fullTable(bus = newBus()): ReturnType<typeof buildTable> {
 
 describe("the table walk", () => {
   test("the eight names, declared once each, in hello's order", () => {
-    expect([...OPERATION_NAMES]).toEqual(["hello", "sessions", "brief", "read", "accounts", "hill.list", "machines", "events"]);
+    expect([...OPERATION_NAMES]).toEqual(["hello", "sessions", "brief", "read", "accounts", "asks.list", "machines", "events"]);
     expect(Object.keys(DECLARED).toSorted()).toEqual([...OPERATION_NAMES].toSorted());
     for (const name of OPERATION_NAMES) expect(DECLARED[name].name).toBe(name);
     expect([...fullTable().keys()]).toEqual([...OPERATION_NAMES]);
@@ -68,7 +68,7 @@ describe("the table walk", () => {
     expect(table.get("read")!.right).toBe("read");
     for (const name of OPERATION_NAMES) expect({ name, right: DECLARED[name].right }).toEqual({ name, right: OPERATION_LEVELS[name] });
     expect(Object.keys(OPERATION_LEVELS)).toEqual([...OPERATION_NAMES]);
-    expect(OPERATION_LEVELS).toEqual({ hello: "see", sessions: "see", brief: "see", read: "read", accounts: "see", "hill.list": "see", machines: "see", events: "see" });
+    expect(OPERATION_LEVELS).toEqual({ hello: "see", sessions: "see", brief: "see", read: "read", accounts: "see", "asks.list": "see", machines: "see", events: "see" });
   });
 
   test("the levels are ordered: a grant holds its own level and every one below it, never one above", () => {
@@ -131,7 +131,7 @@ describe("the table walk", () => {
 
 describe("arguments", () => {
   test("an operation with no arguments refuses any", async () => {
-    for (const name of ["sessions", "accounts", "hill.list", "machines"]) {
+    for (const name of ["sessions", "accounts", "asks.list", "machines"]) {
       expect(await fullTable().get(name)!.run({ x: 1 }, ctx())).toEqual({ ok: false, code: "api.bad_request", detail: { reason: "this operation takes no arguments" } });
     }
   });

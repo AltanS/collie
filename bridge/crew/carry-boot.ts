@@ -192,7 +192,7 @@ export async function adoptAtBoot(deps: BootAdoptDeps): Promise<BootAdoptResult 
   deps.audit({ action: "hill.carried", detail: { from, by, open: hill.open, closed: hill.closed, dropped: hill.dropped } });
   if (tricks.started.length > 0) deps.log(`[crew] ${by}: started ${String(tricks.started.length)} of the lead's tricks here: ${tricks.started.map((t) => t.id).join(", ")}`);
   if (tricks.failed.length > 0) deps.log(`[crew] ${by}: did not start ${tricks.failed.map((t) => `${t.id} (${t.reason})`).join(", ")}`);
-  if (hill.open + hill.closed > 0) deps.log(`[crew] ${by}: brought ${String(hill.open)} open Decision(s) of the lead's Hill here, ${String(hill.closed)} closed with their reason`);
+  if (hill.open + hill.closed > 0) deps.log(`[crew] ${by}: brought ${String(hill.open)} open ask(s) of the lead here, ${String(hill.closed)} closed with their reason`);
   await deps.tricks.clear();
   await deps.hill.clear();
   return { marker, tricks, hill };

@@ -54,7 +54,7 @@ function rig() {
       memberId: "m_aaaaaaaaaa",
       machine: "lodge",
       now: () => state.clock,
-      mintId: () => `dc_spoke${String((n += 1)).padStart(7, "0")}`,
+      mintId: () => `ak_spoke${String((n += 1)).padStart(7, "0")}`,
       push: { check: () => "send", send: () => void (state.pushed += 1), clear: (tag) => void state.cleared.push(tag) },
       audit: (entry) => state.audit.push(entry),
     });

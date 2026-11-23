@@ -87,6 +87,6 @@ describe("by hand, in this release", () => {
     const io = capture();
     expect(cmdApi({ io }, ["send"])).toBe(EXIT.USAGE);
     expect(io.stderr[0]).toBe("error: unknown operation `send`");
-    expect(io.stderr[1]).toContain("hello|sessions|brief|read|accounts|hill.list|machines|events");
+    expect(io.stderr[1]).toContain("hello|sessions|brief|read|accounts|asks.list|machines|events");
   });
 });

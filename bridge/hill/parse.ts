@@ -52,7 +52,7 @@ import { readGroup } from "./group.ts";
 import { parseDecisionView, type View } from "../../web/src/lib/tricks/schema.ts";
 
 /** What the socket answers a status or withdraw whose id is not a decision id. */
-export const HILL_BAD_ID = "bad request: a decision id is dc_ or ak_ and 12 characters";
+export const HILL_BAD_ID = "bad request: an ask id is ak_ and 12 characters";
 
 /** The longest raw string a post or an answer may carry before cleaning. Longer is refused, not cut. */
 export const HILL_RAW_MAX = 32 * 1024;
@@ -138,11 +138,11 @@ export function readPostFields(row: JsonObject): HillPostRead {
   // A group of cards is Collie's own (crew slice 8): no post from a session, a crew member or a trick carries one.
   if (row.group !== undefined || row.parts !== undefined) return refused("bad_body", HILL_GROUP_NOT_YOURS);
   const requestId = asJsonString(row.requestId);
-  if (!isRequestId(requestId)) return refused(null, "bad request: a decision's request id is a UUID");
+  if (!isRequestId(requestId)) return refused(null, "bad request: an ask's request id is a UUID");
   const title = asJsonString(row.title);
-  if (title === undefined || title.length > HILL_RAW_MAX) return refused("bad_title", "a decision needs a title");
+  if (title === undefined || title.length > HILL_RAW_MAX) return refused("bad_title", "an ask needs a title");
   const summary = asJsonString(row.summary);
-  if (summary === undefined || summary.length > HILL_RAW_MAX) return refused("bad_summary", "a decision needs a summary");
+  if (summary === undefined || summary.length > HILL_RAW_MAX) return refused("bad_summary", "an ask needs a summary");
   const body = optionalText(row, "body");
   if (body === undefined) return refused("bad_body", "the body is text");
   const rawOptions = row.options ?? [];
@@ -179,7 +179,7 @@ export function readPostFields(row: JsonObject): HillPostRead {
   const replyTo = optionalText(row, "replyTo");
   if (about === undefined || replyTo === undefined) return refused("bad_target", "an address is text");
   const supersedes = optionalText(row, "supersedes");
-  if (supersedes === undefined || (supersedes !== null && !HILL_ID_RE.test(supersedes))) return refused("bad_supersedes", "supersedes names a decision id, dc_ or ak_ and 12 characters");
+  if (supersedes === undefined || (supersedes !== null && !HILL_ID_RE.test(supersedes))) return refused("bad_supersedes", "supersedes names an ask id, ak_ and 12 characters");
   let expiresAt: number | null = null;
   if (row.expiresAt !== undefined && row.expiresAt !== null) {
     const at = asJsonNumber(row.expiresAt);
@@ -188,7 +188,7 @@ export function readPostFields(row: JsonObject): HillPostRead {
   }
   const rawImages = row.images ?? [];
   if (!Array.isArray(rawImages)) return refused("bad_image", "images are a list");
-  if (rawImages.length > HILL_MEDIA_MAX) return refused("too_many_images", `a decision has at most ${String(HILL_MEDIA_MAX)} images`);
+  if (rawImages.length > HILL_MEDIA_MAX) return refused("too_many_images", `an ask has at most ${String(HILL_MEDIA_MAX)} images`);
   const images: HillImageInput[] = [];
   for (const entry of rawImages) {
     const image = readImage(entry);

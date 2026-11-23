@@ -1,5 +1,5 @@
 // THE SIX READS OF THE LOCAL API (M105 spec 03, decisions 4, 12, 15 to 17; spec 04, decision 6):
-// `sessions`, `brief`, `read`, `accounts`, `hill.list` and `machines`. They fill the six rows of the
+// `sessions`, `brief`, `read`, `accounts`, `asks.list` and `machines`. They fill the six rows of the
 // operation table that operations.ts declares and leaves to a handler (`TableDeps.reads`).
 //
 // READ ONLY, BY CONSTRUCTION. A handler gets the bridge only through `ApiWorld` (world.ts), the one
@@ -299,7 +299,7 @@ export function buildReads(deps: ReadsDeps): ReadHandlers {
     return { ok: true, answer: { session: found.id, text: capped.text, lines, truncated: screen.truncated || capped.cut } };
   };
 
-  // HOUSEKEEPING (security read 1, note 2). `accounts` and `hill.list` read through the same getters the
+  // HOUSEKEEPING (security read 1, note 2). `accounts` and `asks.list` read through the same getters the
   // phone's routes read through, and those getters do the bookkeeping the phone's reads do: the walky token
   // stamp of the Hill's look (at most every 10 s) and the agent's own status command behind the accounts
   // cache. No operation changes what a person sees or types; these two reads do the same housekeeping as
@@ -400,5 +400,5 @@ export function buildReads(deps: ReadsDeps): ReadHandlers {
 
   const machines = async (): Promise<OpResult> => ({ ok: true, answer: { machines: deps.machines().map(machineRow) } });
 
-  return { sessions, brief, read, accounts, "hill.list": hillList, machines };
+  return { sessions, brief, read, accounts, "asks.list": hillList, machines };
 }

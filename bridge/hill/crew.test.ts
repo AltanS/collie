@@ -113,7 +113,7 @@ function bridge(mode: HillCrewMode, opts: { forward?: HillMemberForward; memberI
     now: () => b.clock,
     mintId: () => {
       n += 1;
-      return `dc_crew${String(n).padStart(8, "0")}`;
+      return `ak_crew${String(n).padStart(8, "0")}`;
     },
     mintMediaId: () => {
       m += 1;
@@ -260,7 +260,7 @@ describe("the lead's routes", () => {
     expect(crewLead.post({ from: { address: LAPTOP_PANE }, fields: fields({ images: [{ path: "/etc/passwd" }] }) }, "laptop").status).toBe(400);
     const answer = crewLead.post({ from: { address: LAPTOP_PANE, harness: "agent-x", label: "repo#main", host: "laptop" }, fields: fields() }, "laptop");
     expect(answer.status).toBe(200);
-    expect(answer.body).toMatchObject({ ok: true, decision: { id: "dc_crew00000001", from: { kind: "agent", address: LAPTOP_PANE, memberId: "laptop", host: "laptop" }, target: { label: "repo#main", host: "laptop" } } });
+    expect(answer.body).toMatchObject({ ok: true, decision: { id: "ak_crew00000001", from: { kind: "agent", address: LAPTOP_PANE, memberId: "laptop", host: "laptop" }, target: { label: "repo#main", host: "laptop" } } });
     expect(lead.store.all()).toHaveLength(1);
   });
 
@@ -437,7 +437,7 @@ describe("the Hill off by default, on a crew", () => {
       const { lead, member, link } = pair(leadReading, "unset");
       const answer = await member.hill.postFields(SENDER, fields());
       expect(answer).toEqual({ ok: false, code: "hill_off", error: HILL_OFF_ON_LEAD });
-      expect(HILL_OFF_ON_LEAD).toBe("the Hill is off on the lead of this crew; your person can switch it on in Settings, Tricks, on the phone");
+      expect(HILL_OFF_ON_LEAD).toBe("Asks is off on the lead of this crew; your person can switch it on in Settings, Tricks, on the phone");
       expect(link.calls).toEqual([CREW_HILL_POST_ROUTE]);
       expect(lead.store.all()).toEqual([]);
     }
@@ -479,7 +479,7 @@ describe("what the lead refuses of a member", () => {
     const crewLead = new HillCrewLead({ hill: lead.hill, held, walkyOn: () => walky });
     const bytes = png();
     const image = { sha256: sha256Hex(bytes), b64: b64(bytes) };
-    expect(crewLead.media(image, "laptop")).toEqual({ status: 200, body: { ok: false, code: "hill_off", error: expect.stringContaining("the Hill is off") } });
+    expect(crewLead.media(image, "laptop")).toEqual({ status: 200, body: { ok: false, code: "hill_off", error: expect.stringContaining("Asks is off") } });
     // Even a body that is no image is not looked at.
     expect(crewLead.media({ junk: true }, "laptop").body).toMatchObject({ ok: false, code: "hill_off" });
     on = true;
@@ -538,15 +538,15 @@ describe("a member's forward", () => {
     const file = join(member.work, "shot.png");
     writeFileSync(file, png());
     const answer = await member.hill.postFields(SENDER, fields({ images: [{ path: file, caption: "before" }] }));
-    expect(answer).toMatchObject({ ok: true, decision: { id: "dc_crew00000001", media: [{ caption: "before", mime: "image/png" }] } });
+    expect(answer).toMatchObject({ ok: true, decision: { id: "ak_crew00000001", media: [{ caption: "before", mime: "image/png" }] } });
     expect(link.calls).toEqual([CREW_HILL_MEDIA_ROUTE, CREW_HILL_POST_ROUTE]);
     expect(lead.store.all()).toHaveLength(1);
     expect(member.store.all()).toHaveLength(0);
     expect(member.audit.some((entry) => entry.action === "hill.forward")).toBe(true);
     // Status, list and withdraw go to the lead as well.
-    expect(await member.hill.askStatus(SENDER, "dc_crew00000001")).toMatchObject({ ok: true, decision: { state: "open" } });
-    expect(await member.hill.askList(SENDER)).toMatchObject({ ok: true, decisions: [{ id: "dc_crew00000001" }] });
-    expect(await member.hill.askWithdraw(SENDER, "dc_crew00000001")).toMatchObject({ ok: true, decision: { state: "withdrawn" } });
+    expect(await member.hill.askStatus(SENDER, "ak_crew00000001")).toMatchObject({ ok: true, decision: { state: "open" } });
+    expect(await member.hill.askList(SENDER)).toMatchObject({ ok: true, decisions: [{ id: "ak_crew00000001" }] });
+    expect(await member.hill.askWithdraw(SENDER, "ak_crew00000001")).toMatchObject({ ok: true, decision: { state: "withdrawn" } });
     expect(link.calls.slice(2)).toEqual([CREW_HILL_OP_ROUTE, CREW_HILL_OP_ROUTE, CREW_HILL_OP_ROUTE]);
   });
 
@@ -577,7 +577,7 @@ describe("a member's forward", () => {
     const answer = await member.hill.postFields(SENDER, row);
     expect(answer).toEqual({ ok: false, code: LEAD_UNREACHABLE_CODE, error: `the lead (desk) is not answering; nothing was posted. Post again with --request-id ${String(row.requestId)}: it posts once` });
     expect(lead.store.all()).toHaveLength(0);
-    expect(await member.hill.askStatus(SENDER, "dc_crew00000001")).toEqual({ ok: false, missing: false, error: "the lead (desk) is not answering; try again" });
+    expect(await member.hill.askStatus(SENDER, "ak_crew00000001")).toEqual({ ok: false, missing: false, error: "the lead (desk) is not answering; try again" });
   });
 
   test("the whole forward has one budget: an image that cannot have its time stops it before the post", async () => {
@@ -610,7 +610,7 @@ describe("a member's forward", () => {
     // The crew client's reading of a bare 401 (`signature`), and the status itself: both shapes.
     link.refusal = "signature";
     expect(await member.hill.postFields(SENDER, fields())).toMatchObject({ ok: false, code: "not_on_lead", error: expect.stringContaining("older than 1.29.0") });
-    expect(await member.hill.askStatus(SENDER, "dc_crew00000001")).toMatchObject({ ok: false, error: expect.stringContaining("older than 1.29.0") });
+    expect(await member.hill.askStatus(SENDER, "ak_crew00000001")).toMatchObject({ ok: false, error: expect.stringContaining("older than 1.29.0") });
     link.refusal = null;
     link.status = 401;
     expect(await member.hill.postFields(SENDER, fields())).toMatchObject({ ok: false, code: "not_on_lead" });

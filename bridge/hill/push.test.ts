@@ -52,7 +52,7 @@ function rig(dir: string | null = null): Rig {
     memberId: "m_aaaaaaaaaa",
     machine: "desk",
     now: () => state.clock,
-    mintId: () => `dc_push${String((n += 1)).padStart(8, "0")}`,
+    mintId: () => `ak_push${String((n += 1)).padStart(8, "0")}`,
     audit: (entry) => state.audit.push(entry),
     push: new HillPush({ ready: () => state.ready, send: (message) => state.pushes.push(message), now: () => state.clock }),
   });
@@ -264,7 +264,7 @@ describe("the rate and the gates", () => {
 describe("the message", () => {
   test("one line each, cut to an ask push's lengths with an ellipsis", () => {
     const long = "word ".repeat(80);
-    const message = hillPushMessage({ id: "dc_aaaaaaaaaaaa", title: long, summary: `First line.\n\nSecond   line. ${long}` }, hillPushTag("dc_aaaaaaaaaaaa"));
+    const message = hillPushMessage({ id: "ak_aaaaaaaaaaaa", title: long, summary: `First line.\n\nSecond   line. ${long}` }, hillPushTag("ak_aaaaaaaaaaaa"));
     expect([...(message.title ?? "")].length).toBeLessThanOrEqual(PUSH_TITLE_MAX);
     expect([...(message.body ?? "")].length).toBeLessThanOrEqual(PUSH_LINE_MAX);
     expect(message.body?.startsWith("First line. Second line. word")).toBe(true);
@@ -273,7 +273,7 @@ describe("the message", () => {
   });
 
   test("the slot's shape", () => {
-    expect(isHillPushTag(hillPushTag("dc_aaaaaaaaaaaa"))).toBe(true);
+    expect(isHillPushTag(hillPushTag("ak_aaaaaaaaaaaa"))).toBe(true);
     expect(isHillPushTag("collie:hill:../etc")).toBe(false);
     expect(isHillPushTag("collie:herd")).toBe(false);
   });

@@ -111,7 +111,7 @@ function rig(opts: RigOptions = {}): Rig {
         throw new Error("a stub that fails");
       }),
     accounts: async () => ({ ok: true, answer: { accounts: [] } }),
-    "hill.list": async () => ({ ok: true, answer: { decisions: [] } }),
+    "asks.list": async () => ({ ok: true, answer: { decisions: [] } }),
     machines: async () => ({ ok: true, answer: { machines: [] } }),
   };
   const logs: string[] = [];
@@ -382,7 +382,7 @@ apiSocketDescribe("the framing", () => {
     const r = rig();
     await r.api.start();
     const client = await Client.open(r.path);
-    client.sendRaw(`${JSON.stringify({ id: "1", op: "accounts" })}\n${JSON.stringify({ id: "2", op: "hill.list" })}\n{"id":"3",`);
+    client.sendRaw(`${JSON.stringify({ id: "1", op: "accounts" })}\n${JSON.stringify({ id: "2", op: "asks.list" })}\n{"id":"3",`);
     expect(await client.next()).toMatchObject({ id: "1", ok: true });
     expect(await client.next()).toMatchObject({ id: "2", ok: true });
     client.sendRaw(`"op":"hello","args":${JSON.stringify(HELLO_ARGS)}}\n`);
@@ -891,7 +891,7 @@ apiSocketDescribe("hello over the socket", () => {
       api: 1,
       collie: "9.9.9-test",
       experimental: true,
-      operations: ["hello", "sessions", "brief", "read", "accounts", "hill.list", "machines", "events"],
+      operations: ["hello", "sessions", "brief", "read", "accounts", "asks.list", "machines", "events"],
     });
   });
 });
@@ -961,7 +961,7 @@ apiSocketDescribe("the run token", () => {
     await r.api.start();
     const client = await Client.open(r.path, null);
     const hello = await client.ask({ op: "hello", args: { token: SEE_TOKEN } });
-    expect(hello).toMatchObject({ ok: true, operations: ["hello", "sessions", "brief", "accounts", "hill.list", "machines", "events"] });
+    expect(hello).toMatchObject({ ok: true, operations: ["hello", "sessions", "brief", "accounts", "asks.list", "machines", "events"] });
     expect(await client.ask({ id: "r", op: "read", args: { session: SESSION } })).toEqual({ id: "r", ok: false, error: { code: "api.denied", message: "the local API does not grant the right this operation needs; send hello to see the operations it offers" } });
     // The refusal leaves the connection usable: a `see` operation still answers.
     expect(await client.ask({ op: "accounts" })).toEqual({ ok: true, accounts: [] });
@@ -1093,7 +1093,7 @@ apiSocketDescribe("the run token", () => {
     const seen: JsonObject[] = [];
     const client = await Client.open(r.path, null);
     seen.push(await client.ask({ id: "h", op: "hello", args: HELLO_ARGS }));
-    for (const op of ["sessions", "accounts", "hill.list", "machines"]) seen.push(await client.ask({ op }));
+    for (const op of ["sessions", "accounts", "asks.list", "machines"]) seen.push(await client.ask({ op }));
     seen.push(await client.ask({ op: "read", args: { session: SESSION } }));
     seen.push(await client.ask({ op: "events" }));
     seen.push(await client.ask({ op: "hello", args: { token: TOKEN, extra: 1 } }));

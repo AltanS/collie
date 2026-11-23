@@ -44,7 +44,7 @@ const METADATA_KEYS: ReadonlySet<string> = new Set([
   // (`lead`, `member`, `bridge`, `hook`), and the outcome beside the reason, an enum as well.
   "by",
   "checked",
-  // The hill (M96): a decision id the bridge mints (`dc_` and 12 characters), never typed by a person.
+  // The hill (M96): a decision id the bridge mints (`ak_` and 12 characters), never typed by a person.
   "decisionId",
   // The hill's answer: what walky reported (`typed`, `held`, `unknown`, `none`), an enum the bridge writes.
   "delivery",

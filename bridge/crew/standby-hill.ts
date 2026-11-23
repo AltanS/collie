@@ -413,7 +413,7 @@ export class StandbyHillStore {
     const { bytes } = push;
     if (bytes.length !== planned.media.bytes || bytes.length > HILL_MEDIA_BYTES_MAX || hillImageMime(bytes) !== planned.media.mime) {
       await this.markMedia(key, "left");
-      return { ok: false, code: "mismatch", reason: "the picture is not the type and size its Decision records" };
+      return { ok: false, code: "mismatch", reason: "the picture is not the type and size its ask records" };
     }
     const path = this.mediaPath(push.decisionId, push.mediaId);
     await mkdir(join(this.dir, "media", push.decisionId), { recursive: true, mode: 0o700 });

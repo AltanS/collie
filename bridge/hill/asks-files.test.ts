@@ -123,12 +123,12 @@ describe("the ask on the wire", () => {
     try {
       const store = new HillStore(hillDir(dir), () => 1000);
       const ask = { ...posted(askRig().hill.post({ kind: "agent", address: ADDRESS, memberId: null, harness: "claude", label: "x", host: "desk" }, askInput(1))) };
-      const plain = { ...ask, id: "dc_aaaaaaaaaaaa", ask: undefined, expiresAt: null };
+      const plain = { ...ask, id: "ak_aaaaaaaaaaaa", ask: undefined, expiresAt: null };
       delete plain.ask;
       expect(store.put(ask, plain)).toBe(true);
       const again = new HillStore(hillDir(dir), () => 1000);
       expect(again.get(ask.id)).toMatchObject({ expiresAt: null, ask: { words: false } });
-      expect(again.get("dc_aaaaaaaaaaaa")?.expiresAt).not.toBeNull();
+      expect(again.get("ak_aaaaaaaaaaaa")?.expiresAt).not.toBeNull();
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

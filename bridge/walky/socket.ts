@@ -98,7 +98,7 @@ export const CANCEL_NEEDS_A_PANE = "run this inside the pane that sent it, or ca
 /** What the socket answers `off` or `on` from outside an agent pane: the flag is the asker's own (M89). */
 export const SWITCH_NEEDS_A_PANE = "run this inside an agent pane";
 /** What the socket answers a hill operation from outside an agent pane (M96): a decision belongs to a session. */
-export const HILL_NEEDS_A_PANE = "run this inside an agent's pane: a decision belongs to the session that posts it";
+export const HILL_NEEDS_A_PANE = "run this inside an agent's pane: an ask belongs to the session that sends it";
 
 /** What the socket answers an agent view operation from outside an agent pane: a screen belongs to a session. */
 export const VIEW_NEEDS_A_PANE = "run this inside an agent's pane: a view's screen belongs to the session that draws it";
@@ -447,7 +447,7 @@ async function viewAnswerOf({ request, trick, session, views }: { request: Extra
 /** Clear every closed decision: the count, or a refusal when the write failed (nothing was cleared). */
 function answerClear(hill: HillSocket): WalkyAnswer {
   const cleared = hill.clear(null);
-  if (cleared === null) return { ok: false, error: "the Hill could not be saved on this machine; nothing was cleared", hill: true };
+  if (cleared === null) return { ok: false, error: "Asks could not be saved on this machine; nothing was cleared", hill: true };
   return { ok: true, cleared: cleared.cleared.length };
 }
 

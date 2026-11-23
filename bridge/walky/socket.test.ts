@@ -373,7 +373,7 @@ describe("the hill operations (M96)", () => {
       memberId: "m_aaaaaaaaaa",
       machine: "desk",
       now: () => 1000,
-      mintId: () => "dc_aaaaaaaaaaa1",
+      mintId: () => "ak_aaaaaaaaaaa1",
     });
     return { walky, hill };
   }
@@ -385,7 +385,7 @@ describe("the hill operations (M96)", () => {
   test("post from an agent's pane: the decision is from that pane's address with its token, never from the request", async () => {
     const { walky, hill } = withHill();
     const answer = await ask(walky, hill, { op: "hill.post", markers: marker("%1"), ...post, from: { kind: "trick", trickId: "x" } });
-    expect(answer).toMatchObject({ ok: true, decision: { id: "dc_aaaaaaaaaaa1", from: { kind: "agent", address: "local/%1#aaaa", harness: "agent-x", label: "repo#a", host: "desk" }, target: { label: "repo#a" } } });
+    expect(answer).toMatchObject({ ok: true, decision: { id: "ak_aaaaaaaaaaa1", from: { kind: "agent", address: "local/%1#aaaa", harness: "agent-x", label: "repo#a", host: "desk" }, target: { label: "repo#a" } } });
   });
 
   test("a post that claims to be Collie's own is an agent's post: the socket cannot mint kind collie (crew slice 3)", async () => {
@@ -411,7 +411,7 @@ describe("the hill operations (M96)", () => {
 
   test("a refusal carries its code and plain words", async () => {
     const { walky, hill } = withHill();
-    expect(await ask(walky, hill, { op: "hill.post", markers: marker("%1"), ...post, title: "" })).toEqual({ ok: false, error: "a decision needs a title", hill: true, code: "bad_title" });
+    expect(await ask(walky, hill, { op: "hill.post", markers: marker("%1"), ...post, title: "" })).toEqual({ ok: false, error: "an ask needs a title", hill: true, code: "bad_title" });
     const peer = withHill("peer");
     expect(await ask(peer.walky, peer.hill, { op: "hill.post", markers: marker("%1"), ...post })).toMatchObject({ ok: false, code: "not_on_lead", hill: true });
   });
@@ -440,21 +440,21 @@ describe("the hill operations (M96)", () => {
       hill: true,
       error: `the lead (desk) is not answering; nothing was posted. Post again with --request-id ${post.requestId}: it posts once`,
     });
-    expect(await ask(walky, hill, { op: "hill.status", markers: marker("%1"), id: "dc_aaaaaaaaaaa1" })).toEqual({ ok: false, error: "the lead (desk) is not answering; try again", hill: true });
+    expect(await ask(walky, hill, { op: "hill.status", markers: marker("%1"), id: "ak_aaaaaaaaaaa1" })).toEqual({ ok: false, error: "the lead (desk) is not answering; try again", hill: true });
     expect(await ask(walky, hill, { op: "hill.list", markers: marker("%1"), mine: true })).toEqual({ ok: false, error: "the lead (desk) is not answering; try again", hill: true });
     // The sender is the pane's own address with its token, as on a lead.
-    expect(seen).toEqual([`post local/%1#aaaa ${post.requestId} Ship?`, "status local/%1#aaaa dc_aaaaaaaaaaa1", "list local/%1#aaaa"]);
+    expect(seen).toEqual([`post local/%1#aaaa ${post.requestId} Ship?`, "status local/%1#aaaa ak_aaaaaaaaaaa1", "list local/%1#aaaa"]);
   });
 
   test("status, withdraw and list answer the asker's own decisions; another pane's id is `not here` with the sentence", async () => {
     const { walky, hill } = withHill();
     await ask(walky, hill, { op: "hill.post", markers: marker("%1"), ...post });
-    expect(await ask(walky, hill, { op: "hill.status", markers: marker("%1"), id: "dc_aaaaaaaaaaa1" })).toMatchObject({ ok: true, decision: { state: "open" } });
-    expect(await ask(walky, hill, { op: "hill.status", markers: marker("%2"), id: "dc_aaaaaaaaaaa1" })).toEqual({ ok: false, error: "not here", hill: true, missing: "no decision dc_aaaaaaaaaaa1 from this session" });
-    expect(await ask(walky, hill, { op: "hill.withdraw", markers: marker("%2"), id: "dc_aaaaaaaaaaa1" })).toMatchObject({ ok: false, error: "not here" });
+    expect(await ask(walky, hill, { op: "hill.status", markers: marker("%1"), id: "ak_aaaaaaaaaaa1" })).toMatchObject({ ok: true, decision: { state: "open" } });
+    expect(await ask(walky, hill, { op: "hill.status", markers: marker("%2"), id: "ak_aaaaaaaaaaa1" })).toEqual({ ok: false, error: "not here", hill: true, missing: "no ask ak_aaaaaaaaaaa1 from this session" });
+    expect(await ask(walky, hill, { op: "hill.withdraw", markers: marker("%2"), id: "ak_aaaaaaaaaaa1" })).toMatchObject({ ok: false, error: "not here" });
     expect(await ask(walky, hill, { op: "hill.list", markers: marker("%2"), mine: true })).toEqual({ ok: true, decisions: [] });
-    expect(await ask(walky, hill, { op: "hill.withdraw", markers: marker("%1"), id: "dc_aaaaaaaaaaa1" })).toMatchObject({ ok: true, decision: { state: "withdrawn", closedReason: "by the poster" } });
-    expect(await ask(walky, hill, { op: "hill.list", markers: marker("%1"), mine: true })).toMatchObject({ ok: true, decisions: [{ id: "dc_aaaaaaaaaaa1", state: "withdrawn" }] });
+    expect(await ask(walky, hill, { op: "hill.withdraw", markers: marker("%1"), id: "ak_aaaaaaaaaaa1" })).toMatchObject({ ok: true, decision: { state: "withdrawn", closedReason: "by the poster" } });
+    expect(await ask(walky, hill, { op: "hill.list", markers: marker("%1"), mine: true })).toMatchObject({ ok: true, decisions: [{ id: "ak_aaaaaaaaaaa1", state: "withdrawn" }] });
   });
 
   test("a bad decision id is a bad request with its reason", () => {

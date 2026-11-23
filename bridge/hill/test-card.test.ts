@@ -63,7 +63,7 @@ function rig(): Rig {
     memberId: "m_aaaaaaaaaa",
     machine: "desk",
     now: () => clock.now,
-    mintId: () => `dc_test${String((n += 1)).padStart(8, "0")}`,
+    mintId: () => `ak_test${String((n += 1)).padStart(8, "0")}`,
     audit: (entry) => audit.push(entry),
     tap: async () => true,
     push: new HillPush({ ready: () => hillRingBlock(gates()) === null, send: (message) => pushes.push(message), now: () => clock.now }),
@@ -108,7 +108,7 @@ describe("the card", () => {
   test("holds the fixed words, priority now, an expiry of ten minutes, a fresh request id and Collie's test sender", () => {
     const card = testCard(5000, null);
     expect(card).toMatchObject({
-      title: "Does the Hill reach you?",
+      title: "Do asks reach you?",
       summary: "You sent this test from Settings. Tap the answer to close it.",
       options: [{ intent: "ok", label: "It works" }],
       text: "none",
@@ -122,7 +122,7 @@ describe("the card", () => {
     expect(card.requestId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u);
     expect(testCard(5000, null).requestId).not.toBe(card.requestId);
     expect(card.supersedes).toBeUndefined();
-    expect(testCard(5000, "dc_abcdefghijkl").supersedes).toBe("dc_abcdefghijkl");
+    expect(testCard(5000, "ak_abcdefghijkl").supersedes).toBe("ak_abcdefghijkl");
     expect(HILL_TEST_REF_HASH).toBe(createHash("sha256").update("collie hill test").digest("hex"));
     expect(testSender()).toEqual({ kind: "collie", ref: { type: "test", id: "test", hash: HILL_TEST_REF_HASH }, label: "Collie" });
   });

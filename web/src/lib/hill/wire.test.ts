@@ -19,24 +19,24 @@ function decision(id: string, priority: HillPriority, at: number): HillDecision 
 
 describe("hillNode and hillIdOfNode", () => {
   it("round-trips an id", () => {
-    expect(hillNode("dc_k3m9x2p7q1ab")).toBe("hill/dc_k3m9x2p7q1ab");
-    expect(hillIdOfNode(hillNode("dc_k3m9x2p7q1ab"))).toBe("dc_k3m9x2p7q1ab");
+    expect(hillNode("ak_k3m9x2p7q1ab")).toBe("hill/ak_k3m9x2p7q1ab");
+    expect(hillIdOfNode(hillNode("ak_k3m9x2p7q1ab"))).toBe("ak_k3m9x2p7q1ab");
   });
 
   it("returns null for a node that is not a hill node", () => {
-    expect(hillIdOfNode("dc_k3m9x2p7q1ab")).toBeNull();
-    expect(hillIdOfNode("worktree/dc_k3m9x2p7q1ab")).toBeNull();
+    expect(hillIdOfNode("ak_k3m9x2p7q1ab")).toBeNull();
+    expect(hillIdOfNode("worktree/ak_k3m9x2p7q1ab")).toBeNull();
     expect(hillIdOfNode("hill/")).toBeNull();
-    expect(hillIdOfNode("hill/dc_short")).toBeNull();
-    expect(hillIdOfNode("hill/dc_K3m9x2p7q1ab")).toBeNull();
-    expect(hillIdOfNode("hill/dc_k3m9x2p7q1abz")).toBeNull();
-    expect(hillIdOfNode("hill/dc_k3m9x2p7q1ab/x")).toBeNull();
+    expect(hillIdOfNode("hill/ak_short")).toBeNull();
+    expect(hillIdOfNode("hill/ak_K3m9x2p7q1ab")).toBeNull();
+    expect(hillIdOfNode("hill/ak_k3m9x2p7q1abz")).toBeNull();
+    expect(hillIdOfNode("hill/ak_k3m9x2p7q1ab/x")).toBeNull();
   });
 
-  it("matches ids of dc_ and twelve lowercase characters only", () => {
-    expect(HILL_ID_RE.test("dc_000000000000")).toBe(true);
-    expect(HILL_ID_RE.test("dc_00000000000")).toBe(false);
-    expect(HILL_ID_RE.test("dc_00000000000_")).toBe(false);
+  it("matches ids of ak_ and twelve lowercase characters only", () => {
+    expect(HILL_ID_RE.test("ak_000000000000")).toBe(true);
+    expect(HILL_ID_RE.test("ak_00000000000")).toBe(false);
+    expect(HILL_ID_RE.test("ak_00000000000_")).toBe(false);
   });
 });
 

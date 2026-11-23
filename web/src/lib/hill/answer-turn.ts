@@ -6,7 +6,7 @@ import { HILL_ID_RE } from "./wire";
 // `kind` is `operator` and its body is the only place the id stands. The words are Collie's own, written by one function,
 // `answerMessage` in bridge/hill/service.ts, whose first line for a card of Collie's own (the poster's form) is
 //
-//     Answer to dc_5k9vtcwnrp3z "Use the new version of hadoken?"
+//     Answer to ak_5k9vtcwnrp3z "Use the new version of hadoken?"
 //
 // The phone reads exactly that line: `Answer to `, a decision id, a space, the title in double quotes, the end of the
 // line. Nothing looser. The id is only a KEY: the card the chat draws is built from the Hill's own decision (its `ref`,
@@ -14,7 +14,7 @@ import { HILL_ID_RE } from "./wire";
 // bridge/hill/answer-turn.test.ts pins this reader to the writer's own output (it lives in the bridge's tests, because
 // the web program must not pull the bridge's code into its type check).
 
-const FIRST_LINE = /^Answer to (dc_[a-z0-9]{12}) "[^\n]*"$/u;
+const FIRST_LINE = /^Answer to ((?:ak|dc)_[a-z0-9]{12}) "[^\n]*"$/u;
 
 /** The decision a typed answer is about: the id on the first line of the poster's form, else null. */
 export function answeredDecisionId(body: string): string | null {

@@ -79,12 +79,12 @@ describe("the asks of one session", () => {
 describe("the deck", () => {
   it("walks the sessions in board order, each one's asks in their order", () => {
     const live = { lead: undefined, panes: [askPane("w1:p1", { cache: "cold" }), askPane("w1:p2", { cache: { warmMinutes: 9, now: NOW } })] };
-    const asks = [askDecision({ id: "dc_a", address: askAddress("w1:p1") }), askDecision({ id: "dc_b", address: askAddress("w1:p2") }), askDecision({ id: "dc_c", address: askAddress("w1:p2"), at: HILL_T0 + 5 })];
+    const asks = [askDecision({ id: "ak_a", address: askAddress("w1:p1") }), askDecision({ id: "ak_b", address: askAddress("w1:p2") }), askDecision({ id: "ak_c", address: askAddress("w1:p2"), at: HILL_T0 + 5 })];
     const deck = deckOf(orderByClock(groupAsks(asks), live, NOW));
-    expect(deck.map((ask) => ask.id)).toEqual(["dc_b", "dc_c", "dc_a"]);
-    expect(neighboursOf(deck, "dc_b")).toEqual({ previous: null, next: "dc_c" });
-    expect(neighboursOf(deck, "dc_a")).toEqual({ previous: "dc_c", next: null });
-    expect(neighboursOf(deck, "dc_zzz")).toEqual({ previous: null, next: null });
+    expect(deck.map((ask) => ask.id)).toEqual(["ak_b", "ak_c", "ak_a"]);
+    expect(neighboursOf(deck, "ak_b")).toEqual({ previous: null, next: "ak_c" });
+    expect(neighboursOf(deck, "ak_a")).toEqual({ previous: "ak_c", next: null });
+    expect(neighboursOf(deck, "ak_zzz")).toEqual({ previous: null, next: null });
   });
 });
 

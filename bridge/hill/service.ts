@@ -101,6 +101,7 @@ import {
   crewStateTellLine,
   HILL_TELL_MAX,
   HILL_TELL_RECENT_MS,
+  asksNode,
   hillNode,
   isHillOptionIntent,
   isTrickCard,
@@ -449,17 +450,17 @@ export const HILL_TELL_MOVED = "the crew state changed since this phone showed i
 /** The refusal of a second tell for one change of the state. */
 export const HILL_TELL_DONE = "the sessions were told of this crew state already";
 /** The refusal of a crew state set on a machine that is not the crew's lead. */
-export const HILL_STATE_ON_LEAD = "the crew state lives on the crew's lead; set it there, on the phone or with collie hill state";
+export const HILL_STATE_ON_LEAD = "the crew state lives on the crew's lead; set it there, on the phone or with collie asks state";
 /**
  * The reason an answer walky refused to type is rejected with (C-S1): nothing was typed, and the card is
  * open again. The phone shows it as "Not accepted: <reason>".
  */
-export const HILL_NOT_TYPED = "it could not be typed into the session now, so the Decision stays open; answer again in a few minutes";
+export const HILL_NOT_TYPED = "it could not be typed into the session now, so the ask stays open; answer again in a few minutes";
 
 /** The reason a card the person answered in its session closes with (wire.ts): the second Clear, or a send that started the turn. */
 export { HILL_ANSWERED_IN_SESSION };
 /** What the second Clear answers when the Hill could not be saved: nothing changed. */
-export const HILL_SPOKEN_UNSAVED = "the Hill could not be saved on this machine; nothing was cleared";
+export const HILL_SPOKEN_UNSAVED = "Asks could not be saved on this machine; nothing was cleared";
 /** The refusal of a crew state set whose file could not be written. */
 export const HILL_STATE_UNSAVED = "the crew state could not be saved on this machine; nothing changed";
 /** The refusal of a tell while the state is `here`: there is nothing to tell. */
@@ -509,10 +510,10 @@ export function adoptCarriedInto(
 /** What an answer on a deposed lead is refused with (§25): the Decisions moved with the crown. */
 export const HILL_DEPOSED = "This machine is not the crew's lead any more. Answer on the new lead.";
 /** The sentence a crew member answers a post with. */
-export const NOT_ON_LEAD = "the hill is not merged across the crew yet; post from a session on the lead machine";
+export const NOT_ON_LEAD = "asks are not merged across the crew yet; ask from a session on the lead machine";
 /** What a post says when its request id already posted a decision that a person has since cleared. */
 export function clearedRepost(id: string): string {
-  return `this request id already posted ${id}, which was cleared from the Hill; post with a new --request-id to ask again`;
+  return `this request id already posted ${id}, which was cleared from Asks; send it with a new --request-id to ask again`;
 }
 
 /** What a clear came to: the ids removed, and the ids it left alone with why. */
@@ -522,9 +523,9 @@ export interface HillClearAnswer {
 }
 
 /** The sentence a bridge with the Hill switched off answers a post with: what is off, and the way back on. */
-export const HILL_OFF = "the Hill is off on this Collie; your person can switch it on in Settings, Tricks, on the phone, or with: collie hill on";
+export const HILL_OFF = "Asks is off on this Collie; your person can switch it on in Settings, Tricks, on the phone, or with: collie asks on";
 /** What the lead of a crew answers a member's post or image with while its own Hill is off (the lead's switch decides). */
-export const HILL_OFF_ON_LEAD = "the Hill is off on the lead of this crew; your person can switch it on in Settings, Tricks, on the phone";
+export const HILL_OFF_ON_LEAD = "Asks is off on the lead of this crew; your person can switch it on in Settings, Tricks, on the phone";
 /** The sentence a bridge with WalkyTalky off answers a post with. */
 export const HILL_WALKY_OFF = "WalkyTalky is off on this machine (COLLIE_WALKY=off), so no answer could reach you";
 /** The closed reason of a withdrawn decision. */
@@ -557,7 +558,7 @@ function selfClears(decision: HillDecision): boolean {
 }
 /** What `status` and `withdraw` answer the poster for a decision that left the Hill: the state it closed in. */
 export function leftTheHill(id: string, state: HillState): string {
-  return `${id} is ${state}; it has left the Hill`;
+  return `${id} is ${state}; it has left Asks`;
 }
 /** The first line of a dismiss's message carries this as its second line. */
 export const DISMISSED = "Dismissed.";
@@ -580,8 +581,11 @@ export function notAnswering(machine: string): string {
 // The expiry days live in web/src/lib/tricks/limits.ts, which the tricks catalogue reads too.
 export { HILL_DEFAULT_EXPIRY_DAYS, HILL_DEFAULT_EXPIRY_MS, HILL_MAX_EXPIRY_DAYS, HILL_MAX_EXPIRY_MS };
 
-/** Mint a decision id: `dc_` and 12 characters of [a-z0-9], from a uniform random source. */
-export function mintDecisionId(random: (n: number) => Uint8Array = (n) => randomBytes(n), prefix: "dc_" | "ak_" = "dc_"): string {
+/**
+ * Mint an id: `ak_` and 12 characters of [a-z0-9], from a uniform random source. Every card is an ask since
+ * ADR 0179 (a trick's, Collie's own and an agent's alike); `dc_` is never minted again.
+ */
+export function mintDecisionId(random: (n: number) => Uint8Array = (n) => randomBytes(n), prefix: "ak_" = "ak_"): string {
   const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789";
   let out = "";
   // 252 is the largest multiple of 36 below 256: a byte at or above it is skipped, so no letter is likelier.
@@ -645,7 +649,7 @@ export function messageTitle(title: string): string {
 
 /** The fixed last line of an answer typed into a session other than the poster's: where the decision can be read. */
 export function readItLine(id: string): string {
-  return `Read the decision with: collie hill status ${id}`;
+  return `Read the ask with: collie walky status ${id}`;
 }
 
 /**
@@ -740,7 +744,7 @@ function keyOf(decision: HillDecision): string {
 /** The message a Collie answer refused with, when no handler is wired. */
 export const HILL_NO_ANSWER_HANDLER = "Collie cannot act on this answer here.";
 /** The reason a withdraw is refused while that Collie Decision's answer runs. */
-export const HILL_ANSWER_RUNNING = "the decision is being answered";
+export const HILL_ANSWER_RUNNING = "the ask is being answered";
 
 /** The refusal of a yes to a group from a phone that was given other cards: they changed since. */
 export const HILL_GROUP_CHANGED = "These cards changed since this phone showed them. Look at them again and answer again.";
@@ -760,15 +764,15 @@ type Cleaned = Pick<HillDecision, "title" | "summary" | "body" | "options" | "te
 
 function cleanPost(input: HillPostInput, limits: HillPostLimits = HILL_LIMITS): { readonly ok: true; readonly fields: Cleaned } | Extract<HillPostAnswer, { ok: false }> {
   const title = cleanLine(input.title, limits.title);
-  if (title.text === "") return { ok: false, code: "bad_title", error: "a decision needs a title" };
+  if (title.text === "") return { ok: false, code: "bad_title", error: "an ask needs a title" };
   if (title.over) return { ok: false, code: "bad_title", error: `the title is longer than ${String(limits.title)} characters` };
   const summary = cleanText(input.summary, limits.summary);
-  if (summary.text === "" && limits.summaryOptional !== true) return { ok: false, code: "bad_summary", error: "a decision needs a summary in plain words" };
+  if (summary.text === "" && limits.summaryOptional !== true) return { ok: false, code: "bad_summary", error: "an ask needs a summary in plain words" };
   if (summary.over) return { ok: false, code: "bad_summary", error: `the summary is longer than ${String(limits.summary)} characters` };
   const body = cleanText(input.body ?? "", limits.body);
   if (body.over) return { ok: false, code: "bad_body", error: `the body is longer than ${String(limits.body)} characters` };
   const rawOptions = input.options ?? [];
-  if (rawOptions.length > HILL_OPTIONS_MAX) return { ok: false, code: "bad_option", error: `a decision has at most ${String(HILL_OPTIONS_MAX)} options` };
+  if (rawOptions.length > HILL_OPTIONS_MAX) return { ok: false, code: "bad_option", error: `an ask has at most ${String(HILL_OPTIONS_MAX)} options` };
   const options: HillOption[] = [];
   for (const raw of rawOptions) {
     if (!isHillOptionIntent(raw.intent)) return { ok: false, code: "bad_option", error: `\`${headerField(raw.intent, 40)}\` is not an option intent: a lowercase word of at most 32 characters, not answer or dismiss` };
@@ -789,7 +793,7 @@ function cleanPost(input: HillPostInput, limits: HillPostLimits = HILL_LIMITS): 
     options.push(confirm === null ? withCost : { ...withCost, confirm: confirm.text });
   }
   const text = input.text ?? "optional";
-  if (text === "none" && options.length === 0) return { ok: false, code: "bad_text_mode", error: "a decision with no options takes text: use --text optional or required" };
+  if (text === "none" && options.length === 0) return { ok: false, code: "bad_text_mode", error: "an ask with no options takes text: use --text optional or required" };
   let recommends: HillDecision["recommends"] = null;
   if (input.recommends !== undefined && input.recommends !== null) {
     const named = input.recommends.intent;
@@ -799,7 +803,7 @@ function cleanPost(input: HillPostInput, limits: HillPostLimits = HILL_LIMITS): 
     recommends = { intent: named, why: why.text };
   }
   const rawLinks = input.links ?? [];
-  if (rawLinks.length > HILL_LINKS_MAX) return { ok: false, code: "bad_link", error: `a decision has at most ${String(HILL_LINKS_MAX)} links` };
+  if (rawLinks.length > HILL_LINKS_MAX) return { ok: false, code: "bad_link", error: `an ask has at most ${String(HILL_LINKS_MAX)} links` };
   const links: Array<{ label: string; href: string }> = [];
   for (const raw of rawLinks) {
     const label = cleanLine(raw.label, HILL_LINK_LABEL_MAX);
@@ -923,7 +927,7 @@ export class HillService {
    * The revision on the snapshot, on every snapshot while the Hill is on: with no decisions file yet it is
    * the crew state's own count (0 until the person sets one), so the phone shows the Hill in the bar as
    * soon as the Hill is on, before the first Decision (the first full trick run, 2026-11-16, decision 6;
-   * `docs/hill.md`, spec 09: off, "the Hill leaves the bar"). It also moves when a session behind an open decision is renamed, so the phone refetches the
+   * `docs/asks.md`, spec 09: off, "the Hill leaves the bar"). It also moves when a session behind an open decision is renamed, so the phone refetches the
    * list and shows the new name, and when the crew state changes (from the phone, the terminal or the file).
    */
   rev(): number {
@@ -1103,7 +1107,7 @@ export class HillService {
     if (this.wasOn && !on) {
       const tags = new Set(this.deps.store.all().flatMap((decision) => (decision.state === "open" && decision.pushTag !== undefined ? [decision.pushTag] : [])));
       for (const tag of tags) this.deps.push?.clear(tag);
-      if (tags.size > 0) this.deps.audit?.({ action: "hill.push.cleared", detail: { why: "the Hill is off", count: tags.size } });
+      if (tags.size > 0) this.deps.audit?.({ action: "hill.push.cleared", detail: { why: "Asks is off", count: tags.size } });
     }
     this.wasOn = on;
     return on;
@@ -1288,7 +1292,7 @@ export class HillService {
    * `onCollieAnswer`. Supersede an older one of the same `ref` type and id with `input.supersedes`.
    */
   postCollie(from: HillCollieSender, input: HillPostInput, opts: Pick<HillPostOptions, "tellOf"> = {}): HillPostAnswer {
-    if ((input.images ?? []).length > 0) return refuse("too_many_images", "a Collie decision carries no image");
+    if ((input.images ?? []).length > 0) return refuse("too_many_images", "an ask of Collie's own carries no image");
     if (input.supersedes !== undefined && input.supersedes !== null && this.answering.has(input.supersedes)) return refuse("bad_supersedes", HILL_ANSWER_RUNNING);
     return this.postAny(from, { ...input, about: null, replyTo: null, images: [] }, opts.tellOf === undefined ? {} : { tellOf: opts.tellOf });
   }
@@ -1438,14 +1442,14 @@ export class HillService {
     let replaces: string | null = null;
     if (input.supersedes !== undefined && input.supersedes !== null) {
       const old = this.deps.store.get(input.supersedes);
-      if (old === undefined || keyOf(old) !== key) return refuse("bad_supersedes", ask === undefined ? `no decision ${input.supersedes} from this session` : `--replaces ${input.supersedes}: no ask of this session has that id`);
+      if (old === undefined || keyOf(old) !== key) return refuse("bad_supersedes", ask === undefined ? `no ask ${input.supersedes} from this session` : `--replaces ${input.supersedes}: no ask of this session has that id`);
       if (ask !== undefined) {
         const replace = replaceRefusal(old);
         if (replace !== null) return refuse("bad_supersedes", replace);
         replaces = old.id;
         superseded = old.state === "open" ? old : null;
       } else {
-        if (old.state !== "open") return refuse("bad_supersedes", `${old.id} is ${old.state}, only an open decision can be replaced`);
+        if (old.state !== "open") return refuse("bad_supersedes", `${old.id} is ${old.state}, only an open ask can be replaced`);
         superseded = old;
       }
     }
@@ -1468,10 +1472,10 @@ export class HillService {
     const images = opts.images === undefined ? this.readImages(input.images ?? [], from.kind === "trick" ? (from.imageRoot ?? null) : null) : this.heldImages(input.images ?? [], opts.images);
     if (!images.ok) return images;
 
-    const mint = ask === undefined ? this.mint : (this.deps.mintAskId ?? (() => mintDecisionId(undefined, "ak_")));
+    const mint = ask === undefined ? this.mint : (this.deps.mintAskId ?? (() => mintDecisionId()));
     let id = mint();
     for (let tries = 0; this.deps.store.taken(id) && tries < 8; tries += 1) id = mint();
-    if (this.deps.store.taken(id)) return refuse(null, "could not mint a decision id; try again");
+    if (this.deps.store.taken(id)) return refuse(null, "could not mint an ask id; try again");
     // The Decision stores this bridge's id: it is written down before the first one does.
     this.deps.keepId?.();
     const media = this.keepImages(id, images.images);
@@ -1516,7 +1520,7 @@ export class HillService {
     const replaced: HillDecision[] = superseded === null ? [] : [{ ...superseded, state: "superseded", supersededBy: id, closedAt: now, closedReason: `superseded by ${id}` }];
     if (!this.save(decision, ...replaced)) {
       if (media.length > 0) this.deps.media?.remove(id);
-      return refuse(null, "the decision could not be saved on this machine; nothing was posted");
+      return refuse(null, "the ask could not be saved on this machine; nothing was posted");
     }
     const plain = superseded === null ? { decisionId: id, options: decision.options.length } : { decisionId: id, options: decision.options.length, supersedes: superseded.id };
     // An ask says so, with how many files it links: a count, never a path.
@@ -1606,7 +1610,7 @@ export class HillService {
   /** Read and check every image a post names, in order, before anything is kept. The first that fails refuses the post. */
   private readImages(raw: readonly HillImageInput[], trickRoot: string | null): { readonly ok: true; readonly images: Array<HillImageBytes & { readonly caption: string | null }> } | Extract<HillPostAnswer, { ok: false }> {
     if (raw.length === 0) return { ok: true, images: [] };
-    if (raw.length > HILL_MEDIA_MAX) return { ok: false, code: "too_many_images", error: `a decision has at most ${String(HILL_MEDIA_MAX)} images` };
+    if (raw.length > HILL_MEDIA_MAX) return { ok: false, code: "too_many_images", error: `an ask has at most ${String(HILL_MEDIA_MAX)} images` };
     const store = this.deps.media;
     if (store === undefined) return { ok: false, code: "bad_image", error: "this bridge keeps no images" };
     const images: Array<HillImageBytes & { readonly caption: string | null }> = [];
@@ -1625,7 +1629,7 @@ export class HillService {
    * names, cleaned as a caption read here is. The counts must match: one held image per named one.
    */
   private heldImages(raw: readonly HillImageInput[], held: readonly HillImageBytes[]): { readonly ok: true; readonly images: Array<HillImageBytes & { readonly caption: string | null }> } | Extract<HillPostAnswer, { ok: false }> {
-    if (raw.length > HILL_MEDIA_MAX || held.length > HILL_MEDIA_MAX) return { ok: false, code: "too_many_images", error: `a decision has at most ${String(HILL_MEDIA_MAX)} images` };
+    if (raw.length > HILL_MEDIA_MAX || held.length > HILL_MEDIA_MAX) return { ok: false, code: "too_many_images", error: `an ask has at most ${String(HILL_MEDIA_MAX)} images` };
     if (raw.length !== held.length) return { ok: false, code: "bad_image", error: "the images do not match the post" };
     if (this.deps.media === undefined && held.length > 0) return { ok: false, code: "bad_image", error: "this bridge keeps no images" };
     const images: Array<HillImageBytes & { readonly caption: string | null }> = [];
@@ -1713,7 +1717,7 @@ export class HillService {
   status(sender: HillSender, id: string): HillOneAnswer {
     const decision = this.mine(sender, id) ?? this.addressedTo(sender, id);
     if (decision !== null) return { ok: true, decision: served(this.named(decision)) };
-    return this.left(sender, id) ?? { ok: false, missing: true, error: `no decision ${id} from this session` };
+    return this.left(sender, id) ?? { ok: false, missing: true, error: `no ask ${id} from this session` };
   }
 
   /**
@@ -1770,10 +1774,10 @@ export class HillService {
 
   private withdrawAny(sender: AnySender, id: string, reason: string): HillOneAnswer {
     const decision = this.mine(sender, id);
-    if (decision === null) return this.left(sender, id) ?? { ok: false, missing: true, error: `no decision ${id} from this session` };
+    if (decision === null) return this.left(sender, id) ?? { ok: false, missing: true, error: `no ask ${id} from this session` };
     if (decision.state !== "open") return { ok: false, missing: false, error: `${id} is ${decision.state}, nothing to withdraw` };
     const closed: HillDecision = { ...decision, state: "withdrawn", closedAt: this.now(), closedReason: reason };
-    if (!this.save(closed)) return { ok: false, missing: false, error: "the change could not be saved on this machine; the decision stays open" };
+    if (!this.save(closed)) return { ok: false, missing: false, error: "the change could not be saved on this machine; the ask stays open" };
     this.deps.audit?.({ action: "hill.withdraw", detail: { decisionId: id } });
     return { ok: true, decision: served(closed) };
   }
@@ -2038,7 +2042,7 @@ export class HillService {
     }
     const receipt = receiptOf(request.rid, this.now(), "rejected", HILL_NOT_TYPED, this.deps.store.get(id)?.state ?? null, "none");
     await this.deps.receipts.record({ ...claim.record, receipt });
-    this.deps.audit?.({ action: "hill.undelivered", device: by, detail: { decisionId: id, why: "refused, the Decision is open again" } });
+    this.deps.audit?.({ action: "hill.undelivered", device: by, detail: { decisionId: id, why: "refused, the ask is open again" } });
     return { kind: "receipt", receipt };
   }
 
@@ -2137,22 +2141,22 @@ export class HillService {
     if (decision === undefined) {
       // A cleared decision answers as it did while it was held: gone, with the state it closed in.
       const stone = this.deps.store.tombstone(id);
-      if (stone !== undefined) return this.final(request, id, by, digest, receiptOf(rid, now, "gone", `the decision is ${stone.state}`, stone.state, null));
-      return this.final(request, id, by, digest, receiptOf(rid, now, "gone", "no such decision", null, null), false);
+      if (stone !== undefined) return this.final(request, id, by, digest, receiptOf(rid, now, "gone", `the ask is ${stone.state}`, stone.state, null));
+      return this.final(request, id, by, digest, receiptOf(rid, now, "gone", "no such ask", null, null), false);
     }
-    if (decision.state !== "open") return this.final(request, id, by, digest, receiptOf(rid, now, "gone", `the decision is ${decision.state}`, decision.state, null));
+    if (decision.state !== "open") return this.final(request, id, by, digest, receiptOf(rid, now, "gone", `the ask is ${decision.state}`, decision.state, null));
     // Past its expiry and not swept yet: it is expired now, as the sweep would close it.
     if (decision.expiresAt !== null && decision.expiresAt <= now) {
-      const expired = await this.final(request, id, by, digest, receiptOf(rid, now, "gone", "the decision is expired", "expired", null));
+      const expired = await this.final(request, id, by, digest, receiptOf(rid, now, "gone", "the ask is expired", "expired", null));
       this.closeAs(id, now, "expired", EXPIRED);
       return expired;
     }
     const option = decision.options.find((candidate) => candidate.intent === intent);
     // The intent is typed into the session; only a word the post rules let through ever is (a stored file is not re-checked on load).
-    if (option !== undefined && !isHillOptionIntent(option.intent)) return this.final(request, id, by, digest, receiptOf(rid, now, "rejected", "not an option of this decision", "open", null));
-    if (option === undefined && intent !== "answer" && intent !== "dismiss" && !(decision.ask !== undefined && isAskFixedAnswer(intent, decision.ask.words))) return this.final(request, id, by, digest, receiptOf(rid, now, "rejected", "not an option of this decision", "open", null));
+    if (option !== undefined && !isHillOptionIntent(option.intent)) return this.final(request, id, by, digest, receiptOf(rid, now, "rejected", "not an option of this ask", "open", null));
+    if (option === undefined && intent !== "answer" && intent !== "dismiss" && !(decision.ask !== undefined && isAskFixedAnswer(intent, decision.ask.words))) return this.final(request, id, by, digest, receiptOf(rid, now, "rejected", "not an option of this ask", "open", null));
     // An ask with options takes one of them or "I need more context"; only a `--words` ask takes words alone.
-    if (decision.ask !== undefined && intent === "answer" && !decision.ask.words) return this.final(request, id, by, digest, receiptOf(rid, now, "rejected", "not an option of this decision", "open", null));
+    if (decision.ask !== undefined && intent === "answer" && !decision.ask.words) return this.final(request, id, by, digest, receiptOf(rid, now, "rejected", "not an option of this ask", "open", null));
     // A yes to a trick's code needs the digest this phone was given (the code it showed), so a yes never
     // approves other code than the card showed. Its decline and a dismiss need none. Nothing is kept for
     // these refusals, so the same answer may go again from a phone that shows the card as it is now.
@@ -2212,7 +2216,7 @@ export class HillService {
     // A withdraw or an expiry may have closed it while the receipt was written.
     const fresh = this.deps.store.get(id);
     if (fresh === undefined || fresh.state !== "open") {
-      const late = receiptOf(rid, now, "gone", `the decision is ${fresh?.state ?? "gone"}`, fresh?.state ?? null, null);
+      const late = receiptOf(rid, now, "gone", `the ask is ${fresh?.state ?? "gone"}`, fresh?.state ?? null, null);
       return this.final(request, id, by, digest, late);
     }
     const label = fixedAnswerLabel(intent) ?? option?.label ?? null;
@@ -2223,7 +2227,7 @@ export class HillService {
       return this.final(request, id, by, digest, unsaved);
     }
     const send = typed && to !== null ? (decision.ask !== undefined && intent !== "dismiss" ? { to, body, subject: ASKS_ANSWERS_SUBJECT } : { to, body }) : null;
-    const tap = trick === null ? null : { host: trick.host, trickId: trick.trickId, decisionId: id, tap: { rid, node: hillNode(trick.trickKey), intent, value: { text } } };
+    const tap = trick === null ? null : { host: trick.host, trickId: trick.trickId, decisionId: id, tap: { rid, node: asksNode(trick.trickKey), intent, value: { text } } };
     if (send === null && tap === null) {
       this.auditAnswer(closed, request, by, record.receipt);
       return { kind: "done", outcome: { kind: "receipt", receipt: record.receipt } };
@@ -2419,7 +2423,7 @@ export class HillService {
   cancelAsk(sender: HillSender, id: string, how: HillAskCancel): HillOneAnswer {
     const decision = this.mine(sender, id);
     const special = how.answered || how.because !== null;
-    if (special && decision !== null && decision.ask === undefined) return { ok: false, missing: false, error: `${id} is not an ask: --answered and --because close an ask; take a Decision back with no flag` };
+    if (special && decision !== null && decision.ask === undefined) return { ok: false, missing: false, error: `${id} is not an agent's ask: --answered and --because close an agent's ask; take any other card back with no flag` };
     if (how.answered && how.because !== null) return { ok: false, missing: false, error: "--answered and --because do not go together: an ask answered in the session needs no reason" };
     if (how.answered) return this.withdrawAny(sender, id, HILL_ASK_ANSWERED_HERE);
     if (how.because === null) return this.withdrawAny(sender, id, BY_THE_POSTER);
@@ -2494,13 +2498,13 @@ export class HillService {
         const stone = this.deps.store.tombstone(answer.id);
         if (stone === undefined) return { kind: "done", outcome: refusedSend("not_an_ask", `${answer.id} is not an ask on this machine`, { id: answer.id }) };
         senders.add(stone.key);
-        gone.set(answer.id, receiptOf(askAnswerRid(request.rid, answer.id), now, "gone", `the decision is ${stone.state}`, stone.state, null));
+        gone.set(answer.id, receiptOf(askAnswerRid(request.rid, answer.id), now, "gone", `the ask is ${stone.state}`, stone.state, null));
         continue;
       }
       if (decision.ask === undefined || decision.from.kind !== "agent") return { kind: "done", outcome: refusedSend("not_an_ask", `${answer.id} is not an ask`, { id: answer.id }) };
       senders.add(keyOf(decision));
       if (decision.state !== "open") {
-        gone.set(answer.id, receiptOf(askAnswerRid(request.rid, answer.id), now, "gone", `the decision is ${decision.state}`, decision.state, null));
+        gone.set(answer.id, receiptOf(askAnswerRid(request.rid, answer.id), now, "gone", `the ask is ${decision.state}`, decision.state, null));
         continue;
       }
       const checked = this.askAnswerCheck(decision, answer.intent, answer.text ?? null);
@@ -2546,7 +2550,7 @@ export class HillService {
     for (const entry of live) {
       const fresh = this.deps.store.get(entry.decision.id);
       if (fresh === undefined || fresh.state !== "open") {
-        gone.set(entry.decision.id, receiptOf(askAnswerRid(request.rid, entry.decision.id), now, "gone", `the decision is ${fresh?.state ?? "gone"}`, fresh?.state ?? null, null));
+        gone.set(entry.decision.id, receiptOf(askAnswerRid(request.rid, entry.decision.id), now, "gone", `the ask is ${fresh?.state ?? "gone"}`, fresh?.state ?? null, null));
         continue;
       }
       const label = fixedAnswerLabel(entry.intent) ?? fresh.options.find((option) => option.intent === entry.intent)?.label ?? null;
@@ -2629,7 +2633,7 @@ export class HillService {
     const option = decision.options.find((candidate) => candidate.intent === intent);
     const words = decision.ask?.words === true;
     const fits = isAskFixedAnswer(intent, words) || (intent === "answer" && words) || (option !== undefined && isHillOptionIntent(option.intent));
-    if (!fits) return { ok: false, reason: "not an option of this decision" };
+    if (!fits) return { ok: false, reason: "not an option of this ask" };
     const cleaned = cleanText(raw ?? "", HILL_ANSWER_TEXT_MAX);
     if (cleaned.over) return { ok: false, reason: `text is longer than ${String(HILL_ANSWER_TEXT_MAX)} characters` };
     const text = cleaned.text === "" ? null : cleaned.text;
@@ -2658,11 +2662,11 @@ export class HillService {
     // "Your own answer" is its text: never empty.
     if (intent === HILL_OWN_ANSWER) return text === null ? "text is required" : null;
     if (intent === "answer") {
-      if (decision.text === "none") return "this decision takes no text";
+      if (decision.text === "none") return "this ask takes no text";
       return text === null ? "text is required" : null;
     }
     if (decision.text === "required" && text === null) return "text is required";
-    if (decision.text === "none" && text !== null) return "this decision takes no text";
+    if (decision.text === "none" && text !== null) return "this ask takes no text";
     return null;
   }
 

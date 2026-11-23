@@ -50,7 +50,7 @@ describe("a post's fields off the socket", () => {
   });
 
   test("a request id, a priority or an expiry of the wrong shape is a bad request with no code", () => {
-    expect(readPostFields({ ...base, requestId: "nope" })).toEqual({ ok: false, code: null, error: "bad request: a decision's request id is a UUID" });
+    expect(readPostFields({ ...base, requestId: "nope" })).toEqual({ ok: false, code: null, error: "bad request: an ask's request id is a UUID" });
     expect(readPostFields({ ...base, priority: "urgent" })).toMatchObject({ ok: false, code: null });
     expect(readPostFields({ ...base, expiresAt: "tomorrow" })).toMatchObject({ ok: false, code: null });
     expect(readPostFields({ ...base, expiresAt: 1.5 })).toMatchObject({ ok: false, code: null });
@@ -59,20 +59,20 @@ describe("a post's fields off the socket", () => {
 
 describe("a phone's answer body", () => {
   test("reads rid, node, intent and text; the decision id comes from the node", () => {
-    expect(readAnswerRequest({ rid: RID, node: "hill/dc_k3m9x2p7q1ab", intent: "yes", value: { text: "go" } })).toEqual({
+    expect(readAnswerRequest({ rid: RID, node: "hill/ak_k3m9x2p7q1ab", intent: "yes", value: { text: "go" } })).toEqual({
       ok: true,
-      id: "dc_k3m9x2p7q1ab",
-      request: { rid: RID, node: "hill/dc_k3m9x2p7q1ab", intent: "yes", value: { text: "go" } },
+      id: "ak_k3m9x2p7q1ab",
+      request: { rid: RID, node: "hill/ak_k3m9x2p7q1ab", intent: "yes", value: { text: "go" } },
     });
-    expect(readAnswerRequest({ rid: RID, node: "hill/dc_k3m9x2p7q1ab", intent: "dismiss", value: { text: null } })).toMatchObject({ ok: true });
+    expect(readAnswerRequest({ rid: RID, node: "hill/ak_k3m9x2p7q1ab", intent: "dismiss", value: { text: null } })).toMatchObject({ ok: true });
   });
 
   test("any other shape is refused, so the route answers 400 and writes no receipt", () => {
-    const ok = { rid: RID, node: "hill/dc_k3m9x2p7q1ab", intent: "yes", value: { text: null } };
+    const ok = { rid: RID, node: "hill/ak_k3m9x2p7q1ab", intent: "yes", value: { text: null } };
     expect(readAnswerRequest(undefined)).toEqual({ ok: false, error: "bad body" });
     expect(readAnswerRequest([])).toEqual({ ok: false, error: "bad body" });
     expect(readAnswerRequest({ ...ok, rid: "x" })).toEqual({ ok: false, error: "bad rid" });
-    expect(readAnswerRequest({ ...ok, node: "dc_k3m9x2p7q1ab" })).toEqual({ ok: false, error: "bad node" });
+    expect(readAnswerRequest({ ...ok, node: "ak_k3m9x2p7q1ab" })).toEqual({ ok: false, error: "bad node" });
     expect(readAnswerRequest({ ...ok, node: "hill/../../etc" })).toEqual({ ok: false, error: "bad node" });
     expect(readAnswerRequest({ ...ok, intent: "" })).toEqual({ ok: false, error: "bad intent" });
     expect(readAnswerRequest({ ...ok, intent: "i".repeat(33) })).toEqual({ ok: false, error: "bad intent" });
@@ -147,7 +147,7 @@ function onDisk(whole: HillDecision, over: JsonObject = {}): JsonValue | undefin
 
 describe("a stored decision", () => {
   test("a whole decision reads back as itself", () => {
-    const whole = decision("dc_aaaaaaaaaaa1", {
+    const whole = decision("ak_aaaaaaaaaaa1", {
       recommends: { intent: "yes", why: "w" },
       links: [{ label: "L", href: "https://example.com" }],
       state: "answered",
@@ -158,7 +158,7 @@ describe("a stored decision", () => {
   });
 
   test("a trick's decision reads back only with its trick, its key and its routing member id", () => {
-    const base = decision("dc_aaaaaaaaaaa1");
+    const base = decision("ak_aaaaaaaaaaa1");
     const trick = { ...base, from: { ...base.from, kind: "trick" as const, address: null, trickId: "legs", trickKey: "k", memberId: "lodge-hc", label: "Legs", host: "lodge", trickHost: "lodge-hc" } };
     expect(readDecision(onDisk(trick))).toEqual(trick);
     const row = { ...parseJsonObject(JSON.stringify(trick)) };
@@ -177,41 +177,41 @@ describe("a stored decision", () => {
   });
 
   test("an answer without its trick delivery does not read: every answer since M94 stores one", () => {
-    const answered = decision("dc_aaaaaaaaaaa1", { state: "answered", closedAt: 5, answer: { rid: RID, intent: "yes", label: "Yes", text: null, by: "Pixel", at: 5, delivery: "typed", trick: "none" } });
+    const answered = decision("ak_aaaaaaaaaaa1", { state: "answered", closedAt: 5, answer: { rid: RID, intent: "yes", label: "Yes", text: null, by: "Pixel", at: 5, delivery: "typed", trick: "none" } });
     const row = { ...parseJsonObject(JSON.stringify(answered)) };
     const { trick: _gone, ...bare } = { ...parseJsonObject(JSON.stringify(answered.answer)) };
     expect(readDecision({ ...row, answer: bare })).toBeNull();
   });
 
   test("an answer's device id reads back when present and stays absent when not; a bad one fails the record", () => {
-    const answered = decision("dc_aaaaaaaaaaa1", { state: "answered", closedAt: 5, answer: { rid: RID, intent: "yes", label: "Yes", text: null, by: "Pixel", at: 5, delivery: "typed", trick: "none", deviceId: "dv_0123456789abcdef" } });
+    const answered = decision("ak_aaaaaaaaaaa1", { state: "answered", closedAt: 5, answer: { rid: RID, intent: "yes", label: "Yes", text: null, by: "Pixel", at: 5, delivery: "typed", trick: "none", deviceId: "dv_0123456789abcdef" } });
     expect(readDecision(onDisk(answered))).toEqual(answered);
     expect(readDecision(onDisk(answered, { answer: { ...answered.answer!, deviceId: "Pixel" } }))).toBeNull();
   });
 
   test("the post digest reads back when present and stays absent when not; a bad one fails the record", () => {
     const digest = "a".repeat(64);
-    const withDigest = decision("dc_aaaaaaaaaaa1", { postDigest: digest });
+    const withDigest = decision("ak_aaaaaaaaaaa1", { postDigest: digest });
     expect(readDecision(onDisk(withDigest))).toEqual(withDigest);
-    expect(readDecision(onDisk(decision("dc_aaaaaaaaaaa1")))).not.toHaveProperty("postDigest");
+    expect(readDecision(onDisk(decision("ak_aaaaaaaaaaa1")))).not.toHaveProperty("postDigest");
     expect(readDecision(onDisk(withDigest, { postDigest: "short" }))).toBeNull();
     expect(readDecision(onDisk(withDigest, { postDigest: 7 }))).toBeNull();
   });
 
   test("the push slot reads back when present and stays absent when not; a bad one fails the record", () => {
-    const withSlot = decision("dc_aaaaaaaaaaa1", { pushTag: "collie:hill:dc_aaaaaaaaaaa1" });
+    const withSlot = decision("ak_aaaaaaaaaaa1", { pushTag: "collie:hill:ak_aaaaaaaaaaa1" });
     expect(readDecision(onDisk(withSlot))).toEqual(withSlot);
-    expect(readDecision(onDisk(decision("dc_aaaaaaaaaaa1")))).not.toHaveProperty("pushTag");
+    expect(readDecision(onDisk(decision("ak_aaaaaaaaaaa1")))).not.toHaveProperty("pushTag");
     expect(readDecision(onDisk(withSlot, { pushTag: "collie:herd" }))).toBeNull();
     expect(readDecision(onDisk(withSlot, { pushTag: 7 }))).toBeNull();
   });
 
   test("a stored view reads back; a view that fails its rule is dropped and the decision stays", () => {
     const view: View = [{ kind: "para", text: "From the leg." }];
-    const withView = decision("dc_aaaaaaaaaaa1", { view });
+    const withView = decision("ak_aaaaaaaaaaa1", { view });
     expect(readDecision(onDisk(withView))).toEqual(withView);
     const bad = readDecision(onDisk(withView, { view: [{ kind: "button", text: "x", attrs: { intent: "go" } }] }));
-    expect(bad?.id).toBe("dc_aaaaaaaaaaa1");
+    expect(bad?.id).toBe("ak_aaaaaaaaaaa1");
     expect(bad).not.toHaveProperty("view");
   });
 
@@ -222,15 +222,15 @@ describe("a stored decision", () => {
       { kind: "compare", kids: [{ kind: "image", attrs: { ref: "0" } }, { kind: "image", attrs: { ref: "1" } }] },
       { kind: "image", attrs: { ref: "1", caption: "After" } },
     ];
-    const withView = decision("dc_aaaaaaaaaaa1", { view });
+    const withView = decision("ak_aaaaaaaaaaa1", { view });
     expect(withView.media).toEqual([]);
     expect(readDecision(onDisk(withView))?.view).toEqual(view);
   });
 
   test("a field that fails its rule fails the record", () => {
-    const whole = decision("dc_aaaaaaaaaaa1");
+    const whole = decision("ak_aaaaaaaaaaa1");
     expect(readDecision(onDisk(whole, { v: 2 }))).toBeNull();
-    expect(readDecision(onDisk(whole, { id: "dc_x" }))).toBeNull();
+    expect(readDecision(onDisk(whole, { id: "ak_x" }))).toBeNull();
     expect(readDecision(onDisk(whole, { state: "maybe" }))).toBeNull();
     expect(readDecision(onDisk(whole, { priority: "soon" }))).toBeNull();
     expect(readDecision(onDisk(whole, { options: [{ intent: 1 }] }))).toBeNull();
@@ -247,7 +247,7 @@ describe("the receipt file", () => {
     if (HOST.platform === "win32") ensureOwnerOnlyDir(stateDir, HOST, { root: privateRoot("state"), repair: true });
     const store = new HillReceiptStore(stateDir);
     await store.load();
-    const record = { requestId: RID, payloadDigest: hillAnswerDigest("hill/dc_aaaaaaaaaaa1", "yes", null), receipt: { rid: RID, code: "ok" as const, reason: null, state: "answered" as const, delivery: "typed" as const, trick: "none" as const, at: 5 } };
+    const record = { requestId: RID, payloadDigest: hillAnswerDigest("hill/ak_aaaaaaaaaaa1", "yes", null), receipt: { rid: RID, code: "ok" as const, reason: null, state: "answered" as const, delivery: "typed" as const, trick: "none" as const, at: 5 } };
     expect(await store.recordFirst(record)).toBe(true);
     const path = join(hillDir(stateDir), HILL_RECEIPTS_FILE);
     if (HOST.platform !== "win32") expect(statSync(path).mode & 0o777).toBe(0o600);
@@ -266,9 +266,9 @@ describe("the receipt file", () => {
   });
 
   test("the digest covers node, intent and text; a record whose rid is not its key is dropped", () => {
-    expect(hillAnswerDigest("hill/dc_aaaaaaaaaaa1", "yes", null)).toBe(hillAnswerDigest("hill/dc_aaaaaaaaaaa1", "yes", ""));
-    expect(hillAnswerDigest("hill/dc_aaaaaaaaaaa1", "yes", "a")).not.toBe(hillAnswerDigest("hill/dc_aaaaaaaaaaa1", "yes", "b"));
-    expect(hillAnswerDigest("hill/dc_aaaaaaaaaaa1", "yes", null)).not.toBe(hillAnswerDigest("hill/dc_aaaaaaaaaaa1", "no", null));
+    expect(hillAnswerDigest("hill/ak_aaaaaaaaaaa1", "yes", null)).toBe(hillAnswerDigest("hill/ak_aaaaaaaaaaa1", "yes", ""));
+    expect(hillAnswerDigest("hill/ak_aaaaaaaaaaa1", "yes", "a")).not.toBe(hillAnswerDigest("hill/ak_aaaaaaaaaaa1", "yes", "b"));
+    expect(hillAnswerDigest("hill/ak_aaaaaaaaaaa1", "yes", null)).not.toBe(hillAnswerDigest("hill/ak_aaaaaaaaaaa1", "no", null));
     const receipt = { rid: RID, code: "ok", reason: null, state: "answered", delivery: "typed", trick: "none", at: 5 };
     expect(coerceHillReceipt({ requestId: RID, payloadDigest: "d", receipt })).not.toBeNull();
     // Every receipt since M94 stores its trick delivery; one without it does not read (never shipped).

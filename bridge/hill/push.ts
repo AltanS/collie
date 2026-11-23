@@ -48,7 +48,7 @@ export function hillPushTag(id: string): string {
 
 /** Whether a stored `pushTag` has the shape {@link hillPushTag} makes. */
 export function isHillPushTag(tag: string): boolean {
-  return /^collie:hill:dc_[a-z0-9]{12}$/u.test(tag);
+  return /^collie:hill:ak_[a-z0-9]{12}$/u.test(tag);
 }
 
 /** One line of a push: every run of white space one space, cut to `max` characters with `…`. */

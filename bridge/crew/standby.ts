@@ -384,7 +384,7 @@ export function carriedLines(carried: CarriedSummary | null): string[] {
     if (more > 0) out.push(`<details><summary>Show all ${String(names.length)}</summary><p>${boxed.join(", ")}.</p></details>`);
   }
   const questions = carried.questions ?? 0;
-  if (questions > 0) out.push(questions === 1 ? "<p>1 open question on the Hill comes along.</p>" : `<p>${String(questions)} open questions on the Hill come along.</p>`);
+  if (questions > 0) out.push(questions === 1 ? "<p>1 open ask comes along.</p>" : `<p>${String(questions)} open asks come along.</p>`);
   return out;
 }
 

@@ -10778,7 +10778,7 @@ export function tricksFeatureRoute(
 }
 
 /** What the answer route says while the Hill is switched off: nothing was typed, and the decision stays open. */
-export const HILL_SWITCHED_OFF_TEXT = "the Hill is off on this Collie, so nothing was sent";
+export const HILL_SWITCHED_OFF_TEXT = "Asks is off on this Collie, so nothing was sent";
 
 /**
  * `GET` and `POST /api/hill/switch`: the Hill's switch. `GET` (`write` null) answers `{ on }`. `POST`
@@ -10796,7 +10796,7 @@ export function hillSwitchRoute(
   const on = asJsonBoolean(doc?.on);
   if (doc === undefined || on === undefined || Object.keys(doc).length !== 1) return text("bad request: the body is { \"on\": true } or { \"on\": false }", 400);
   const now = hill.switchTo(on, context.device);
-  if (now === null) return text("the Hill's switch could not be saved on this machine; nothing changed", 503);
+  if (now === null) return text("the switch of Asks could not be saved on this machine; nothing changed", 503);
   return json({ on: now }, context.acceptEncoding);
 }
 
@@ -10938,7 +10938,7 @@ export async function hillAnswersRoute(
 }
 
 /** What the clear route says when the write failed: nothing was removed. */
-export const HILL_CLEAR_UNSAVED_TEXT = "the Hill could not be saved on this machine; nothing was cleared";
+export const HILL_CLEAR_UNSAVED_TEXT = "Asks could not be saved on this machine; nothing was cleared";
 /** The most ids one clear names. */
 export const HILL_CLEAR_IDS_MAX = 200;
 
@@ -10961,7 +10961,7 @@ export function hillSpokenClearRoute(
   return json({ cleared: answer.cleared }, context.acceptEncoding);
 }
 
-const HILL_CLEAR_BAD_BODY = 'bad request: the body is {} or { "ids": ["dc_..."] }';
+const HILL_CLEAR_BAD_BODY = 'bad request: the body is {} or { "ids": ["ak_..."] }';
 
 /** A Clear's body: `{}` (null, every one) or `{ "ids": [...] }`; undefined for any other shape. */
 function readClearIds(body: JsonValue | undefined): string[] | null | undefined {
@@ -10981,7 +10981,7 @@ function readClearIds(body: JsonValue | undefined): string[] | null | undefined 
 
 /**
  * `POST /api/hill/clear`: remove closed decisions. The body is `{}` (every closed decision) or
- * `{ "ids": ["dc_..."] }` (those, when closed). 200 `{ cleared, skipped }`: `cleared` is how many went,
+ * `{ "ids": ["ak_..."] }` (those, when closed). 200 `{ cleared, skipped }`: `cleared` is how many went,
  * `skipped` the ids left alone, `open` for an open decision and `missing` for one this bridge does not
  * hold. 400 for another body, 503 when the write failed. Works with the Hill off.
  */

@@ -57,14 +57,27 @@ export const HILL_RESERVED_INTENTS: readonly string[] = ["answer", "dismiss", HI
 /** A device id on an answer: "dv_" and 16 hex characters, derived by the bridge from a pairing record. */
 export const HILL_DEVICE_ID_RE = /^dv_[0-9a-f]{16}$/;
 /**
- * A decision id: "dc_" and 12 characters, minted by the bridge; an ask's id is "ak_" and 12 characters
- * (Asks, 2026-11-22). Every place that tells a Decision id from a WalkyTalky message id (`wt_`) takes both.
+ * A card id on the wire: "ak_" and 12 characters, minted by the bridge for every card since ADR 0179, or the
+ * "dc_" of a card a lead of an older release minted (a crew runs mixed versions during an update, and the
+ * crew wire stays). The state reader takes only {@link HILL_ASK_ID_RE}; the CLI says an old id is gone.
  */
 export const HILL_ID_RE = /^(?:dc|ak)_[a-z0-9]{12}$/;
-/** An ask's id: "ak_" and 12 characters, minted by the bridge for a post from `collie walky ask`. */
+/** An ask's id: "ak_" and 12 characters, minted by the bridge for every card (ADR 0179). */
 export const HILL_ASK_ID_RE = /^ak_[a-z0-9]{12}$/;
-/** The node name a decision has in an answer request: "hill/<decision id>". */
+/**
+ * The node name a card has in the phone's own answer request (`POST /api/hill/answer`): "hill/<id>". The
+ * app's call to its own bridge, kept through the rename (ADR 0179) for a phone with an older cached app.
+ * A trick never sees it: its tap node is {@link ASKS_NODE_PREFIX}.
+ */
 export const HILL_NODE_PREFIX = "hill/";
+/** The node of a trick's tap for an answer to one of its asks: "asks/<key>" (ADR 0179; `hill/<key>` before). */
+export const ASKS_NODE_PREFIX = "asks/";
+/** The node prefix a trick's answer tap had before ADR 0179, refused with {@link oldNodeLine}. */
+export const OLD_TRICK_NODE_PREFIX = "hill/";
+/** The one sentence an old trick node gets, at the tap and in `collie trick dev --tap`. */
+export function oldNodeLine(node: string): string {
+  return `the node ${node} is now ${ASKS_NODE_PREFIX}${node.slice(OLD_TRICK_NODE_PREFIX.length)}`;
+}
 
 export const HILL_TITLE_MAX = 120;
 export const HILL_SUMMARY_MAX = 280;
@@ -401,7 +414,7 @@ export function isAsk(decision: Pick<HillDecision, "ask">): decision is Pick<Hil
 /** A decision as the bridge stores it and serves it (wire version 1). */
 export interface HillDecision {
   v: 1;
-  /** "dc_" and 12 characters, minted by the bridge. */
+  /** "ak_" and 12 characters, minted by the bridge ("dc_" from a lead of a release before ADR 0179). */
   id: string;
   /** A UUID the poster minted. A repeat of the same one returns this decision. */
   requestId: string;
@@ -681,6 +694,11 @@ export type HillRefusalCode =
 /** The node name of a decision: "hill/<id>". */
 export function hillNode(id: string): string {
   return `${HILL_NODE_PREFIX}${id}`;
+}
+
+/** A trick's tap node for an answer to its ask with document key `key`: "asks/<key>" (ADR 0179). */
+export function asksNode(key: string): string {
+  return `${ASKS_NODE_PREFIX}${key}`;
 }
 
 /** The decision id inside a node name, or null when the node is not a well-formed hill node. */

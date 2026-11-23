@@ -63,7 +63,7 @@ async function rig(opts: { brokenStore?: boolean; noMedia?: boolean } = {}): Pro
   const work = folder("view-work-");
   let n = 0;
   const mint: ViewMinters = {
-    set: () => `dc_${String((n += 1)).padStart(12, "0")}`,
+    set: () => `ak_${String((n += 1)).padStart(12, "0")}`,
     media: () => `im_${String((n += 1)).padStart(16, "0")}`,
   };
   const store = new AgentViewStore(trickViewsDir(state), Date.now, () => undefined);
@@ -112,7 +112,7 @@ describe("a show with pictures", () => {
     expect(answer.ok).toBe(true);
     if (!answer.ok) return;
     const screen = answer.session.view;
-    expect(screen?.set).toMatch(/^dc_[a-z0-9]{12}$/);
+    expect(screen?.set).toMatch(/^ak_[a-z0-9]{12}$/);
     expect(screen?.media?.map((m) => [m.mime, m.bytes, m.width, m.height, m.caption])).toEqual([
       ["image/png", 120, 390, 844, "Now"],
       ["image/png", 140, 800, 600, undefined],
@@ -163,15 +163,15 @@ describe("a show with pictures", () => {
   test("lead addition 6: the route answers one 404 for every miss, and checks both ids before any path", async () => {
     const r = await rig();
     for (const [set, id] of [
-      ["dc_000000000000", "im_0000000000000000"],
+      ["ak_000000000000", "im_0000000000000000"],
       ["..", "im_0000000000000000"],
-      ["dc_000000000000", "../state.json"],
+      ["ak_000000000000", "../state.json"],
     ] as const) {
       const res = trickViewsMediaRoute(r.service, set, id);
       expect(res.status).toBe(404);
       expect(await res.text()).toBe(HILL_MEDIA_MISSING);
     }
-    expect(await trickViewsMediaRoute(undefined, "dc_000000000000", "im_0000000000000000").text()).toBe(VIEW_OFF_TEXT);
+    expect(await trickViewsMediaRoute(undefined, "ak_000000000000", "im_0000000000000000").text()).toBe(VIEW_OFF_TEXT);
   });
 
   posix("a new show replaces the set, and the old folder goes with the write", async () => {
@@ -266,7 +266,7 @@ describe("The view's own caps refuse the whole command, and nothing is written",
     const r = await rig();
     const one = file(r.work, "a.png", png(400));
     const keep = new HillMediaStore(trickViewsDir(r.state), [], () => undefined);
-    const mint: ViewMinters = { set: () => "dc_aaaaaaaaaaaa", media: () => `im_${String(Math.random()).slice(2, 18).padEnd(16, "0")}` };
+    const mint: ViewMinters = { set: () => "ak_aaaaaaaaaaaa", media: () => `im_${String(Math.random()).slice(2, 18).padEnd(16, "0")}` };
     const answer = keepPictures({ keep, mint, held: null, added: [{ path: one, caption: null }, { path: one, caption: null }], limits: { count: 4, bytes: 1000, setBytes: 700 } });
     expect(answer).toEqual({ ok: false, code: "image_too_large", error: VIEW_SET_TOO_LARGE });
     expect(existsSync(r.mediaRoot)).toBe(false);

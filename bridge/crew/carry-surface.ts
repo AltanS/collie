@@ -74,7 +74,7 @@ async function hillWrite(store: StandbyHillStore, path: string, ctx: { readonly 
   if (store.held()) return HELD;
   if (path === CREW_HILL_COPY_PATH) {
     const list = parseHillList(body);
-    if (list === null) return answer(400, { error: "a Hill copy is { seq, on, decisions, closed, tricks }" });
+    if (list === null) return answer(400, { error: "a copy of Asks is { seq, on, decisions, closed, tricks }" });
     const applied = await store.applyList({ from: ctx.from, crewId: ctx.crewId, list });
     if (!applied.ok) return answer(409, { error: "this list is older than the one held", code: applied.code });
     return answer(200, { applied: true, need: { media: applied.need } });

@@ -34,14 +34,14 @@ const ROLE = { crewId: "crew-1", leads: false, leadMemberId: "desk", deputy: tru
 const HASH = "c".repeat(64);
 const MEDIA: HillMedia = { id: "im_aaaaaaaaaaaaaaaa", kind: "image", mime: "image/png", bytes: PNG.length, width: null, height: null };
 
-const agent = (n: number, over: Partial<HillDecision> = {}) => decision(`dc_agent${String(n).padStart(7, "0")}`, { at: T0 + n, ...over });
+const agent = (n: number, over: Partial<HillDecision> = {}) => decision(`ak_agent${String(n).padStart(7, "0")}`, { at: T0 + n, ...over });
 const trickCard = (trickId: string, n: number) =>
-  decision(`dc_trick${String(n).padStart(7, "0")}`, {
+  decision(`ak_trick${String(n).padStart(7, "0")}`, {
     at: T0 + n,
     from: { kind: "trick", address: null, trickId, trickKey: "k", memberId: "desk", harness: null, label: trickId, host: "desk", trickHost: "desk" },
   });
 const collieCard = (type: "version" | "proposal" | "carried", n: number, options = [{ intent: "ok", label: "OK" }]) =>
-  decision(`dc_collie${String(n).padStart(6, "0")}`, {
+  decision(`ak_collie${String(n).padStart(6, "0")}`, {
     at: T0 + n,
     options,
     from: { kind: "collie", address: null, trickId: null, trickKey: null, memberId: "desk", harness: null, label: "Collie", host: "desk", trickHost: null, ref: { type, id: "legs", hash: HASH } },
@@ -66,7 +66,7 @@ async function hillOn(label: string, opts: { deposed?: () => boolean; mode?: "le
     memberId: label,
     machine: label,
     now: () => T0,
-    mintId: () => `dc_new${String((n += 1)).padStart(9, "0")}`,
+    mintId: () => `ak_new${String((n += 1)).padStart(9, "0")}`,
     hillSwitch: { on: () => true },
     push: new HillPush({ ready: () => true, send: (message) => void pushes.push(message) }),
   });
@@ -275,7 +275,7 @@ describe("the takeover tap brings the open Decisions along (§25)", () => {
     const result = await adoptCarriedHill({ ...opts, store: broken.copy, hill: broken.deputy.hill, stateDir: broken.deputy.m.stateDir, followSkill: () => { throw new Error("EIO"); } });
     expect(result.open).toBe(1);
     expect(readHillSwitch(broken.deputy.m.stateDir)).toEqual({ on: true, problem: null });
-    expect(lines).toEqual(["[hill] the WalkyTalky skill did not follow the switch: EIO"]);
+    expect(lines).toEqual(["[asks] the WalkyTalky skill did not follow the switch: EIO"]);
   });
 
   test("an id this Hill already holds is left as it is here", async () => {

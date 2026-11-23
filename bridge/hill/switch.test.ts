@@ -91,7 +91,7 @@ function rig(): Rig {
     memberId: "m_aaaaaaaaaa",
     machine: "desk",
     now: () => state.clock,
-    mintId: () => `dc_swit${String((n += 1)).padStart(8, "0")}`,
+    mintId: () => `ak_swit${String((n += 1)).padStart(8, "0")}`,
     audit: (entry) => state.audit.push(entry),
     tap: async (_host, trickId) => {
       state.taps.push(trickId);
@@ -115,7 +115,7 @@ describe("the switch file", () => {
     expect(parseHillSwitch(renderHillSwitch(false, "2026-11-10T09:41:00.000Z"))).toEqual({ on: false, problem: null });
     expect(parseHillSwitch(renderHillSwitch(true, "2026-11-10T09:41:00.000Z"))).toEqual({ on: true, problem: null });
     for (const bad of ["not json", "[]", '{"v":2,"on":false}', '{"v":1,"on":"no"}', '{"v":1}']) {
-      expect(parseHillSwitch(bad)).toEqual({ on: false, problem: `${HILL_SWITCH_FILE} is not a version 1 switch file; the Hill reads as off` });
+      expect(parseHillSwitch(bad)).toEqual({ on: false, problem: `${HILL_SWITCH_FILE} is not a version 1 switch file; Asks reads as off` });
     }
   });
 
@@ -148,7 +148,7 @@ describe("the switch file", () => {
     // A file that does not read is an explicit off, with one warning for the change.
     expect(sw.reading()).toBe("off");
     expect(sw.reading()).toBe("off");
-    expect(warnings).toEqual([`${HILL_SWITCH_FILE} is not a version 1 switch file; the Hill reads as off`]);
+    expect(warnings).toEqual([`${HILL_SWITCH_FILE} is not a version 1 switch file; Asks reads as off`]);
   });
 
   test("three readings: no file is unset and reads as off; a written file is on or off; a removed file is unset again", () => {
@@ -179,7 +179,7 @@ describe("the Hill is off by default", () => {
     rmSync(hillSwitchPath(r.dir));
     expect(r.hill.isOn()).toBe(false);
     expect(r.hill.post(POSTER, input(1))).toEqual({ ok: false, code: "hill_off", error: HILL_OFF });
-    expect(HILL_OFF).toBe("the Hill is off on this Collie; your person can switch it on in Settings, Tricks, on the phone, or with: collie hill on");
+    expect(HILL_OFF).toBe("Asks is off on this Collie; your person can switch it on in Settings, Tricks, on the phone, or with: collie asks on");
     expect(r.store.all()).toEqual([]);
     expect(r.hill.switchTo(true, "Pixel 9")).toBe(true);
     posted(r.hill.post(POSTER, input(1)));
@@ -206,7 +206,7 @@ describe("with the Hill off", () => {
     r.sw.set(false);
     const answer = r.hill.post(POSTER, input(1, { priority: "now" }));
     expect(answer).toEqual({ ok: false, code: "hill_off", error: HILL_OFF });
-    expect(HILL_OFF).toContain("collie hill on");
+    expect(HILL_OFF).toContain("collie asks on");
     expect(r.store.all()).toEqual([]);
     expect(r.pushes).toEqual([]);
   });
@@ -277,7 +277,7 @@ describe("with the Hill off", () => {
     writeHillSwitch(r.dir, false);
     r.hill.sweep();
     expect(r.pushes.slice(before)).toEqual([{ type: "clear", tag: hillPushTag(now), topic: hillTopic(hillPushTag(now)) }]);
-    expect(r.audit.at(-1)).toEqual({ action: "hill.push.cleared", detail: { why: "the Hill is off", count: 1 } });
+    expect(r.audit.at(-1)).toEqual({ action: "hill.push.cleared", detail: { why: "Asks is off", count: 1 } });
     // Seen off again: nothing more is cleared.
     r.hill.sweep();
     expect(r.hill.isOn()).toBe(false);
@@ -429,7 +429,7 @@ describe("with the Hill off, a card of Collie's own about a trick", () => {
       expect(r.store.get(id)?.state).toBe("open");
     }
     // An answer naming an id the Hill never held, with the Hill off, is off as before.
-    expect(await r.hill.answer({ rid: uuid(101), node: "hill/dc_nothing0000", intent: "yes", value: { text: null } }, "dc_nothing0000", "Pixel 9")).toEqual({ kind: "off" });
+    expect(await r.hill.answer({ rid: uuid(101), node: "hill/ak_nothing0000", intent: "yes", value: { text: null } }, "ak_nothing0000", "Pixel 9")).toEqual({ kind: "off" });
     expect(r.sent).toEqual([]);
     expect(r.taps).toEqual([]);
     expect(r.store.get(own)?.state).toBe("open");

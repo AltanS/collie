@@ -104,7 +104,8 @@ export function collieOkWords(from: HillDecision["from"], intent: string): strin
 function reasonWords(reason: string | null): string | null {
   if (reason === null || reason.trim() === "") return null;
   if (reason === "text is required") return t("hill.reason.textRequired");
-  if (reason === "not an option of this decision") return t("hill.reason.notAnOption");
+  // The bridge says "ask" since ADR 0179; a lead of an older release still says "decision" (a crew runs mixed versions).
+  if (reason === "not an option of this ask" || reason === "not an option of this decision") return t("hill.reason.notAnOption");
   return reason;
 }
 

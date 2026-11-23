@@ -3138,7 +3138,7 @@ async function reconcileTricksCopy(): Promise<void> {
       console.log("[crew] this machine is no longer its lead's deputy: removed its copy of the lead's tricks");
     }
     if ((await hillCopyStore?.reconcile(copyRole())) === true) {
-      console.log("[crew] this machine is no longer its lead's deputy: removed its copy of the lead's open Decisions");
+      console.log("[crew] this machine is no longer its lead's deputy: removed its copy of the lead's open asks");
     }
   } catch (err) {
     console.warn(`[crew] could not remove the copy of the lead's tricks: ${err instanceof Error ? err.message : String(err)}`);
@@ -3520,7 +3520,7 @@ const crewLead = (() => {
           client: { list: (link, body) => client.carryPost(link, "hill-copy", body), media: (link, body) => client.carryPost(link, "hill-copy/media", body) },
         });
         hillCopySync = sync;
-        return [{ name: "copy of the open Decisions", deputy: () => trustStore.current()?.deputy ?? null, sync: (link: CrewLink, body: JsonValue | undefined) => sync.run(link, body) }];
+        return [{ name: "copy of the open asks", deputy: () => trustStore.current()?.deputy ?? null, sync: (link: CrewLink, body: JsonValue | undefined) => sync.run(link, body) }];
       })(),
       ...(() => {
       const configRoot = tricksConfigRoot;

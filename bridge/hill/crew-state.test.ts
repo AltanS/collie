@@ -11,7 +11,7 @@ import { HillCrewLead, HillHeldMedia, HillMemberForward, type HillLeadLink } fro
 import type { HillPushPort } from "./push.ts";
 import { memoryHillReceipts } from "./receipts.ts";
 import { HILL_STATE_ON_LEAD, HILL_TELL_DONE, HILL_TELL_HERE, HILL_TELL_MOVED, HillService, type HillAgentSender, type HillCrewMode, type HillPlace, type HillPostAnswer } from "./service.ts";
-import { HillStore } from "./store.ts";
+import { HillStore, hillDir } from "./store.ts";
 
 const roots: string[] = [];
 afterEach(() => {
@@ -96,7 +96,7 @@ function rig(): Rig {
     now: () => state.clock,
     mintId: () => {
       n += 1;
-      return `dc_cs${String(n).padStart(10, "0")}`;
+      return `ak_cs${String(n).padStart(10, "0")}`;
     },
     audit: (entry) => state.audit.push(entry),
     push,
@@ -143,8 +143,8 @@ describe("the crew state on the Hill", () => {
     }
     expect(r.pushed).toHaveLength(1);
     expect(r.audit.filter((entry) => entry.action === "hill.push.skipped").map((entry) => entry.detail)).toEqual([
-      { decisionId: "dc_cs0000000002", why: "the crew state is quiet" },
-      { decisionId: "dc_cs0000000003", why: "the crew state is away" },
+      { decisionId: "ak_cs0000000002", why: "the crew state is quiet" },
+      { decisionId: "ak_cs0000000003", why: "the crew state is away" },
     ]);
   });
 
@@ -314,7 +314,7 @@ describe("the crew state across a crew", () => {
 
 test("a stray temp file is not read as the state", () => {
   const dir = tempState();
-  mkdirSync(join(dir, "hill"), { recursive: true });
+  mkdirSync(hillDir(dir), { recursive: true });
   writeFileSync(`${hillCrewStatePath(dir)}.99.tmp`, '{"v":1,"state":"away","at":1,"by":"x"}');
   expect(readHillCrewState(dir).view.state).toBe("here");
 });

@@ -96,7 +96,7 @@ function rig(opts: RigOptions = {}): Rig {
         throw new Error("a stub that fails");
       }),
     accounts: async () => ({ ok: true, answer: { accounts: [] } }),
-    "hill.list": async () => ({ ok: true, answer: { decisions: [] } }),
+    "asks.list": async () => ({ ok: true, answer: { decisions: [] } }),
     machines: async () => ({ ok: true, answer: { machines: [] } }),
   };
   const logs: string[] = [];

@@ -199,7 +199,7 @@ describe("taking an ask back", () => {
     expect(r.hill.cancelAsk(ONE, a.id, { answered: true, because: "x" })).toMatchObject({ ok: false, error: expect.stringContaining("do not go together") });
     expect(r.hill.cancelAsk(ONE, a.id, { answered: false, because: "x".repeat(201) })).toMatchObject({ ok: false, error: expect.stringContaining("200") });
     const plain = posted(r.hill.post(ONE, { requestId: uuid(3), title: "Plain?", summary: "A plain card.", options: [{ intent: "yes", label: "Yes" }], recommends: null }));
-    expect(r.hill.cancelAsk(ONE, plain.id, { answered: true, because: null })).toMatchObject({ ok: false, error: expect.stringContaining("is not an ask") });
+    expect(r.hill.cancelAsk(ONE, plain.id, { answered: true, because: null })).toMatchObject({ ok: false, error: expect.stringContaining("is not an agent's ask") });
     expect(r.hill.cancelAsk(TWO, a.id, { answered: false, because: null })).toMatchObject({ ok: false, missing: true });
   });
 });
@@ -223,7 +223,7 @@ describe("the single answer to an ask", () => {
     expect(r.sent[0]!.body).toContain(`--replaces ${words.id}`);
     const options = posted(r.hill.post(ONE, askInput(2)));
     const bare = await r.hill.answer(answerOf(options, 51, "answer", "Ship it"), options.id, "Pixel 9");
-    expect(bare).toMatchObject({ kind: "receipt", receipt: { code: "rejected", reason: "not an option of this decision" } });
+    expect(bare).toMatchObject({ kind: "receipt", receipt: { code: "rejected", reason: "not an option of this ask" } });
     expect(r.store.get(options.id)?.state).toBe("open");
   });
 

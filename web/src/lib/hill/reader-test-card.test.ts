@@ -10,7 +10,7 @@ import { HILL_COLLIE_REF_TYPES, isTrickCard } from "./wire";
 
 const STORED = {
   v: 1,
-  id: "dc_test00000001",
+  id: "ak_test00000001",
   requestId: "5d1b0a54-9a2e-4c1f-8f0a-3b7d2c6e9a10",
   from: {
     kind: "collie",
@@ -46,13 +46,13 @@ const STORED = {
   closedReason: null,
   answer: null,
   postDigest: "b".repeat(64),
-  pushTag: "collie:hill:dc_test00000001",
+  pushTag: "collie:hill:ak_test00000001",
 };
 
 describe("a stored test Decision", () => {
   it("is read by the web's reader as a card of Collie's own, labelled Collie, priority Now, with one option", () => {
     const read = readHillDecision(asJsonObject(STORED) ?? {});
-    expect(read).toMatchObject({ id: "dc_test00000001", priority: "now", title: "Does the Hill reach you?", options: [{ intent: "ok", label: "It works" }], from: { kind: "collie", label: "Collie", ref: { type: "test", id: "test" } } });
+    expect(read).toMatchObject({ id: "ak_test00000001", priority: "now", title: "Does the Hill reach you?", options: [{ intent: "ok", label: "It works" }], from: { kind: "collie", label: "Collie", ref: { type: "test", id: "test" } } });
   });
 
   it("is a ref type the web lists, and no trick card", () => {

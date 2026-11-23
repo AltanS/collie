@@ -168,7 +168,7 @@ describe("the hill store", () => {
 
   it("keeps no words for an answer that reached its target", () => {
     const { result } = renderHook(() => useHillKept());
-    act(() => noteHillAnswer("dc_x", { receipt: hillReceipt({ at: HILL_T0 }), intent: "yes", text: "fine" }));
+    act(() => noteHillAnswer("ak_x", { receipt: hillReceipt({ at: HILL_T0 }), intent: "yes", text: "fine" }));
     expect(result.current.size).toBe(0);
   });
 

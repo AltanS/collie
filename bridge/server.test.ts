@@ -6452,7 +6452,7 @@ describe("journalRefOf — which session the history and chat routes read", () =
     const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
     // history, chat, the subagent transcript read and the pins (M90), each handing discovery the hints
     // built for the pane (screen and argv)
-    expect([...src.matchAll(/journalRefOf\(adapter, pane, panes, await discoveryHints\(/g)]).toHaveLength(4);
+    expect([...src.matchAll(/journalRefOf\(adapter, pane, panes, await discoveryHints\(/g)]).toHaveLength(5);
     expect(src).not.toMatch(/pane\.agentSession \?\?/);
   });
 });

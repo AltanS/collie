@@ -34,7 +34,7 @@ import { machineSourcesOf } from "./world.ts";
 import { accountRow, decision, depsOf, keyOf, MACHINE, MACHINE_NEEDLES, machineBodies, NEEDLES, pane, world, type World } from "./fixtures/reads-world.ts";
 
 function ctx(): OperationContext {
-  return { signal: new AbortController().signal, offered: ["hello", "sessions", "brief", "read", "accounts", "hill.list", "machines", "events"], standing: () => true, claimWait: () => () => undefined };
+  return { signal: new AbortController().signal, offered: ["hello", "sessions", "brief", "read", "accounts", "asks.list", "machines", "events"], standing: () => true, claimWait: () => () => undefined };
 }
 
 function tableOf(w: World): OperationTable {
@@ -117,8 +117,8 @@ describe("no needle in any answer of the local API", () => {
     expect(text).toContain('"signedIn":true');
   });
 
-  test("hill.list", async () => {
-    const text = await serialized(tableOf(leakyWorld()), "hill.list");
+  test("asks.list", async () => {
+    const text = await serialized(tableOf(leakyWorld()), "asks.list");
     expectClean(text, [NEEDLES.folderName]);
     expect(text).toContain("Deploy window");
   });
@@ -163,7 +163,7 @@ describe("no needle in any answer of the local API", () => {
       serialized(table, "sessions"),
       serialized(table, "brief", { session: ID_MAIN }),
       serialized(table, "accounts"),
-      serialized(table, "hill.list"),
+      serialized(table, "asks.list"),
       serialized(table, "machines"),
       serialized(table, "events", { after: "other.0" }),
     ]);
@@ -220,7 +220,7 @@ describe("hill.list through the real HillService list road (security read 1, ite
       now: () => 1000,
       mintId: () => {
         n += 1;
-        return `dc_leak${String(n).padStart(8, "0")}`;
+        return `ak_leak${String(n).padStart(8, "0")}`;
       },
       sessionName: hillSessionName({ place, views: () => w.panes.map((source) => source.pane), memberId: null, redact: false }),
     });
@@ -250,7 +250,7 @@ describe("hill.list through the real HillService list road (security read 1, ite
     const { w, hill } = hillWorld();
     const deps = { ...depsOf(w), hillOpen: () => hill.list().open };
     const table = buildTable({ version: () => "9.9.9-test", bus: w.bus, reads: buildReads(deps) });
-    const text = await serialized(table, "hill.list");
+    const text = await serialized(table, "asks.list");
     for (const needle of [NEEDLES.email, NEEDLES.pairing, NEEDLES.signIn, NEEDLES.message, "stored", "QWERTY", "example.invalid"]) expect(text).not.toContain(needle);
     const cards = parseJsonObject(text)?.cards;
     const labels = (Array.isArray(cards) ? cards : []).map((card) => asJsonString(asJsonObject(asJsonObject(card)?.sender)?.label));

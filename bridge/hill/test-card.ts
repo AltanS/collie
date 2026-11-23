@@ -23,7 +23,7 @@ import type { HillCollieSender, HillCollieVerdict } from "./service.ts";
 /** The sender's name on the card, as on Collie's other cards. */
 export const HILL_TEST_SENDER = "Collie";
 /** The fixed words of the card. */
-export const HILL_TEST_TITLE = "Does the Hill reach you?";
+export const HILL_TEST_TITLE = "Do asks reach you?";
 export const HILL_TEST_SUMMARY = "You sent this test from Settings. Tap the answer to close it.";
 /** The card's one option and its label. */
 export const HILL_TEST_OK = "ok";

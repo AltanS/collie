@@ -288,28 +288,28 @@ describe("accounts", () => {
   });
 });
 
-describe("hill.list", () => {
+describe("asks.list", () => {
   test("the contract: exactly these keys per card, and only open cards", async () => {
-    const answer = await answerOf(world(), "hill.list");
+    const answer = await answerOf(world(), "asks.list");
     expect(Object.keys(answer)).toEqual(["cards"]);
     const cards = wire<Record<string, JsonValue>[]>(answer.cards);
     expect(cards).toHaveLength(1);
     expect(Object.keys(cards[0]!)).toEqual(["id", "machine", "sender", "title", "urgency", "date"]);
-    expect(cards[0]).toEqual({ id: "dc_fixture00001", machine: "inst-fixture-a1", sender: { kind: "agent", label: "claude" }, title: "Deploy window", urgency: "today", date: "2026-11-17T09:30:00.000Z" });
+    expect(cards[0]).toEqual({ id: "ak_fixture00001", machine: "inst-fixture-a1", sender: { kind: "agent", label: "claude" }, title: "Deploy window", urgency: "today", date: "2026-11-17T09:30:00.000Z" });
     expect(Object.keys(wire<Record<string, string>>(cards[0]!.sender))).toEqual(["kind", "label"]);
   });
 
   test("a trick's and Collie's cards name their kind; the answered card is not listed", async () => {
     const w = world();
     w.hill = [
-      decision({ id: "dc_a", from: { ...decision().from, kind: "trick", label: "daily check" } }),
-      decision({ id: "dc_b", from: { ...decision().from, kind: "collie", label: "Collie" } }),
+      decision({ id: "ak_a", from: { ...decision().from, kind: "trick", label: "daily check" } }),
+      decision({ id: "ak_b", from: { ...decision().from, kind: "collie", label: "Collie" } }),
       answeredDecision(),
     ];
-    const cards = wire<{ id: string; sender: { kind: string } }[]>((await answerOf(w, "hill.list")).cards);
+    const cards = wire<{ id: string; sender: { kind: string } }[]>((await answerOf(w, "asks.list")).cards);
     expect(cards.map((card) => [card.id, card.sender.kind])).toEqual([
-      ["dc_a", "trick"],
-      ["dc_b", "collie"],
+      ["ak_a", "trick"],
+      ["ak_b", "collie"],
     ]);
   });
 
@@ -318,7 +318,7 @@ describe("hill.list", () => {
     w.panes[0] = { muxSession: "main", pane: pane("w1:p1", { paneLabel: "lodge desk" }) };
     w.hill = [decision({ from: { ...decision().from, label: "stored words" } })];
     const label = (cards: Parameters<typeof wire>[0]): string => wire<{ sender: { label: string } }[]>(cards)[0]!.sender.label;
-    expect(label((await answerOf(w, "hill.list")).cards)).toBe("lodge desk");
+    expect(label((await answerOf(w, "asks.list")).cards)).toBe("lodge desk");
     const sessions = wire<{ label: string }[]>((await answerOf(w, "sessions")).sessions);
     expect(sessions[0]!.label).toBe("lodge desk");
   });
@@ -327,19 +327,19 @@ describe("hill.list", () => {
     const w = world();
     const base = decision().from;
     w.hill = [
-      decision({ id: "dc_other", from: { ...base, memberId: "inst-workshop-b2", address: "inst-workshop-b2/w1:p1#k3f9", label: "stored one" } }),
-      decision({ id: "dc_gone", from: { ...base, address: `${MACHINE}/w9:p9#k3f9`, label: "stored two" } }),
-      decision({ id: "dc_replaced", from: { ...base, address: `${MACHINE}/w1:p1#zz99`, label: "stored three" } }),
-      decision({ id: "dc_none", from: { ...base, address: null, label: "stored four" } }),
-      decision({ id: "dc_shell", from: { ...base, address: `${MACHINE}/w2:p2#q7r2`, label: "stored five" } }),
+      decision({ id: "ak_other", from: { ...base, memberId: "inst-workshop-b2", address: "inst-workshop-b2/w1:p1#k3f9", label: "stored one" } }),
+      decision({ id: "ak_gone", from: { ...base, address: `${MACHINE}/w9:p9#k3f9`, label: "stored two" } }),
+      decision({ id: "ak_replaced", from: { ...base, address: `${MACHINE}/w1:p1#zz99`, label: "stored three" } }),
+      decision({ id: "ak_none", from: { ...base, address: null, label: "stored four" } }),
+      decision({ id: "ak_shell", from: { ...base, address: `${MACHINE}/w2:p2#q7r2`, label: "stored five" } }),
     ];
-    const cards = wire<{ id: string; sender: { label: string } }[]>((await answerOf(w, "hill.list")).cards);
+    const cards = wire<{ id: string; sender: { label: string } }[]>((await answerOf(w, "asks.list")).cards);
     expect(cards.map((card) => [card.id, card.sender.label])).toEqual([
-      ["dc_other", SENDER_AGENT],
-      ["dc_gone", SENDER_AGENT],
-      ["dc_replaced", SENDER_AGENT],
-      ["dc_none", SENDER_AGENT],
-      ["dc_shell", SENDER_AGENT],
+      ["ak_other", SENDER_AGENT],
+      ["ak_gone", SENDER_AGENT],
+      ["ak_replaced", SENDER_AGENT],
+      ["ak_none", SENDER_AGENT],
+      ["ak_shell", SENDER_AGENT],
     ]);
   });
 
@@ -347,21 +347,21 @@ describe("hill.list", () => {
     const w = world();
     const base = decision().from;
     w.hill = [
-      decision({ id: "dc_t", from: { ...base, kind: "trick", address: null, label: "daily check" } }),
-      decision({ id: "dc_c", from: { ...base, kind: "collie", address: null, label: "anything stored" } }),
+      decision({ id: "ak_t", from: { ...base, kind: "trick", address: null, label: "daily check" } }),
+      decision({ id: "ak_c", from: { ...base, kind: "collie", address: null, label: "anything stored" } }),
     ];
-    const cards = wire<{ id: string; sender: { label: string } }[]>((await answerOf(w, "hill.list")).cards);
+    const cards = wire<{ id: string; sender: { label: string } }[]>((await answerOf(w, "asks.list")).cards);
     expect(cards.map((card) => card.sender.label)).toEqual(["daily check", SENDER_COLLIE]);
   });
 
   test("one bad date leaves that card's date out and keeps the list", async () => {
     const w = world();
-    w.hill = [decision({ id: "dc_bad", at: Number.NaN }), decision({ id: "dc_huge", at: 9e15 }), decision({ id: "dc_good" })];
-    const cards = wire<Record<string, JsonValue>[]>((await answerOf(w, "hill.list")).cards);
+    w.hill = [decision({ id: "ak_bad", at: Number.NaN }), decision({ id: "ak_huge", at: 9e15 }), decision({ id: "ak_good" })];
+    const cards = wire<Record<string, JsonValue>[]>((await answerOf(w, "asks.list")).cards);
     expect(cards.map((card) => [card.id, card.date ?? null])).toEqual([
-      ["dc_bad", null],
-      ["dc_huge", null],
-      ["dc_good", "2026-11-17T09:30:00.000Z"],
+      ["ak_bad", null],
+      ["ak_huge", null],
+      ["ak_good", "2026-11-17T09:30:00.000Z"],
     ]);
     expect(Object.keys(cards[0]!)).toEqual(["id", "machine", "sender", "title", "urgency"]);
   });
@@ -369,7 +369,7 @@ describe("hill.list", () => {
   test("no Hill on this bridge: an empty list", async () => {
     const w = world();
     w.hill = null;
-    expect(await answerOf(w, "hill.list")).toEqual({ cards: [] });
+    expect(await answerOf(w, "asks.list")).toEqual({ cards: [] });
   });
 });
 
@@ -421,6 +421,6 @@ describe("machines", () => {
 
 describe("the table", () => {
   test("with the six handlers, all eight names are in the table", () => {
-    expect([...tableOf(world()).keys()]).toEqual(["hello", "sessions", "brief", "read", "accounts", "hill.list", "machines", "events"]);
+    expect([...tableOf(world()).keys()]).toEqual(["hello", "sessions", "brief", "read", "accounts", "asks.list", "machines", "events"]);
   });
 });

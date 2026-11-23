@@ -60,7 +60,7 @@ export function askRig(receipts: HillReceiptSurface = memoryHillReceipts(), over
     memberId: "m_aaaaaaaaaa",
     machine: "desk",
     now: () => state.clock,
-    mintId: () => `dc_test${String((n += 1)).padStart(8, "0")}`,
+    mintId: () => `ak_test${String((n += 1)).padStart(8, "0")}`,
     mintAskId: () => `ak_test${String((a += 1)).padStart(8, "0")}`,
     push: { check: () => "send", send: () => void (state.pushed += 1), clear: () => undefined },
     ...over(() => state.clock),

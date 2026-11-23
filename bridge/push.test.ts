@@ -437,14 +437,14 @@ describe("Push — per-message collapse topic (update must not share the herd sl
     const push = new Push(cfg, sender);
     enable(push, [sub("a")]);
 
-    const tag = "collie:hill:dc_aaaaaaaaaaaa";
-    await push.send({ title: "Ship 1.28.1 now?", body: "It moves the pill.", tag, target: "hill", decision: "dc_aaaaaaaaaaaa", topic: hillTopic(tag) });
+    const tag = "collie:hill:ak_aaaaaaaaaaaa";
+    await push.send({ title: "Ship 1.28.1 now?", body: "It moves the pill.", tag, target: "hill", decision: "ak_aaaaaaaaaaaa", topic: hillTopic(tag) });
     await push.send({ type: "clear", tag, topic: hillTopic(tag) });
     expect(hillTopic(tag)).toMatch(/^hill-[A-Za-z0-9_-]{15}$/);
     expect(topicIsSendable(hillTopic(tag))).toBe(true);
     expect(sends.map((s) => s.options.topic)).toEqual([hillTopic(tag), hillTopic(tag)]);
     const payload = JSON.parse(sends[0]!.payload);
-    expect(payload.data).toEqual({ target: "hill", decision: "dc_aaaaaaaaaaaa" });
+    expect(payload.data).toEqual({ target: "hill", decision: "ak_aaaaaaaaaaaa" });
     expect(payload.tag).toBe(tag);
     expect("titleCode" in payload).toBe(false);
     expect(JSON.parse(sends[1]!.payload)).toEqual({ type: "clear", tag, data: {} });
