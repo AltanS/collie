@@ -85,9 +85,8 @@ describe("readHillDecision", () => {
     expect(readHillReceipt(old)).toBeNull();
   });
 
-  it("drops a decision with an unknown state, priority or text mode", () => {
+  it("drops a decision with an unknown state or text mode", () => {
     expect(readHillDecision(wire({ state: "pondering" }))).toBeNull();
-    expect(readHillDecision(wire({ priority: "urgent" }))).toBeNull();
     expect(readHillDecision(wire({ text: "maybe" }))).toBeNull();
   });
 
@@ -240,9 +239,16 @@ describe("readHillDecision", () => {
     expect(readHillDecision(wire({ media: [], view }))?.view).toEqual([para]);
   });
 
-  it("fills an absent body, text mode and priorityAsked", () => {
-    const read = readHillDecision(wire({ body: undefined, text: undefined, priorityAsked: undefined, priority: "now" }));
-    expect(read).toMatchObject({ body: "", text: "optional", priorityAsked: "now" });
+  it("fills an absent body and text mode", () => {
+    const read = readHillDecision(wire({ body: undefined, text: undefined }));
+    expect(read).toMatchObject({ body: "", text: "optional" });
+  });
+
+  it("ignores the wire's priority: every card reads as the one constant, and no value drops a card (ADR 0179 addendum)", () => {
+    for (const priority of ["now", "today", "later", "urgent", 3, null, undefined]) {
+      const read = readHillDecision(wire({ priority, priorityAsked: priority }));
+      expect(read, String(priority)).toMatchObject({ priority: "today", priorityAsked: "today" });
+    }
   });
 });
 

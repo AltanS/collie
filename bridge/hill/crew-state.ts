@@ -15,8 +15,7 @@ import { hillDir } from "./store.ts";
 // the button reads done on every phone and is never offered twice for one change.
 //
 // No file, or a file that does not read, is `here`, the default: the state changes no rule, so the
-// default is the safe reading. What it changes, all on the lead: with `quiet` or `away` no Decision pushes
-// (hill/service.ts `pushPlan`); a typed answer and a post result end with `Crew state: away.`. The bridge
+// default is the safe reading. What it changes, all on the lead: a typed answer and a post result end with `Crew state: away.`. The bridge
 // NEVER refuses a post because of it. Carried to the deputy with the Hill copy, as the Hill's switch is.
 //
 // TWO WRITERS, ONE VALUE, as switch.ts: the phone writes through the bridge (`POST /api/hill/state`), the

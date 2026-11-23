@@ -56,7 +56,7 @@ describe("Settings → Notifications — the groups", () => {
     const when = page.getByRole("region", { name: "Notify me when" });
     expect(within(when).getByText("For every device")).toBeInTheDocument();
     expect(within(when).getByRole("switch", { name: "A new Collie version" })).toBeInTheDocument();
-    expect(within(when).getByRole("switch", { name: "An ask marked Now" })).toBeInTheDocument();
+    expect(within(when).queryByRole("switch", { name: "An ask marked Now" })).toBeNull();
     expect(within(when).queryByRole("switch", { name: "Cache about to go cold" })).toBeNull();
     const cache = page.getByRole("region", { name: "Cache" });
     expect(within(cache).getByText("Watched panes")).toBeInTheDocument();

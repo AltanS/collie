@@ -5,13 +5,11 @@ import { dirname, join } from "node:path";
 
 import type { JsonObject } from "../json.ts";
 import { deniedFoldersSync, HillMediaStore } from "../hill/media.ts";
-import { HillPush } from "../hill/push.ts";
 import { memoryHillReceipts } from "../hill/receipts.ts";
-import type { PushMessage } from "../push.ts";
 import { HillService, type HillPlace } from "../hill/service.ts";
 import { hillDir, HillStore } from "../hill/store.ts";
 import { hillAnswerRoute, hillListRoute, hillMediaRoute } from "../server.ts";
-import type { HillDecision, HillReceipt } from "../../web/src/lib/hill/wire.ts";
+import { ASK_PRIORITY_FIXED, type HillDecision, type HillReceipt } from "../../web/src/lib/hill/wire.ts";
 import { asJsonNumber, asJsonObject, parseJsonObject } from "../../web/src/lib/json.ts";
 import { DECIDES_REPLY_LINE, parseFacts, parseTrickDocument, type Refusal, type TrickDecision, type TrickFacts, type TrickTapReply } from "../../web/src/lib/tricks/schema.ts";
 import { decisionContentHash, forgetMapRecord, imageFileDigest, REASK_AFTER_MS, scopeKeyAddress, TrickHill, TRICKS_MAP_FILE, trickRequestId, type TrickHillTrick } from "./hill.ts";
@@ -62,8 +60,6 @@ interface Rig {
   /** What the trick's tap callback is answered with, and every tap it got. */
   tapResult: boolean;
   readonly taps: { host: string; trickId: string; node: string; rid: string; decisionId: string }[];
-  /** Every phone push the hill handed the push path (hill/push.ts), renders and clears. */
-  readonly pushes: PushMessage[];
   /** The Hill's switch (hill/switch.ts), as the hill reads it on each use. */
   hillOn: boolean;
   /** A fresh TrickHill and HillService over the same files: what a bridge restart reads. */
@@ -93,8 +89,7 @@ function rig(stateDir = join(tempDir(), "state"), hillAt = 1000): Rig {
   });
   const taps: Rig["taps"] = [];
   const sent: Rig["sent"] = [];
-  const pushes: PushMessage[] = [];
-  const state = { live: [...PLACES], tapResult: true, taps, sent, pushes, hillOn: true };
+  const state = { live: [...PLACES], tapResult: true, taps, sent, hillOn: true };
   const probe = place(() => state.live);
   const hill = new HillService({
     store,
@@ -116,7 +111,6 @@ function rig(stateDir = join(tempDir(), "state"), hillAt = 1000): Rig {
       state.taps.push({ host, trickId, node: tap.node, rid: tap.rid, decisionId });
       return state.tapResult;
     },
-    push: new HillPush({ ready: () => true, send: (message) => state.pushes.push(message), now: () => hillAt }),
     hillSwitch: { on: () => state.hillOn },
   });
   const clock = { t: 50_000_000 };
@@ -195,7 +189,6 @@ describe("the diff by key", () => {
       { recommends: { intent: "rerun", why: "Often a timeout." } },
       { text: "required" },
       { links: [{ label: "The log", href: "https://example.com/log" }] },
-      { priority: "now" },
       { replyTo: "lodge:w6X:3" },
       { about: "lodge:w6X:3" },
       { view: [{ kind: "para", text: "unit 7/7" }] },
@@ -209,7 +202,7 @@ describe("the diff by key", () => {
     expect(decisionContentHash(decision("k"), one)).not.toBe(base);
     expect(decisionContentHash(decision("k"), [{ bytes: "ab13", caption: null }])).not.toBe(decisionContentHash(decision("k"), one));
     expect(decisionContentHash(decision("k"), [{ bytes: "ab12", caption: "red" }])).not.toBe(decisionContentHash(decision("k"), one));
-    expect(decisionContentHash(decision("k", { priority: "today", text: "optional" }))).toBe(base);
+    expect(decisionContentHash(decision("k", { text: "optional" }))).toBe(base);
   });
 
   test("the view goes on the posted decision; a new view supersedes the old one", () => {
@@ -396,20 +389,18 @@ describe("the diff by key", () => {
     }
   });
 
-  test("a now key rings the phone once; its re-ask shows again and does not push again; new content does", () => {
+  test("an expired key's re-ask shows again as a new card; new content makes a new card", () => {
     const r = rig();
-    sync(r, [decision("case-8", { priority: "now" })]);
+    sync(r, [decision("case-8")]);
     const first = open(r)[0]!;
-    expect(r.pushes.map((p) => [p.type ?? "render", p.decision ?? p.tag])).toEqual([["render", first.id]]);
     r.hill.sweep(first.expiresAt ?? 0);
-    expect(r.pushes.at(-1)).toMatchObject({ type: "clear", tag: `collie:hill:${first.id}` });
     r.clock.t += REASK_AFTER_MS;
-    sync(r, [decision("case-8", { priority: "now" })]);
+    sync(r, [decision("case-8")]);
     const again = open(r)[0]!;
     expect(again.id).not.toBe(first.id);
-    expect(r.pushes.filter((p) => p.type === undefined)).toHaveLength(1);
-    sync(r, [decision("case-8", { priority: "now", summary: "Case 8 failed again, 10 passed." })]);
-    expect(r.pushes.filter((p) => p.type === undefined).map((p) => p.body)).toEqual(["Case 8 failed, 10 passed.", "Case 8 failed again, 10 passed."]);
+    expect(again.priority).toBe(ASK_PRIORITY_FIXED);
+    sync(r, [decision("case-8", { summary: "Case 8 failed again, 10 passed." })]);
+    expect(open(r).map((held) => held.summary)).toContain("Case 8 failed again, 10 passed.");
   });
 
   test("an answered or dismissed key never asks again by itself, however long it waits", async () => {
@@ -844,7 +835,6 @@ describe("the Hill switched off", () => {
     expect(sync(r, [decision("a", { summary: "Case 8 failed again." }), decision("c")])).toEqual([]);
     expect(open(r).map((held) => held.id)).toEqual([a!.id, b!.id]);
     expect(readFileSync(join(hillDir(r.stateDir), TRICKS_MAP_FILE), "utf8")).toBe(before);
-    expect(r.pushes).toEqual([]);
     r.hillOn = true;
     expect(sync(r, [decision("a", { summary: "Case 8 failed again." }), decision("c")])).toEqual([]);
     expect(r.store.get(b!.id)).toMatchObject({ state: "withdrawn", closedReason: "by the trick" });

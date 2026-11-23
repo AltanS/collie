@@ -7,7 +7,6 @@ import { useLocale } from "@/hooks/use-locale";
 import type { DashView } from "@/lib/dash-view";
 import { t, tn } from "@/lib/i18n";
 import type { WireTrickPart } from "@/lib/tricks/schema";
-import { cn } from "@/lib/utils";
 import type { TricksStore } from "@/lib/tricks/store";
 import type { AgentView } from "@/lib/types";
 
@@ -22,9 +21,7 @@ import type { AgentView } from "@/lib/types";
 //
 // THE BAR STAYS ON THE HILL AND ON A TRICK'S SESSION (amended 2026-11-10, components/dashboard-route-bar.tsx).
 // There no tab is selected (`view` null): on the Hill the Hill item is the current one (`hillCurrent`),
-// and on a trick's Session that trick's own item when it has one (`currentTrick`). While a `now` Decision is open
-// the mountain wears its snow cap in the warm accent, as A5 draws it (DESIGN.md §4, "The Hill's warm
-// accent"); the word stays the bar's muted ink. Where the hill does not exist (the snapshot carries
+// and on a trick's Session that trick's own item when it has one (`currentTrick`). Where the hill does not exist (the snapshot carries
 // no `hillRev`: a bridge older than the hill, or a crew member's own scope) there is no Hill item.
 //
 // THE TRICKS' ITEMS FOLLOW IT (the `tabbar` place, components/trick-place-items.tsx). With one or more the
@@ -45,8 +42,6 @@ export interface DashboardTabBarProps {
   readyUnseen: boolean;
   /** The open Decisions, or null where this view has no hill. */
   hill: number | null;
-  /** Whether one of them is `now`: the mountain then wears its snow cap in the warm accent. */
-  hillNow?: boolean;
   onOpenHill: () => void;
   /** The bar is drawn on the Hill's own route: the Hill item is the current one. */
   hillCurrent?: boolean;
@@ -69,7 +64,6 @@ export function DashboardTabBar({
   blockedCount,
   readyUnseen,
   hill,
-  hillNow = false,
   onOpenHill,
   hillCurrent = false,
   currentTrick,
@@ -106,7 +100,7 @@ export function DashboardTabBar({
           {
             id: "hill",
             label: t("hill.title"),
-            icon: <Icon name={hillNow ? "hill-now" : "hill"} className={cn("size-5", hillNow && "text-status-working")} />,
+            icon: <Icon name="hill" className="size-5" />,
             badge: hill,
             badgeLabel: tn("home.tabs.hill", hill),
             current: hillCurrent,

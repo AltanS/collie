@@ -94,8 +94,7 @@ type PushPayloadData = {
   session?: string;
   host?: string;
   machine?: string;
-  target?: "settings" | "machine" | "hill";
-  decision?: string;
+  target?: "settings" | "machine";
 };
 
 /** The HTTP status a `web-push` rejection carries, or undefined when it carries none. */
@@ -205,21 +204,6 @@ const PANE_TOPIC_HASH = 15;
 export function paneTopic(tag: string): string {
   const hash = createHash("sha256").update(tag).digest("base64url");
   return `${PANE_TOPIC_PREFIX}${hash.slice(0, PANE_TOPIC_HASH)}`;
-}
-
-/** The fixed start of every Decision's topic: 5 characters, plus {@link PANE_TOPIC_HASH} = 20. */
-const HILL_TOPIC_PREFIX = "hill-";
-
-/**
- * The collapse topic of one Decision's notification slot (`bridge/hill/push.ts`): `hill-` and the first
- * 15 base64url characters of the SHA-256 of the slot's tag. Its own topic for the machine alert's reason:
- * on `collie-herd` an offline phone's queued Decision and its queued herd summary would overwrite each
- * other. The slot's clear rides the same topic, so a queued push and its retraction replace each other.
- * 20 characters, as {@link paneTopic} ({@link topicIsSendable}).
- */
-export function hillTopic(tag: string): string {
-  const hash = createHash("sha256").update(tag).digest("base64url");
-  return `${HILL_TOPIC_PREFIX}${hash.slice(0, PANE_TOPIC_HASH)}`;
 }
 
 /** Whether a collapse topic is one every push service will accept: RFC 8030's alphabet and 32-char
@@ -429,14 +413,9 @@ export interface PushMessage {
    *  reads only `host`, which a machine push never carries, so it takes the pane path with no pane
    *  and no `?h=`: the dashboard.
    *
-   *  `"hill"` opens the Hill at the card {@link decision} names (`bridge/hill/push.ts`). */
-  target?: "settings" | "machine" | "hill";
-  /**
-   * The Decision a `target: "hill"` push is about (`bridge/hill/push.ts`), threaded into the payload
-   * `data` as `decision`: the tap opens the Hill at that card. An old cached service worker reads neither
-   * and takes the pane path with no pane: the dashboard.
-   */
-  decision?: string;
+   *  Nothing sends `"hill"` any more: no ask and no card sends a notification (ADR 0179 addendum). The service worker
+   *  still opens `/asks` for the tap on an old one (web/src/lib/push-decision.ts). */
+  target?: "settings" | "machine";
   /**
    * The machine a load alert is about (ADR 0084), threaded into the payload `data` as `machine`. It
    * is deliberately NOT `host`: an old cached service worker reads `host` as a crew member and opens
@@ -463,7 +442,6 @@ export function pushPayloadData(msg: PushMessage): PushPayloadData {
   if (msg.host !== undefined) data.host = msg.host;
   if (msg.machine !== undefined) data.machine = msg.machine;
   if (msg.target !== undefined) data.target = msg.target;
-  if (msg.decision !== undefined) data.decision = msg.decision;
   return data;
 }
 

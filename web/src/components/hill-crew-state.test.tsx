@@ -59,9 +59,9 @@ describe("the crew state control", () => {
     expect(screen.getByText("Agents ask as usual.")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Tell all sessions now" })).toBeNull();
     rerender(<HillCrewStateBar {...bar} value="quiet" saved="quiet" />);
-    expect(screen.getByText("You get no notification. Agents ask, but do not wait for your answer.")).toBeInTheDocument();
+    expect(screen.getByText("Agents ask, but do not wait for your answer.")).toBeInTheDocument();
     rerender(<HillCrewStateBar {...bar} value="away" saved="away" />);
-    expect(screen.getByText("You get no notification. Agents keep back questions that need an answer now.")).toBeInTheDocument();
+    expect(screen.getByText("Agents keep back questions that need an answer now.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Tell all sessions now" })).toBeEnabled();
   });
 

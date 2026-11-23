@@ -8,7 +8,6 @@ import { hillListRoute, hillStateRoute, hillTellRoute } from "../server.ts";
 import { HILL_TELL_MAX, type HillDecision, type HillPostInput } from "../../web/src/lib/hill/wire.ts";
 import { hillCrewStatePath, HillCrewStateFile, parseHillCrewState, readHillCrewState, writeHillCrewState } from "./crew-state.ts";
 import { HillCrewLead, HillHeldMedia, HillMemberForward, type HillLeadLink } from "./crew.ts";
-import type { HillPushPort } from "./push.ts";
 import { memoryHillReceipts } from "./receipts.ts";
 import { HILL_STATE_ON_LEAD, HILL_TELL_DONE, HILL_TELL_HERE, HILL_TELL_MOVED, HillService, type HillAgentSender, type HillCrewMode, type HillPlace, type HillPostAnswer } from "./service.ts";
 import { HillStore, hillDir } from "./store.ts";
@@ -58,7 +57,6 @@ interface Rig {
   readonly file: HillCrewStateFile;
   readonly stateDir: string;
   readonly sent: { to: string; body: string; by: string }[];
-  readonly pushed: string[];
   readonly audit: AuditEntry[];
   live: HillPlace[];
   mode: HillCrewMode;
@@ -69,17 +67,11 @@ function rig(): Rig {
   const stateDir = tempState();
   let n = 0;
   const sent: Rig["sent"] = [];
-  const pushed: string[] = [];
   const audit: AuditEntry[] = [];
   const live: HillPlace[] = [];
   const mode: HillCrewMode = "solo";
-  const state = { sent, pushed, audit, live, mode, clock: 10_000_000 };
+  const state = { sent, audit, live, mode, clock: 10_000_000 };
   for (let i = 1; i <= 25; i += 1) state.live.push({ address: sender(i).address, label: `repo#s${String(i)}`, host: "lodge", unattended: false });
-  const push: HillPushPort = {
-    check: () => "send",
-    send: (_key, decision) => void state.pushed.push(decision.id),
-    clear: () => undefined,
-  };
   const file = new HillCrewStateFile(stateDir, () => undefined, () => state.clock);
   const hill = new HillService({
     store: new HillStore(null, () => state.clock),
@@ -99,7 +91,6 @@ function rig(): Rig {
       return `ak_cs${String(n).padStart(10, "0")}`;
     },
     audit: (entry) => state.audit.push(entry),
-    push,
     crewState: file,
   });
   return Object.assign(state, { hill, file, stateDir });
@@ -132,20 +123,15 @@ describe("the crew state file", () => {
 });
 
 describe("the crew state on the Hill", () => {
-  test("quiet and away push nothing for a new `now` Decision, and never refuse a post", () => {
+  test("quiet and away never refuse a post, and write no push audit line: no card sends a notification", () => {
     const r = rig();
-    posted(r.hill.post(sender(1), input(1, { priority: "now" })));
-    expect(r.pushed).toHaveLength(1);
+    posted(r.hill.post(sender(1), input(1)));
     for (const state of ["quiet", "away"] as const) {
       r.hill.setCrewState(state, "Pixel 9", "Pixel 9");
-      const answer = r.hill.post(sender(2), input(state === "quiet" ? 2 : 3, { priority: "now" }));
+      const answer = r.hill.post(sender(2), input(state === "quiet" ? 2 : 3));
       expect(answer.ok).toBe(true);
     }
-    expect(r.pushed).toHaveLength(1);
-    expect(r.audit.filter((entry) => entry.action === "hill.push.skipped").map((entry) => entry.detail)).toEqual([
-      { decisionId: "ak_cs0000000002", why: "the crew state is quiet" },
-      { decisionId: "ak_cs0000000003", why: "the crew state is away" },
-    ]);
+    expect(r.audit.filter((entry) => entry.action.startsWith("hill.push"))).toEqual([]);
   });
 
   test("a post's result carries the state only when it is not `here`", async () => {

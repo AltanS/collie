@@ -107,7 +107,6 @@ export const ICONOIR = {
   "harnesses": "sparks", // harnesses · lucide Bot
   "hide-ignored": "eye-closed", // ignored files are hidden · lucide EyeOff
   "hill": null, // Asks, where asks wait · lucide Mountain
-  "hill-now": null, // Asks while a `now` ask is open · lucide MountainSnow
   "history-screen": "journal-page", // the scrollback history screen · lucide ScrollText
   "image": "media-image", // an image · lucide Image
   "image-next": "nav-arrow-right", // the next picture in the picture sheet · lucide ChevronRight

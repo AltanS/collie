@@ -3,11 +3,7 @@
 
 import { t } from "@/lib/i18n";
 
-import { HILL_ANSWERED_IN_SESSION, HILL_ASK_ANSWERED_HERE, HILL_ASK_CLEARED, RIGHTS_CLOSED, RIGHTS_CLOSED_KEYS, type HillDecision, type HillPriority, type HillReceipt, type HillState } from "./wire";
-
-export function priorityWord(priority: HillPriority): string {
-  return t(`hill.priority.${priority}`);
-}
+import { HILL_ANSWERED_IN_SESSION, HILL_ASK_ANSWERED_HERE, HILL_ASK_CLEARED, RIGHTS_CLOSED, RIGHTS_CLOSED_KEYS, type HillDecision, type HillReceipt, type HillState } from "./wire";
 
 /** A closed decision's state, in plain words. An open one has none to say. */
 export function stateWord(state: Exclude<HillState, "open">): string {

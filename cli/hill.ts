@@ -298,8 +298,8 @@ export function spokenClearedWords(count: number): string {
 /** What each crew state means, one line, the words the phone shows under its control. */
 export const CREW_STATE_MEANING = {
   here: "Agents ask as usual.",
-  quiet: "You get no notification. Agents ask, but do not wait for your answer.",
-  away: "You get no notification. Agents keep back questions that need an answer now.",
+  quiet: "Agents ask, but do not wait for your answer.",
+  away: "Agents keep back questions that need an answer now.",
 } as const satisfies Record<HillCrewState, string>;
 
 /**

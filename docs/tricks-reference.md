@@ -545,7 +545,6 @@ An ask a program lists has these keys:
 | `body` | text | no | at most 4000 characters | Longer text, shown behind More. |
 | `options` | list | no | at most 5; each `intent`, `label` (at most 40), and optionally `detail` (at most 120) and `confirm` (at most 24) | The choices. A tap on one sends its `intent` back. |
 | `recommends` | object or null | no | `{ intent, why }`, `why` at most 200 characters | The trick's pick, one of the options. Shown as Recommended, never pre-selected. |
-| `priority` | word | no | one of `now`, `today`, `later`. Default `today` | A request, not a fact. Only `now` sends a notification, and one sender holds at most 3 open `now` asks. |
 | `text` | word | no | one of `none`, `optional`, `required`. Default `optional` | Whether the person may, must, or may not add words to the answer. `none` needs at least one option. |
 | `about` | session id | no | an `id` from the facts' sessions, `memberId:paneId` | The session the card is about. The card opens its Chat. |
 | `replyTo` | session id | no | an `id` from the facts' sessions. Only for a trick whose `trick.toml` says `asks = "reply"` | The session that gets the person's words, as the person's own WalkyTalky message. Without `asks = "reply"` the ask is refused. |
@@ -557,7 +556,6 @@ An ask a program lists has these keys:
 | Limit | Value |
 | --- | --- |
 | Open asks per sender | 20 |
-| Open `now` asks per sender | 3. A further one shows as `today` |
 | Closed asks served | 20, newest first |
 | The person's words in an answer | at most 4000 characters |
 | Expiry | 14 days when left out, at most 30 |
@@ -617,10 +615,10 @@ After each run that succeeded, Collie makes Asks agree with the list of `asks`, 
 | When | Collie does |
 | --- | --- |
 | A new `key` | Posts once. A second run, or a restart, posts nothing twice. |
-| A listed `key` with changed content | Posts the new version, which replaces the open one. Content is the title, summary, body, options, recommendation, text mode, links, priority, `about`, `replyTo`, the view, and each picture's bytes and caption. When the old card is closed, the new version posts as a fresh card. |
+| A listed `key` with changed content | Posts the new version, which replaces the open one. Content is the title, summary, body, options, recommendation, text mode, links, `about`, `replyTo`, the view, and each picture's bytes and caption. When the old card is closed, the new version posts as a fresh card. |
 | A `key` the list no longer holds | The card is withdrawn, "by the trick". |
 | A `key` the person answered or dismissed | Stays closed while its content is unchanged. To ask again, change the content, or drop the key for one run and list it again. |
-| A `key` that closed without the person: `undeliverable`, `expired` or `withdrawn`, a withdrawal by anyone but the trick | Posts again on a later run that still lists it, at most once every 10 minutes for that key. A new post of this kind never sends a notification. |
+| A `key` that closed without the person: `undeliverable`, `expired` or `withdrawn`, a withdrawal by anyone but the trick | Posts again on a later run that still lists it, at most once every 10 minutes for that key. |
 | A document with no `asks` key | Changes nothing. |
 | `asks` is `[]` | Withdraws every open card of the trick. |
 | An ask the parser or Asks refuses, or that names a session that is not there | Changes nothing for its key: the version in Asks stays. It shows as a refusal. |

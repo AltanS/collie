@@ -155,8 +155,10 @@ describe("the old fragments", () => {
     }
   });
 
-  it("reads an alias as the id it names now (none today, so an id reads as itself)", () => {
-    expect(Object.keys(ALIASES)).toEqual([]);
+  it("reads an alias as the id it names now (two rows left with the notification for an ask, ADR 0179 addendum; any other id reads as itself)", () => {
+    expect(ALIASES).toEqual({ "notifications.decisions": "notifications.needsYou", "tricks.hill.test": "tricks.hill" });
+    expect(currentRowId("notifications.decisions")).toBe("notifications.needsYou");
+    expect(currentRowId("tricks.hill.test")).toBe("tricks.hill");
     expect(currentRowId("look.math")).toBe("look.math");
     expect(currentRowId("changes")).toBe("dashboard.changes.nested");
   });

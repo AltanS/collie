@@ -107,7 +107,6 @@ export const PHOSPHOR = {
   "harnesses": "robot", // harnesses · lucide Bot
   "hide-ignored": "eye-slash", // ignored files are hidden · lucide EyeOff
   "hill": "mountains", // Asks, where asks wait · lucide Mountain
-  "hill-now": "mountains", // Asks while a `now` ask is open · lucide MountainSnow
   "history-screen": "scroll", // the scrollback history screen · lucide ScrollText
   "image": "image", // an image · lucide Image
   "image-next": "caret-right", // the next picture in the picture sheet · lucide ChevronRight

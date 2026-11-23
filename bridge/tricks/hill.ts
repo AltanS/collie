@@ -8,7 +8,7 @@ import { HILL_MEDIA_BYTES_MAX, HILL_STATES } from "../../web/src/lib/hill/wire.t
 import { HOST, isBelow } from "../host.ts";
 import { headerField } from "../walky/types.ts";
 import { asJsonNumber, asJsonObject, asJsonString, parseJsonObject } from "../../web/src/lib/json.ts";
-import { DEFAULT_DECISION_PRIORITY, DEFAULT_DECISION_TEXT, pointer, type Refusal, type TrickDecision } from "../../web/src/lib/tricks/schema.ts";
+import { DEFAULT_DECISION_TEXT, pointer, type Refusal, type TrickDecision } from "../../web/src/lib/tricks/schema.ts";
 import { BY_THE_TRICK, TRICK_OFF, type HillOneAnswer, type HillPostAnswer, type HillPostOptions, type HillTrickSender } from "../hill/service.ts";
 import { hillDir } from "../hill/store.ts";
 import type { JsonObject } from "../json.ts";
@@ -28,7 +28,7 @@ import { holdStat, statFactsOf, stillHolds, type StatHeld } from "../stat-held.t
 //     after the post, so a bridge that stops in between derives the same id again; it also keeps a
 //     content that comes back (A, then B, then A) from meeting its own first post.
 //   * the same key with changed content (anything the person sees: title, summary, body, options,
-//     recommends, text mode, links, priority, about, replyTo, the view, and each image's bytes and caption) posts
+//     recommends, text mode, links, about, replyTo, the view, and each image's bytes and caption) posts
 //     the new version with `supersedes` while the old one is open, and as a fresh decision once the old
 //     one closed.
 //   * a key the document no longer lists is withdrawn, "by the trick".
@@ -37,8 +37,7 @@ import { holdStat, statFactsOf, stillHolds, type StatHeld } from "../stat-held.t
 //     the generation, so the request id is new).
 //   * a key that closed without the person (`undeliverable`, `expired` or `withdrawn` by someone other
 //     than the trick) posts again on a later run that still lists it, at most once per
-//     {@link REASK_AFTER_MS} per key, counted from its last post. A re-ask never rings the phone again
-//     (hill/push.ts): it posts with `reask`.
+//     {@link REASK_AFTER_MS} per key, counted from its last post. A re-ask shows the card again.
 //   * a decision the parser refused, or that names no live session, or that the hill refused, changes
 //     nothing for its key: the version on the hill stays as it is. Each such one is a refusal.
 //   * a failed or timed-out run never reaches this module (service.ts): the last good decisions stay.
@@ -204,7 +203,6 @@ export function decisionContentHash(decision: TrickDecision, images: readonly De
     recommends: decision.recommends == null ? null : [decision.recommends.intent, decision.recommends.why],
     text: decision.text ?? DEFAULT_DECISION_TEXT,
     links: (decision.links ?? []).map((link) => [link.label, link.href]),
-    priority: decision.priority ?? DEFAULT_DECISION_PRIORITY,
     about: decision.about ?? null,
     replyTo: decision.replyTo ?? null,
   };
@@ -475,7 +473,6 @@ export class TrickHill {
         text: decision.text ?? DEFAULT_DECISION_TEXT,
         recommends: decision.recommends ?? null,
         links: decision.links ?? [],
-        priority: decision.priority ?? DEFAULT_DECISION_PRIORITY,
         about,
         replyTo,
         supersedes: held?.state === "open" ? held.decisionId : null,
@@ -483,9 +480,7 @@ export class TrickHill {
       };
       if (images.length > 0) input.images = images;
       if (decision.view !== undefined) input.view = decision.view;
-      // Past the check above, an unchanged hash is a re-ask: it shows again, and does not push again.
-      const reask = held !== undefined && held.hash === hash;
-      const answer = this.deps.hill.postDecision(this.sender(trick, decision.key, images.length > 0 ? root : null), input, { reask });
+      const answer = this.deps.hill.postDecision(this.sender(trick, decision.key, images.length > 0 ? root : null), input, {});
       if (!answer.ok) {
         refusals.push(hillRefusal(answer, path, decision, images));
         return;

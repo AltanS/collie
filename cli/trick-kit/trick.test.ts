@@ -216,7 +216,7 @@ run((t) => {
   test("decide adds a Decision the parser takes; a tap from any place reads as the one t.tap", async () => {
     const program = `import { run } from "./trick.ts";
 run((t) => {
-  t.ask({ key: "case-24", title: "Rerun case 24?", summary: "It failed twice.", options: [{ intent: "rerun", label: "Rerun" }, { intent: "skip", label: "Skip", confirm: "Skip it" }], recommends: { intent: "rerun", why: "It passed yesterday." }, priority: "now" });
+  t.ask({ key: "case-24", title: "Rerun case 24?", summary: "It failed twice.", options: [{ intent: "rerun", label: "Rerun" }, { intent: "skip", label: "Skip", confirm: "Skip it" }], recommends: { intent: "rerun", why: "It passed yesterday." } });
   const tap = t.tap;
   t.status({ text: tap === null ? "none" : tap.ask === null ? "tap:" + tap.intent : tap.ask + ":" + tap.intent + ":" + tap.text });
   t.state.set("tap", tap);
@@ -605,8 +605,8 @@ describe("helper v5: session settings rows and bound parts", () => {
 
   test("the v4 helper is still Collie's own code to the scan, so a trick folder that keeps it asks for no yes", async () => {
     const { shippedHelperVersion, HELPER_VERSION } = await import("../../bridge/tricks/scan.ts");
-    expect(HELPER_VERSION).toBe(11);
-    expect(TRICK_HELPER.startsWith("// collie trick helper v11\n")).toBe(true);
+    expect(HELPER_VERSION).toBe(12);
+    expect(TRICK_HELPER.startsWith("// collie trick helper v12\n")).toBe(true);
     // v7, stage's helper with `t.api` before the run token (M105 spec 05): still Collie's own code to the scan.
     const v7 = await Bun.$`git show 5c38e3f23:cli/trick-kit/trick.ts`.quiet().nothrow();
     if (v7.exitCode === 0) {

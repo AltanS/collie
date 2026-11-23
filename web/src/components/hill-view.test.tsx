@@ -14,8 +14,8 @@ import { PRESENCE_MS, PRESENCE_REDUCED_MS } from "@/components/ui/presence";
 import { DecisionCard } from "./decision-card";
 import { HillHeader, HillView } from "./hill-view";
 
-// The Hill's header, body and the Dashboard's way in (M96): the count line, the cards grouped by
-// priority and most urgent first, the empty hill, the Answered fold with the state glyphs, the state
+// The Hill's header, body and the Dashboard's way in (M96): the count line, the cards oldest first
+// with no priority group, the empty hill, the Answered fold with the state glyphs, the state
 // words and the receipt line, and the row in the singular and the plural.
 
 const NO_KEPT: ReadonlyMap<string, string> = new Map();
@@ -34,30 +34,31 @@ function renderView(open: HillDecision[], closed: HillDecision[] = [], kept: Rea
 const titles = (root: HTMLElement) => [...root.querySelectorAll('[data-slot="decision-title"]')].map((el) => el.textContent);
 
 describe("the Hill", () => {
-  it("lists the cards by priority, then oldest first", () => {
+  it("lists the cards oldest first, whatever priority an older member sent them with, and draws no group and no priority mark", () => {
     const { container } = renderView([
       hillDecision({ title: "later", priority: "later", at: HILL_T0 - 1000 }),
       hillDecision({ title: "today, new", priority: "today", at: HILL_T0 }),
-      hillDecision({ title: "now", priority: "now", at: HILL_T0 }),
+      hillDecision({ title: "now", priority: "now", at: HILL_T0 + 1 }),
       hillDecision({ title: "today, old", priority: "today", at: HILL_T0 - 5000 }),
     ]);
-    expect(titles(container)).toEqual(["now", "today, old", "today, new", "later"]);
+    expect(titles(container)).toEqual(["today, old", "later", "today, new", "now"]);
+    expect(container.querySelector('[data-slot="hill-group"]')).toBeNull();
+    expect(container.querySelector('[data-slot="decision-priority"]')).toBeNull();
+    expect(container.querySelector('[data-slot="peak-glyph"]')).toBeNull();
   });
 
-  it("groups the cards under Now, Today and Later, each heading with its peaks and its count", () => {
-    const { container } = renderView([
-      hillDecision({ title: "a", priority: "today" }),
-      hillDecision({ title: "b", priority: "now" }),
-      hillDecision({ title: "c", priority: "today" }),
-    ]);
-    const groups = [...container.querySelectorAll<HTMLElement>('[data-slot="hill-group"]')];
-    expect(groups.map((g) => g.dataset.priority)).toEqual(["now", "today"]);
-    expect(groups.map((g) => g.querySelector("h2")?.textContent)).toEqual(["Now1", "Today2"]);
-    expect(groups.map((g) => g.querySelector('h2 [data-slot="peak-glyph"]')?.getAttribute("data-filled"))).toEqual(["3", "2"]);
-    // The heading names its section; the glyph beside the word is decorative there.
-    expect(groups[0]!.querySelector('h2 [data-slot="peak-glyph"]')).toHaveAttribute("aria-hidden", "true");
-    expect(groups[0]).toHaveAttribute("aria-labelledby", groups[0]!.querySelector("h2")!.id);
-    expect(titles(groups[1]!)).toEqual(["a", "c"]);
+  it("stands the other cards under the Other cards heading, oldest first, when asks are on the board", () => {
+    const { container } = render(
+      <HillView
+        open={[hillDecision({ title: "new", at: HILL_T0 + 10 }), hillDecision({ title: "old", at: HILL_T0 - 10 })]}
+        closed={[]}
+        kept={NO_KEPT}
+        asks={{ count: 1, node: <div data-slot="asks-board-stub" /> }}
+        renderCard={(decision) => <DecisionCard key={decision.id} decision={decision} answer={HILL_IDLE} onSend={() => {}} />}
+      />,
+    );
+    expect(container.querySelector('[data-slot="hill-others-head"]')).toHaveTextContent("Other cards");
+    expect(titles(container)).toEqual(["old", "new"]);
   });
 
   it("draws the clear hill when no Decision is open", () => {
@@ -207,21 +208,6 @@ describe("nothing arrives or leaves the Hill with a jump (2026-11-10)", () => {
     expect(titles(container)).toEqual(["First?", "Third?"]);
   });
 
-  it("lets a priority group leave with its last card, heading and all, in one motion", () => {
-    const now = hillDecision({ title: "Now?", priority: "now" });
-    const today = hillDecision({ title: "Today?", priority: "today" });
-    const { container, rerender } = render(view([now, today]));
-    rerender(view([today]));
-    const group = container.querySelector<HTMLElement>('[data-slot="hill-group"][data-priority="now"]')!;
-    expect(group).toHaveTextContent("Now?");
-    expect(itemOf(group)).toHaveAttribute("data-state", "closed");
-    expect(itemOf(group)!.getAttribute("style")).toContain("margin-bottom: -28px");
-    // The card inside rides with the group; it does not collapse on its own.
-    expect(itemOf(group.querySelector('[data-slot="decision-card"]'))).toHaveAttribute("data-state", "open");
-    act(() => vi.advanceTimersByTime(PRESENCE_MS));
-    expect(container.querySelector('[data-slot="hill-group"][data-priority="now"]')).toBeNull();
-  });
-
   it("trades the last card for the clear hill in one band", () => {
     const last = hillDecision({ title: "Last one?" });
     const { container, rerender } = render(view([last]));
@@ -261,37 +247,30 @@ describe("nothing arrives or leaves the Hill with a jump (2026-11-10)", () => {
 
 describe("the Hill's header", () => {
   /** The header portals into the one header host, as on a route; read it from the document. */
-  const header = (count: number, nowCount: number) => {
-    const router = createMemoryRouter([{ path: "/hill", element: withHeaderHost(<HillHeader count={count} nowCount={nowCount} onBack={() => {}} />) }], {
+  const header = (count: number) => {
+    const router = createMemoryRouter([{ path: "/hill", element: withHeaderHost(<HillHeader count={count} onBack={() => {}} />) }], {
       initialEntries: ["/hill"],
     });
     render(<RouterProvider router={router} />);
     return document;
   };
-  const line = (count: number, nowCount: number) => header(count, nowCount).querySelector('[data-slot="hill-count"]')?.textContent;
+  const line = (count: number) => header(count).querySelector('[data-slot="hill-count"]')?.textContent;
 
-  it("says how many are open, and how many of them are Now", () => {
-    expect(line(12, 1)).toBe("12 open · 1 now");
-  });
-
-  it("leaves Now out of the line when none is Now", () => {
-    expect(line(3, 0)).toBe("3 open");
+  it("says how many are open, and nothing about priority", () => {
+    expect(line(12)).toBe("12 open");
+    cleanup();
+    expect(line(3)).toBe("3 open");
   });
 
   it("keeps its line with nothing open, so the header does not move", () => {
-    expect(line(0, 0)).toBe("All clear");
+    expect(line(0)).toBe("All clear");
   });
 
-  it("wears the Hill's mountain through its icon key", () => {
-    expect(header(1, 0).querySelector('[data-slot="hill-mark"] [data-icon="hill"]')).not.toBeNull();
-  });
-
-  it("gives the mark the warm accent while a Decision is Now, and the plain ink otherwise (C1)", () => {
-    expect(header(2, 1).querySelector('[data-slot="hill-mark"]')!.className).toMatch(/\bborder-status-working\/60\b.*\btext-status-working\b/u);
-    cleanup();
-    const calm = header(2, 0).querySelector('[data-slot="hill-mark"]')!;
-    expect(calm.className).not.toContain("status-working");
-    expect(calm.className).toMatch(/\bborder-border\b/u);
+  it("wears the Hill's mountain through its icon key, in the plain ink", () => {
+    const mark = header(1).querySelector('[data-slot="hill-mark"]')!;
+    expect(mark.querySelector('[data-icon="hill"]')).not.toBeNull();
+    expect(mark.className).not.toContain("status-working");
+    expect(mark.className).toMatch(/\bborder-border\b/u);
   });
 });
 

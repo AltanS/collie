@@ -9,7 +9,7 @@
 //
 // The caps of the contract are not checked here. The bridge cleans and caps every string before it
 // stores one, and a long title is still a title: the card truncates it. What is checked is what
-// would make a card lie: an unknown state, a priority or a text mode outside the closed lists, an
+// would make a card lie: an unknown state or a text mode outside the closed lists, an
 // option without an intent, a link that is not http or https. A view (M96) is the one exception: it is
 // read with the same rules the bridge holds a post to (`parseDecisionView`). One that fails whole is
 // read again node by node (`readDecisionView`): a top-level node the rules refuse is dropped, the rest
@@ -24,6 +24,7 @@ import { asJsonBoolean, asJsonNumber, asJsonObject, asJsonString, type JsonObjec
 import { DECISION_VIEW_LIMITS, parseDecisionView, type View } from "@/lib/tricks/schema";
 
 import {
+  ASK_PRIORITY_FIXED,
   HILL_ASK_FILE_PATH_MAX,
   HILL_ASK_FILES_MAX,
   HILL_ASK_HEADING_MAX,
@@ -34,7 +35,6 @@ import {
   HILL_MEDIA_ID_RE,
   HILL_MEDIA_MAX,
   HILL_MEDIA_MIMES,
-  HILL_PRIORITIES,
   HILL_RESERVED_INTENTS,
   HILL_STATES,
   HILL_TEXT_MODES,
@@ -51,7 +51,6 @@ import {
   type HillList,
   type HillMedia,
   type HillOption,
-  type HillPriority,
   type HillReceipt,
   type HillState,
   type HillTextMode,
@@ -291,15 +290,13 @@ export function readHillDecision(value: JsonValue): HillDecision | null {
   const id = asJsonString(o.id);
   const requestId = asJsonString(o.requestId);
   const from = readFrom(o.from);
-  const priority: HillPriority | undefined = oneOf(HILL_PRIORITIES, o.priority);
-  const priorityAsked: HillPriority | undefined = oneOf(HILL_PRIORITIES, o.priorityAsked) ?? priority;
   const title = asJsonString(o.title);
   const summary = asJsonString(o.summary);
   const body = o.body === undefined ? "" : asJsonString(o.body);
   const text: HillTextMode | undefined = o.text === undefined ? "optional" : oneOf(HILL_TEXT_MODES, o.text);
   const state: HillState | undefined = oneOf(HILL_STATES, o.state);
   const at = asJsonNumber(o.at);
-  if (id === undefined || requestId === undefined || from === null || priority === undefined || priorityAsked === undefined) return null;
+  if (id === undefined || requestId === undefined || from === null) return null;
   if (title === undefined || title === "" || summary === undefined || body === undefined || text === undefined) return null;
   if (state === undefined || at === undefined) return null;
 
@@ -347,8 +344,9 @@ export function readHillDecision(value: JsonValue): HillDecision | null {
     requestId,
     from,
     about,
-    priority,
-    priorityAsked,
+    // The wire still carries a priority (an older member or lead sends one); the phone ranks and draws nothing by it.
+    priority: ASK_PRIORITY_FIXED,
+    priorityAsked: ASK_PRIORITY_FIXED,
     title,
     summary,
     body,

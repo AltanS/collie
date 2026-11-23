@@ -1231,8 +1231,8 @@ describe("the Hill in the Dashboard's bar (M96)", () => {
     const item = hillItem()!;
     expect(item.querySelector('[data-slot="tab-badge"]')).toHaveTextContent("3");
     expect(item).toHaveAccessibleName("Asks, 3 asks wait on you");
-    // One of them is `now`: the mountain wears its snow cap in the warm accent (A5).
-    expect(item.querySelector('[data-icon="hill-now"]')?.getAttribute("class")).toContain("text-status-working");
+    // The mountain is the same for every count: no ask has a priority (ADR 0179 addendum).
+    expect(item.querySelector('[data-icon="hill"]')).not.toBeNull();
     await userEvent.click(item);
     await waitFor(() => expect(url(router)).toBe("/asks"));
   });

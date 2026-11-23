@@ -122,11 +122,12 @@ afterEach(async () => {
 });
 
 describe("the hill route", () => {
-  it("shows the title and how many are open, and how many of them are Now", async () => {
+  it("shows the title and how many are open, with nothing about priority", async () => {
     await hillHolds([hillDecision({ priority: "now" }), hillDecision(), hillDecision()]);
     renderHill();
     expect(await screen.findByRole("heading", { name: "Asks" })).toBeInTheDocument();
-    expect(document.querySelector('[data-slot="hill-count"]')).toHaveTextContent("3 open · 1 now");
+    expect(document.querySelector('[data-slot="hill-count"]')).toHaveTextContent("3 open");
+    expect(document.querySelector('[data-slot="hill-count"]')).not.toHaveTextContent("now");
     expect(document.querySelectorAll('[data-slot="decision-card"]')).toHaveLength(3);
   });
 
@@ -241,7 +242,7 @@ describe("the hill route on a cold open (calm load, row 4)", () => {
     // The neighbours did not move: the bar is still first in the scroller, the cards follow it, the hold is gone.
     expect(scroller.firstElementChild).toHaveAttribute("data-slot", "hill-crew-state");
     expect(document.querySelector('[data-slot="hill-crew-state-hold"]')).toBeNull();
-    expect(document.querySelector('[data-slot="hill-count"]')).toHaveTextContent("2 open · 1 now");
+    expect(document.querySelector('[data-slot="hill-count"]')).toHaveTextContent("2 open");
     // The fold is chosen from the real list: closed while asks are open.
     expect(document.querySelector('[data-slot="hill-answered"] button[aria-expanded]')).toHaveAttribute("aria-expanded", "false");
     expect(watch.seen()).toEqual([]);
@@ -298,7 +299,9 @@ describe("the Dashboard's bar on the hill route (amended 2026-11-10)", () => {
     expect(hillItem()).toHaveAttribute("aria-current", "page");
     expect(hillItem().className).toMatch(/\bborder-foreground\b/u);
     expect(hillItem().querySelector('[data-slot="tab-badge"]')).toHaveTextContent("2");
-    expect(hillItem().querySelector('[data-icon="hill-now"]')).not.toBeNull();
+    // A card sent as `now` by an older member does not change the mountain: no ask has a priority (ADR 0179 addendum).
+    expect(hillItem().querySelector('[data-icon="hill"]')).not.toBeNull();
+    expect(hillItem().querySelector('[data-icon="hill-now"]')).toBeNull();
   });
 
   it("draws the bar on the clear hill too, with the Hill item current and no count", async () => {

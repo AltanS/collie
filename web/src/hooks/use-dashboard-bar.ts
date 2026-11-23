@@ -1,6 +1,6 @@
 import { useCrew } from "@/components/crew-provider";
 import type { DashView } from "@/lib/dash-view";
-import { useHillCount, useHillOpen } from "@/lib/hill/store";
+import { useHillCount } from "@/lib/hill/store";
 import { useMuxCapability } from "@/lib/mux-capability";
 import { useRootData } from "@/lib/route-data";
 import type { Scope } from "@/lib/scope";
@@ -36,8 +36,6 @@ export interface DashboardBar {
   readyUnseen: boolean;
   /** The open Decisions, or null where the snapshot carries no `hillRev`: no Hill item there. */
   hill: number | null;
-  /** Whether one open Decision is `now`: the Hill item's snow cap in the warm accent (the owner's pick A5). */
-  hillNow: boolean;
   /** The tricks' `tabbar` parts, in manifest order. */
   tabbarParts: readonly WireTrickPart[];
   /** The trick sessions, where a trick item's tap goes. */
@@ -68,7 +66,6 @@ export function useDashboardBar(storedView: DashView = "dashboard"): DashboardBa
   const blockedCount = countBlocked(data.agents);
   const hillCount = useHillCount();
   const hill = data.hill === true ? hillCount : null;
-  const hillOpenNow = useHillOpen().some((d) => d.priority === "now");
   const tabbarParts = useTrickParts("tabbar");
   return {
     shown: dashboardBarShown({ crew: multi, screenless, hill, tabbarItems: tabbarParts.length }),
@@ -78,7 +75,6 @@ export function useDashboardBar(storedView: DashView = "dashboard"): DashboardBa
     blockedCount,
     readyUnseen: blockedCount === 0 && hasReady(data.agents),
     hill,
-    hillNow: hill !== null && hillOpenNow,
     tabbarParts,
     sessions: data.trickSessions ?? NO_TRICK_SESSIONS,
     scope: data.scope,

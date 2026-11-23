@@ -231,7 +231,6 @@ END {
     out = out ",\"summary\":" jstr(clip("Case " firstred " failed, " ok " passed. " sum, 280))
     out = out ",\"options\":[{\"intent\":\"rerun\",\"label\":\"Rerun\"},{\"intent\":\"skip\",\"label\":\"Skip\"}]"
     out = out ",\"recommends\":{\"intent\":\"rerun\",\"why\":\"A red case in a replay leg is often a timeout, and a rerun shows it.\"}"
-    out = out ",\"priority\":\"today\""
     if (scope != "") out = out ",\"about\":" jstr(scope) ",\"replyTo\":" jstr(scope)
     if (shot != "") out = out ",\"media\":[{\"file\":" jstr(shot) ",\"caption\":" jstr(clip("Case " firstred, 80)) "}]"
     out = out "}]"

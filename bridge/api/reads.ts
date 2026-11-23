@@ -369,7 +369,6 @@ export function buildReads(deps: ReadsDeps): ReadHandlers {
           machine: decision.from.memberId,
           sender: { kind: decision.from.kind, label: senderLabel(decision.from) },
           title: clip(decision.title),
-          urgency: decision.priority,
         };
         // One bad date leaves that card's date out, never the list.
         const date = isoDate(decision.at);

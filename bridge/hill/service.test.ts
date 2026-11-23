@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import type { AuditEntry } from "../audit.ts";
-import type { HillAnswerRequest, HillPostInput, HillDecision } from "../../web/src/lib/hill/wire.ts";
+import { ASK_PRIORITY_FIXED, type HillAnswerRequest, type HillPostInput, type HillDecision } from "../../web/src/lib/hill/wire.ts";
 import { hillAnswerDigest, memoryHillReceipts, type HillReceiptSurface } from "./receipts.ts";
 import {
   answerMessage,
@@ -328,7 +328,7 @@ describe("posting a decision", () => {
   test("a repeated request id with another payload is refused request_id_reused, and nothing is stored", () => {
     const r = rig();
     const first = posted(r.hill.post(POSTER, input(1)));
-    for (const over of [{ title: "Changed?" }, { summary: "Other words." }, { options: [{ intent: "yes", label: "Yes" }] }, { replyTo: "local/%2" }, { priority: "now" as const }]) {
+    for (const over of [{ title: "Changed?" }, { summary: "Other words." }, { options: [{ intent: "yes", label: "Yes" }] }, { replyTo: "local/%2" }]) {
       expect(r.hill.post(POSTER, input(1, over))).toEqual({ ok: false, code: "request_id_reused", error: `this request id already posted ${first.id} with other content; post with a new --request-id` });
     }
     expect(r.store.all()).toHaveLength(1);
@@ -360,14 +360,16 @@ describe("posting a decision", () => {
     expect(posted(r.hill.post(POSTER, input(1, { title: "Changed?" }))).id).toBe(first.id);
   });
 
-  test("a sender's 4th open `now` is shown as `today`, asked `now`", () => {
+  test("a post with priority `now` is taken and stored with the one fixed priority; there is no cap on `now`", () => {
     const r = rig();
-    for (let n = 1; n <= 3; n += 1) expect(posted(r.hill.post(POSTER, input(n, { priority: "now" }))).priority).toBe("now");
-    const fourth = posted(r.hill.post(POSTER, input(4, { priority: "now" })));
-    expect(fourth.priority).toBe("today");
-    expect(fourth.priorityAsked).toBe("now");
-    // Another sender has its own three.
-    expect(posted(r.hill.post(OTHER, input(5, { priority: "now" }))).priority).toBe("now");
+    for (let n = 1; n <= 5; n += 1) {
+      const held = posted(r.hill.post(POSTER, input(n, { priority: "now" })));
+      expect(held.priority).toBe(ASK_PRIORITY_FIXED);
+      expect(held.priorityAsked).toBe(ASK_PRIORITY_FIXED);
+    }
+    // The value is not part of what a request id stands for: the same post again is the same card.
+    const first = r.store.all()[0]!;
+    expect(posted(r.hill.post(POSTER, input(1, { priority: "later" }))).id).toBe(first.id);
   });
 
   test("the 21st open decision of one sender is refused too_many_open; a supersede at the cap is not", () => {
@@ -478,7 +480,7 @@ describe("status, withdraw and list", () => {
     expect(r.audit.at(-1)).toEqual({ action: "hill.withdraw", detail: { decisionId: mine.id } });
   });
 
-  test("list: the caller's own, open first in the phone's order, then closed newest first", () => {
+  test("list: the caller's own, open first oldest first, then closed newest first", () => {
     const r = rig();
     const later = posted(r.hill.post(POSTER, input(1, { priority: "later" })));
     r.clock = 1100;
@@ -487,7 +489,7 @@ describe("status, withdraw and list", () => {
     const gone = posted(r.hill.post(POSTER, input(3)));
     r.hill.withdraw(POSTER, gone.id);
     posted(r.hill.post(OTHER, input(4)));
-    expect(r.hill.mineList(POSTER).map((held) => held.id)).toEqual([now.id, later.id, gone.id]);
+    expect(r.hill.mineList(POSTER).map((held) => held.id)).toEqual([later.id, now.id, gone.id]);
   });
 });
 

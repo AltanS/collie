@@ -146,7 +146,6 @@ export const ICON_KEYS = {
   "harnesses": { meaning: "harnesses", area: "settings", lucide: "Bot" },
   "hide-ignored": { meaning: "ignored files are hidden", area: "files", lucide: "EyeOff" },
   "hill": { meaning: "Asks, where asks wait", area: "navigation", lucide: "Mountain" },
-  "hill-now": { meaning: "Asks while a `now` ask is open", area: "navigation", lucide: "MountainSnow" },
   "history-screen": { meaning: "the scrollback history screen", area: "chat", lucide: "ScrollText" },
   "image": { meaning: "an image", area: "composer", lucide: "Image" },
   "image-next": { meaning: "the next picture in the picture sheet", area: "shared", lucide: "ChevronRight" },

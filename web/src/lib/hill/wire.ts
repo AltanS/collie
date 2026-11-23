@@ -6,8 +6,18 @@ import { isHiddenChar } from "../hidden-chars";
 import type { JsonValue } from "../json";
 import type { View } from "../tricks/schema";
 
-/** How soon the poster wants a person to look. */
+/**
+ * How soon the poster wanted a person to look. Nothing ranks or rings by it any more: no ask and no card has a priority
+ * (ADR 0179 addendum). The type stays because the crew wire carries the field, so an older member or deputy still reads a card.
+ */
 export type HillPriority = "now" | "today" | "later";
+
+/**
+ * The one priority every card is stored with. Kept only for the crew wire (`HillDecision.priority` and `priorityAsked` stay
+ * in every stored, served and forwarded card, so an older member or deputy still reads it); nothing here reads it for any
+ * decision. A forwarded post that carries another value is taken and the value is ignored (ADR 0179 addendum).
+ */
+export const ASK_PRIORITY_FIXED: HillPriority = "today";
 
 /** Where a decision is in its life. Only "open" waits for a person. */
 export type HillState =
@@ -93,8 +103,6 @@ export const HILL_LINK_HREF_MAX = 500;
 export const HILL_ANSWER_TEXT_MAX = 4000;
 /** Open decisions one sender may hold at once. */
 export const HILL_OPEN_MAX = 20;
-/** Open "now" decisions one sender may hold at once. A further one is shown as "today". */
-export const HILL_NOW_MAX = 3;
 /** How many closed decisions the list serves, newest first. */
 export const HILL_CLOSED_SERVED = 20;
 
@@ -159,11 +167,11 @@ export const HILL_MEDIA_ROUTE = "/api/hill/media/";
 /**
  * What a Decision of Collie's own is about: a trick's new version (crew slice 3), a proposal (crew slice
  * 8), a carried trick that did not start after a takeover (crew slice 10, OK only), or a trick stopped
- * because it asks for a right its approval did not hold (fault B, bridge/tricks/rights-card.ts, OK only), or
- * the test Decision the person sends from the Hill's page (bridge/hill/test-card.ts, "It works" only).
+ * because it asks for a right its approval did not hold (fault B, bridge/tricks/rights-card.ts, OK only). The test
+ * ask of the Hill's page (type `test`) is gone (ADR 0179 addendum); an older lead's card of that type still reads, as no trick card.
  */
-export type HillCollieRefType = "version" | "proposal" | "carried" | "rights" | "test";
-export const HILL_COLLIE_REF_TYPES: readonly HillCollieRefType[] = ["version", "proposal", "carried", "rights", "test"];
+export type HillCollieRefType = "version" | "proposal" | "carried" | "rights";
+export const HILL_COLLIE_REF_TYPES: readonly HillCollieRefType[] = ["version", "proposal", "carried", "rights"];
 
 /**
  * THE CARDS THAT WORK WITH THE HILL OFF (M96 spec 14, 2026-11-16). The Hill's switch gates what agents
@@ -178,9 +186,6 @@ export const HILL_OFF_TRICK_CARDS = {
   version: true,
   rights: true,
   carried: true,
-  // The test Decision is about no trick: with the Hill off nothing posts, serves or answers it (the page
-  // disables its button then), so it is no approval that must stay reachable.
-  test: false,
 } as const satisfies { readonly [K in HillCollieRefType]: boolean };
 
 /**
@@ -456,9 +461,9 @@ export interface HillDecision {
   };
   /** A walky address. The card opens that session's Chat. */
   about: string | null;
-  /** The priority as shown. */
+  /** Always {@link ASK_PRIORITY_FIXED} from this build; read by an older member only (the crew wire). Nothing here ranks by it. */
   priority: HillPriority;
-  /** The priority as the poster asked for it. */
+  /** The same constant; kept for the crew wire. */
   priorityAsked: HillPriority;
   title: string;
   summary: string;
@@ -537,22 +542,15 @@ export interface HillDecision {
    */
   postDigest?: string;
   /**
-   * The phone notification slot this decision holds (bridge/hill/push.ts), stored only and never served,
-   * as `postDigest`. Set in the write that stores the decision when its `now` push went, or carried over
-   * from the decision it superseded; a close clears the slot unless a successor holds it. Its presence is
-   * also why a decision id is never pushed twice. Absent: no notification.
-   */
-  pushTag?: string;
-  /**
    * When the person last sent into the posting session from the phone's composer after this Decision was
    * posted (1.29.0), ms since the epoch. Set on an open agent Decision only, by the lead whose session it
    * is; absent until then. The card says "You wrote to this session after it asked." and sorts below the
-   * fresh cards of its priority, and it stays open and answerable.
+   * fresh cards, and it stays open and answerable.
    */
   spokeAfter?: number;
   /**
-   * Present on an ask (`collie walky ask`); absent on every other Decision. An ask is stored with priority
-   * `today` and no expiry, never pushes, and never gets `spokeAfter`.
+   * Present on an ask (`collie walky ask`); absent on every other Decision. An ask is stored with no expiry
+   * and never gets `spokeAfter`.
    */
   ask?: HillAsk;
 }
@@ -648,6 +646,7 @@ export interface HillPostInput {
   text?: HillTextMode;
   recommends?: { intent: string; why: string } | null;
   links?: Array<{ label: string; href: string }>;
+  /** Taken and ignored since ADR 0179 addendum: only an older member's forward still carries it. */
   priority?: HillPriority;
   about?: string | null;
   replyTo?: string | null;
@@ -724,17 +723,16 @@ function sunk(decision: HillDecision): number {
 }
 
 /**
- * Open decisions in the order the phone shows them: now, today, later; inside one priority the fresh ones
- * first, then those the person wrote to the session about (`spokeAfter`), each oldest first. Does not mutate.
+ * Open decisions in the order the phone shows them: the fresh ones first, then those the person wrote to the session about
+ * (`spokeAfter`), each oldest first. Does not mutate. No priority ranks them (ADR 0179 addendum).
  */
 export function sortOpenDecisions(list: HillDecision[]): HillDecision[] {
-  const rank = (p: HillPriority): number => HILL_PRIORITIES.indexOf(p);
-  return list.toSorted((a, b) => rank(a.priority) - rank(b.priority) || sunk(a) - sunk(b) || a.at - b.at);
+  return list.toSorted((a, b) => sunk(a) - sunk(b) || a.at - b.at);
 }
 
 // ── THE CREW STATE (1.29.0) ─────────────────────────────────────────────────────────────────────────
-// One value on the lead, set by the person: `here` (as always), `quiet` (no push; agents post but do not
-// wait for a fast answer) or `away` (no push; agents hold questions that need an answer now). The bridge
+// One value on the lead, set by the person: `here` (as always), `quiet` (agents ask, but do not
+// wait for the answer) or `away` (agents hold back questions that need an answer now). The bridge
 // never refuses a post for it: it is information for agents, read with `collie hill state`, and carried on
 // the typed answer and the post result as one line, `Crew state: away.`, whenever it is not `here`.
 

@@ -294,8 +294,8 @@ describe("asks.list", () => {
     expect(Object.keys(answer)).toEqual(["cards"]);
     const cards = wire<Record<string, JsonValue>[]>(answer.cards);
     expect(cards).toHaveLength(1);
-    expect(Object.keys(cards[0]!)).toEqual(["id", "machine", "sender", "title", "urgency", "date"]);
-    expect(cards[0]).toEqual({ id: "ak_fixture00001", machine: "inst-fixture-a1", sender: { kind: "agent", label: "claude" }, title: "Deploy window", urgency: "today", date: "2026-11-17T09:30:00.000Z" });
+    expect(Object.keys(cards[0]!)).toEqual(["id", "machine", "sender", "title", "date"]);
+    expect(cards[0]).toEqual({ id: "ak_fixture00001", machine: "inst-fixture-a1", sender: { kind: "agent", label: "claude" }, title: "Deploy window", date: "2026-11-17T09:30:00.000Z" });
     expect(Object.keys(wire<Record<string, string>>(cards[0]!.sender))).toEqual(["kind", "label"]);
   });
 
@@ -363,7 +363,7 @@ describe("asks.list", () => {
       ["ak_huge", null],
       ["ak_good", "2026-11-17T09:30:00.000Z"],
     ]);
-    expect(Object.keys(cards[0]!)).toEqual(["id", "machine", "sender", "title", "urgency"]);
+    expect(Object.keys(cards[0]!)).toEqual(["id", "machine", "sender", "title"]);
   });
 
   test("no Hill on this bridge: an empty list", async () => {

@@ -198,14 +198,6 @@ describe("a stored decision", () => {
     expect(readDecision(onDisk(withDigest, { postDigest: 7 }))).toBeNull();
   });
 
-  test("the push slot reads back when present and stays absent when not; a bad one fails the record", () => {
-    const withSlot = decision("ak_aaaaaaaaaaa1", { pushTag: "collie:hill:ak_aaaaaaaaaaa1" });
-    expect(readDecision(onDisk(withSlot))).toEqual(withSlot);
-    expect(readDecision(onDisk(decision("ak_aaaaaaaaaaa1")))).not.toHaveProperty("pushTag");
-    expect(readDecision(onDisk(withSlot, { pushTag: "collie:herd" }))).toBeNull();
-    expect(readDecision(onDisk(withSlot, { pushTag: 7 }))).toBeNull();
-  });
-
   test("a stored view reads back; a view that fails its rule is dropped and the decision stays", () => {
     const view: View = [{ kind: "para", text: "From the leg." }];
     const withView = decision("ak_aaaaaaaaaaa1", { view });

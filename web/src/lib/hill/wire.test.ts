@@ -69,7 +69,7 @@ describe("isHillOptionIntent", () => {
 });
 
 describe("sortOpenDecisions", () => {
-  it("orders now, today, later, and oldest first inside one priority", () => {
+  it("orders oldest first, whatever the priority: none ranks a card (ADR 0179 addendum)", () => {
     const list = [
       decision("a", "later", 1),
       decision("b", "today", 5),
@@ -77,7 +77,7 @@ describe("sortOpenDecisions", () => {
       decision("d", "today", 2),
       decision("e", "now", 3),
     ];
-    expect(sortOpenDecisions(list).map((d) => d.id)).toEqual(["e", "c", "d", "b", "a"]);
+    expect(sortOpenDecisions(list).map((d) => d.id)).toEqual(["a", "d", "e", "b", "c"]);
   });
 
   it("does not mutate the input", () => {

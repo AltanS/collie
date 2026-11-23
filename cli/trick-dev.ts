@@ -172,7 +172,6 @@ export function decisionLine(decision: TrickDecision): string {
   const options = decision.options ?? [];
   words.push(options.length === 0 ? "no options (words only)" : `options ${options.map((o) => o.intent).join(", ")}`);
   if (decision.recommends !== undefined && decision.recommends !== null) words.push(`recommends ${decision.recommends.intent}`);
-  if (decision.priority !== undefined) words.push(decision.priority);
   if ((decision.media ?? []).length > 0) words.push(`images ${String(decision.media?.length ?? 0)}`);
   return words.join("  ");
 }

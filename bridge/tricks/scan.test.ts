@@ -228,7 +228,7 @@ describe("the local API's own warning kind", () => {
 const sha = (text: string): string => createHash("sha256").update(text).digest("hex");
 
 /** The SHA-256 of the current helper text, by version. It names the current version only. */
-const HELPER_PINS = new Map<number, string>([[11, "2cdefcdd233806fa7566570ee7ed71cb09548e6d39a694810165cf9e28778eba"]]);
+const HELPER_PINS = new Map<number, string>([[12, "1fc6854c2f0c5bedb793d1b58ba73e0f8275d023377c4e153ae834a63dca57f5"]]);
 
 /**
  * Every (version, SHA-256) of a helper text that was ever committed on the way to this one, since 1.29.0. FROZEN:
@@ -245,6 +245,7 @@ const FROZEN_HELPERS: readonly (readonly [number, string])[] = [
   [9, "e3d318649b1736a68fc11c253c890ae2809fc15a4f9db82808ef3b9bc1d9234f"], // bcc2135aa, sprite.after
   [10, "6786899af0b341dd9ef4afe64fde23161e58cf4bc4202cb5f0fb040f6401cb26"],
   [11, "2cdefcdd233806fa7566570ee7ed71cb09548e6d39a694810165cf9e28778eba"], // ADR 0179, asks
+  [12, "1fc6854c2f0c5bedb793d1b58ba73e0f8275d023377c4e153ae834a63dca57f5"], // ADR 0179 addendum, no priority
 ];
 
 describe("the helper's version moves with its text", () => {

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import { HILL_SUMMARY_MAX, type HillPostInput } from "../../web/src/lib/hill/wire.ts";
+import { ASK_PRIORITY_FIXED, HILL_SUMMARY_MAX, type HillPostInput } from "../../web/src/lib/hill/wire.ts";
 import { DECISION_VIEW_LIMITS, inputsSentence, TEXT_MAX, type MANIFEST_KEYS, type TrickManifest, type View, type ViewNode } from "../../web/src/lib/tricks/schema.ts";
 import { unsafeText } from "./code-hash.ts";
 import { WARN_PLAIN } from "./scan.ts";
@@ -331,7 +331,7 @@ export function proposalCard(input: ProposalCardInput): ProposalCardResult {
   const files = total === 1 ? "It has 1 file." : `It has ${String(total)} files.`;
   const whoNodes = whoParts(input.proposer, input.runsOn);
   const who = whoNodes.join(" ");
-  const base: Omit<HillPostInput, "requestId" | "summary"> = { title: proposalTitle(input.id), options: [{ ...PROPOSAL_ON }, { ...PROPOSAL_LATER }], text: "none", priority: "today", recommends: null };
+  const base: Omit<HillPostInput, "requestId" | "summary"> = { title: proposalTitle(input.id), options: [{ ...PROPOSAL_ON }, { ...PROPOSAL_LATER }], text: "none", priority: ASK_PRIORITY_FIXED, recommends: null };
   if (total === 0 || (shown.view !== null && shown.shown >= visible.files.length)) {
     const card = { ...base, summary: summaryOf(who, input.replaces === true, `${files} ${fact}`, `${files} It asks for rights, listed below.`) };
     return { ok: true, card: shown.view === null ? card : { ...card, view: shown.view } };
@@ -418,7 +418,7 @@ export function proposalVersionCard(input: ProposalVersionCardInput): ProposalCa
   const whoNodes = whoParts(input.proposer, input.runsOn);
   const who = whoNodes.join(" ");
   const short = rights.length > 0 ? "It asks for new rights, listed below." : "It does something new, listed below.";
-  const base: Omit<HillPostInput, "requestId" | "summary"> = { title: versionTitle(input.id), options: [{ ...PROPOSAL_USE }, { ...PROPOSAL_KEEP }], text: "none", priority: "today", recommends: null };
+  const base: Omit<HillPostInput, "requestId" | "summary"> = { title: versionTitle(input.id), options: [{ ...PROPOSAL_USE }, { ...PROPOSAL_KEEP }], text: "none", priority: ASK_PRIORITY_FIXED, recommends: null };
   if (total === 0 || (shown.view !== null && shown.shown >= total)) {
     const card = { ...base, summary: summaryOf(who, input.replaces === true, `${filesSentence(total)} ${fact}`, `${filesSentence(total)} ${short}`) };
     return { ok: true, card: shown.view === null ? card : { ...card, view: shown.view } };

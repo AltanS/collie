@@ -47,7 +47,6 @@ import {
 } from "../../web/src/lib/hill/wire.ts";
 import { parseRelPath } from "../files-view.ts";
 import { isRequestId } from "../worktree-receipts.ts";
-import { isHillPushTag } from "./push.ts";
 import { readGroup } from "./group.ts";
 import { parseDecisionView, type View } from "../../web/src/lib/tricks/schema.ts";
 
@@ -172,6 +171,8 @@ export function readPostFields(row: JsonObject): HillPostRead {
     if (link === null) return refused("bad_link", "a link is a label and an address");
     links.push(link);
   }
+  // Taken and ignored: a forwarded post of an older member may carry any of the three, and the decision stores the one constant
+  // (service.ts, wire.ts ASK_PRIORITY_FIXED). A value outside the three is still a post of the wrong shape.
   const priorityRaw = row.priority ?? "today";
   const priority = asJsonString(priorityRaw);
   if (!isPriority(priority)) return refused(null, "bad request: a priority is now, today or later");
@@ -581,9 +582,6 @@ export function readDecision(value: JsonValue | undefined, opts: ReadDecisionOpt
   // Absent on a decision stored before posts carried a digest: kept absent.
   const postDigest = row.postDigest === undefined ? undefined : asJsonString(row.postDigest);
   if (media === null || (row.postDigest !== undefined && (postDigest === undefined || !/^[0-9a-f]{64}$/u.test(postDigest)))) return null;
-  // Absent on a decision that holds no notification slot: kept absent.
-  const pushTag = row.pushTag === undefined ? undefined : asJsonString(row.pushTag);
-  if (row.pushTag !== undefined && (pushTag === undefined || !isHillPushTag(pushTag))) return null;
   if (links === null || replyTo === undefined || target === undefined || supersedes === undefined || supersededBy === undefined) return null;
   if (expiresAt === undefined || at === undefined || !Number.isSafeInteger(at) || !isState(stateText)) return null;
   if (closedAt === undefined || closedReason === undefined || answer === undefined) return null;
@@ -622,7 +620,6 @@ export function readDecision(value: JsonValue | undefined, opts: ReadDecisionOpt
     if (group === null || view !== undefined) return null;
     decision.group = group;
   }
-  if (pushTag !== undefined) decision.pushTag = pushTag;
   // An ask (`collie walky ask`): only an agent posts one, and any part that fails drops the decision.
   if (row.ask !== undefined) {
     const ask = from.kind === "agent" ? readStoredAsk(row.ask) : null;

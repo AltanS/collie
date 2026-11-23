@@ -60,7 +60,6 @@ import {
   HILL_OPTION_DETAIL_MAX,
   HILL_OPTION_LABEL_MAX,
   HILL_OPTIONS_MAX,
-  HILL_PRIORITIES,
   HILL_RESERVED_INTENTS,
   HILL_SUMMARY_MAX,
   HILL_TEXT_MODES,
@@ -69,7 +68,6 @@ import {
   isHillOptionIntent,
   OLD_TRICK_NODE_PREFIX,
   oldNodeLine,
-  type HillPriority,
   type HillTextMode,
 } from "../hill/wire";
 import { skeletonWords } from "../fold";
@@ -1311,10 +1309,6 @@ export function boundSessionsOf(part: TrickPart): readonly string[] | undefined 
 
 // ── Types: decisions (the Hill's decision shape, as a trick lists it) ───────────────────────
 
-/** `priority`: a request, not a fact. Only `now` pushes. Absent is `today`. The hill's words. */
-export const DECISION_PRIORITIES = HILL_PRIORITIES;
-export type DecisionPriority = HillPriority;
-export const DEFAULT_DECISION_PRIORITY: DecisionPriority = "today";
 /** `text`: whether the person may, or must, add words to the answer. The hill's words. Absent is `optional`. */
 export const DECISION_TEXT_MODES = HILL_TEXT_MODES;
 export type DecisionTextMode = HillTextMode;
@@ -1362,7 +1356,6 @@ export interface TrickDecision {
   body?: string;
   options?: DecisionOption[];
   recommends?: DecisionRecommends | null;
-  priority?: DecisionPriority;
   /** Whether the person may (`optional`, the default), must (`required`) or may not (`none`) add words. */
   text?: DecisionTextMode;
   /** A session's scope key from the facts: the card opens its Chat. */
@@ -1375,11 +1368,6 @@ export interface TrickDecision {
   expiresAt?: number;
   /** A small display-only view under the summary (`parseDecisionView`): facts to read, never a control. */
   view?: View;
-}
-
-/** A decision's priority, its default filled. */
-export function decisionPriority(decision: TrickDecision): DecisionPriority {
-  return decision.priority ?? DEFAULT_DECISION_PRIORITY;
 }
 
 /** The program's output, as written. There is no `draft` and no `open` key: only a button with `does = "draft"` puts text into a reply box, and it never sends. */
@@ -4461,8 +4449,11 @@ function readActions(f: Fields): TrickAction[] | undefined {
 
 // ── Decisions ────────────────────────────────────────────────────────────────────────────────
 
+/** The one sentence an ask with the old key `priority` is refused with: no ask has a priority (ADR 0179 addendum). */
+export const ASK_NO_PRIORITY_LINE = 'an ask has no priority: remove the key "priority".';
+
 /** Every key a decision takes (the Hill's decision shape, the fields a trick writes). */
-export const DECISION_KEYS = ["key", "title", "summary", "body", "options", "recommends", "priority", "text", "about", "replyTo", "media", "links", "expiresAt", "view"] as const;
+export const DECISION_KEYS = ["key", "title", "summary", "body", "options", "recommends", "text", "about", "replyTo", "media", "links", "expiresAt", "view"] as const;
 export const DECISION_OPTION_KEYS = ["intent", "label", "detail", "confirm"] as const;
 export const DECISION_RECOMMENDS_KEYS = ["intent", "why"] as const;
 export const DECISION_MEDIA_KEYS = ["file", "caption"] as const;
@@ -4514,6 +4505,7 @@ function readDecision(value: JsonValue, path: string, sink: Refusal[]): Decision
   const f = itemFields(value, path, sink, "an ask");
   if (f === undefined) return {};
   f.keys(DECISION_KEYS, (key) => {
+    if (key === "priority") return { code: "unknown-key", reason: ASK_NO_PRIORITY_LINE };
     const own = reasonOf(HILL_OWNED_KEYS, key);
     return own === undefined ? undefined : { code: "unknown-key", reason: `"${key}" is not a trick's to write: ${own}.` };
   });
@@ -4525,7 +4517,6 @@ function readDecision(value: JsonValue, path: string, sink: Refusal[]): Decision
   const body = f.text("body", { max: HILL_BODY_MAX, multiline: true });
   const options = readOptions(f);
   const recommends = readRecommends(f, options);
-  const priority = f.word("priority", DECISION_PRIORITIES);
   const text = f.word("text", DECISION_TEXT_MODES);
   // The hill refuses a decision that takes no words and has no option: nothing could answer it.
   if (text === "none" && (options ?? []).length === 0) f.push("target", "text", '"text": "none" needs at least one option, or nothing could answer the ask.');
@@ -4541,7 +4532,6 @@ function readDecision(value: JsonValue, path: string, sink: Refusal[]): Decision
   if (body !== undefined) decision.body = body;
   if (options !== undefined) decision.options = options;
   if (recommends !== undefined) decision.recommends = recommends;
-  if (priority !== undefined) decision.priority = priority;
   if (text !== undefined && !(text === "none" && (options ?? []).length === 0)) decision.text = text;
   if (about !== undefined) decision.about = about;
   if (replyTo !== undefined) decision.replyTo = replyTo;

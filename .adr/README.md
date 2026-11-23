@@ -359,6 +359,7 @@ The rule today: Tricks that react and the local API stand on one internal event 
 | [0176](./0176-an-ask-is-a-decision-with-an-ask-field.md) | An ask (`collie walky ask`) is a Hill Decision with an `ask` field: `ak_` id, its own limits, no push, no end by age, five open per session, linked files as pointers under the Files rules; one Send (`POST /api/hill/answers`) types one message for a session's answers. | Proposed |
 | [0177](./0177-the-check-at-the-end-of-a-turn.md) | At the end of a Claude Code turn a second `Stop` entry (`collie beacon check`) showed the agent its open asks once and `collie walky keep` confirmed an ask. | Superseded by 0178 |
 | [0178](./0178-the-reminder-of-open-asks-rides-on-the-prompt.md) | Claude Code's `UserPromptSubmit` and `SessionStart` hooks run `collie beacon asks`, which prints the session's open asks as context next to the prompt; the bridge decides, marks asks fresh, unchecked or carried, closes them on `/clear`, and `collie walky cancel` takes 1 to 5 ids. | Proposed |
+| [0179](./0179-the-hill-and-the-decision-become-asks.md) | The Hill and the Decision become Asks and an ask with no alias (old names fail with one sentence), and an addendum: no priority, no notification for any card, no test card; the crew wire keeps one fixed priority. | Proposed |
 
 ### Process, lint and tests
 

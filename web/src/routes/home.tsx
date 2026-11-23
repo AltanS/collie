@@ -437,7 +437,6 @@ export function HomeRoute() {
       blockedCount={blockedCount}
       readyUnseen={readyUnseen}
       hill={bar.hill}
-      hillNow={bar.hillNow}
       onOpenHill={() => nav.down(hillPath(data.scope))}
       tabbarParts={bar.tabbarParts}
       sessions={bar.sessions}
@@ -454,7 +453,7 @@ export function HomeRoute() {
       aria-label={bar.hill > 0 ? `${t("hill.title")}, ${tn("home.tabs.hill", bar.hill)}` : t("hill.title")}
       onClick={() => nav.down(hillPath(data.scope))}
     >
-      <Icon name={bar.hillNow ? "hill-now" : "hill"} className={cn("size-5", bar.hillNow && "text-status-working")} />
+      <Icon name="hill" className="size-5" />
       {bar.hill > 0 && (
         <span aria-hidden className="absolute right-0.5 top-0.5 flex h-4 min-w-4 items-center justify-center rounded-sm bg-status-blocked px-1 text-[10px] leading-none font-semibold tabular-nums text-white">
           {bar.hill}

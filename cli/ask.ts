@@ -13,6 +13,7 @@ import { readDecision } from "../bridge/hill/parse.ts";
 import { isBareLabel } from "../bridge/hill/ask-rules.ts";
 import { isRequestId } from "../bridge/worktree-receipts.ts";
 import {
+  ASK_PRIORITY_FIXED,
   HILL_ASK_BECAUSE_MAX,
   HILL_ASK_BODY_MAX,
   HILL_ASK_CANCEL_MAX,
@@ -428,7 +429,7 @@ function askLine(parsed: AskArgs, requestId: string, body: string, files: readon
     text: parsed.words ? "required" : "optional",
     recommends: parsed.recommends === null ? null : { intent: parsed.recommends.intent, why: parsed.recommends.why },
     links: [],
-    priority: "today",
+    priority: ASK_PRIORITY_FIXED,
     about: null,
     replyTo: null,
     supersedes: parsed.replaces,

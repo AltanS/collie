@@ -24,13 +24,11 @@ function answerOf(decision: HillDecision, rid: number, intent: string, text: str
 }
 
 describe("posting an ask", () => {
-  test("is a Decision with an ak_ id, no end, priority today, no push, and an optional note", () => {
+  test("is a Decision with an ak_ id, no end, the constant priority, and an optional note", () => {
     const r = askRig();
     const ask = posted(r.hill.post(ONE, askInput(1)));
     expect(ask.id).toMatch(/^ak_[a-z0-9]{12}$/);
     expect(ask).toMatchObject({ state: "open", expiresAt: null, priority: "today", priorityAsked: "today", text: "optional", ask: { words: false, files: [], root: null } });
-    expect(ask.pushTag).toBeUndefined();
-    expect(r.pushed).toBe(0);
     expect(ask.spokeAfter).toBeUndefined();
   });
 

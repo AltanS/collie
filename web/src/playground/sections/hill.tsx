@@ -228,13 +228,12 @@ function HillPhone({ open, closed, kept = NO_KEPT, unfold = false }: { open: rea
     if (unfold) root.current?.querySelector<HTMLButtonElement>('[data-slot="hill-answered"] button[aria-expanded="false"]')?.click();
   }, [unfold]);
   const sorted = sortOpenDecisions([...open]);
-  const nowCount = sorted.filter((d) => d.priority === "now").length;
   return (
     <div ref={root}>
       <Phone height={760}>
         <RootRouter data={homeSolo}>
           <AppHeaderHost bridge="connected" error={false}>
-            <HillHeader count={sorted.length} nowCount={nowCount} onBack={noSend} />
+            <HillHeader count={sorted.length} onBack={noSend} />
             <div data-pg-scroll className="min-h-0 flex-1 overflow-y-auto p-4">
               <HillView
                 open={sorted}
@@ -261,7 +260,7 @@ function ClearBody() {
   const [closed, setClosed] = useState<readonly HillDecision[]>(closedRows.slice(0, 3));
   return (
     <AppHeaderHost bridge="connected" error={false}>
-      <HillHeader count={0} nowCount={0} onBack={noSend} />
+      <HillHeader count={0} onBack={noSend} />
       <div data-pg-scroll className="min-h-0 flex-1 overflow-y-auto p-4">
         <HillView
           open={[]}
@@ -308,7 +307,7 @@ function CrewStateBody({ initial, told: firstTold }: { initial: HillCrewState; t
   const [told, setTold] = useState<number | null>(firstTold);
   return (
     <AppHeaderHost bridge="connected" error={false}>
-      <HillHeader count={quietOpen.length} nowCount={0} onBack={noSend} />
+      <HillHeader count={quietOpen.length} onBack={noSend} />
       <div data-pg-scroll className="min-h-0 flex-1 overflow-y-auto p-4">
         <HillCrewStateBar
           value={value}
@@ -358,7 +357,7 @@ function ClearMenuPhone() {
       <Phone height={620}>
         <RootRouter data={homeSolo}>
           <AppHeaderHost bridge="connected" error={false}>
-            <HillHeader count={1} nowCount={0} onBack={noSend} />
+            <HillHeader count={1} onBack={noSend} />
             <div data-pg-scroll className="min-h-0 flex-1 overflow-y-auto p-4">
               <HillView
                 open={sortOpenDecisions([SPOKEN_OPEN[0]!])}
@@ -382,7 +381,7 @@ function HillOffPhone() {
     <Phone height={620}>
       <RootRouter data={homeSolo}>
         <AppHeaderHost bridge="connected" error={false}>
-          <HillHeader count={0} nowCount={0} onBack={noSend} off={!on} />
+          <HillHeader count={0} onBack={noSend} off={!on} />
           <div data-pg-scroll className="min-h-0 flex-1 overflow-y-auto p-4">
             {on ? <HillView open={[]} closed={[]} kept={NO_KEPT} renderCard={() => null} /> : <HillOff canWrite busy={false} onTurnOn={() => setOn(true)} />}
           </div>
@@ -502,7 +501,7 @@ function MatchView({ c }: { c: HillCase }) {
   return (
     <RootRouter data={homeSolo}>
       <AppHeaderHost bridge="connected" error={false}>
-        <HillHeader count={c.open.length} nowCount={c.open.filter((d) => d.priority === "now").length} onBack={noSend} />
+        <HillHeader count={c.open.length} onBack={noSend} />
         <div data-pg-scroll className="min-h-0 flex-1 overflow-y-auto p-4">
           <HillView open={c.open} closed={c.closed} kept={NO_KEPT} renderCard={(d) => <MatchCard key={d.id} decision={d} />} />
         </div>
@@ -568,7 +567,6 @@ function MatchDashboard({ c }: { c: HillCase }) {
           blockedCount={herd.filter((pane) => pane.status === "blocked").length}
           readyUnseen={false}
           hill={c.open.length}
-          hillNow={c.open.some((d) => d.priority === "now")}
           onOpenHill={noSend}
           tabbarParts={[]}
           sessions={[]}

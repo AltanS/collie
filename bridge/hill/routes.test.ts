@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { connect } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -337,6 +337,11 @@ describe("the routes' gates, pinned by source", () => {
     const walky = routeBody('if (pathname === "/api/walky" && req.method === "POST") {');
     expect(walky).toContain('browserGate("write")');
     expect(HILL_LOCAL_TEXT).toContain("this machine");
+  });
+
+  test("there is no test-card route: `/api/hill/test` is no route of the server, so it answers the unknown-route 404", () => {
+    expect(src).not.toContain("/api/hill/test");
+    expect(existsSync(join(import.meta.dir, "test-card.ts"))).toBe(false);
   });
 });
 

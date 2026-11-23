@@ -3785,18 +3785,6 @@ export function startServer(opts: {
         }
         return hillSwitchRoute(hill, req.method === "POST" ? { body } : null, { device: whois(req).device, acceptEncoding: req.headers.get("accept-encoding") });
       }
-      // The test Decision ("Send a test Decision" on the Hill's page): the phone asks Collie to post one
-      // Decision of its own, marked Now, so the person sees a card arrive and gets the notification. Only a
-      // paired device with the write right passes `browserGate("write")`, the same gate as the Hill's switch.
-      // No agent, trick or crew member can reach it: an agent's `collie hill post` and a trick's post go over
-      // the walky socket and the trick runner, which never make a card of Collie's own, and this route holds
-      // no token they have. The body is empty, and nothing from the request enters the card.
-      if (pathname === "/api/hill/test" && req.method === "POST") {
-        const denied = browserGate("write");
-        if (denied) return denied;
-        if (host.kind === "member") return text(HILL_LOCAL_TEXT, 400);
-        return hillTestRoute(hill, await req.text().catch(() => "\u0000"), { device: whois(req).device, acceptEncoding: req.headers.get("accept-encoding") });
-      }
       // The crew state (1.29.0): read by any paired device, set with the write right, as the switch is,
       // because every agent of the crew reads it. The value also rides on `GET /api/hill` as `crewState`.
       if (pathname === "/api/hill/state" && (req.method === "GET" || req.method === "POST")) {
@@ -10798,25 +10786,6 @@ export function hillSwitchRoute(
   const now = hill.switchTo(on, context.device);
   if (now === null) return text("the switch of Asks could not be saved on this machine; nothing changed", 503);
   return json({ on: now }, context.acceptEncoding);
-}
-
-/**
- * `POST /api/hill/test`: the test Decision. The body is empty, or `{}`; any other body is 400 and nothing is
- * scheduled. 409 `{ code, error }` with the Hill off (`hill_off`) or on a machine that is not the lead
- * (`not_on_lead`). Else 200 `{ inSeconds, rings }`: the seconds until the card is posted, and `rings`, the first
- * reason no notification would be sent for it now (push.ts `HillRingBlock`) or null.
- */
-export function hillTestRoute(
-  hill: Pick<HillService, "requestTest"> | undefined,
-  raw: string,
-  context: { readonly device: string | null; readonly acceptEncoding: string | null },
-): Response {
-  if (hill === undefined) return text(HILL_OFF_TEXT, 404);
-  const empty = raw.trim() === "" || Object.keys(parseJsonObject(raw) ?? { x: 1 }).length === 0;
-  if (!empty) return text("bad request: the body is empty", 400);
-  const answer = hill.requestTest(context.device);
-  if (!answer.ok) return json({ code: answer.code, error: answer.error }, context.acceptEncoding, 409);
-  return json({ inSeconds: answer.inSeconds, rings: answer.rings }, context.acceptEncoding);
 }
 
 /**

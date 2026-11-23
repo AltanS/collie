@@ -1,4 +1,4 @@
-// collie trick helper v11
+// collie trick helper v12
 // The helper of a Collie trick: it reads the facts, collects the parts and the asks, and prints the
 // one document the bridge reads. `collie trick init` writes it into the trick folder, and
 // `collie trick helper <id>` rewrites it with the newest version. It imports only node: built-ins and
@@ -371,7 +371,7 @@ export interface Ask {
   key: string; title: string; summary: string;
   options?: { intent: string; label: string; detail?: string; confirm?: string }[];
   recommends?: { intent: string; why: string };
-  body?: string; text?: "none" | "optional" | "required"; priority?: "now" | "today" | "later";
+  body?: string; text?: "none" | "optional" | "required";
   about?: string; replyTo?: string; media?: { file: string; caption?: string }[];
   links?: { label: string; href: string }[];
   /** Facts drawn under the summary: display kinds only (no button, no card), 8 KiB, 100 nodes, depth 4. An `image(ref)` or a `compare` names a picture of `media` by its place. */

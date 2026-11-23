@@ -73,12 +73,11 @@ describe("the Decision card, at rest", () => {
   });
 
   it("shows the meta line, the title and the summary", () => {
-    const { slot } = renderCard(hillDecision({ priority: "now", title: "Merge it?", summary: "CI is green." }));
-    expect(slot("decision-priority")).toHaveTextContent("Now");
-    // The three peaks, all filled, named with the priority's word.
-    const glyph = slot("decision-priority")!.querySelector('[data-slot="peak-glyph"]')!;
-    expect(glyph).toHaveAttribute("data-filled", "3");
-    expect(glyph).toHaveAttribute("aria-label", "Now");
+    const { slot, container } = renderCard(hillDecision({ priority: "now", title: "Merge it?", summary: "CI is green." }));
+    // No card has a priority (ADR 0179 addendum): a card an older member sent as `now` draws no mark and no word for it.
+    expect(slot("decision-priority")).toBeNull();
+    expect(container.querySelector('[data-slot="peak-glyph"]')).toBeNull();
+    expect(slot("decision-meta")).not.toHaveTextContent("Now");
     expect(slot("decision-meta")).toHaveTextContent("collie lead");
     expect(slot("decision-meta")).toHaveTextContent("lodge");
     expect(slot("decision-title")).toHaveTextContent("Merge it?");
@@ -718,25 +717,13 @@ describe("after the tap", () => {
     expect(container.querySelector('[data-slot="decision-collie-mark"]')).toBeNull();
   });
 
-  it.each<["carried" | "rights" | "test"]>([["carried"], ["rights"], ["test"]])("a %s card of Collie's own keeps the Collie mark and its sender name", (type) => {
+  it.each<["carried" | "rights"]>([["carried"], ["rights"]])("a %s card of Collie's own keeps the Collie mark and its sender name", (type) => {
     const from: HillDecision["from"] = { kind: "collie", address: null, trickId: null, trickKey: null, memberId: "lodge", harness: null, label: "Collie", host: "lodge", trickHost: null, ref: { type, id: "legs", hash: "a".repeat(64) } };
     const { slot, container } = renderCard(hillDecision({ from, target: null }));
     expect(slot("decision-meta")).toHaveTextContent("Collie");
     expect(slot("decision-meta")).not.toHaveTextContent("Collie tricks");
     expect(container.querySelector('[data-slot="decision-collie-mark"]')).not.toBeNull();
     expect(container.querySelector('[data-icon="tricks"]')).toBeNull();
-  });
-
-  it("the test Decision wears Collie's mark and the label Collie, and says Done. after It works", () => {
-    const from: HillDecision["from"] = { kind: "collie", address: null, trickId: null, trickKey: null, memberId: "lodge", harness: null, label: "Collie", host: "lodge", trickHost: null, ref: { type: "test", id: "test", hash: "b".repeat(64) } };
-    const card = hillDecision({ from, target: null, priority: "now", title: "Does the Hill reach you?", summary: "You sent this test from Settings. Tap the answer to close it.", options: [{ intent: "ok", label: "It works" }], text: "none" });
-    const open = renderCard(card);
-    expect(open.slot("decision-meta")).toHaveTextContent("Collie");
-    expect(open.container.querySelector('[data-slot="decision-collie-mark"]')).not.toBeNull();
-    expect(open.option("ok")).toHaveTextContent("It works");
-    open.unmount();
-    const done = renderCard(card, answered(hillReceipt({ delivery: "none" }), "ok"));
-    expect(done.slot("decision-receipt")).toHaveTextContent("Done.");
   });
 
   it("says an answer to a crew machine that is not answering was not sent, and keeps the card answerable", () => {

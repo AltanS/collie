@@ -33,7 +33,6 @@
           "intent": "rerun",
           "why": "The log shows a timeout, not a code change."
         },
-        "priority": "today",
         "about": "lodge:w6X:3",
         "replyTo": "lodge:w6X:3",
         "media": [
@@ -64,7 +63,6 @@
           }
         ],
         "recommends": null,
-        "priority": "now",
         "expiresAt": 1794200000000
       },
       {

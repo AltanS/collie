@@ -96,3 +96,19 @@ Quiet, Away (2026-11-23).
   with it.
 - The other languages keep the old meaning in their values until the next translation pass; their keys are the same.
 - `collie walky status` reads both a message (`wt_`) and an ask (`ak_`); the id's prefix decides.
+
+## Addendum (2026-11-23): no priority, no notification, no test card
+
+The owner removed three more things from the same experiment.
+
+- **Priority and the notification.** No ask and no card has a priority, and none sends a notification. The phone draws
+  no Now / Today / Later groups; the board lists its cards oldest first. A trick's ask with the key `priority` is
+  refused: `an ask has no priority: remove the key "priority".` The helper moves to v12. `asks.list` has no `urgency`.
+  The Settings row for the notification is gone; the stored per-device field `decisions` stays in the notify prefs so a
+  file round-trips, and nothing reads it for an ask. A tap on an old notification (`target: "hill"`) still opens
+  `/asks`.
+- **The wire shape stays.** `HillDecision.priority` and `priorityAsked` stay in every stored, served and forwarded card,
+  because an older member or deputy still reads them. The bridge always writes the one constant `ASK_PRIORITY_FIXED`
+  (`"today"`). A forwarded post that carries `priority: "now"` is accepted and the value is ignored.
+- **The test card.** The button "Send a test ask", `POST /api/hill/test` and `bridge/hill/test-card.ts` are removed. An
+  old `hill.test` audit line stays readable.

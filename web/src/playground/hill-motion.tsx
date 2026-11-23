@@ -124,10 +124,9 @@ function MotionBody({ net, answered }: { net: Net; answered: boolean }) {
   useEffect(() => {
     if (answered) scroller.current?.querySelector<HTMLButtonElement>('[data-slot="hill-answered"] button[aria-expanded="false"]')?.click();
   }, [answered]);
-  const nowCount = hill.open.filter((d) => d.priority === "now").length;
   return (
     <>
-      <HillHeader count={hill.open.length} nowCount={nowCount} onBack={noop} />
+      <HillHeader count={hill.open.length} onBack={noop} />
       <div ref={scroller} data-pg-scroll data-slot="hill-scroll" className="min-h-0 flex-1 overflow-y-auto px-4 pt-4 pb-4">
         <HillView
           open={hill.open}
@@ -146,7 +145,6 @@ function MotionBody({ net, answered }: { net: Net; answered: boolean }) {
         blockedCount={0}
         readyUnseen={false}
         hill={hill.open.length}
-        hillNow={nowCount > 0}
         onOpenHill={noop}
         tabbarParts={[]}
         sessions={[]}

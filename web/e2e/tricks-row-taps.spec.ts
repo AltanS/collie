@@ -169,38 +169,6 @@ test("the Hill's row with Decisions waiting: arming swaps the text for the note 
   expect(note.y + note.height).toBeLessThanOrEqual(rowBox.y + rowBox.height);
 });
 
-test("the Hill's page: Send a test Decision taps, says when it arrives and why no notification would be sent, keeps the page in place and holds the button", async ({ page }) => {
-  const posts: string[] = [];
-  await stubTricks(page, posts);
-  const snap = { ...fixtureSnapshot, tricksRev: 1, hillRev: 1 };
-  await page.route("**/api/snapshot", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify(snap) }));
-  await page.route((url) => url.pathname === "/api/hill", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ v: 1, rev: 1, open: [], closed: [] }) }));
-  const asked: string[] = [];
-  await page.route("**/api/hill/test", async (route) => {
-    asked.push(`${route.request().method()} ${route.request().postData() ?? ""}`);
-    await route.fulfill({ contentType: "application/json", body: JSON.stringify({ inSeconds: 20, rings: "crew_member" }) });
-  });
-  await page.goto("/settings/tricks/hill");
-  const button = page.getByRole("button", { name: "Send a test Decision" });
-  const result = page.locator('[data-line="test-result"]');
-  await expect(button).toBeEnabled();
-  // The slot is there and empty before the tap: the group below it (Where it comes from) is where it will stay.
-  const fromBefore = (await page.locator('[data-section="from"]').boundingBox())!;
-  const slotBefore = (await result.boundingBox())!;
-  expect(slotBefore.height).toBeGreaterThanOrEqual(48);
-  await button.click();
-  await expect(result).toHaveText("A test Decision arrives in 20 seconds. No notification is sent, because this machine is a crew member, and the lead sends the notifications.");
-  await expect(button).toBeDisabled();
-  expect(asked).toEqual(["POST {}"]);
-  // The reserved slot held the sentence: nothing below it moved by one pixel.
-  // The tap scrolled the page, so the distance from the slot to the group below is what must stay.
-  expect((await page.locator('[data-section="from"]').boundingBox())!.y - (await result.boundingBox())!.y).toBe(fromBefore.y - slotBefore.y);
-  expect((await result.boundingBox())!.height).toBe(slotBefore.height);
-  // The sentence stays, and a second tap does nothing while the button is held.
-  await button.click({ force: true });
-  expect(asked).toHaveLength(1);
-});
-
 test("an official entry's lines open its details page, and Add adds without opening it", async ({ page }) => {
   const posts: string[] = [];
   await stubTricks(page, posts);

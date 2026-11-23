@@ -86,7 +86,6 @@ export function DashboardRouteBar({ bar, at }: { bar: DashboardBar; at: Dashboar
       blockedCount={bar.blockedCount}
       readyUnseen={bar.readyUnseen}
       hill={bar.hill}
-      hillNow={bar.hillNow}
       onOpenHill={onOpenHill}
       hillCurrent={at.kind === "hill"}
       currentTrick={here}

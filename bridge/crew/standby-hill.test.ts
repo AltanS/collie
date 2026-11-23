@@ -10,7 +10,6 @@ import { makeGroup } from "../hill/group.ts";
 import { hillMovedAway } from "./deposed.ts";
 import { leadStore, peerStore } from "./fixtures.ts";
 import { HillMediaStore } from "../hill/media.ts";
-import { HillPush } from "../hill/push.ts";
 import { memoryHillReceipts } from "../hill/receipts.ts";
 import { HILL_DEPOSED, HillService } from "../hill/service.ts";
 import { hillDir, HillStore } from "../hill/store.ts";
@@ -47,12 +46,11 @@ const collieCard = (type: "version" | "proposal" | "carried", n: number, options
     from: { kind: "collie", address: null, trickId: null, trickKey: null, memberId: "desk", harness: null, label: "Collie", host: "desk", trickHost: null, ref: { type, id: "legs", hash: HASH } },
   });
 
-/** A Hill with a disk for its pictures, and every push it would send. */
+/** A Hill with a disk for its pictures. */
 async function hillOn(label: string, opts: { deposed?: () => boolean; mode?: "lead" | "peer" } = {}) {
   const m = await machine(label);
   const store = new HillStore(hillDir(m.stateDir), () => T0);
   const media = new HillMediaStore(hillDir(m.stateDir), []);
-  const pushes: unknown[] = [];
   let n = 0;
   const hill = new HillService({
     store,
@@ -68,9 +66,8 @@ async function hillOn(label: string, opts: { deposed?: () => boolean; mode?: "le
     now: () => T0,
     mintId: () => `ak_new${String((n += 1)).padStart(9, "0")}`,
     hillSwitch: { on: () => true },
-    push: new HillPush({ ready: () => true, send: (message) => void pushes.push(message) }),
   });
-  return { m, store, media, hill, pushes };
+  return { m, store, media, hill };
 }
 
 /** A sync from `lead` to a deputy store through the deputy's own routes. */
@@ -212,15 +209,13 @@ describe("the takeover tap brings the open Decisions along (§25)", () => {
     return { lead, deputy, copy };
   }
 
-  test("an agent's Decision keeps its id and its picture, and no push goes out", async () => {
+  test("an agent's Decision keeps its id and its picture", async () => {
     const { deputy, copy } = await carried([agent(1, { media: [MEDIA] })]);
     const result = await adoptCarriedHill({ store: copy, hill: deputy.hill, lead: "desk", self: "laptop", machine: "laptop", started: new Set(), stateDir: deputy.m.stateDir, now: () => T0, followSkill: null, log: () => {} });
     expect(result).toEqual({ open: 1, closed: 0, dropped: 0 });
     const held = deputy.store.get(agent(1).id);
     expect(held?.state).toBe("open");
     expect(deputy.media.bytesOf(agent(1).id, MEDIA)).toEqual(PNG);
-    expect(deputy.pushes).toEqual([]);
-    expect(held?.pushTag).toBeUndefined();
     // Read back as the next boot reads it.
     expect(new HillStore(hillDir(deputy.m.stateDir)).get(agent(1).id)?.id).toBe(agent(1).id);
   });

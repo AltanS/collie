@@ -2711,7 +2711,6 @@
             "intent": "merge",
             "why": "x"
           },
-          "priority": "today",
           "about": "lodge:w6X:3",
           "replyTo": "lodge:w6X:3",
           "media": [
@@ -2785,7 +2784,6 @@
             }
           ],
           "recommends": null,
-          "priority": "today",
           "about": "lodge:w6X:3",
           "replyTo": "lodge:w6X:3",
           "media": [

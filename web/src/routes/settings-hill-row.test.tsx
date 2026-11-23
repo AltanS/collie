@@ -91,10 +91,8 @@ describe("the Settings search finds the Hill's row", () => {
     expect(ids).toContain("tricks.hill");
   });
 
-  it.each(["test ask", "send a test"])("for %s, the Hill's page holds the button, found by its own id", (query) => {
-    const hit = searchSettings(query).find((each) => each.setting.id === "tricks.hill.test");
-    expect(hit, query).toBeDefined();
-    expect(settingPath(hit!.setting)).toBe("/settings/tricks/asks#tricks.hill.test");
+  it.each(["test ask", "send a test"])("for %s, there is no test button any more: the search finds no row of its id", (query) => {
+    expect(searchSettings(query).find((each) => each.setting.id === "tricks.hill.test")).toBeUndefined();
   });
 
   it("keeps the row's id, its label and its hint, and marks it an experiment", () => {

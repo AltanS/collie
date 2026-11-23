@@ -11,7 +11,7 @@ import { HILL_ANSWERED_IN_SESSION, HillService, NOT_ON_LEAD, type HillAgentSende
 import { hillDir, HillStore } from "./store.ts";
 
 // The quiet mark (1.29.0): a phone send that reached an agent's session marks the open Decisions that
-// session posted before it, `spokeAfter`. The card stays open; nothing is typed and nothing pushes.
+// session posted before it, `spokeAfter`. The card stays open; nothing is typed.
 
 const roots: string[] = [];
 afterEach(() => {
@@ -30,15 +30,13 @@ interface RigState {
   clock: number;
   mode: HillCrewMode;
   sent: number;
-  pushed: number;
-  cleared: string[];
   audit: AuditEntry[];
 }
 
 function rig() {
   const dir = mkdtempSync(join(tmpdir(), "hill-spoke-"));
   roots.push(dir);
-  const state: RigState = { clock: 1000, mode: "solo", sent: 0, pushed: 0, cleared: [], audit: [] };
+  const state: RigState = { clock: 1000, mode: "solo", sent: 0, audit: [] };
   let n = 0;
   const make = () =>
     new HillService({
@@ -55,7 +53,6 @@ function rig() {
       machine: "lodge",
       now: () => state.clock,
       mintId: () => `ak_spoke${String((n += 1)).padStart(7, "0")}`,
-      push: { check: () => "send", send: () => void (state.pushed += 1), clear: (tag) => void state.cleared.push(tag) },
       audit: (entry) => state.audit.push(entry),
     });
   return { state, hill: make(), again: make };

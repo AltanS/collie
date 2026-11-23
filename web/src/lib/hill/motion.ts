@@ -5,7 +5,7 @@
 //  2. SETTLE, then PRESENCE_MS (240 ms, ui/presence.tsx): the options cross-fade to the one status line
 //     ("Sending…", then the receipt) while the card's height eases between the two.
 //  3. LEAVE, PRESENCE_MS: once the list says the decision is closed, the card collapses in place and
-//     the cards below glide up; a priority group whose last card it was leaves with it.
+//     the cards below glide up.
 //  4. ARRIVE: the closed row grows in at the top of Answered.
 //
 // The list is read again HILL_LIST_READ_AFTER_MS after the tap (lib/hill/store.ts, `readHillNow`), so

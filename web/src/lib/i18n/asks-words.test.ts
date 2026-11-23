@@ -26,8 +26,17 @@ describe("the English catalog after the rename to Asks (ADR 0179)", () => {
     }
   });
 
-  it("says Send a test ask, and a durable agent's card is a question card", () => {
-    expect(en["settings.hill.test.button"]).toBe("Send a test ask");
+  it("has no test ask, no priority and no notification for an ask (ADR 0179 addendum): the removed keys are gone", () => {
+    const keys = Object.keys(en);
+    const gone = keys.filter((key) => key.startsWith("settings.hill.test.") || key.startsWith("settings.hill.rings.") || key.startsWith("hill.priority.") || key.startsWith("settings.notify.decisionNow."));
+    expect(gone).toEqual([]);
+    expect(keys).not.toContain("hill.now");
+    expect(en["hill.state.help.quiet"]).toBe("Agents ask, but do not wait for your answer.");
+    expect(en["hill.state.help.away"]).toBe("Agents keep back questions that need an answer now.");
+    expect(en["hill.state.help.here"]).toBe("Agents ask as usual.");
+  });
+
+  it("a durable agent's card is a question card", () => {
     expect(en["ask.stale"]).toContain("question card");
     expect(en["pushTitle.ask.flood"]).toContain("question cards");
   });

@@ -9,7 +9,7 @@ import { asJsonObject, asJsonString, parseJson } from "../../web/src/lib/json.ts
 import type { CrewDialAnswer } from "../walky/crew.ts";
 import { compareSemver } from "../update.ts";
 import { isSelf, parseAddress } from "../walky/address.ts";
-import type { HillAnswerRequest } from "../../web/src/lib/hill/wire.ts";
+import { ASK_PRIORITY_FIXED, type HillAnswerRequest } from "../../web/src/lib/hill/wire.ts";
 import {
   CREW_HILL_MEDIA_ROUTE,
   CREW_HILL_OP_ROUTE,
@@ -31,9 +31,7 @@ import {
 } from "./crew.ts";
 import { deniedFoldersSync, HillMediaStore } from "./media.ts";
 import { HILL_GROUP_NOT_YOURS } from "./parse.ts";
-import { HILL_PUSH_RATE, HillPush } from "./push.ts";
 import type { HillSwitchReading } from "./switch.ts";
-import type { PushMessage } from "../push.ts";
 import { memoryHillReceipts } from "./receipts.ts";
 import { HILL_MAX_EXPIRY_MS, HILL_OFF, HILL_OFF_ON_LEAD, HILL_OPEN_MEMBER_MAX, HillService, NOT_ON_LEAD, notAnswering, type HillAgentSender, type HillCrewMode, type HillPlace } from "./service.ts";
 import { hillDir, HillStore } from "./store.ts";
@@ -90,7 +88,7 @@ interface Bridge {
 }
 
 /** One bridge's hill, on disk under a fresh folder: a lead, or a member with a forward. */
-function bridge(mode: HillCrewMode, opts: { forward?: HillMemberForward; memberId: string; push?: HillPush; hillOn?: () => boolean; hillSwitch?: { on(): boolean; reading(): HillSwitchReading }; place?: (address: string) => HillPlace | null } = { memberId: "m_lead000000" }): Bridge {
+function bridge(mode: HillCrewMode, opts: { forward?: HillMemberForward; memberId: string; hillOn?: () => boolean; hillSwitch?: { on(): boolean; reading(): HillSwitchReading }; place?: (address: string) => HillPlace | null } = { memberId: "m_lead000000" }): Bridge {
   const state = folder("hill-crew-state-");
   const work = folder("hill-crew-work-");
   const media = new HillMediaStore(hillDir(state), deniedFoldersSync([state]), () => undefined);
@@ -122,7 +120,6 @@ function bridge(mode: HillCrewMode, opts: { forward?: HillMemberForward; memberI
     audit: (entry) => b.audit.push(entry),
     forward: opts.forward,
     offline: mode === "lead" ? () => b.offline : undefined,
-    push: opts.push,
     hillSwitch: opts.hillSwitch ?? (opts.hillOn === undefined ? undefined : { on: opts.hillOn }),
   });
   return Object.assign(b, { hill });
@@ -504,31 +501,15 @@ describe("what the lead refuses of a member", () => {
     expect(lead.store.all()).toHaveLength(0);
   });
 
-  test("now pushes from members: at most 4 an hour from one machine and 6 from all members together; the lead's own still ring", () => {
-    const pushes: PushMessage[] = [];
-    let clock = 1000;
-    const lead = bridge("lead", { memberId: "m_lead000000", push: new HillPush({ ready: () => true, send: (message) => pushes.push(message), now: () => clock }) });
-    clock = lead.clock;
+  test("a post from an older member with priority now is taken, and the card is stored with the one fixed priority", () => {
+    const lead = bridge("lead", { memberId: "m_lead000000" });
     const crewLead = new HillCrewLead({ hill: lead.hill, held: new HillHeldMedia(() => lead.clock) });
-    const rings = () => pushes.filter((p) => p.type === undefined).length;
-    const skipped = () => lead.audit.filter((e) => e.action === "hill.push.skipped").map((e) => e.detail?.why);
-    // One member, three sessions (each under its own 3 an hour): the fifth `now` is past 4 from this machine.
-    for (const [i, pane] of ["laptop/%1#aaaa", "laptop/%1#aaaa", "laptop/%2#bbbb", "laptop/%2#bbbb", "laptop/%3#cccc"].entries()) {
-      expect(crewLead.post({ from: { address: pane, label: "repo" }, fields: fields({ priority: "now", title: `Ship ${String(i)}?` }) }, "laptop").body).toMatchObject({ ok: true });
-    }
-    expect(rings()).toBe(HILL_PUSH_RATE.perMember);
-    expect(skipped()).toEqual(["more than 4 an hour from this machine"]);
-    // A second member rings until all members together reach 6.
-    for (const pane of ["mini/%1#aaaa", "mini/%2#bbbb", "mini/%3#cccc"]) {
-      expect(crewLead.post({ from: { address: pane, label: "repo" }, fields: fields({ priority: "now" }) }, "mini").body).toMatchObject({ ok: true });
-    }
-    expect(rings()).toBe(HILL_PUSH_RATE.crew);
-    expect(skipped().at(-1)).toBe("more than 6 an hour from the crew's other machines");
-    // The lead's own session keeps its share of the hour.
-    lead.live.push({ address: "desk/%1#aaaa", label: "lead", host: "desk", unattended: false });
-    const own = lead.hill.post({ kind: "agent", address: "desk/%1#aaaa", memberId: "m_lead000000", harness: null, label: "lead", host: "desk" }, { requestId: uuid(), title: "Mine?", summary: "Mine.", options: [{ intent: "yes", label: "Yes" }], priority: "now" });
-    expect(own.ok).toBe(true);
-    expect(rings()).toBe(HILL_PUSH_RATE.crew + 1);
+    const answer = crewLead.post({ from: { address: "laptop/%1#aaaa", label: "repo" }, fields: fields({ priority: "now", title: "Ship it?" }) }, "laptop");
+    expect(answer.body).toMatchObject({ ok: true });
+    const stored = lead.store.all();
+    expect(stored).toHaveLength(1);
+    expect(stored[0]).toMatchObject({ priority: ASK_PRIORITY_FIXED, priorityAsked: ASK_PRIORITY_FIXED });
+    expect(lead.audit.filter((e) => e.action.startsWith("hill.push"))).toEqual([]);
   });
 });
 
