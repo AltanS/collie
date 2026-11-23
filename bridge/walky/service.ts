@@ -8,7 +8,7 @@
 // pane, so the kind fails closed. The local uid can lie about its pane (decision 4); the docs say so.
 
 import { hasViewHead } from "../../web/src/lib/agent-view/wire.ts";
-import { isScopeAddress, isSelf, paneAddress, parseAddress, LOCAL_MEMBER } from "./address.ts";
+import { isScopeAddress, isSelf, paneAddress, parseAddress, LOCAL_MEMBER, type WalkyAddress } from "./address.ts";
 import { signMessage } from "./canonical.ts";
 import { BODY_TOO_LONG, cleanBody } from "./clean.ts";
 import { CANCELLED_BY_SENDER, DROPPED_BY_OWNER, isFanOut, isResting, sendIdOf, withoutAnsweredLegs, WalkyDeliverer, type DelivererDeps, type DeliverNow, type DeliverOptions, type SenderPane, type TakeBack, type WalkyPane } from "./deliver.ts";
@@ -16,7 +16,7 @@ import { sameInstance, type LogRecord, type WalkyLog } from "./log.ts";
 import { withNames } from "./names.ts";
 import { WalkyOff, type WalkyOffBy } from "./off.ts";
 import { MEMBER_UNREACHABLE, NO_ADDRESS, type RefusalCounts } from "./refusals.ts";
-import { headerField, readSubject, WALKY_LABEL_MAX, type WalkyEntry, type WalkyMessage, type WalkyReceipt, type WalkyReceiptState, type WalkySkipped, type WalkyTarget, type WalkyVerified } from "./types.ts";
+import { headerField, readSubject, UNANSWERED_WINDOW_MS, WALKY_LABEL_MAX, type WalkyEntry, type WalkyMessage, type WalkyReceipt, type WalkyReceiptState, type WalkyRecipient, type WalkySkipped, type WalkyTarget, type WalkyUnanswered, type WalkyVerified } from "./types.ts";
 
 /** The receipt's reason for a walky body with a line that starts with an agent view's head (`bad_head`). */
 export const WALKY_BAD_HEAD = "bad_head: a line starts with an agent view's head, which only that view sends; rewrite the line";
@@ -49,8 +49,24 @@ export type SendAnswer =
       readonly target?: WalkyTarget;
       /** True when this bridge signed the message without its subject (M98 spec 07, types.ts `SUBJECT_LEFT_OUT`). */
       readonly subjectLeftOut?: true;
+      /**
+       * Who the message went to, as this bridge lists the pane: only for an agent's send to one pane address
+       * that is no reply and was not refused, and only when this bridge can name the pane. The CLI prints it as `to:`.
+       */
+      readonly recipient?: WalkyRecipient;
+      /**
+       * A message from another agent session that waits for this pane's `reply`, in the same cases: the
+       * newest, from the last 10 minutes, not from the recipient. The CLI prints it as `note:`. A notice, never a refusal.
+       */
+      readonly unanswered?: WalkyUnanswered;
     }
   | { readonly ok: false; readonly error: string };
+
+/** A pane address, read. */
+type PaneAddress = Extract<WalkyAddress, { kind: "pane" }>;
+
+/** How long a member waits for its lead's list of the crew's panes to name the recipient of a send, so a slow lead never holds a send. */
+export const RECIPIENT_LOOKUP_MS = 2000;
 
 export interface WalkyServiceDeps extends DelivererDeps {
   /** This machine's name, as `who` prints it. */
@@ -270,7 +286,65 @@ export class WalkyService {
     const receipts = await this.deliverer.deliver(message, from, options.budget === undefined ? {} : { budget: options.budget });
     const target = this.targetOf(message.to);
     const answer: SendAnswer = target === null ? { ok: true, receipts } : { ok: true, receipts, target };
-    return leftOut ? { ...answer, subjectLeftOut: true } : answer;
+    const noted: SendAnswer = leftOut ? { ...answer, subjectLeftOut: true } : answer;
+    // Neither line for an operator's send, a reply, a scope or `all`, or a send nobody got.
+    if (sender.kind !== "agent" || input.replyTo !== null || parseAddress(message.to)?.kind !== "pane" || receipts.every((receipt) => receipt.state === "refused")) return noted;
+    const recipient = await this.recipientOf(message.to, target);
+    const unanswered = this.unansweredFor(sender.pane, message.to);
+    const withRecipient: SendAnswer = recipient === null ? noted : { ...noted, recipient };
+    return unanswered === null ? withRecipient : { ...withRecipient, unanswered };
+  }
+
+  /**
+   * Who a send to one pane address reached, as `who` lists the pane (the row's NAME, SPACE and MACHINE), or null
+   * for any other address or a pane this bridge cannot name. The pane is `target` when this machine lists it;
+   * on a member, a pane of another machine is looked up in the lead's list of the crew, within
+   * {@link RECIPIENT_LOOKUP_MS}: what the lead knows of it.
+   */
+  private async recipientOf(to: string, target: WalkyTarget | null): Promise<WalkyRecipient | null> {
+    const address = parseAddress(to);
+    if (address === null || address.kind !== "pane") return null;
+    const row = target ?? (await this.leadRowOf(address));
+    if (row === null) return null;
+    const named = row.name === undefined ? {} : { name: row.name };
+    return { ...named, space: row.space, machine: row.machine };
+  }
+
+  /** The row the lead lists for a pane address, or null: no lead to ask, no answer in time, or no such row. */
+  private async leadRowOf(address: PaneAddress): Promise<WalkyTarget | null> {
+    const ask = this.deps.leadTargets;
+    if (ask === undefined || isSelf(address.memberId, this.deps.memberId)) return null;
+    const sleep = this.deps.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+    const rows = await Promise.race([ask().catch(() => null), sleep(RECIPIENT_LOOKUP_MS).then(() => null)]);
+    return rows?.find((row) => this.rowIsPane(row, address)) ?? null;
+  }
+
+  private rowIsPane(row: WalkyTarget, address: PaneAddress): boolean {
+    const listed = parseAddress(row.address);
+    return listed?.kind === "pane" && listed.memberId === address.memberId && listed.paneId === address.paneId && (address.instance === null || listed.instance === address.instance);
+  }
+
+  /**
+   * The newest message from another agent session that this pane has not answered with `reply`, from the last
+   * 10 minutes ({@link UNANSWERED_WINDOW_MS}), or null. The recipient of the send being made never counts as
+   * "another session": the sender is writing to it already.
+   */
+  private unansweredFor(pane: WalkyPane, to: string): WalkyUnanswered | null {
+    const record = this.deps.log.newestUnanswered(pane, this.now() - UNANSWERED_WINDOW_MS, (from) => this.samePane(from, to));
+    const address = record?.message.from.address;
+    if (record === null || address === undefined || address === null) return null;
+    const name = this.targetOf(address)?.name;
+    return { id: record.message.id, from: name ?? address };
+  }
+
+  /** Whether two pane addresses name one pane: the same member (`local` is this one), pane id, and instance when both carry one. */
+  private samePane(a: string, b: string): boolean {
+    const left = parseAddress(a);
+    const right = parseAddress(b);
+    if (left?.kind !== "pane" || right?.kind !== "pane") return false;
+    const member = (id: string): string => (isSelf(id, this.deps.memberId) ? LOCAL_MEMBER : id);
+    if (member(left.memberId) !== member(right.memberId) || left.paneId !== right.paneId) return false;
+    return left.instance === null || right.instance === null || left.instance === right.instance;
   }
 
   /** Whether an address names only this machine: one of its panes, or its own `<member>/all`. */

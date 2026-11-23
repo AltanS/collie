@@ -13,7 +13,7 @@ import { BARE_BAD_REQUEST, UNREAD_BY_OLDER_BRIDGE } from "../bridge/walky/refusa
 import type { WalkyTotals } from "../bridge/walky/service.ts";
 import { walkySocketPath } from "../bridge/walky/socket.ts";
 import type { WalkySpace } from "../bridge/walky/space.ts";
-import { formatRead, mintWalkyId, OUTCOME_ON_LEAD, readSubject, replyLine, SUBJECT_LEFT_OUT, RESTING, SENDER_OFF, WALKY_ID, WALKY_OFF, type WalkyMessage, type WalkyReceipt } from "../bridge/walky/types.ts";
+import { formatRead, mintWalkyId, OUTCOME_ON_LEAD, readSubject, replyLine, SUBJECT_LEFT_OUT, RESTING, SENDER_OFF, unansweredLine, WALKY_ID, WALKY_OFF, type WalkyMessage, type WalkyReceipt, type WalkyRecipient, type WalkyUnanswered } from "../bridge/walky/types.ts";
 
 // `collie walky`: walky talky from a terminal (M62 spec 02). It talks to the
 // running bridge over its local socket, `<stateDir>/walky/sock`, one JSON request per connection.
@@ -380,11 +380,43 @@ function spaceOfRow(row: JsonObject | undefined): WalkySpace | null {
   return spaceFromWire(row?.space);
 }
 
-/** The SPACE cell: the label, and for a space with no name of its own that it is this machine's alone. */
+/** A space in words: the label, and for a space with no name of its own that it is this machine's alone. */
+function spaceWords(space: WalkySpace): string {
+  return space.named ? space.label : `${space.label} (this machine)`;
+}
+
+/** The SPACE cell: {@link spaceWords}, or `-` for a row from a bridge that sends no space. */
 function spaceCell(row: JsonObject): string {
   const space = spaceOfRow(row);
-  if (space === null) return "-";
-  return space.named ? space.label : `${space.label} (this machine)`;
+  return space === null ? "-" : spaceWords(space);
+}
+
+/**
+ * The recipient a send's answer names (the bridge's `recipient`), or null when it names none or is not
+ * well formed: an older bridge sends none, and a line is never printed from half a row.
+ */
+function recipientFromWire(value: JsonValue | undefined): WalkyRecipient | null {
+  const row = asJsonObject(value);
+  if (row === undefined) return null;
+  const space = spaceFromWire(row.space);
+  const machine = asJsonString(row.machine);
+  if (space === null || machine === undefined) return null;
+  const name = asJsonString(row.name);
+  return name === undefined || name === "" ? { space, machine } : { name, space, machine };
+}
+
+/** The `to:` line of a send: the NAME, SPACE and MACHINE the bridge resolved, as `who` prints that row. A session with no NAME prints `-`. */
+export function recipientLine(recipient: WalkyRecipient): string {
+  return `to: ${[recipient.name ?? "-", spaceWords(recipient.space), recipient.machine].map(shown).join(" · ")}`;
+}
+
+/** The unanswered message a send's answer names (the bridge's `unanswered`), or null when it names none or is not well formed. */
+function unansweredFromWire(value: JsonValue | undefined): WalkyUnanswered | null {
+  const row = asJsonObject(value);
+  const id = asJsonString(row?.id);
+  const from = asJsonString(row?.from);
+  if (id === undefined || !WALKY_ID.test(id) || from === undefined || from === "") return null;
+  return { id, from };
 }
 
 /** The line under `who`'s table when panes sit outside the asker's space: how many, and how to list them. */
@@ -571,9 +603,20 @@ function targetLine(target: JsonValue | undefined, fallback: string): string {
   return `to ${shown([address, harness, label].filter((part): part is string => part !== undefined && part !== "").join(", "))}`;
 }
 
+/** What `send --json` prints: the id and the receipts, and each optional field only when the bridge named it. */
+interface SendReport {
+  id: string;
+  receipts: WalkyReceipt[];
+  subjectLeftOut?: true;
+  recipient?: WalkyRecipient;
+  unanswered?: WalkyUnanswered;
+}
+
 /**
  * Send, then wait up to 15 s for each receipt to leave `accepted`, and print three lines: the id, the
- * pane it went to, and the state in words. A message not typed yet adds where to look later.
+ * pane it went to, and the state in words. A message not typed yet adds where to look later. When the bridge
+ * names the recipient (`to: <NAME> · <SPACE> · <MACHINE>`, after the pane line) and a message from another session
+ * that still waits for a `reply` (`note: ...`, last), those lines come too.
  */
 async function sendAndWait(deps: WalkyDeps, to: string | null, replyTo: string | null, body: string, json: boolean, first?: string, wake = false, outside = false, subject: string | null = null): Promise<number> {
   const id = (deps.mintId ?? mintWalkyId)();
@@ -601,18 +644,27 @@ async function sendAndWait(deps: WalkyDeps, to: string | null, replyTo: string |
   }
   // M98 spec 07: the bridge signed the message without its subject, because the crew's lead cannot read one.
   const leftOut = answer.body.subjectLeftOut === true;
+  // The bridge names the recipient and a waiting message only for a send to one pane that is no reply; absent otherwise, and from an older bridge.
+  const recipient = recipientFromWire(answer.body.recipient);
+  const unanswered = unansweredFromWire(answer.body.unanswered);
   if (json) {
-    deps.io.out(JSON.stringify(leftOut ? { id, receipts, subjectLeftOut: true } : { id, receipts }));
+    const reported: SendReport = { id, receipts };
+    if (leftOut) reported.subjectLeftOut = true;
+    if (recipient !== null) reported.recipient = recipient;
+    if (unanswered !== null) reported.unanswered = unanswered;
+    deps.io.out(JSON.stringify(reported));
     return exitOf(receipts);
   }
   deps.io.out(id);
   deps.io.out(targetLine(answer.body.target, to ?? receipts[0]?.target ?? "-"));
+  if (recipient !== null) deps.io.out(recipientLine(recipient));
   if (receipts.length === 0) deps.io.out("queued");
   else if (receipts.length === 1) deps.io.out(receiptLine(receipts[0]!, false, elsewhere));
   else for (const receipt of receipts) deps.io.out(receiptLine(receipt, true, elsewhere));
   if (receipts.some(isHeld)) deps.io.out(HELD_HINT);
   if (leftOut) deps.io.out(SUBJECT_LEFT_OUT);
   if (receipts.length === 0 || receipts.some(notTypedYet)) deps.io.out(`check later: collie walky status ${id}`);
+  if (unanswered !== null) deps.io.out(unansweredLine({ ...unanswered, from: shown(unanswered.from) }));
   return exitOf(receipts);
 }
 

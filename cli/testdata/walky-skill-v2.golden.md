@@ -134,6 +134,10 @@ printf '%s' "$BODY" | /opt/collie/bin/collie walky send collie-04rj6a/w54:p1J#an
 tell your operator the reason and stop. Do not send it again. A send to a pane that closed, whose id
 another pane took, is refused `pane replaced`. Run `who` again.
 
+A send to one address prints `to: <NAME> · <SPACE> · <MACHINE>`, the session that got it: if it is not the
+session you meant, tell your operator. A `note: <id> from <NAME> is not answered` line means a message
+from another session still waits for your `reply`; your message was sent as asked.
+
 After `send`, end your turn. Do not poll and do not sleep. The answer arrives in your pane as
 your next prompt, with `reply to <your id>` in its header. If your pane is busy, Collie queues or holds it
 until your turn ends. `/opt/collie/bin/collie walky inbox` shows it too. `status` says only that your message went

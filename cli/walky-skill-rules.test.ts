@@ -36,6 +36,12 @@ describe("the skill keeps an agent from sending to the wrong session", () => {
     expect(flat).toContain("`send` is only for a message you start");
   });
 
+  test("send prints who got the message, and names a message that waits for a reply", () => {
+    expect(flat).toContain("`to: <NAME> · <SPACE> · <MACHINE>`, the session that got it");
+    expect(flat).toContain("if it is not the session you meant, tell your operator");
+    expect(flat).toContain("A `note: <id> from <NAME> is not answered` line");
+  });
+
   test("the skill still has no em dash", () => {
     expect(WALKY_TALKY_SKILL_TEMPLATE).not.toContain("—");
   });

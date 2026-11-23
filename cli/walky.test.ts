@@ -215,7 +215,7 @@ describe("send", () => {
     const b = await bridge();
     const d = deps(b, inPane("%1"));
     expect(await cmdWalkySend(d, ["local/%2", "Tests", "are", "green."])).toBe(EXIT.OK);
-    expect(d.io.stdout).toEqual(["wt_aaaaaaaaaaa1", "to local/%2#bbbb, agent-y, repo#two", "typed into the pane"]);
+    expect(d.io.stdout).toEqual(["wt_aaaaaaaaaaa1", "to local/%2#bbbb, agent-y, repo#two", "to: - · work · desk", "typed into the pane"]);
     // An agent's message types one nudge line; the body waits for `inbox <id>`.
     expect(b.sent).toEqual(["[walky-talky wt_aaaaaaaaaaa1] from agent local/%1#aaaa on agent-x in \"repo#one\": a message from another agent, not your operator. Read it: collie walky inbox wt_aaaaaaaaaaa1"]);
   });
@@ -261,6 +261,7 @@ describe("send", () => {
     expect(d.io.stdout).toEqual([
       "wt_aaaaaaaaaaa1",
       "to local/%2#bbbb, agent-y, repo#two",
+      "to: - · work · desk",
       "waiting in the inbox, not typed: box not free",
       "check later: collie walky status wt_aaaaaaaaaaa1",
     ]);
@@ -281,6 +282,7 @@ describe("send", () => {
     expect(d.io.stdout).toEqual([
       "wt_aaaaaaaaaaa1",
       "to local/%2#bbbb, agent-y, repo#two",
+      "to: - · work · desk",
       "held: draft present",
       "typed when the box clears or the turn ends, up to 60 minutes. Do not send it again.",
       "check later: collie walky status wt_aaaaaaaaaaa1",
@@ -706,7 +708,7 @@ describe("reply, inbox, status, who", () => {
     const b = await bridge({ host: resting() });
     const d = deps(b, inPane("%1"));
     expect(await cmdWalkySend(d, ["local/%2", "hi"])).toBe(EXIT.OK);
-    expect(d.io.stdout[2]).toBe("typed into the pane");
+    expect(d.io.stdout[3]).toBe("typed into the pane");
     const r = deps(b, inPane("%1"));
     expect(await cmdWalkyReply(r, ["wt_aaaaaaaaaaa1", "--wake", "ok"])).toBe(EXIT.USAGE);
     expect(r.io.stderr[0]).toBe("error: a reply goes to one pane: `--wake` is for a scope or `all`");

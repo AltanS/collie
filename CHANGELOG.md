@@ -30,6 +30,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Changed
 
 - **An agent picks the recipient of a WalkyTalky message with more care.** It no longer swaps the token of an old address from a note for the current one, and it no longer takes a session name that only holds the word, such as `seo via an` for "the seo session", as a match. "The lead" is the lead of its own space. It adds `--outside` only when you named the other space or gave the address. It answers the newest message from another agent with `reply`, also in the middle of an exchange with a third session, so the answer no longer goes to the wrong one. The installed skill text carries the new rules; `collie skill sync` writes it now, and every update does.
+- **`collie walky send` says which session got the message.** After a send to one session it prints a `to:` line with the name, space and machine of the session, so a wrong pick shows at once. When a message from another session still waits for your agent's `reply`, a `note:` line names it. The message is sent as asked, and neither line appears for `here`, a folder or a `reply`.
 
 ## [1.30.1] - 2026-11-22
 

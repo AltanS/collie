@@ -133,16 +133,34 @@ pane has no space, so it lists every pane and prints no such line.
 - **`, walky off` after STATE** means that session turned its WalkyTalky off. It takes messages
   from you only ([Turn it off for one session](#turn-it-off-for-one-session)).
 
-`send` waits up to 15 seconds for the receipt, then prints three lines: the id, the pane, and the
-state in words.
+`send` waits up to 15 seconds for the receipt. For a send to one pane it then prints the id, the pane,
+who got the message, and the state in words.
 
 ```text
 wt_k3f9x2m8q1a0
 to collie-7k2m9p/w54:p1G#1adi, claude, my-app#fix-login
+to: login fix · work · desk
 typed into the pane
 ```
 
-When the message is not typed yet, a fourth line says `check later: collie walky status <id>`.
+The `to:` line is the NAME, SPACE and MACHINE of the pane, as `who` prints that row, taken from the
+bridge that resolved the address. A session with no NAME prints `-`. Read it: it shows a wrong pick at
+once. It is not printed for `here`, a folder or a `reply`.
+
+When the message is not typed yet, a line says `check later: collie walky status <id>`.
+
+When the pane that sends holds a message from another agent session that it has not answered with
+`reply`, that arrived in the last 10 minutes, `send` adds one last line. It names the newest such
+message, never a word of its body or subject:
+
+```text
+note: wt_n2d8s1v7c4b9 from api docs is not answered. To answer it: collie walky reply wt_n2d8s1v7c4b9 "<text>"
+```
+
+It is a notice, not a refusal: the message is sent as asked. The line does not appear when the
+recipient is the sender of that message, once the pane answered it with `reply`, for a message from an
+operator, or for a send to `here` or a folder. `send --json` carries the same two facts as `recipient`
+and `unanswered`. An older bridge sends neither field, and an older `collie` prints neither line.
 With no text after the address, the body is read from stdin:
 
 ```sh
