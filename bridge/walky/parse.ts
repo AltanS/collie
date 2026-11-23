@@ -3,7 +3,7 @@
 // garbage: there is no input for which one throws, and a field that fails its rule fails the record.
 
 import type { JsonObject, JsonValue } from "../json.ts";
-import { readMarkers } from "../beacon/parse.ts";
+import { AGENT_SESSION_ID, readMarkers } from "../beacon/parse.ts";
 import type { BeaconMarker } from "../beacon/types.ts";
 import { asJsonBoolean, asJsonNumber, asJsonObject, asJsonString } from "../../web/src/lib/json.ts";
 import { MEMBER_ID_RE } from "../crew/identity.ts";
@@ -263,20 +263,23 @@ export function isHillOp(op: string | null): op is HillOp {
 
 /**
  * The event of an `ask.remind`: `{ event: "prompt", promptHash: <hex> | null, at: <ms> }` or
- * `{ event: "start", source: <text> }`. Null when it is neither.
+ * `{ event: "start", source: <text> }`, each with an optional `sessionId`. Null when it is neither.
  */
 function readRemindEvent(row: JsonObject): AskRemindEvent | null {
+  // The agent session the hook's payload named: optional, and one that is not the shape reads as none.
+  const raw = asJsonString(row.sessionId);
+  const sessionId = raw !== undefined && AGENT_SESSION_ID.test(raw) ? raw : null;
   if (row.event === "prompt") {
     const at = asJsonNumber(row.at);
     if (at === undefined || !Number.isFinite(at)) return null;
     const hash = row.promptHash === undefined || row.promptHash === null ? null : asJsonString(row.promptHash);
     if (hash === undefined || (hash !== null && (hash === "" || hash.length > ASK_REMIND_FIELD_MAX))) return null;
-    return { kind: "prompt", hash, at };
+    return { kind: "prompt", hash, at, sessionId };
   }
   if (row.event === "start") {
     const source = asJsonString(row.source);
     if (source === undefined || source.length > ASK_REMIND_FIELD_MAX) return null;
-    return { kind: "start", source };
+    return { kind: "start", source, sessionId };
   }
   return null;
 }

@@ -38,9 +38,12 @@
 //                                                                     "by the poster[: <reason>]")
 //   ask.cancel { ids: [1 to 5], answered?, because? } → { ok, results: [{ id, ok, decision } | { id, ok: false, error }] }
 //                                                                    (one result per id, in order; one bad id stops none)
-//   ask.remind { event: "prompt", promptHash, at } | { event: "start", source }
+//   ask.remind { event: "prompt", promptHash, at, sessionId? } | { event: "start", source, sessionId? }
 //                                               → { ok, remind: "full" | "short", asks: [{ id, title }] } | { ok, remind: "none" }
-//                                                                    (.adr/0178: `collie beacon asks`; never a refusal)
+//                                                                    (.adr/0178: `collie beacon asks`; never a refusal. `sessionId`:
+//                                                                     the hook payload's `session_id`; the bridge answers a list and
+//                                                                     applies `/clear` only for the pane's current agent session,
+//                                                                     so a call with none, or another, gets "none")
 // A trick handed to the lead (crew slice 8), answered only by a bridge built with it:
 //   trick.propose { requestId, files }        → { ok, kind, id, hash, decision, replaced } | { ok: false, error, code, propose: true }
 //     From an agent's pane the proposer is that session; from a bare shell or with no markers, a terminal.
@@ -535,7 +538,7 @@ async function answerHill(
   switch (request.op) {
     case "hill.post":
     case "ask.post": {
-      const answer = request.op === "hill.post" ? await hill.postFields(sender, request.fields) : await hill.askPost(sender, request.fields);
+      const answer = request.op === "hill.post" ? await hill.postFields(sender, request.fields) : await hill.askPost(sender, request.fields, { session: pane.session, paneId: pane.paneId });
       if (answer.ok) return answer;
       return answer.code === null ? { ok: false, error: answer.error, hill: true } : { ok: false, error: answer.error, hill: true, code: answer.code };
     }

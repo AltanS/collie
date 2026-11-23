@@ -20,6 +20,14 @@
 // of the text it typed ({@link AskRemindBook.typedOwn}). A prompt with that hash is the bridge's own message,
 // which lists the session's open asks itself, so the reminder stays silent for it.
 //
+// ONE AGENT SESSION, NOT THE PANE (2026-11-23, the review of the Edge build). A second Claude process in the
+// same pane inherits the pane's markers, and one process may move to another conversation (`/resume`, a
+// fork, `/clear`). So the bridge lists and closes only for the pane's current agent session, the one its
+// hook edges name, and it keys what a session was shown by that session id beside the walky address
+// ({@link remindKey}). It also STAMPS each ask with the agent session the pane ran when the ask was posted
+// ({@link AskRemindBook.stamp}); an ask stamped by another conversation is never listed to this one. A stamp
+// lives in memory: after a restart an ask reads as unstamped, which lists as before the stamps.
+//
 // In memory: a restart forgets the turns, and the next prompt starts again (a stored mark stays as it was
 // until then; a restart never makes a `carried`). Pure: the clock is injected; no file, no socket.
 
@@ -33,6 +41,13 @@ export const ASK_REMIND_LISTED_MAX = 5;
  */
 export const ASK_REMIND_SHORT_FORM = true;
 
+/**
+ * After this many short forms in a row a session gets the full form again, and the count starts over. The
+ * bridge cannot know that a hook's output reached the model (a timeout drops it), so the full form never
+ * stays away for good.
+ */
+export const ASK_REMIND_FULL_EVERY = 20;
+
 /** The most a hand-out and its prompt edge may lie apart, by their own clocks (the same machine's). */
 export const ASK_REMIND_MATCH_MS = 10_000;
 
@@ -41,10 +56,19 @@ export const ASK_REMIND_OWN_KEEP_MS = 3 * 60 * 60 * 1000;
 
 /** How many sessions and panes the book keeps before it forgets the oldest; and unpaired items per pane. */
 const BOOK_MAX = 500;
+/** How many ask stamps the book keeps (the open cap is 5 per session; this is generous). */
+const STAMPS_MAX = 2000;
 const PANE_LIST_MAX = 8;
 
 /** The most the hook's clock may differ from the bridge's before the bridge uses its own (one machine). */
 export const ASK_REMIND_CLOCK_MS = 60_000;
+
+/**
+ * How long a `/clear` waits for the pane's hook edges to name the new conversation. The hook that asks and
+ * the emitter that writes the start edge run at the same time, so the bridge usually learns the new
+ * session id a moment after the clear was asked; the clear applies then, or never.
+ */
+export const ASK_REMIND_CLEAR_WAIT_MS = 60_000;
 
 /** The `SessionStart` sources that get the full list again: the conversation came back without it. */
 export const ASK_REMIND_START_SOURCES: readonly string[] = ["compact", "resume", "fork"];
@@ -55,8 +79,37 @@ export interface AskPane {
   readonly paneId: string;
 }
 
-/** What the hook says happened: a prompt (its salted hash, or null, and the hook's clock), or a session start. */
-export type AskRemindEvent = { readonly kind: "prompt"; readonly hash: string | null; readonly at: number } | { readonly kind: "start"; readonly source: string };
+/**
+ * What the hook says happened: a prompt (its salted hash, or null, and the hook's clock), or a session start.
+ * `sessionId` is the agent session the hook's payload named (`session_id`), or null when it named none (an
+ * older hook sends none): with none the bridge lists nothing and closes nothing.
+ */
+export type AskRemindEvent =
+  | { readonly kind: "prompt"; readonly hash: string | null; readonly at: number; readonly sessionId?: string | null }
+  | { readonly kind: "start"; readonly source: string; readonly sessionId?: string | null };
+
+/** The pane's current agent session as its hook edges name it, and the one its process named just before. */
+export interface PaneAgentSession {
+  readonly current: string;
+  /** The session the same process named before `current`, or null (none known, or another process). */
+  readonly previous: string | null;
+}
+
+/** The key of one agent session of one walky address: what it was shown and how often the short form ran. */
+export function remindKey(address: string, sessionId: string): string {
+  return `${address}\u0000${sessionId}`;
+}
+
+/**
+ * Text an agent wrote, made safe to print into a model's context: every code point of the Unicode classes
+ * Cc (controls), Zl and Zp (line and paragraph separators) becomes a space, and every one of Cf (format:
+ * zero-width characters, bidi controls, the byte order mark) and of the tag block (U+E0000 to U+E007F) is
+ * removed. So nothing invisible rides along with the words. The one function for the hook's reminder and the
+ * typed "Answers to your asks" message.
+ */
+export function withoutHidden(text: string): string {
+  return text.replace(/[\p{Cc}\p{Zl}\p{Zp}]/gu, " ").replace(/[\p{Cf}\u{E0000}-\u{E007F}]/gu, "");
+}
 
 /** One ask a reminder lists. */
 export interface AskRemindItem {
@@ -111,7 +164,8 @@ function paneKey(session: string, paneId: string): string {
 
 export class AskRemindBook {
   private readonly panes = new Map<string, PaneBook>();
-  private readonly shownSets = new Map<string, { ids: ReadonlySet<string>; touched: number }>();
+  private readonly shownSets = new Map<string, { ids: ReadonlySet<string>; shorts: number; touched: number }>();
+  private readonly stamps = new Map<string, string>();
 
   constructor(private readonly now: () => number = Date.now) {}
 
@@ -187,24 +241,45 @@ export class AskRemindBook {
 
   /**
    * "short" when the short form is on and every listed id is one the session was shown last time; "full"
-   * when at least one is new to it (a list that only lost an ask is short). Afterwards the session's set is
-   * exactly `ids`, so an ask that closed leaves it.
+   * when at least one is new to it (a list that only lost an ask is short), and after
+   * {@link ASK_REMIND_FULL_EVERY} short forms in a row. Afterwards the session's set is exactly `ids`, so an
+   * ask that closed leaves it. `key` is {@link remindKey}: one agent session of one address.
    */
-  form(address: string, ids: readonly string[], shortForm: boolean = ASK_REMIND_SHORT_FORM): "full" | "short" {
-    const last = this.shownSets.get(address)?.ids;
-    this.shown(address, ids);
-    return shortForm && last !== undefined && ids.every((id) => last.has(id)) ? "short" : "full";
+  form(key: string, ids: readonly string[], shortForm: boolean = ASK_REMIND_SHORT_FORM): "full" | "short" {
+    const last = this.shownSets.get(key);
+    const short = shortForm && last !== undefined && last.shorts < ASK_REMIND_FULL_EVERY && ids.every((id) => last.ids.has(id));
+    if (!short) {
+      this.shown(key, ids);
+      return "full";
+    }
+    this.shownSets.set(key, { ids: new Set(ids), shorts: last.shorts + 1, touched: this.now() });
+    return "short";
   }
 
-  /** The session was shown these ids (a full list, or the bridge's own message): its set is exactly them. */
-  shown(address: string, ids: readonly string[]): void {
-    this.shownSets.set(address, { ids: new Set(ids), touched: this.now() });
+  /** The session was shown these ids in full (a full list, or the bridge's own message): its set is exactly them, its count starts over. */
+  shown(key: string, ids: readonly string[]): void {
+    this.shownSets.set(key, { ids: new Set(ids), shorts: 0, touched: this.now() });
     trim(this.shownSets);
   }
 
   /** The session's conversation was cleared: the next list it gets is the full one. */
-  forget(address: string): void {
-    this.shownSets.delete(address);
+  forget(key: string): void {
+    this.shownSets.delete(key);
+  }
+
+  /** The ask `id` was posted while the pane ran agent session `sessionId`. The first stamp stays. */
+  stamp(id: string, sessionId: string): void {
+    if (this.stamps.has(id)) return;
+    this.stamps.set(id, sessionId);
+    if (this.stamps.size > STAMPS_MAX) {
+      const oldest = this.stamps.keys().next();
+      if (oldest.done !== true) this.stamps.delete(oldest.value);
+    }
+  }
+
+  /** The agent session that posted ask `id`, or undefined when it carries no stamp (posted before, or unknown). */
+  stampOf(id: string): string | undefined {
+    return this.stamps.get(id);
   }
 
   private pane(session: string, paneId: string): PaneBook {
