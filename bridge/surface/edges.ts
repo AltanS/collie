@@ -26,8 +26,9 @@
 //
 // A PROMPT LATCH PER SOURCE. The source also keeps one fact about its session: whether a prompt has
 // reached it ({@link PromptState}). A prompt edge sets it; a start edge whose `source` is `startup` or
-// `clear` (a new conversation) says no prompt yet; every other start (`resume`, `compact`, `fork`, a word
-// this build does not know, or none from an older emitter) and every other edge leaves it as it was.
+// `clear` (a new conversation) says no prompt yet; one whose `source` is `resume` or `fork` (an old
+// conversation, which holds prompts) makes it unknown; every other start (`compact`, a word this build does
+// not know, or none from an older emitter) and every other edge leaves it as it was.
 // A source with no known state reads `unknown`, and so does a new process on the pane that no start
 // edge opened as a new conversation. It is saved with the source, so a restart keeps it, and a saved
 // record from before the latch reads `unknown`. The phone gets `noPromptYet` in the one known state
@@ -179,11 +180,15 @@ export function promptStateOf(raw: JsonValue | undefined): PromptState {
 /**
  * The prompt state after one more edge. The state carries over only while the process is the same one
  * that held it: a new process on the pane starts from `unknown`, and only a start edge that opens a new
- * conversation (`startup`, `clear`) makes it `no-prompt-yet`. A prompt edge makes it `prompted`.
+ * conversation (`startup`, `clear`) makes it `no-prompt-yet`. A start edge that opens an OLD conversation
+ * (`resume`, `fork`) makes it `unknown`, also in the same process: that conversation has prompts, and the pane
+ * must not open on an empty Chat. A `compact` follows prompts and keeps what is known. A prompt edge makes it
+ * `prompted`.
  */
 export function promptStateAfter(known: Pick<HookSource, "pid" | "pidStartTime" | "prompt"> | undefined, record: EdgeRecord, kind: EdgeKind): PromptState {
   if (kind === "prompt") return "prompted";
   if (kind === "start" && (record.source === "startup" || record.source === "clear")) return "no-prompt-yet";
+  if (kind === "start" && (record.source === "resume" || record.source === "fork")) return "unknown";
   if (known === undefined || known.pid !== record.pid || known.pidStartTime !== record.pidStartTime) return "unknown";
   return known.prompt;
 }

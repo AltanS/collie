@@ -620,6 +620,123 @@ describe("the lock's span: no key after the deadline", () => {
   });
 });
 
+// A read that throws AFTER the key was pressed: the take-back must still settle (one receipt, one audit line, a
+// replay that answers the same), because a key left and nothing may press again for this request id.
+describe("a reader that throws after the key", () => {
+  /** Makes the screen read throw from the `nth` read after the first press of `key`. */
+  function throwingScreen(r: Rig, key: string, nth = 1): void {
+    let pressed = false;
+    let reads = 0;
+    const write = r.pane.writeKeys;
+    r.pane.writeKeys = (paneId, keys) => {
+      if (keys.includes(key)) pressed = true;
+      return write(paneId, keys);
+    };
+    r.pane.onRead = () => {
+      if (!pressed) return;
+      reads++;
+      if (reads >= nth) throw new Error("the multiplexer fell over");
+    };
+  }
+
+  test("the proof read throws: `unknown`, pressed, the receipt is kept and the audit line written", async () => {
+    const r = rig();
+    r.pane.enqueue(FIRST);
+    let calls = 0;
+    const journal = r.ask.journal;
+    const ask: DequeueAsk = {
+      ...r.ask,
+      journal: () => {
+        calls++;
+        if (calls > 1) throw new Error("the log cannot be read");
+        return journal();
+      },
+    };
+    const res = await r.route({ requestId: "dq-throw-0001" }, ask);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ requestId: "dq-throw-0001", outcome: "unknown" });
+    expect(r.lines.length).toBe(1);
+    expect(JSON.parse(r.lines[0]!)).toMatchObject({ action: "dequeue", detail: { requestId: "dq-throw-0001", outcome: "unknown", pressed: true, replayed: false } });
+    expect(upPresses(r.pane)).toBe(1);
+    // A replay answers the same receipt and presses nothing.
+    const again = await r.route({ requestId: "dq-throw-0001", replay: true });
+    expect(await again.json()).toEqual({ requestId: "dq-throw-0001", outcome: "unknown" });
+    expect(upPresses(r.pane)).toBe(1);
+  });
+
+  test("the box read after a proved key throws: `unknown` with the words that left the queue, none pressed again", async () => {
+    const r = rig();
+    r.pane.enqueue(FIRST, SECOND);
+    throwingScreen(r, "Up");
+    const answer = await r.service.handle("dq-throw-0002", "%1", "claude", r.ask);
+    expect(answer).toEqual({ kind: "receipt", receipt: { requestId: "dq-throw-0002", outcome: "unknown", texts: [FIRST, SECOND] }, replayed: false, pressed: true });
+    expect(upPresses(r.pane)).toBe(1);
+    expect(r.pane.keysSeen.length).toBe(1);
+    // The same id again: the stored receipt, no key.
+    expect(await r.take("dq-throw-0002")).toEqual({ requestId: "dq-throw-0002", outcome: "unknown", texts: [FIRST, SECOND] });
+    expect(r.pane.keysSeen.length).toBe(1);
+  });
+
+  test("the clear key throws: `unknown` with the texts", async () => {
+    const r = rig();
+    r.pane.enqueue(FIRST);
+    const write = r.pane.writeKeys;
+    r.pane.writeKeys = (paneId, keys) => {
+      if (keys.includes("Backspace")) throw new Error("the key gate fell over");
+      return write(paneId, keys);
+    };
+    expect(await r.take("dq-throw-0003")).toEqual({ requestId: "dq-throw-0003", outcome: "unknown", texts: [FIRST] });
+    expect(upPresses(r.pane)).toBe(1);
+  });
+
+  test("the read-back of a clear throws: `unknown` with the texts", async () => {
+    const r = rig();
+    r.pane.enqueue(FIRST);
+    // The first read after the clear key is its read-back.
+    throwingScreen(r, "Backspace");
+    expect(await r.take("dq-throw-0004")).toEqual({ requestId: "dq-throw-0004", outcome: "unknown", texts: [FIRST] });
+  });
+
+  test("the screen read of an unproved key throws: `unknown`, no texts, the receipt is kept", async () => {
+    const r = rig();
+    r.pane.enqueue(FIRST);
+    // The history trap with a slow log: the proof finds nothing, and the look after it throws.
+    r.pane.turnEndsAtKey = true;
+    r.pane.slowJournal = true;
+    throwingScreen(r, "Up");
+    const res = await r.route({ requestId: "dq-throw-0005" });
+    expect(await res.json()).toEqual({ requestId: "dq-throw-0005", outcome: "unknown" });
+    expect(JSON.parse(r.lines[0]!)).toMatchObject({ detail: { outcome: "unknown", pressed: true } });
+    expect(upPresses(r.pane)).toBe(1);
+  });
+
+  test("a throw before the key stays a throw: nothing was pressed and nothing is settled", async () => {
+    const r = rig();
+    r.pane.enqueue(FIRST);
+    r.pane.onRead = () => {
+      throw new Error("the multiplexer fell over");
+    };
+    await expect(r.take("dq-throw-0006")).rejects.toThrow("fell over");
+    expect(r.pane.keysSeen).toEqual([]);
+  });
+
+  test("the texts never reach a log line or the audit line", async () => {
+    const r = rig();
+    r.pane.enqueue(FIRST);
+    throwingScreen(r, "Up");
+    const logged: string[] = [];
+    const spies = (["log", "warn", "error", "info", "debug"] as const).map((level) => spyOn(console, level).mockImplementation((...args: unknown[]) => void logged.push(args.map(String).join(" "))));
+    try {
+      await r.route({ requestId: "dq-throw-0007" });
+    } finally {
+      for (const spy of spies) spy.mockRestore();
+    }
+    expect(r.lines.join("\n")).not.toContain(FIRST);
+    expect(logged.join("\n")).not.toContain(FIRST);
+    expect(JSON.parse(r.lines[0]!)).toMatchObject({ detail: { outcome: "unknown", count: 1, pressed: true } });
+  });
+});
+
 describe("the history trap with a slow journal", () => {
   test("the queue went out, Up recalled it, the log shows it only after the proof window: `unknown`, and the box match is off for it", async () => {
     const r = rig();

@@ -11,7 +11,8 @@ import { dropSpaceLanding, landingStep, type LandingClear, type LandingFacts } f
  * Instant, not smooth: the Dashboard has just arrived, so there is no earlier position to glide from. The
  * route's scroll memory has already put the list back where it was (a layout effect), so this moves it on
  * from there. A clear is a stored change, so it draws again and the next commit lands. Each clear runs once:
- * "hide" is a toggle, and a second pass before the first draws must not flip it back.
+ * "hide" is a toggle, and a second pass before the first draws must not flip it back. A step that comes up again
+ * after it ran has nothing left to try: the landing is dropped. So is a landing still waiting when this unmounts.
  */
 export function SpaceLanding({
   facts,
@@ -27,11 +28,16 @@ export function SpaceLanding({
   rowId: string | null;
 }) {
   const cleared = useRef(new Set<LandingClear>());
+  // A landing never outlives the navigation that asked for it: when the Dashboard goes away without having landed,
+  // the ask goes with it.
+  useEffect(() => dropSpaceLanding, []);
   useEffect(() => {
     const step = landingStep(facts);
     if (step.kind === "none") return dropSpaceLanding();
     if (step.kind === "clear") {
-      if (cleared.current.has(step.what)) return;
+      // The step was tried and still hides the space (a clear this list cannot do, or one that did not take): nothing
+      // is left to try, so the ask is spent and does not wait for a later, unrelated visit.
+      if (cleared.current.has(step.what)) return dropSpaceLanding();
       cleared.current.add(step.what);
       return clear[step.what]();
     }

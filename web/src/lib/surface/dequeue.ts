@@ -68,7 +68,8 @@ export interface DequeueReceipt {
   /** Set on a refusal. */
   readonly reason?: DequeueReason;
   /**
-   * Set on `taken` only: the texts of the queue, oldest first, whole. They are the person's own words,
+   * Set on `taken`, and on an `unknown` that a failed read settled after the log had shown the queue go back into the
+   * box (the words left the queue; this phone reads them on `taken` only): the texts of the queue, oldest first, whole. They are the person's own words,
    * behind the same write gate as the tap: the bridge keeps them only for this receipt's replay, never
    * logs them, never puts them on the audit line or into a trace.
    */

@@ -85,6 +85,11 @@ export function HillRoute() {
   const sendRequest = useAsksSendRequest();
   const cards = openCardsOf(open);
   const askCount = board.deck.length;
+  // A Send request that no board is there to answer (the list landed with no ask, or Asks is off) must not wait for a later visit.
+  const unanswerable = listed && (off || askCount === 0);
+  useEffect(() => {
+    if (unanswerable && sendRequest !== null) clearAsksSendRequest();
+  }, [unanswerable, sendRequest]);
   const mode =
     holding ? (
       <HillCrewStateHold />
@@ -120,7 +125,7 @@ export function HillRoute() {
                 count: askCount,
                 node:
                   askCount === 0 ? null : (
-                    <AsksBoard sessions={board.sessions} live={board.live} now={board.now} drafts={drafts} send={send} sendRequest={sendRequest} onSendRequestDone={clearAsksSendRequest} onOpen={(id) => nav.down(askPath(id, scope))} />
+                    <AsksBoard sessions={board.sessions} live={board.live} now={board.now} drafts={drafts} send={send} sendRequest={sendRequest} onSendRequestDone={clearAsksSendRequest} loaded={listed} onOpen={(id) => nav.down(askPath(id, scope))} />
                   ),
               }}
               closed={closed}

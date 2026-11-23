@@ -469,8 +469,9 @@ describe("the prompt latch (a new conversation is told from one with a past)", (
     expect(r.noPromptYet("main", "w1:p2")).toBe(false);
   });
 
-  test("a resumed, compacted or forked start does not clear a prompt and does not make one known", async () => {
+  test("a resumed or forked start makes the state unknown, a compacted or other start keeps it, none makes one known", async () => {
     for (const source of ["resume", "compact", "fork", "teleport", undefined]) {
+      const forgets = source === "resume" || source === "fork";
       const fresh = router([target()]);
       await feed(fresh.r, fresh.spool, start(source));
       expect(state(fresh.r)).toBe(false);
@@ -479,7 +480,7 @@ describe("the prompt latch (a new conversation is told from one with a past)", (
       expect(state(prompted.r)).toBe(false);
       const quiet = router([target()]);
       await feed(quiet.r, quiet.spool, start("startup"), start(source, 1_000_500));
-      expect(state(quiet.r)).toBe(true);
+      expect(state(quiet.r)).toBe(!forgets);
     }
   });
 
