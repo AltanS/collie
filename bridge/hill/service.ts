@@ -107,9 +107,12 @@ import {
   sortOpenDecisions,
   HILL_ASK_ANSWERED_HERE,
   HILL_ASK_BECAUSE_MAX,
+  HILL_ASK_CLEARED,
   HILL_ASK_OPEN_MAX,
   HILL_BY_THE_POSTER,
   HILL_MORE_CONTEXT,
+  HILL_OWN_ANSWER,
+  HILL_OWN_ANSWER_LABEL,
   HILL_MORE_CONTEXT_LABEL,
   askTakenBack,
   type HillAsk,
@@ -148,7 +151,7 @@ import { HILL_CREW_STATE_DEFAULT, type HillCrewStateFile } from "./crew-state.ts
 import type { HillSwitchReading } from "./switch.ts";
 import { askRuleRefusal, HILL_ASK_LIMITS, HILL_LIMITS, tooManyAsks, type HillPostLimits } from "./ask-rules.ts";
 import type { HillAskFilesAnswer } from "./ask-files.ts";
-import type { AskCheckBook, AskCheckDecision } from "./check.ts";
+import { ASK_REMIND_CLOCK_MS, ASK_REMIND_LISTED_MAX, ASK_REMIND_START_SOURCES, remindItem, type AskPane, type AskRemindAnswer, type AskRemindBook, type AskRemindEvent } from "./remind.ts";
 import { askAnswerRid, resultOf, sendDigest, sendRecord } from "./answers.ts";
 import { answersMessage, ASKS_ANSWERS_SUBJECT } from "../../web/src/lib/hill/answers-message.ts";
 
@@ -297,10 +300,15 @@ export interface HillServiceDeps {
    */
   readonly askFiles?: (address: string, files: readonly HillAskFileInput[]) => Promise<HillAskFilesAnswer>;
   /**
-   * The check at the end of a turn (check.ts, .adr/0177): the turn each pane is in, the brake, and the lift of
-   * a pane while its check runs. Absent: `ask.check` answers "none" and nothing is counted.
+   * The reminder of open asks that rides on the prompt (remind.ts, .adr/0178): which asks each turn handed out,
+   * and the prompts the bridge typed. Absent: `ask.remind` answers "none" and no ask is ever marked `carried`.
    */
-  readonly checks?: AskCheckBook;
+  readonly reminders?: AskRemindBook;
+  /**
+   * The walky address (with its instance token) of the agent pane `paneId` of the terminal session `session`
+   * on this bridge, or null when no such pane is live: the asks a hook edge of that pane is about.
+   */
+  readonly paneAddress?: (session: string, paneId: string) => string | null;
   readonly audit?: (entry: AuditEntry) => void;
   /**
    * Run a trick's program with an answer as its tap (bridge/index.ts wires it to the tricks runner).
@@ -424,8 +432,6 @@ export interface HillPostOptions {
 }
 
 /** The sentence a `--file` gets where the bridge cannot check the files: a crew member's ask, in this build. */
-/** What a crew member answers `ask.keep` with: its asks are on the lead, and the crew wire carries no keep yet. */
-export const ASK_KEEP_MEMBER = "keep works on the lead's own sessions in this build; the asks of this machine stay as they are";
 export const ASK_FILES_LEAD_ONLY = "linked files work on the lead's own sessions in this build; send the ask again without --file";
 
 /**
@@ -757,7 +763,7 @@ function cleanPost(input: HillPostInput, limits: HillPostLimits = HILL_LIMITS): 
   if (title.text === "") return { ok: false, code: "bad_title", error: "a decision needs a title" };
   if (title.over) return { ok: false, code: "bad_title", error: `the title is longer than ${String(limits.title)} characters` };
   const summary = cleanText(input.summary, limits.summary);
-  if (summary.text === "") return { ok: false, code: "bad_summary", error: "a decision needs a summary in plain words" };
+  if (summary.text === "" && limits.summaryOptional !== true) return { ok: false, code: "bad_summary", error: "a decision needs a summary in plain words" };
   if (summary.over) return { ok: false, code: "bad_summary", error: `the summary is longer than ${String(limits.summary)} characters` };
   const body = cleanText(input.body ?? "", limits.body);
   if (body.over) return { ok: false, code: "bad_body", error: `the body is longer than ${String(limits.body)} characters` };
@@ -773,9 +779,14 @@ function cleanPost(input: HillPostInput, limits: HillPostLimits = HILL_LIMITS): 
     if (detail.over) return { ok: false, code: "bad_option", error: `the detail of \`${raw.intent}\` is longer than ${String(limits.detail)} characters` };
     const confirm = raw.confirm === undefined ? null : cleanLine(raw.confirm, HILL_OPTION_CONFIRM_MAX);
     if (confirm !== null && (confirm.text === "" || confirm.over)) return { ok: false, code: "bad_option", error: `the confirm word of \`${raw.intent}\` is 1 to ${String(HILL_OPTION_CONFIRM_MAX)} characters` };
+    // A cost is an ask's line only (`--cost`), cleaned as the detail is.
+    if (raw.cost !== undefined && limits.cost === undefined) return { ok: false, code: "bad_option", error: `\`${raw.intent}\` carries a cost; only an ask's option may` };
+    const cost = cleanLine(raw.cost ?? "", limits.cost ?? 0);
+    if (cost.over) return { ok: false, code: "bad_option", error: `the cost of \`${raw.intent}\` is longer than ${String(limits.cost ?? 0)} characters` };
     const base: HillOption = { intent: raw.intent, label: label.text };
     const withDetail = detail.text === "" ? base : { ...base, detail: detail.text };
-    options.push(confirm === null ? withDetail : { ...withDetail, confirm: confirm.text });
+    const withCost = cost.text === "" ? withDetail : { ...withDetail, cost: cost.text };
+    options.push(confirm === null ? withCost : { ...withCost, confirm: confirm.text });
   }
   const text = input.text ?? "optional";
   if (text === "none" && options.length === 0) return { ok: false, code: "bad_text_mode", error: "a decision with no options takes text: use --text optional or required" };
@@ -855,6 +866,20 @@ type SendClaim =
  * sender) that is open, or one answered with "I need more context": then it closes nothing and the new ask
  * records it.
  */
+/**
+ * Whether `intent` is one of the fixed answers an ask takes besides its options: "I need more context" on
+ * every ask, "Your own answer" on an ask with options only (a `--words` ask answers with `answer`).
+ */
+function isAskFixedAnswer(intent: string, words: boolean): boolean {
+  return intent === HILL_MORE_CONTEXT || (intent === HILL_OWN_ANSWER && !words);
+}
+
+/** The stored label of a fixed answer of an ask, or null for any other intent. */
+function fixedAnswerLabel(intent: string): string | null {
+  if (intent === HILL_MORE_CONTEXT) return HILL_MORE_CONTEXT_LABEL;
+  return intent === HILL_OWN_ANSWER ? HILL_OWN_ANSWER_LABEL : null;
+}
+
 function replaceRefusal(old: HillDecision): string | null {
   if (old.ask === undefined) return `--replaces ${old.id}: that is not an ask; it takes an ask of this session`;
   if (old.state === "open") return null;
@@ -1477,9 +1502,10 @@ export class HillService {
       postDigest: digest,
     };
     if (input.view !== undefined) decision.view = input.view;
-    if (ask !== undefined) decision.ask = { words: ask.words, files: opts.askFiles?.files ?? [], root: opts.askFiles?.root ?? null, mark: "fresh" };
-    // A replace is the agent saying what is true now: the new ask is confirmed at its post (.adr/0177).
-    if (decision.ask !== undefined && decision.supersedes !== null) decision.ask.confirmedAt = now;
+    // A new ask is `fresh`: no prompt reached its session since. An ask a crew member forwarded is `unchecked`
+    // from the start: its session's turns are on the member's bridge, which this lead never sees, so it
+    // could never say whether a prompt came since (.adr/0178).
+    if (ask !== undefined) decision.ask = { words: ask.words, files: opts.askFiles?.files ?? [], root: opts.askFiles?.root ?? null, mark: crewMember === null ? "fresh" : "unchecked" };
     if (input.group !== undefined && from.kind === "collie") {
       const made = makeGroup(input.group, from.ref, decision.options);
       if (!made.ok) return refuse("bad_body", made.error);
@@ -2124,7 +2150,7 @@ export class HillService {
     const option = decision.options.find((candidate) => candidate.intent === intent);
     // The intent is typed into the session; only a word the post rules let through ever is (a stored file is not re-checked on load).
     if (option !== undefined && !isHillOptionIntent(option.intent)) return this.final(request, id, by, digest, receiptOf(rid, now, "rejected", "not an option of this decision", "open", null));
-    if (option === undefined && intent !== "answer" && intent !== "dismiss" && !(decision.ask !== undefined && intent === HILL_MORE_CONTEXT)) return this.final(request, id, by, digest, receiptOf(rid, now, "rejected", "not an option of this decision", "open", null));
+    if (option === undefined && intent !== "answer" && intent !== "dismiss" && !(decision.ask !== undefined && isAskFixedAnswer(intent, decision.ask.words))) return this.final(request, id, by, digest, receiptOf(rid, now, "rejected", "not an option of this decision", "open", null));
     // An ask with options takes one of them or "I need more context"; only a `--words` ask takes words alone.
     if (decision.ask !== undefined && intent === "answer" && !decision.ask.words) return this.final(request, id, by, digest, receiptOf(rid, now, "rejected", "not an option of this decision", "open", null));
     // A yes to a trick's code needs the digest this phone was given (the code it showed), so a yes never
@@ -2189,7 +2215,7 @@ export class HillService {
       const late = receiptOf(rid, now, "gone", `the decision is ${fresh?.state ?? "gone"}`, fresh?.state ?? null, null);
       return this.final(request, id, by, digest, late);
     }
-    const label = intent === HILL_MORE_CONTEXT ? HILL_MORE_CONTEXT_LABEL : (option?.label ?? null);
+    const label = fixedAnswerLabel(intent) ?? option?.label ?? null;
     const answer: NonNullable<HillDecision["answer"]> = { rid, intent, label, text, by: headerField(by, WALKY_LABEL_MAX), at: now, delivery: typed ? "unknown" : "none", trick: firstTrick };
     const closed: HillDecision = { ...fresh, state, closedAt: now, closedReason: null, answer: device === null ? answer : { ...answer, deviceId: device } };
     if (!this.save(closed)) {
@@ -2232,9 +2258,7 @@ export class HillService {
     if (this.refusesHere()) return refuse("hill_off", HILL_OFF);
     const files = this.deps.askFiles === undefined ? null : await this.deps.askFiles(from.address, ask.files);
     if (files !== null && !files.ok) return refuse("bad_file", files.error);
-    const posted = this.withCrewState(this.postDecision(from, read.input, files === null ? {} : { askFiles: { root: files.root, files: files.files } }));
-    if (posted.ok) this.deps.checks?.noteVerb(senderKey(from));
-    return posted;
+    return this.withCrewState(this.postDecision(from, read.input, files === null ? {} : { askFiles: { root: files.root, files: files.files } }));
   }
 
   /** `ask.list` from the socket: the sender's own OPEN asks, oldest first, from this bridge or the lead. */
@@ -2248,59 +2272,143 @@ export class HillService {
   async askCancel(sender: HillAgentSender, id: string, how: HillAskCancel): Promise<HillOneAnswer> {
     const forward = this.forwardOf();
     if (forward !== null) return forward.one("withdraw", sender, id, how);
-    const answer = this.cancelAsk(sender, id, how);
-    if (answer.ok) this.deps.checks?.noteVerb(senderKey(sender));
-    return answer;
+    return this.cancelAsk(sender, id, how);
   }
 
   /**
-   * `ask.keep` from the socket (.adr/0177): the agent says "still true" for one or more of its own open asks,
-   * and each gets `ask.confirmedAt` now. All or nothing: an id that is not an open ask of this session refuses
-   * the whole call, with a sentence that names it. Works with the Hill off, as a take back does: it types
-   * nothing and rings nothing. On a crew member it is refused: the asks are on the lead, and the crew wire
-   * carries no keep in this build.
+   * `ask.remind` from the socket (.adr/0178), asked by `collie beacon asks` from Claude Code's `UserPromptSubmit`
+   * and `SessionStart` hooks, for the session of the pane the markers placed. It decides in one synchronous
+   * call and records what it handed out. It never refuses: every error is "none", so the hook prints nothing.
+   *
+   * - `prompt`: the session's open asks posted before this prompt (at most 5), full or short form; "none"
+   *   when there are none, and when the prompt is the bridge's own "Answers to your asks" message (its hash is
+   *   one the bridge typed into this pane, remind.ts `typedOwn`), which lists the open rest itself.
+   * - `start` with source `compact`, `resume` or `fork`: the full list of the session's open asks.
+   * - `start` with source exactly `clear`: no text; the pane's own open asks close as {@link HILL_ASK_CLEARED}.
+   * - any other source: "none".
+   *
+   * On a crew member it is "none": the lead holds the asks (CREW_PROTOCOL §22) and this hook's call stays on
+   * the member's bridge, so a member's session gets no reminder and its asks read `unchecked` on the lead.
    */
-  askKeep(sender: HillAgentSender, ids: readonly string[]): HillListAnswer {
-    if (this.forwardOf() !== null) return { ok: false, error: ASK_KEEP_MEMBER };
-    if (this.deps.crewMode() === "peer" || this.deps.deposed?.() === true) return { ok: false, error: NOT_ON_LEAD };
-    const unique = [...new Set(ids)];
-    if (unique.length === 0 || unique.length > HILL_ASK_OPEN_MAX) return { ok: false, error: `keep takes 1 to ${String(HILL_ASK_OPEN_MAX)} ask ids` };
-    const kept: HillDecision[] = [];
-    const now = this.now();
-    for (const id of unique) {
-      const decision = this.mine(sender, id);
-      if (decision === null || decision.ask === undefined) return { ok: false, error: `${id} is not an ask of this session` };
-      if (decision.state !== "open") return { ok: false, error: `${id} is ${decision.state}, only an open ask can be kept` };
-      kept.push({ ...decision, ask: { ...decision.ask, confirmedAt: now } });
-    }
-    if (!this.save(...kept)) return { ok: false, error: "the change could not be saved on this machine; nothing was kept" };
-    this.deps.checks?.noteVerb(senderKey(sender));
-    this.deps.audit?.({ action: "hill.ask.keep", detail: { asks: kept.length } });
-    return { ok: true, decisions: kept.map((decision) => served(this.named(decision))) };
-  }
-
-  /**
-   * `ask.check` from the socket (.adr/0177): whether the session in the pane `where` looks at its open asks at
-   * the end of this turn. "check" only when the Hill is on here, the session has open asks, the bridge knows
-   * the turn, no check ran in it, the brake allows it and an ask was left untouched in it (check.ts). Then the
-   * pane reads as working until the check's turn ends. Every error, and a crew member, is "none".
-   */
-  askCheck(sender: HillAgentSender, where: { readonly session: string; readonly paneId: string }): AskCheckDecision {
+  askRemind(sender: HillAgentSender, where: AskPane, event: AskRemindEvent): AskRemindAnswer {
     try {
-      const book = this.deps.checks;
-      if (book === undefined) return { kind: "none", why: "off" };
-      if (this.forwardOf() !== null || this.deps.crewMode() === "peer" || this.deps.deposed?.() === true) return { kind: "none", why: "off" };
-      if (this.refusesHere()) return { kind: "none", why: "off" };
+      const book = this.deps.reminders;
+      if (book === undefined) return { kind: "none" };
+      if (this.forwardOf() !== null || this.deps.crewMode() === "peer" || this.deps.deposed?.() === true) return { kind: "none" };
+      if (this.refusesHere()) return { kind: "none" };
       const key = senderKey(sender);
-      const open = this.deps.store.all().filter((decision) => decision.state === "open" && decision.ask !== undefined && keyOf(decision) === key);
-      const decided = book.decide(key, book.turn(where.session, where.paneId), open);
-      if (decided.kind !== "check") return decided;
-      book.lift(where.session, where.paneId);
-      this.deps.audit?.({ action: "hill.ask.check", detail: { asks: decided.asks.length } });
-      return decided;
+      const open = this.openAsksOf(key);
+      if (event.kind === "start") return this.remindAtStart(book, sender, key, open, event.source);
+      const now = this.now();
+      // The hook's clock is this machine's; one that is far off is not believed.
+      const at = Math.abs(event.at - now) <= ASK_REMIND_CLOCK_MS ? event.at : now;
+      const before = open.filter((decision) => decision.at < at);
+      const own = event.hash === null ? null : book.takeOwn(where.session, where.paneId, event.hash);
+      if (own !== null) {
+        // The bridge typed this prompt: its message listed the session's asks that were open when it was made.
+        const listed = before.filter((decision) => decision.at <= own.composedAt).map((decision) => decision.id);
+        book.handOut(where.session, where.paneId, { address: key, hash: event.hash, at, ids: listed });
+        book.shown(key, listed);
+        return { kind: "none" };
+      }
+      if (before.length === 0) return { kind: "none" };
+      const listed = before.slice(0, ASK_REMIND_LISTED_MAX);
+      const ids = listed.map((decision) => decision.id);
+      book.handOut(where.session, where.paneId, { address: key, hash: event.hash, at, ids });
+      return { kind: "list", form: book.form(key, ids), asks: listed.map(remindItem) };
     } catch {
-      return { kind: "none", why: "error" };
+      return { kind: "none" };
     }
+  }
+
+  /** The `SessionStart` half of {@link askRemind}. */
+  private remindAtStart(book: AskRemindBook, sender: HillAgentSender, key: string, open: readonly HillDecision[], source: string): AskRemindAnswer {
+    // THE /clear RULE (.adr/0178): a destructive path, so every condition is exact. The event is a start, its
+    // source is exactly `clear`, the markers named a pane of this bridge (the socket placed it, or nothing
+    // reached here), and only that pane's own asks close: the sender key is the pane's address with its
+    // instance token, so another pane, another session in the same pane id, another machine's pane, a
+    // closed ask, are all outside it.
+    if (source === "clear") {
+      book.forget(key);
+      this.clearAsks(sender, open);
+      return { kind: "none" };
+    }
+    if (!ASK_REMIND_START_SOURCES.includes(source) || open.length === 0) return { kind: "none" };
+    const listed = open.slice(0, ASK_REMIND_LISTED_MAX);
+    book.shown(
+      key,
+      listed.map((decision) => decision.id),
+    );
+    return { kind: "list", form: "full", asks: listed.map(remindItem) };
+  }
+
+  /** Close the open asks of `sender`'s own session as {@link HILL_ASK_CLEARED}, as a take back closes one. */
+  private clearAsks(sender: HillAgentSender, open: readonly HillDecision[]): void {
+    let closed = 0;
+    for (const decision of open) {
+      if (decision.state !== "open" || decision.ask === undefined || keyOf(decision) !== senderKey(sender)) continue;
+      // An answer in flight for it finishes first (as Clear leaves one).
+      if (this.busy(decision.id)) continue;
+      if (this.withdrawAny(sender, decision.id, HILL_ASK_CLEARED).ok) closed += 1;
+    }
+    if (closed > 0) this.deps.audit?.({ action: "hill.ask.cleared", detail: { asks: closed } });
+  }
+
+  /**
+   * One hook edge of a pane's own session (never a subagent's), from the edge router (.adr/0178): it moves the
+   * marks of the asks of that pane's session. A prompt makes each open ask posted before it `unchecked`; the
+   * stop of a turn whose reminder handed asks out makes each of them still open `carried`, with `confirmedAt`
+   * the stop's time. A start or an end ends the pane's turn. Never throws.
+   */
+  askEdge(where: AskPane, kind: string, at: number, hash: string | null): void {
+    try {
+      const book = this.deps.reminders;
+      if (book === undefined) return;
+      if (kind === "start" || kind === "end") {
+        book.reset(where.session, where.paneId);
+        return;
+      }
+      if (kind !== "prompt" && kind !== "stop") return;
+      const address = this.deps.paneAddress?.(where.session, where.paneId) ?? null;
+      if (kind === "prompt") {
+        book.prompt(where.session, where.paneId, at, hash);
+        if (address === null) return;
+        const moved: HillDecision[] = [];
+        for (const decision of this.openAsksOf(address)) {
+          if (decision.ask === undefined || decision.at >= at || decision.ask.mark === "unchecked") continue;
+          moved.push({ ...decision, ask: { ...decision.ask, mark: "unchecked" } });
+        }
+        if (moved.length > 0) this.save(...moved);
+        return;
+      }
+      const handout = book.stop(where.session, where.paneId, at);
+      if (handout === null || address === null || handout.address !== address) return;
+      const carried: HillDecision[] = [];
+      for (const decision of this.openAsksOf(address)) {
+        if (decision.ask === undefined || !handout.ids.includes(decision.id)) continue;
+        carried.push({ ...decision, ask: { ...decision.ask, mark: "carried", confirmedAt: at } });
+      }
+      if (carried.length > 0) this.save(...carried);
+    } catch {
+      // A mark that cannot move stays as it was; the next prompt moves it.
+    }
+  }
+
+  /**
+   * The bridge typed an "Answers to your asks" message into a pane (index.ts, from the WalkyTalky send):
+   * `hash` is the salted hash of the typed text, as the hook hashes a prompt; `composedAt` when the message
+   * was made. The reminder stays silent for that prompt.
+   */
+  typedAnswers(where: AskPane, hash: string, composedAt: number): void {
+    this.deps.reminders?.typedOwn(where.session, where.paneId, hash, composedAt);
+  }
+
+  /** The open asks of one session (sender key), oldest first. */
+  private openAsksOf(key: string): HillDecision[] {
+    return this.deps.store
+      .all()
+      .filter((decision) => decision.state === "open" && decision.ask !== undefined && keyOf(decision) === key)
+      .toSorted((a, b) => a.at - b.at);
   }
 
   /**
@@ -2441,7 +2549,7 @@ export class HillService {
         gone.set(entry.decision.id, receiptOf(askAnswerRid(request.rid, entry.decision.id), now, "gone", `the decision is ${fresh?.state ?? "gone"}`, fresh?.state ?? null, null));
         continue;
       }
-      const label = entry.intent === HILL_MORE_CONTEXT ? HILL_MORE_CONTEXT_LABEL : (fresh.options.find((option) => option.intent === entry.intent)?.label ?? null);
+      const label = fixedAnswerLabel(entry.intent) ?? fresh.options.find((option) => option.intent === entry.intent)?.label ?? null;
       const answer: NonNullable<HillDecision["answer"]> = { rid: askAnswerRid(request.rid, fresh.id), intent: entry.intent, label, text: entry.text, by: headerField(by, WALKY_LABEL_MAX), at: now, delivery: "unknown", trick: "none" };
       closed.push({ ...fresh, state: "answered", closedAt: now, closedReason: null, answer: device === null ? answer : { ...answer, deviceId: device } });
     }
@@ -2520,7 +2628,7 @@ export class HillService {
   private askAnswerCheck(decision: HillDecision, intent: string, raw: string | null): { readonly ok: true; readonly text: string | null } | { readonly ok: false; readonly reason: string } {
     const option = decision.options.find((candidate) => candidate.intent === intent);
     const words = decision.ask?.words === true;
-    const fits = intent === HILL_MORE_CONTEXT || (intent === "answer" && words) || (option !== undefined && isHillOptionIntent(option.intent));
+    const fits = isAskFixedAnswer(intent, words) || (intent === "answer" && words) || (option !== undefined && isHillOptionIntent(option.intent));
     if (!fits) return { ok: false, reason: "not an option of this decision" };
     const cleaned = cleanText(raw ?? "", HILL_ANSWER_TEXT_MAX);
     if (cleaned.over) return { ok: false, reason: `text is longer than ${String(HILL_ANSWER_TEXT_MAX)} characters` };
@@ -2547,6 +2655,8 @@ export class HillService {
     if (intent === "dismiss") return text === null ? null : "a dismiss carries no text";
     // "I need more context" takes an optional note, on every ask, a `--words` one too.
     if (intent === HILL_MORE_CONTEXT) return null;
+    // "Your own answer" is its text: never empty.
+    if (intent === HILL_OWN_ANSWER) return text === null ? "text is required" : null;
     if (intent === "answer") {
       if (decision.text === "none") return "this decision takes no text";
       return text === null ? "text is required" : null;

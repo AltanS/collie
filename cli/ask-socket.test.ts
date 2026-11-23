@@ -116,7 +116,13 @@ describe("walky ask over the socket", () => {
     expect(status.io.stdout[0]).toBe("ak_sock00000001 open");
     const cancel = deps(b.socket, workspace);
     expect(await cmdAskCancel(cancel, ["ak_sock00000001", "--because", "The test answers it."])).toBe(EXIT.OK);
-    expect(cancel.io.stdout).toContain("reason: by the poster: The test answers it.");
+    expect(cancel.io.stdout).toEqual(["ak_sock00000001 withdrawn (by the poster: The test answers it.)", "  Ship the fix on Edge first?"]);
+    // Several ids go as `ids`; the bridge answers one result per id, and a closed or unknown id stops none.
+    const again = deps(b.socket, workspace);
+    expect(await cmdAskCancel(again, ["ak_sock00000001", "ak_zzzzzzzzzzzz", "--answered"])).toBe(EXIT.STATE);
+    expect(again.io.stderr).toHaveLength(2);
+    expect(again.io.stderr[0]).toMatch(/^ask: ak_sock00000001: /);
+    expect(again.io.stderr[1]).toMatch(/^ask: ak_zzzzzzzzzzzz: /);
   });
 
   socketTest("refuses a --file outside the workspace, and a sixth open ask", async () => {

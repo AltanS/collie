@@ -101,7 +101,13 @@ describe("the rendered skill", () => {
     expect(out).toContain("## Asks");
     expect(out).toContain("So do not end a turn with a list of questions.");
     expect(out).toContain("The answers come back together, as one message.");
-    expect(out).toContain(`${bin} walky ask "<the question>" --fact`);
+    expect(out).toContain(`${bin} walky ask "<the question>" --option <id>="<label>" ...`);
+    // Only the question and the options are required; the second line names the rest as optional (Asks build 2).
+    expect(out).toContain('  # optional: --fact "<what decides it>"');
+    // The keep verb is gone: an ask stays open until it is answered or closed (.adr/0178).
+    expect(out).toContain("Never confirm an ask: silence keeps it.");
+    expect(out).toContain(`${bin} walky cancel <id>... --answered | --because "<reason>".`);
+    expect(out).not.toContain("walky keep");
     expect(out).toContain(`Rules and flags: ${bin} walky ask --help`);
     for (const line of ASK_HELP.filter((help) => /^\d\. /u.test(help))) expect(out).not.toContain(line);
     // The rules and the writing guide are the help's, not the skill's: one place to read them.
@@ -126,8 +132,9 @@ describe("the rendered skill", () => {
 
   test("the example ask names every flag it needs, as the help names them", () => {
     const example = WALKY_TALKY_SKILL_TEMPLATE.slice(WALKY_TALKY_SKILL_TEMPLATE.indexOf("walky ask \""));
-    const line = example.slice(0, example.indexOf("\n"));
-    for (const flag of ["--fact", "--option", "--does", "--recommend", "--why", "--body"]) {
+    // Two lines: the required part, then the optional flags.
+    const line = example.split("\n").slice(0, 2).join("\n");
+    for (const flag of ["--fact", "--option", "--does", "--cost", "--recommend", "--why", "--body"]) {
       expect(line).toContain(flag);
       expect(ASK_HELP.join("\n")).toContain(flag);
     }

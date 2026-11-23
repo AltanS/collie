@@ -7,7 +7,8 @@ import { readMarkers } from "../beacon/parse.ts";
 import type { BeaconMarker } from "../beacon/types.ts";
 import { asJsonBoolean, asJsonNumber, asJsonObject, asJsonString } from "../../web/src/lib/json.ts";
 import { MEMBER_ID_RE } from "../crew/identity.ts";
-import { HILL_ID_RE, isHillCrewState, type HillCrewState } from "../../web/src/lib/hill/wire.ts";
+import { HILL_ASK_CANCEL_MAX, HILL_ID_RE, isHillCrewState, type HillCrewState } from "../../web/src/lib/hill/wire.ts";
+import type { AskRemindEvent } from "../hill/remind.ts";
 import { HILL_BAD_ID } from "../hill/parse.ts";
 import { isTrickId } from "../../web/src/lib/tricks/schema.ts";
 import { LOCAL_MEMBER, parseAddress } from "./address.ts";
@@ -175,12 +176,14 @@ export const HILL_BAD_CREW_STATE = "bad request: the crew state is here, quiet o
 export type HillOp = "hill.post" | "hill.status" | "hill.withdraw" | "hill.list" | "hill.clear" | "hill.state" | "hill.spoken.clear" | AskOp;
 
 /** The ops of `collie walky ask` (Asks, 2026-11-22), beside the hill's. Added, never a change to one of them. */
-export type AskOp = "ask.post" | "ask.list" | "ask.status" | "ask.cancel" | "ask.keep" | "ask.check";
+export type AskOp = "ask.post" | "ask.list" | "ask.status" | "ask.cancel" | "ask.remind";
 
-/** What an `ask.keep` without 1 to 5 ids is refused with. */
-export const ASK_BAD_KEEP = "bad request: keep names 1 to 5 ask ids";
-/** The most ids one `ask.keep` names: the open asks of one session. */
-const ASK_KEEP_IDS_MAX = 5;
+/** What an `ask.cancel` whose `ids` is not a list of 1 to 5 ids is refused with. */
+export const ASK_BAD_CANCEL_IDS = `bad request: cancel names 1 to ${String(HILL_ASK_CANCEL_MAX)} ask ids`;
+/** What an `ask.remind` that names no event this bridge knows is refused with. */
+export const ASK_BAD_REMIND = "bad request: remind names a prompt or a start";
+/** The longest prompt hash and start source an `ask.remind` may carry. */
+const ASK_REMIND_FIELD_MAX = 128;
 
 /** What an `ask.cancel` with a reason that is no text is refused with. */
 export const ASK_BAD_BECAUSE = "bad request: --because is text";
@@ -220,10 +223,10 @@ export type WalkyRequest =
   | { readonly op: "ask.post"; readonly markers: readonly BeaconMarker[]; readonly fields: JsonObject }
   | { readonly op: "ask.list"; readonly markers: readonly BeaconMarker[] }
   | { readonly op: "ask.status"; readonly markers: readonly BeaconMarker[]; readonly id: string }
-  | { readonly op: "ask.cancel"; readonly markers: readonly BeaconMarker[]; readonly id: string; readonly answered: boolean; readonly because: string | null }
-  // The check at the end of a turn (.adr/0177): `keep` names 1 to 5 of the session's own asks; `check` names nothing.
-  | { readonly op: "ask.keep"; readonly markers: readonly BeaconMarker[]; readonly ids: readonly string[] }
-  | { readonly op: "ask.check"; readonly markers: readonly BeaconMarker[] }
+  // `ids` (1 to 5) from a CLI of Asks build 2; a single `id` from an older one, answered as before (`single`).
+  | { readonly op: "ask.cancel"; readonly markers: readonly BeaconMarker[]; readonly ids: readonly string[]; readonly single: boolean; readonly answered: boolean; readonly because: string | null }
+  // The reminder that rides on the prompt (.adr/0178), asked by `collie beacon asks`.
+  | { readonly op: "ask.remind"; readonly markers: readonly BeaconMarker[]; readonly event: AskRemindEvent }
   // A trick handed to the lead (crew slice 8): its fields are read by bridge/tricks/propose-wire.ts.
   | { readonly op: "trick.propose"; readonly markers: readonly BeaconMarker[]; readonly fields: JsonObject }
   // Agent views: every op names the trick (`trick`, a trick id) whose view it writes or reads. The
@@ -258,9 +261,29 @@ export function isHillOp(op: string | null): op is HillOp {
   return op === "hill.post" || op === "hill.status" || op === "hill.withdraw" || op === "hill.list" || op === "hill.clear" || op === "hill.state" || op === "hill.spoken.clear" || isAskOp(op);
 }
 
+/**
+ * The event of an `ask.remind`: `{ event: "prompt", promptHash: <hex> | null, at: <ms> }` or
+ * `{ event: "start", source: <text> }`. Null when it is neither.
+ */
+function readRemindEvent(row: JsonObject): AskRemindEvent | null {
+  if (row.event === "prompt") {
+    const at = asJsonNumber(row.at);
+    if (at === undefined || !Number.isFinite(at)) return null;
+    const hash = row.promptHash === undefined || row.promptHash === null ? null : asJsonString(row.promptHash);
+    if (hash === undefined || (hash !== null && (hash === "" || hash.length > ASK_REMIND_FIELD_MAX))) return null;
+    return { kind: "prompt", hash, at };
+  }
+  if (row.event === "start") {
+    const source = asJsonString(row.source);
+    if (source === undefined || source.length > ASK_REMIND_FIELD_MAX) return null;
+    return { kind: "start", source };
+  }
+  return null;
+}
+
 /** Whether a request is one of the ask ops (Asks, 2026-11-22). */
 export function isAskOp(op: string | null): op is AskOp {
-  return op === "ask.post" || op === "ask.list" || op === "ask.status" || op === "ask.cancel" || op === "ask.keep" || op === "ask.check";
+  return op === "ask.post" || op === "ask.list" || op === "ask.status" || op === "ask.cancel" || op === "ask.remind";
 }
 
 /**
@@ -326,19 +349,31 @@ export function readWalkyRequest(line: string, max: number = WALKY_LINE_MAX): Wa
   }
   // Asks. A bridge built without them answers these as it answers any op it does not know.
   if (op === "ask.post") return done({ op, markers, fields: row });
-  if (op === "ask.list" || op === "ask.check") return done({ op, markers });
-  if (op === "ask.keep") {
-    if (!Array.isArray(row.ids) || row.ids.length === 0 || row.ids.length > ASK_KEEP_IDS_MAX) return unread(ASK_BAD_KEEP, markers);
-    const ids = row.ids.map((entry) => asJsonString(entry) ?? "");
-    return ids.every((id) => HILL_ID_RE.test(id)) ? done({ op, markers, ids }) : unread(HILL_BAD_ID, markers);
+  if (op === "ask.list") return done({ op, markers });
+  if (op === "ask.remind") {
+    const event = readRemindEvent(row);
+    return event === null ? unread(ASK_BAD_REMIND, markers) : done({ op, markers, event });
   }
-  if (op === "ask.status" || op === "ask.cancel") {
+  if (op === "ask.status") {
     const id = text(row, "id");
-    if (id === null || !HILL_ID_RE.test(id)) return unread(HILL_BAD_ID, markers);
-    if (op === "ask.status") return done({ op, markers, id });
+    return id === null || !HILL_ID_RE.test(id) ? unread(HILL_BAD_ID, markers) : done({ op, markers, id });
+  }
+  if (op === "ask.cancel") {
+    const single = row.ids === undefined;
+    let ids: string[];
+    if (single) {
+      const id = text(row, "id");
+      if (id === null || !HILL_ID_RE.test(id)) return unread(HILL_BAD_ID, markers);
+      ids = [id];
+    } else {
+      // `id` and `ids` together is no request a CLI writes: refused, so neither one is guessed.
+      if (row.id !== undefined || !Array.isArray(row.ids) || row.ids.length === 0 || row.ids.length > HILL_ASK_CANCEL_MAX) return unread(ASK_BAD_CANCEL_IDS, markers);
+      ids = row.ids.map((entry) => asJsonString(entry) ?? "");
+      if (!ids.every((id) => HILL_ID_RE.test(id))) return unread(HILL_BAD_ID, markers);
+    }
     const because = row.because === undefined || row.because === null ? null : asJsonString(row.because);
     if (because === undefined) return unread(ASK_BAD_BECAUSE, markers);
-    return done({ op, markers, id, answered: asJsonBoolean(row.answered) === true, because });
+    return done({ op, markers, ids, single, answered: asJsonBoolean(row.answered) === true, because });
   }
   if (op === "trick.propose") return done({ op, markers, fields: row });
   // Agent views. A bridge built without them answers these as it answers any op it does not know.

@@ -3,7 +3,6 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ActivityLedger } from "./activity.ts";
-import { AskCheckBook } from "./hill/check.ts";
 import { trackActivity } from "./activity-tracking.ts";
 
 import {
@@ -1798,38 +1797,17 @@ describe("StateEngine: the hot intent", () => {
   });
 });
 
-// .adr/0177: the check at the end of a turn runs with no new prompt, after a Stop that wrote an idle
-// beacon. While the check book lifts the pane it reads working; after the check's own stop, as reported.
-describe("StateEngine — a check at the end of a turn reads as working", () => {
-  test("idle and done lift to working, blocked stays, and the end of the check's turn is one transition to idle", async () => {
+// .adr/0178 (supersedes 0177): no check runs after a turn, so nothing lifts a pane any more. A session whose
+// turn ended reads as its multiplexer says, at once: idle after its stop.
+describe("StateEngine — a session reads idle after its stop", () => {
+  test("working, then idle at the stop, with one transition and no lift", async () => {
     const { herdr, engine, transitions, poll } = makeEngine();
-    let now = 10_000;
-    const book = new AskCheckBook(() => now);
-    engine.liftChecks((paneId) => book.lifting("main", paneId));
-    herdr.panes = [pane("w1:p1", "w1", "working", "claude"), pane("w1:p2", "w1", "done", "claude"), pane("w1:p3", "w1", "blocked", "claude")];
-    await poll(); // first sighting
-    // The operator's turn ends: its Stop reaches the bridge, the check is answered, the pane is lifted.
-    book.edge("main", "w1:p1", "stop", now);
-    herdr.panes = [pane("w1:p1", "w1", "idle", "claude"), pane("w1:p2", "w1", "done", "claude"), pane("w1:p3", "w1", "blocked", "claude")];
-    for (const paneId of ["w1:p1", "w1:p2", "w1:p3"]) book.lift("main", paneId);
+    herdr.panes = [pane("w1:p1", "w1", "working", "claude")];
     await poll();
-    expect(engine.current().agents.map((a) => a.status)).toEqual(["working", "working", "blocked"]);
-    expect(transitions.filter((t) => t.pane === "w1:p1")).toEqual([]);
-    // The check's own turn ends with its stop edge: the pane reads as its beacon says, once.
-    now += 4000;
-    book.edge("main", "w1:p1", "stop", now);
-    await poll();
-    expect(engine.current().agents[0]!.status).toBe("idle");
-    expect(transitions.filter((t) => t.pane === "w1:p1")).toEqual([{ pane: "w1:p1", from: "working", to: "idle" }]);
-  });
-
-  test("a lift that throws raises nothing", async () => {
-    const { herdr, engine, poll } = makeEngine();
-    engine.liftChecks(() => {
-      throw new Error("boom");
-    });
     herdr.panes = [pane("w1:p1", "w1", "idle", "claude")];
     await poll();
     expect(engine.current().agents[0]!.status).toBe("idle");
+    expect(transitions.filter((t) => t.pane === "w1:p1")).toEqual([{ pane: "w1:p1", from: "working", to: "idle" }]);
+    expect("liftChecks" in engine).toBe(false);
   });
 });
