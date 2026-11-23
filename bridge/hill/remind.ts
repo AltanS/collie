@@ -2,7 +2,7 @@
 // `UserPromptSubmit` and `SessionStart` hooks run `collie beacon asks`, which asks this bridge (`ask.remind`
 // on the walky socket) for the session's open asks; the hook prints them as context next to the prompt.
 // This book holds what that needs and what the Hill's store does not: which asks were handed to which
-// turn, the prompts the bridge typed itself, and the set each session was shown last.
+// turn, the prompts the bridge typed itself, and the ids each session was shown last.
 //
 // THE TURN. A turn starts with a `prompt` hook edge (`collie beacon emit`, bridge/surface/edges.ts) and ends
 // with a `stop` edge. Both hooks of one prompt run in parallel, so the hand-out (`ask.remind`) and the prompt
@@ -27,8 +27,9 @@
 export const ASK_REMIND_LISTED_MAX = 5;
 
 /**
- * Whether a reminder whose set of asks is the one the session was shown last time takes the short form
- * ("asks ... are still open"). One switch, so the measurement with real sessions can turn it off.
+ * Whether a reminder whose asks the session was all shown in the full form already takes the short form
+ * (the ids only: "Collie: open asks ak_1, ak_2."). A list with one ask the session has not seen gets the
+ * full form. One switch, so the measurement with real sessions can turn it off: off, every list is full.
  */
 export const ASK_REMIND_SHORT_FORM = true;
 
@@ -108,14 +109,9 @@ function paneKey(session: string, paneId: string): string {
   return `${session}\u0000${paneId}`;
 }
 
-/** The ids of a set, in one order, as one key. */
-function setKey(ids: readonly string[]): string {
-  return [...ids].toSorted().join(",");
-}
-
 export class AskRemindBook {
   private readonly panes = new Map<string, PaneBook>();
-  private readonly shownSets = new Map<string, { key: string; touched: number }>();
+  private readonly shownSets = new Map<string, { ids: ReadonlySet<string>; touched: number }>();
 
   constructor(private readonly now: () => number = Date.now) {}
 
@@ -189,17 +185,20 @@ export class AskRemindBook {
     pane.pending = [];
   }
 
-  /** "short" when the session was shown exactly this set last time and the short form is on; else "full". Records the set. */
+  /**
+   * "short" when the short form is on and every listed id is one the session was shown last time; "full"
+   * when at least one is new to it (a list that only lost an ask is short). Afterwards the session's set is
+   * exactly `ids`, so an ask that closed leaves it.
+   */
   form(address: string, ids: readonly string[], shortForm: boolean = ASK_REMIND_SHORT_FORM): "full" | "short" {
-    const key = setKey(ids);
-    const last = this.shownSets.get(address)?.key;
+    const last = this.shownSets.get(address)?.ids;
     this.shown(address, ids);
-    return shortForm && last === key ? "short" : "full";
+    return shortForm && last !== undefined && ids.every((id) => last.has(id)) ? "short" : "full";
   }
 
-  /** The session was shown this set (a full list, or the bridge's own message). */
+  /** The session was shown these ids (a full list, or the bridge's own message): its set is exactly them. */
   shown(address: string, ids: readonly string[]): void {
-    this.shownSets.set(address, { key: setKey(ids), touched: this.now() });
+    this.shownSets.set(address, { ids: new Set(ids), touched: this.now() });
     trim(this.shownSets);
   }
 

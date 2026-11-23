@@ -4,7 +4,7 @@ import { ASK_REMIND_MATCH_MS, ASK_REMIND_OWN_KEEP_MS, AskRemindBook } from "./re
 
 // The book of the reminder that rides on the prompt (.adr/0178): a hand-out is paired with its prompt edge by
 // the prompt's hash and by time, in either order; a stop confirms the newest turn's hand-out once; the
-// bridge's own prompts answer once; the short form needs the same set as last time.
+// bridge's own prompts answer once; the short form needs every listed id to be one the session was shown.
 
 const A = "local/%1#aaaa";
 
@@ -92,15 +92,41 @@ describe("the bridge's own prompts", () => {
 });
 
 describe("the short form", () => {
-  test("the same set as last time is short; a new set, a cleared session, or the switch off is full", () => {
+  test("a list with only ids the session was shown is short; a list with a new id is full", () => {
     const { book: b } = book();
     expect(b.form(A, ["ak_a", "ak_b"])).toBe("full");
     expect(b.form(A, ["ak_b", "ak_a"])).toBe("short");
+    // A list that only lost an ask is short.
+    expect(b.form(A, ["ak_a"])).toBe("short");
+    // A new id brings the full form once; the list after it is short.
+    expect(b.form(A, ["ak_a", "ak_c"])).toBe("full");
+    expect(b.form(A, ["ak_a", "ak_c"])).toBe("short");
+  });
+
+  test("a closed ask leaves the set: it is full again when it returns as a new id", () => {
+    const { book: b } = book();
+    expect(b.form(A, ["ak_a", "ak_b"])).toBe("full");
+    expect(b.form(A, ["ak_a"])).toBe("short");
+    expect(b.form(A, ["ak_a", "ak_b"])).toBe("full");
+  });
+
+  test("forget makes the next list full; shown sets the ids: a subset is short, a new id is full", () => {
+    const { book: b } = book();
     expect(b.form(A, ["ak_a"])).toBe("full");
-    expect(b.form(A, ["ak_a"], false)).toBe("full");
     b.forget(A);
     expect(b.form(A, ["ak_a"])).toBe("full");
-    b.shown("local/%2#bbbb", ["ak_c"]);
+    b.shown("local/%2#bbbb", ["ak_c", "ak_d"]);
     expect(b.form("local/%2#bbbb", ["ak_c"])).toBe("short");
+    b.shown("local/%2#bbbb", ["ak_c", "ak_d"]);
+    expect(b.form("local/%2#bbbb", ["ak_c", "ak_e"])).toBe("full");
+  });
+
+  test("the switch off gives the full form always, and two sessions do not share a set", () => {
+    const { book: b } = book();
+    expect(b.form(A, ["ak_a"], false)).toBe("full");
+    expect(b.form(A, ["ak_a"], false)).toBe("full");
+    expect(b.form(A, ["ak_a"])).toBe("short");
+    expect(b.form("local/%2#bbbb", ["ak_a"])).toBe("full");
+    expect(b.form("local/%2#bbbb", ["ak_a"])).toBe("short");
   });
 });

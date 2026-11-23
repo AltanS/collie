@@ -35,7 +35,7 @@ export const ASKS_LIMIT_MS = 1000;
 
 /** How many asks the text lists, and how long a question may be in it. */
 const LISTED_MAX = 5;
-const QUESTION_SHOWN_MAX = 90;
+const QUESTION_SHOWN_MAX = 60;
 
 /** The two events the verb answers. */
 const ASKS_EVENTS = ["UserPromptSubmit", "SessionStart"] as const;
@@ -78,7 +78,7 @@ function controlPoint(code: number): boolean {
   return (code >= 0x200e && code <= 0x200f) || (code >= 0x202a && code <= 0x202e) || (code >= 0x2066 && code <= 0x2069);
 }
 
-/** A question as the text shows it: control characters removed, white space folded, quotes made safe, cut to 90 characters. */
+/** A question as the text shows it: control characters removed, white space folded, quotes made safe, cut to 60 characters. */
 export function shownQuestion(title: string): string {
   let clean = "";
   for (const ch of title) clean += controlPoint(ch.codePointAt(0) ?? 0) ? " " : ch;
@@ -99,10 +99,10 @@ export function fullReminder(asks: readonly ListedAsk[], binary: string): string
   return lines.join("\n");
 }
 
-/** The short form, for the set the session was shown last time: the ids only. */
+/** The short form, for a list whose asks the session was all shown in the full form: the ids only. */
 export function shortReminder(asks: readonly ListedAsk[]): string {
   const ids = asks.slice(0, LISTED_MAX).map((ask) => ask.id);
-  return `Collie: ${ids.length === 1 ? "ask" : "asks"} ${ids.join(", ")} ${ids.length === 1 ? "is" : "are"} still open. Close what this turn settles.`;
+  return `Collie: open ${ids.length === 1 ? "ask" : "asks"} ${ids.join(", ")}.`;
 }
 
 /** The one line the hook prints: the event's context, and nothing else. */
