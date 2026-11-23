@@ -31,7 +31,7 @@ position. This record states the exception exactly, so it does not grow into a s
    sideways and Off at any width, the dashboard is the phone's list, unchanged. Crew and Files keep the
    phone's column, centred under the wide header.
 2. **The grid.** Spaces stand in fixed 384px columns, 24px apart, wrapping in rows, in the list's own
-   order (machine, Space number, tab number). The number of columns is the width of the scroller, measured,
+   order (machine, Space number, tab place: a tab's place is its position in the multiplexer's own tab list, so a tab moved in Herdr moves here too, while its creation number stays). The number of columns is the width of the scroller, measured,
    and nothing else (`spaceColumns`, at most six); no status or count can move a Space to another column.
    There is no sidebar. The header, the tab bar and the New button are as wide as the grid and its 24px
    gutters.
