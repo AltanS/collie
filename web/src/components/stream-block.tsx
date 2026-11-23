@@ -5,7 +5,7 @@ import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, 
 
 import { useLocale } from "@/hooks/use-locale";
 import { useLongPress } from "@/hooks/use-long-press";
-import { endSelectText, useActiveBlock, useSelectable } from "@/lib/block-select";
+import { registerBlock, useActiveBlock } from "@/lib/block-select";
 import type { ChatItem } from "@/lib/chat-items";
 import { t } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
@@ -35,7 +35,7 @@ import { cn } from "@/lib/utils";
 // a hold. A press starts every gesture clean. A tap the block does not take (a link, a button, the ground between
 // blocks, a block that cannot reveal) and every tap on the mirror keep Tap to type.
 //
-// ── ON A TOUCH SCREEN A BLOCK TAKES NO SELECTION, UNTIL SELECT TEXT ASKS FOR IT ──────────────────
+// ── ON A TOUCH SCREEN A BLOCK TAKES NO SELECTION. ITS TEXT IS ONE ROW AWAY ──────────────────────
 // A phone's browser starts a text selection at about 500ms of a long press and cancels the pointer, which ended the
 // hold; revealing from Android's `contextmenu` after that hung on its timing, and on Altan's Android phone a hold did
 // nothing at all (2026-11-06). So under `pointer: coarse` a pinnable block (`data-pinnable`) takes no selection and
@@ -50,10 +50,8 @@ import { cn } from "@/lib/utils";
 // click. So the hold swallows the next click anywhere on the page ({@link swallowNextClick}), and the next press
 // clears that, so a browser that sends no click after a hold costs the next tap nothing.
 //
-// Text is one row away: the sheet's Select text (lib/block-select.ts) marks this block `data-selectable`, which
-// gives its text back to the native selection. While it is, the block's own hold, tap and `contextmenu` stand down
-// and a tap in it never reaches Tap to type, so the press is the selection's. The mode ends on a press outside the
-// block, when the sheet opens again, or when the block leaves the stream. One block at a time.
+// Text is one row away: the sheet's Select text opens a second sheet with the block's text
+// (components/block-text-sheet.tsx), where the native selection works. The block itself never goes into a select mode.
 //
 // ── ONE BLOCK AT A TIME, AND IT GOES AWAY BY ITSELF ───────────────────────────────────────────────
 // One module store holds which block shows its `⋯`, so a reveal on one block hides the one before. It hides on a
@@ -70,7 +68,8 @@ import { cn } from "@/lib/utils";
 // screen selection no longer competes, so the tint is safe there (Altan, 2026-11-06). While the sheet is open for
 // the block, the block carries `data-active` (set by the sheet, lib/block-select.ts) and the same tint at full
 // strength, so the person sees which message the sheet is about; the hold's tint flows into it with no flash. A tint
-// is an inset shadow and changes no box (DESIGN.md §2).
+// is an inset shadow and changes no box (DESIGN.md §2). A copy of the block's text flashes the block with the same
+// tint (`data-copied`, lib/copied-flash.ts), and the block registers its element for that (lib/block-select.ts).
 //
 // ── THE ⋯ IS AN OVERLAY. IT MOVES NOTHING AND COVERS NO CONTROL ─────────────────────────────────
 // Both marks are absolute, so a block gaining a pin or showing its `⋯` changes no box (DESIGN.md §2), and there is
@@ -243,14 +242,11 @@ export function StreamBlock({ n, item, pinned, onActions, className, children, h
   const [shift, setShift] = useState(0);
   const tapped = useSyncExternalStore(subscribe, () => shown === id);
   const itemId = item !== null && onActions !== undefined ? item.id : null;
-  // The sheet's Select text gave this block's text back to the native selection: its own gestures stand down.
-  const selectable = useSelectable(itemId);
   const active = useActiveBlock(itemId);
   const open =
     item !== null && onActions !== undefined
       ? () => {
           conceal(id);
-          endSelectText();
           onActions(item);
         }
       : undefined;
@@ -263,7 +259,7 @@ export function StreamBlock({ n, item, pinned, onActions, className, children, h
     reveal(id);
   };
   const onHold =
-    open === undefined || selectable
+    open === undefined
       ? undefined
       : () => {
           swallowNextClick();
@@ -279,13 +275,8 @@ export function StreamBlock({ n, item, pinned, onActions, className, children, h
   };
   // Capture phase, so the reading area's Tap to type under the block never sees the click of a revealing tap.
   // A click on a control (the chip itself, by a key) is never the revealing tap's, so it passes whatever the flag says.
-  // In the select mode no tap in the block is Tap to type either: it ends or moves the selection.
   const onClickCapture = (event: ReactMouseEvent<HTMLElement>) => {
     const onControl = event.target instanceof Element && event.target.closest(NOT_A_REVEAL) !== null;
-    if (selectable && !onControl) {
-      event.stopPropagation();
-      return;
-    }
     if (!swallow.current || onControl) {
       afterHold(event);
       return;
@@ -294,7 +285,7 @@ export function StreamBlock({ n, item, pinned, onActions, className, children, h
     event.stopPropagation();
   };
   const onRightClick = (event: ReactMouseEvent<HTMLElement>) => {
-    if (open === undefined || selectable) return;
+    if (open === undefined) return;
     // A touch hold that ends in `contextmenu` (Android) is a hold: it opens the sheet, over a selection it started too.
     // A mouse, or a menu key, opens the sheet, unless text is selected in the block: then the menu is the browser's.
     if (lastPointer.current === "touch" || lastPointer.current === "pen") {
@@ -336,23 +327,13 @@ export function StreamBlock({ n, item, pinned, onActions, className, children, h
     return () => document.removeEventListener("pointerdown", onDown, true);
   }, [tapped, id]);
 
-  // While its text is selectable: a press outside the block ends the select mode.
+  // A block that leaves the stream takes its `⋯` with it.
+  useEffect(() => () => conceal(id), [id]);
+  // Where the block is, for the flash of a copy that was started from its sheet.
   useEffect(() => {
     const block = blockRef.current;
-    if (!selectable || block === null || itemId === null) return;
-    const onDown = (event: PointerEvent) => {
-      if (event.target instanceof Node && block.contains(event.target)) return;
-      endSelectText(itemId);
-    };
-    document.addEventListener("pointerdown", onDown, true);
-    return () => document.removeEventListener("pointerdown", onDown, true);
-  }, [selectable, itemId]);
-
-  // A block that leaves the stream takes its `⋯` and its select mode with it.
-  useEffect(() => () => conceal(id), [id]);
-  useEffect(() => {
-    if (itemId === null) return;
-    return () => endSelectText(itemId);
+    if (itemId === null || block === null) return;
+    return registerBlock(itemId, block);
   }, [itemId]);
 
   return (
@@ -362,7 +343,6 @@ export function StreamBlock({ n, item, pinned, onActions, className, children, h
       data-n={n}
       data-revealed={revealed ? "" : undefined}
       data-pinnable={open !== undefined ? "" : undefined}
-      data-selectable={selectable ? "" : undefined}
       data-active={active ? "" : undefined}
       {...handlers}
       onPointerDown={onPress}

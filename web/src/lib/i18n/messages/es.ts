@@ -3247,7 +3247,6 @@ export const es: Dictionary = {
   "pins.action.unpin": "Desfijar",
   "pins.action.copy": "Copiar texto",
   "pins.action.selectText": "Seleccionar texto",
-  "pins.selectText.hint": "Mantén pulsado el texto para seleccionarlo. Toca fuera del mensaje para terminar.",
   "pins.action.more": "Acciones del mensaje",
   "pins.mark": "Fijado",
   "pins.sheet.kind.user": "Tu mensaje",

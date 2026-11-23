@@ -1,9 +1,11 @@
 import { Icon } from "@/components/icons/icon";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useRef, type ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
+import { useCopyFeedback } from "@/hooks/use-copy-feedback";
 import { useLocale } from "@/hooks/use-locale";
 import { canCopyText, copyText } from "@/lib/clipboard";
+import { flashCopied } from "@/lib/copied-flash";
 import { t } from "@/lib/i18n";
 import { setStatus } from "@/lib/status";
 import { cn } from "@/lib/utils";
@@ -15,28 +17,19 @@ interface CopyableBlockProps {
   className?: string;
 }
 
-/** How long the icon shows the outcome of a copy before it returns to the copy glyph. */
-const FEEDBACK_MS = 1500;
-
-type CopyState = "idle" | "done" | "failed";
-
 export function CopyableBlock({ text, children, label, className }: CopyableBlockProps): ReactNode {
   useLocale();
   const canCopy = canCopyText();
-  const [state, setState] = useState<CopyState>("idle");
-  const timer = useRef<number | undefined>(undefined);
-  useEffect(() => () => window.clearTimeout(timer.current), []);
   // The icon is the one place every screen shows the outcome: History and Files have no status line.
-  const show = (next: CopyState) => {
-    window.clearTimeout(timer.current);
-    setState(next);
-    timer.current = window.setTimeout(() => setState("idle"), FEEDBACK_MS);
-  };
+  const [state, show] = useCopyFeedback();
+  // The block itself flashes on a copy that worked (lib/copied-flash.ts), not the button.
+  const root = useRef<HTMLDivElement>(null);
   const copyLabel =
     state === "done" ? t("copyable.done") : state === "failed" ? t("copyable.failed") : (label ?? t("copyable.copy"));
   const copy = async () => {
     try {
       await copyText(text);
+      flashCopied(root.current);
       show("done");
       setStatus(t("copyable.done"), "success");
     } catch {
@@ -45,7 +38,7 @@ export function CopyableBlock({ text, children, label, className }: CopyableBloc
     }
   };
   return (
-    <div className={cn("relative min-w-0", className)}>
+    <div ref={root} className={cn("relative min-w-0", className)}>
       {canCopy && (
         <Button
           type="button"

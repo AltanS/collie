@@ -3508,7 +3508,8 @@ export const en = {
   "pins.action.unpin": "Unpin",
   "pins.action.copy": "Copy text",
   "pins.action.selectText": "Select text",
-  "pins.selectText.hint": "Hold the text to select it. Tap outside the message to end.",
+  "pins.action.copyAll": "Copy all",
+  "pins.textSheet.aria": "Text to select",
   "pins.action.more": "Message actions",
   "pins.mark": "Pinned",
   "pins.sheet.kind.user": "Your message",
@@ -4579,6 +4580,8 @@ export const PENDING_TRANSLATION = [
   "asks.board.rowAnsweredWith",
   "shortcuts.action.answer_next_ask",
   "actions.command.answerNext",
+  "pins.action.copyAll",
+  "pins.textSheet.aria",
 ] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */
