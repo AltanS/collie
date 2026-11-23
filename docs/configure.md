@@ -1498,7 +1498,7 @@ The dashboard follows the same switch, from 900 pixels wide. The Spaces stand si
 columns 384 pixels wide, as many as fit (two at 900 pixels, three at 1280, four at 1920, six at most).
 The tab bar at the foot is gone. A header spans the window, at the height of a pane's top strip, and
 the views are a control in it: Crew when you have a crew, Dashboard, Files, and then your tricks'
-items. The Hill is a button beside Actions, and **New** is the last button of the row with the counts
+items. Asks is a button beside Actions, and **New** is the last button of the row with the counts
 and the filters, a row that stays in view while you scroll. A band at the top repeats every session that
 needs you or finished unseen, as a card with its question. A session in the band also keeps its row
 in its Space, so nothing moves out of place. The band closes when nothing waits, and the

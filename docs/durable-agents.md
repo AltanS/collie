@@ -238,7 +238,7 @@ out and the call is blocked.
 
 ### What it costs
 
-An open phone asks every 2 s and an idle one every 10 s. Each ask is one call to your route.
+An open phone asks every 2 s and an idle one every 10 s. Each poll is one call to your route.
 
 | | rate | per hour | per day |
 | --- | --- | --- | --- |
@@ -531,7 +531,7 @@ A durable agent has no screen, so Collie reads no screen for it. The bridge read
 instead. A durable agent gets the same Send and Ask as a terminal pane.
 
 - **The state.** The turn comes from its pane state. A question comes from its oldest open
-  ask. The input box is always empty, because a durable agent has no box. The phone gets this state with
+  question card. The input box is always empty, because a durable agent has no box. The phone gets this state with
   each pane, in the same shape as for a terminal pane.
 - **A send.** `POST /api/send` takes a request id from the phone. The bridge writes the request to
   disk and locks the conversation. Then it sends the text to the durable agent once, for the turn it read.
@@ -543,9 +543,9 @@ instead. A durable agent gets the same Send and Ask as a terminal pane.
   request id of that send. A plain send is refused while any question is open, even one Collie
   cannot read. Answer the question, or use Steer or Stop. A turn that started after you looked
   refuses the send, and nothing reaches the durable agent.
-- **A question.** `POST /api/ask/<id>` answers it. The ask id is for one use only. The answer carries
+- **A question.** `POST /api/ask/<id>` answers it. The question card's id is for one use only. The answer carries
   the hash of the question you saw. The bridge compares it with the question the durable agent lists now. When the two differ, nothing reaches the durable agent.
-  The reply shows the question as it is now. The answer goes to the durable agent by its own ask id. No key is ever sent. The receipt
+  The reply shows the question as it is now. The answer goes to the durable agent by its own question card id. No key is ever sent. The receipt
   says `channel: program` and keeps the hash.
 - **What stays on the card.** Some questions do not fit one tap, so the state shows them as a
   question Collie cannot read (`modal: unreadable`). You answer them on its own card.

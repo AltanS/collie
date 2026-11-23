@@ -14,7 +14,7 @@ collie trick check ~/.config/collie/tricks/my-trick
 ```
 
 `init` makes the folder, `dev` runs the program once and prints what ColliePWA would draw, and `check`
-checks the manifest and searches the code. None of them writes to a phone or posts to the Hill.
+checks the manifest and searches the code. None of them writes to a phone or asks you in Asks.
 
 In an agent's pane, `init` makes the folder in the agent's own work folder instead, as a draft:
 
@@ -69,12 +69,12 @@ icon = "clock"
 places = ["status", "dashboard", "session"]
 contract = 1
 description = "Lists agents idle for 20 minutes or more, and asks before you wake one."
-decides = "reply"
+asks = "reply"
 ```
 
 It draws in three places: a chip in the status line, a tile on the Dashboard, and a Page of its
-own. `decides = "reply"` says that its Decisions name a session with `replyTo`: without it, Collie
-refuses such a Decision. Every key is in [Manifest keys](tricks-reference.md#manifest-keys).
+own. `asks = "reply"` says that its asks name a session with `replyTo`: without it, Collie
+refuses such an ask. Every key is in [Manifest keys](tricks-reference.md#manifest-keys).
 
 `program.ts`:
 
@@ -107,11 +107,11 @@ run((t) => {
     ],
   });
 
-  // Every run lists every Decision it still wants, with the same key and the same words.
+  // Every run lists every ask it still wants, with the same key and the same words.
   for (const s of idle.slice(0, 3)) {
     const spell = Date.parse(s.lastActiveAt ?? "").toString(36);
     const pane = s.paneId.toLowerCase().replace(/[^a-z0-9]+/g, "-");
-    t.decide({
+    t.ask({
       key: `idle-${pane}-${spell}`.slice(0, 64),
       title: `Wake ${(s.name ?? s.paneId).slice(0, 30)}?`,
       summary:
@@ -131,7 +131,7 @@ run((t) => {
 ```
 
 The helper reads the facts on stdin, calls your function once, and prints one JSON document
-([The program](tricks-reference.md#the-program)). Collie draws the parts, and posts each new Decision key to the Hill once. The answer to a Decision goes
+([The program](tricks-reference.md#the-program)). Collie draws the parts, and puts each new ask key in Asks once. The answer to an ask goes
 to the session that `replyTo` names, as the person's own message, and then back to the program as a
 tap. The key holds the time the session was last active, so a session that works and then goes idle
 again gets a new question. The summary holds no age, so its words stay the same between runs.
@@ -144,9 +144,9 @@ trick idle-watch (Idle watch) in /tmp/tricks-doc-lab/idle-watch
   places: status, dashboard, session
   every:  1m
   run:    program.ts
-  decides: reply. Your answers to its Decisions go to a session as your own message.
+  asks: reply. Your answers to its asks go to a session as your own message.
   code:   sha256 63bc959b… (what `collie trick on` approves)
-  helper: trick.ts is collie trick helper v10, Collie's own code, not checked line by
+  helper: trick.ts is collie trick helper v11, Collie's own code, not checked line by
           line
   ran in 31 ms: exit 0
   parts: status status, dashboard dashboard, session main
@@ -158,13 +158,13 @@ a timer run
   status     status     "1 idle"  icon clock  tone warn
   dashboard  dashboard  "Idle"  badge 1
   session    main       (the manifest's name)  subtitle "1 idle for 20 min or more"
-  decision  idle-w1-p1-mwbtwjk0  "Wake api-fix?"  options wake, leave
+  ask       idle-w1-p1-mwbtwjk0  "Wake api-fix?"  options wake, leave
             recommends leave  later
   ran in 111 ms of 10 s, exit 0, stdout 746 B of 64.0 KiB
 ```
 
-`facts.json` holds one idle session, `api-fix`. `dev` takes `--tap wake --node hill/<key>` to run the
-program as the answer to that Decision. Every flag of `check` and `dev` is in
+`facts.json` holds one idle session, `api-fix`. `dev` takes `--tap wake --node asks/<key>` to run the
+program as the answer to that ask. Every flag of `check` and `dev` is in
 [`collie trick`](tricks-reference.md#collie-trick).
 
 To use the trick, the person reads the code and runs `collie trick on idle-watch` in a shell of their
@@ -239,7 +239,7 @@ Settings. Collie keeps the values on the machine that runs the trick, in its sta
 
 The program gets them in its facts as `values`, each field's value or its `default`, by key. The helper
 reads them as `t.values`. A required field with no value is absent: draw a part that says what to set.
-Collie never puts a value on a command line, in a log line, on a Hill card or in a push.
+Collie never puts a value on a command line, in a log line, on an ask card or in a push.
 
 A value is the person's data and untrusted for the program: show it, never run it. Never pass it to a
 shell or build a command from it.
@@ -314,7 +314,7 @@ A tap on "Fix both" types `[view:triage <address>] from operator: tapped "Fix bo
 A button sends its label and nothing else. Every verb of `collie trick view` is in the
 [reference](tricks-reference.md#collie-trick-view).
 
-Collie marks the pick, never the agent. A button takes no `pressed` and a decision block takes no
+Collie marks the pick, never the agent. A button takes no `pressed` and a choice block takes no
 `picked`: the write is refused. When the next step needs the same question, keep its block, and Collie
 keeps the mark on it. A link goes to a web address only, and the phone shows its host after it. No text
 of the agent's may say Collie's own words, such as "From Collie" or "Tap again to send". The
@@ -332,13 +332,13 @@ collie trick propose ~/work/idle-watch
 `propose` takes the draft from the agent's own work folder, such as the `./<id>/` that `init` made.
 It adds nothing to this machine's tricks. `propose` runs the same check as `collie trick check`, then sends the files to the person as a
 card, "Switch on the trick idle-watch?". The card shows in the agent's own session on the phone, and
-in Settings, Tricks under "Waiting for your yes", and on the Hill too while the Hill is on. One tap on
+in Settings, Tricks under "Waiting for your yes", and in Asks too while Asks is on. One tap on
 Switch it on approves exactly the code the card showed and switches the trick on. Not now closes the
 card in the session, and the trick still waits in Settings, Tricks. It brings the PNG, JPEG and WebP
 pictures of `media/` and `captures/` (at most 50, 2 MB each), and the card names each one. It leaves dot
 files, `node_modules/`, logs, `inputs/`, `config.toml` and any other file in `media/` or `captures/`
 behind, and names each file of those two folders that stays behind. It prints the card's id. Read the answer with
-`collie hill status <id>`, or wait for it as a message. The message says what happened: the trick is
+`collie walky status <id>`, or wait for it as a message. The message says what happened: the trick is
 installed and on, or the person declined and nothing was installed.
 
 A trick must work with no `config.toml`. When the folder has one, `propose` first runs the trick
@@ -400,8 +400,31 @@ makes a trick Official.
 Add the GitHub topic `colliepwa-tricks` to the repository, so people find it. The official tricks are
 kept the same way, in `https://github.com/AltanS/collie-tricks`.
 
+## Names that changed
+
+A trick written before Asks used older names. Each old name fails with a message that names the new
+one, so a trick that breaks tells you what to write instead. After you change the names, update the
+helper with `collie trick helper <id>`.
+
+| Old name | New name |
+| --- | --- |
+| `decides = "reply"` in `trick.toml` | `asks = "reply"` |
+| the `decisions` list in the document a program prints | `asks` |
+| `t.decide(...)` | `t.ask(...)` |
+| `t.keepDecisions()` | `t.keepAsks()` |
+| `t.tap.decision` | `t.tap.ask` |
+| the helper's types `Decision` and `DecisionOption` | `Ask` and `AskOption` |
+| the tap node `hill/<key>`, and `collie trick dev --node hill/<key>` | `asks/<key>` |
+| the local API operation `hill.list` | `asks.list` |
+| the field `decision` of `collie trick propose --json` | `ask` |
+| the fields `decisionsListed` and `decisions` of `collie trick dev --json` | `asksListed` and `asks` |
+| the reserved trick id `hill` | `asks` is reserved too, and `hill` stays reserved |
+| the ids `dc_...` | `ak_...` |
+| `collie hill post`, `status`, `withdraw`, `list` | `collie walky ask`, `status`, `cancel`, `asks` |
+| `collie hill clear`, `state`, `on`, `off` | `collie asks clear`, `state`, `on`, `off` |
+
 ## Where to go next
 
 - [Tricks reference](tricks-reference.md), for every place, part, key, limit and command.
 - [Tricks](tricks.md), for how tricks work and how a person adds and trusts one.
-- [The Hill](hill.md), for the Decisions a trick posts.
+- [Asks](asks.md), for the asks a trick sends.
