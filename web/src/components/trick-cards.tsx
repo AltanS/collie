@@ -14,18 +14,18 @@ import { useOptionalRootData } from "@/lib/route-data";
 import { useScope } from "@/lib/session";
 import { cn } from "@/lib/utils";
 
-// A TRICK'S CARD NEEDS NO HILL (M96 spec 14, 2026-11-16). The Hill's switch gates what agents and tricks
+// A TRICK'S CARD NEEDS NO ASKS (M96 spec 14, 2026-11-16). The Asks switch gates what agents and tricks
 // ask. A card of Collie's own about a trick (a proposed trick, a new version, a trick's rights) is an
-// approval, and the bridge posts, serves and answers it with the Hill on or off (bridge/hill/service.ts).
-// With the Hill off the bar has no Hill item, so the phone reaches the card three ways:
+// approval, and the bridge posts, serves and answers it with Asks on or off (bridge/hill/service.ts).
+// With Asks off the bar has no Asks item, so the phone reaches the card three ways:
 //
 //   1. Settings, Tricks: a first group "Waiting for your yes", one row per open card, oldest first. The
 //      row is the card's own title (Collie's words, with the trick's id) and the first line of its summary
-//      (who proposed it, as the bridge knows them). A tap opens the card's page. With the Hill on the
+//      (who proposed it, as the bridge knows them). A tap opens the card's page. With Asks on the
 //      group is there too and opens the same page.
-//   2. The Dashboard: one quiet bordered line while a card is open and the Hill is off, in the box the
-//      update line wears (`Notice`, ui/notice.tsx), with one button to the oldest card. With the Hill on
-//      the bar's Hill item is the signal, so the line is not drawn.
+//   2. The Dashboard: one quiet bordered line while a card is open and Asks is off, in the box the
+//      update line wears (`Notice`, ui/notice.tsx), with one button to the oldest card. With Asks on
+//      the bar's Asks item is the signal, so the line is not drawn.
 //   3. A card's notification: none rings. No ask and no card of Collie's own sends a notification, with
 //      Asks on as with it off (ADR 0179 addendum; bridge/hill/no-push.test.ts pins it).
 //

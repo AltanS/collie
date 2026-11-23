@@ -3862,7 +3862,7 @@ export interface ParsedTrickDocument {
 /** Every top-level key of a trick document. */
 export const DOCUMENT_KEYS = ["v", "parts", "asOf", "fresh", "asks"] as const;
 /** The two halves of the one sentence about the old document key `decisions` (ADR 0179), shared by its two notes. */
-const OLD_ASKS_KEY_NOW = '"decisions" is "asks" now (ADR 0179)';
+const OLD_ASKS_KEY_NOW = '"decisions" is "asks" now';
 const HELPER_FIX = "Update the helper with: collie trick helper <id>.";
 /**
  * The note for an old key `decisions` that lists asks: a `dropped` note, so the trick's row says it (the asks

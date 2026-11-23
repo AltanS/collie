@@ -23,7 +23,7 @@ describe("the document key asks (ADR 0179; decisions before)", () => {
     expect(read.refusals).toEqual([]);
     expect(read.documentRefused).toBe(false);
     expect(read.notes.map((r) => [r.code, r.path, r.reason])).toEqual([["dropped", "/decisions", OLD_ASKS_LISTED_LINE]]);
-    expect(OLD_ASKS_LISTED_LINE).toBe('"decisions" is "asks" now (ADR 0179), so the asks listed under it are not shown. Update the helper with: collie trick helper <id>.');
+    expect(OLD_ASKS_LISTED_LINE).toBe('"decisions" is "asks" now, so the asks listed under it are not shown. Update the helper with: collie trick helper <id>.');
   });
 
   it("an old key decisions that is empty, or no list, stays a note that says it is ignored", () => {
@@ -32,7 +32,7 @@ describe("the document key asks (ADR 0179; decisions before)", () => {
       expect(read.decisions, JSON.stringify(old)).toEqual([]);
       expect(read.refusals).toEqual([]);
       expect(read.notes.map((r) => [r.code, r.path, r.reason])).toEqual([
-        ["ignored", "/decisions", '"decisions" is "asks" now (ADR 0179). Update the helper with: collie trick helper <id>. This Collie ignores it.'],
+        ["ignored", "/decisions", '"decisions" is "asks" now. Update the helper with: collie trick helper <id>. This Collie ignores it.'],
       ]);
     }
   });

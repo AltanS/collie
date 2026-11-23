@@ -6,7 +6,7 @@
 - **Trail:** The Asks spec, part G (names). Files: `cli/hill.ts` (`collie asks`, the one line for an old `collie
   hill` verb), `cli/program.ts` (the `asks` tree, the hidden `hill` verb), `cli/ask.ts` (the old `dc_` id line),
   `cli/api.ts` (`hill.list`), `web/src/lib/tricks/schema.ts` (the manifest and document keys, the reserved ids, the
-  tap node), `cli/trick-kit/trick.ts` (helper v11), `bridge/tricks/scan.ts` (`HELPER_VERSION`),
+  tap node), `cli/trick-kit/trick.ts` (helper v12), `bridge/tricks/scan.ts` (`HELPER_VERSION`),
   `bridge/tricks/agents-notes.ts` (notes v11), `bridge/hill/store.ts` (`ASKS_DIR`),
   `web/src/router.tsx` (the one redirect), `web/src/lib/i18n/asks-words.test.ts` (the word guard),
   `cli/skills/walky-talky.md` (the `{{ASKS}}` markers).
@@ -32,7 +32,7 @@ is off") and an ask (one question). No alias: each old name fails loudly with on
 | `collie hill list` | `collie walky asks` | the same one line, exit 2 |
 | `collie hill clear / state / on / off` | `collie asks clear / state / on / off` | the same one line, exit 2 |
 | id `dc_` + 12 | id `ak_` + 12, every card (an agent's, a trick's, Collie's own) | `walky status` and `cancel`: `<id> is an old id: that ask is gone.`; the state reader keeps it raw and never lists it |
-| trick output `decisions` | `asks` | not read, with one note on the trick's row and in `trick dev`: `"decisions" is "asks" now (ADR 0179). Update the helper with: collie trick helper <id>.` The rest of the document still draws (below) |
+| trick output `decisions` | `asks` | not read, with one note on the trick's row and in `trick dev`: `"decisions" is "asks" now. Update the helper with: collie trick helper <id>.` The rest of the document still draws (below) |
 | manifest `decides = "reply"` | `asks = "reply"` | refused at load: `"decides" is "asks" now: write asks = "reply".` |
 | `t.decide`, `t.keepDecisions`, `t.decisions`, `tap.decision` | `t.ask`, `t.keepAsks`, `t.asks`, `tap.ask` | the helper throws `t.decide is now t.ask` (and the like) at the call |
 | tap node `hill/<key>` | `asks/<key>` | refused at the tap and in `collie trick dev`: `the node hill/x is now asks/x` |
@@ -50,7 +50,7 @@ trick that uses the helper, also the ones that never ask. With the note its part
 show, and the one sentence names the fix on its row. This is how the trick code treats every unknown or removed
 document key today.
 
-The helper moves to v11 and the agent notes to v11. A v10 helper copy stays Collie's code (it is in
+The helper moves to v12 (v11 renamed the Decisions to asks, v12 took `priority` out of `t.ask`) and the agent notes to v11. An older helper copy stays Collie's code (it is in
 `OLDER_HELPERS`), so the update asks for no yes by itself; but its document's `decisions` key is refused, so a trick
 that asks must have its helper updated (`collie trick helper <id>`) and its own code moved to `t.ask`, which is a new
 version the person approves.

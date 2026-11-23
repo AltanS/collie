@@ -30,7 +30,7 @@ afterAll(async () => {
 const T0 = Date.parse("2026-11-08T09:00:00Z");
 const HOST = "lodge";
 const MANIFEST = 'id = "legs"\nname = "Browser leg"\nrun = "./legs.sh"\nevery = "30s"\nplaces = ["belt", "session"]\n';
-const LINE = '"decisions" is "asks" now (ADR 0179), so the asks listed under it are not shown. Update the helper with: collie trick helper legs.';
+const LINE = '"decisions" is "asks" now, so the asks listed under it are not shown. Update the helper with: collie trick helper legs.';
 
 const MAIN = `import { run } from "./trick.ts";
 run((t) => {
