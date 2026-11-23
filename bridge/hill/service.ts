@@ -1477,7 +1477,7 @@ export class HillService {
       postDigest: digest,
     };
     if (input.view !== undefined) decision.view = input.view;
-    if (ask !== undefined) decision.ask = { words: ask.words, files: opts.askFiles?.files ?? [], root: opts.askFiles?.root ?? null };
+    if (ask !== undefined) decision.ask = { words: ask.words, files: opts.askFiles?.files ?? [], root: opts.askFiles?.root ?? null, mark: "fresh" };
     // A replace is the agent saying what is true now: the new ask is confirmed at its post (.adr/0177).
     if (decision.ask !== undefined && decision.supersedes !== null) decision.ask.confirmedAt = now;
     if (input.group !== undefined && from.kind === "collie") {

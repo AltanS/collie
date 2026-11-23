@@ -9,6 +9,7 @@
 //   <id> "<question>": <option id> (<label>), not the recommended option. Note: <note>
 //   <id> "<question>": <option id> (<label>). Note: <note>            (no recommendation on the ask)
 //   <id> "<question>": I need more context. Note: <note>. Send the ask again with a better background: collie walky ask ... --replaces <id>
+//   <id> "<question>": Your own answer: <text>                         (the fixed free-text answer)
 //   <id> "<question>": <the words>                                     (a --words ask)
 //   <id> "<question>": no answer yet, it stays open.
 //
@@ -16,7 +17,7 @@
 // breaks keep them, each further line indented by two spaces, so a line that starts at the margin is
 // always the start of an ask.
 
-import { HILL_ANSWERS_MESSAGE_MAX, HILL_MORE_CONTEXT, type HillDecision } from "./wire";
+import { HILL_ANSWERS_MESSAGE_MAX, HILL_MORE_CONTEXT, HILL_OWN_ANSWER, HILL_OWN_ANSWER_LABEL, type HillDecision } from "./wire";
 
 /** The subject the one message carries (WalkyTalky's subject line, at most six words). */
 export const ASKS_ANSWERS_SUBJECT = "Answers to your asks";
@@ -24,7 +25,7 @@ export const ASKS_ANSWERS_SUBJECT = "Answers to your asks";
 /** What the message reads of an ask. */
 export type AnsweredAsk = Pick<HillDecision, "id" | "title" | "recommends" | "options">;
 
-/** One marked answer: the ask, the intent (an option, `more-context`, or `answer` on a `--words` ask), and the note or the words. */
+/** One marked answer: the ask, the intent (an option, `more-context`, `own`, or `answer` on a `--words` ask), and the note or the words. */
 export interface MarkedAnswer {
   readonly ask: AnsweredAsk;
   readonly intent: string;
@@ -66,6 +67,7 @@ export function answerLine(answer: MarkedAnswer): string {
     const said = note === null ? "" : ` Note: ${note}${/[.!?]$/u.test(note) ? "" : "."}`;
     return `${head(ask)} I need more context.${said} ${moreContextTail(ask.id)}`;
   }
+  if (intent === HILL_OWN_ANSWER) return `${head(ask)} ${HILL_OWN_ANSWER_LABEL}: ${note ?? ""}`.trimEnd();
   if (intent === "answer") return `${head(ask)} ${note ?? ""}`.trimEnd();
   const label = ask.options.find((option) => option.intent === intent)?.label ?? intent;
   const picked = `${head(ask)} ${intent} (${label})`;

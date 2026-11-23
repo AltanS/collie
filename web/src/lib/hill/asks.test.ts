@@ -64,7 +64,7 @@ function ask(over: Partial<HillDecision> = {}, askOver: Partial<HillAsk> = {}, a
     at: HILL_T0 + n * 1000,
     ...over,
   });
-  return { ...base, ask: { words: false, files: [], root: "w6:p3", ...askOver } };
+  return { ...base, ask: { words: false, files: [], root: "w6:p3", mark: "fresh", ...askOver } };
 }
 
 describe("openAsksOf and openCardsOf", () => {
