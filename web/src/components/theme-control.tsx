@@ -1,4 +1,5 @@
 import { Icon } from "@/components/icons/icon";
+import { PILL_HOVER } from "@/components/ui/button";
 import type { IconKey } from "@/components/icons/keys";
 
 import { Card } from "@/components/ui/card";
@@ -67,7 +68,7 @@ export function ThemeControl() {
                 // so the fill has to carry the selection on its own. `font-medium` is therefore
                 // unconditional: bold glyphs are wider, so putting the weight on at selection made
                 // the label grow inside its own button and the icon beside it slide.
-                selected ? "bg-primary text-primary-foreground" : "text-muted-foreground active:bg-muted",
+                selected ? "bg-primary text-primary-foreground" : `text-muted-foreground active:bg-muted ${PILL_HOVER}`,
               )}
             >
               <Icon name={option.icon} className="size-4 shrink-0" />

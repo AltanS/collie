@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { PILL_HOVER } from "@/components/ui/button";
 
 import { Card } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
@@ -74,7 +75,7 @@ export function ChangesControl() {
                   // ThemeControl's segmented choice: 44px floor, the weight unconditional so a
                   // selection repaints and never re-lays-out.
                   "flex min-h-11 flex-1 items-center justify-center rounded-md px-2 text-sm font-medium tabular-nums transition-colors disabled:opacity-50",
-                  selected ? "bg-primary text-primary-foreground" : "text-muted-foreground active:bg-muted",
+                  selected ? "bg-primary text-primary-foreground" : `text-muted-foreground active:bg-muted ${PILL_HOVER}`,
                 )}
               >
                 {depth}
