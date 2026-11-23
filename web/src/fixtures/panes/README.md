@@ -4076,6 +4076,30 @@ running turn read (composer found, no card); these screens did not. Privacy: the
 | `codex--v0167-working--w120.txt` | A turn running: `• Working (4s • esc to interrupt) · 1 background terminal running`, the box, the status row, `← for agents · ? for shortcuts` | raw, composer found, no card |
 | `codex--v0167-command-center--w120.txt` | The agent command center, one task, a detail pane, `? help  esc back  ↑/↓ move  enter open  n new` | the unread-dialog card, by design |
 
+## Codex status row wrapped on a narrow pane (constructed 2026-11-23, issue 838, NOT captured)
+
+These four screens are **constructed, not captured**. A Codex report of a pane about 56 columns wide
+showed the status row under the box wrapped onto two rows, and no capture of that layout exists yet: it
+needs a Codex login at a narrow width. Each file is a committed capture of ours with only its layout
+changed, so the reader can be tested on the shape until a real capture replaces it. The report gave the
+shape and nothing else: the row breaks greedily, after a hyphen inside the path, and the next row starts
+in column 2 with the rest of the path, ` · ` and the segments after it. No text of the report is in
+them. Transcript rows wider than the new width wrap the same way, under a two-column indent. The width
+is in the name.
+
+| Fixture | Built from | State | Reads as |
+| --- | --- | --- | --- |
+| `codex--v0166-core-idle-status-wrap--w56.txt` | `codex--v0166-core-idle--w120.txt` | `idle`: the empty box, the status row on two rows, `← for agents · ? for shortcuts` | composer, empty, free |
+| `codex--v0166-core-draft-status-wrap--w56.txt` | `codex--v0166-core-draft--w120.txt` | `draft`: `collie core draft probe` typed, the two status rows last | composer, draft read back |
+| `codex--v0166-core-working-status-wrap--w56.txt` | `codex--v0166-core-working--w120.txt` | `running`: the message and the `• Working` row wrapped too, the empty box, two status rows, the hint row | running, composer empty |
+| `codex--v0167-working-status-wrap--w39.txt` | `codex--v0167-working--w120.txt` | `running`, styled: the transcript cut to the `• Working` row, the filled box rows cut to 39 columns, the status row broken inside `/tmp/collie-codex-lab` | running, composer empty |
+
+At 56 columns the 0.167 status row would break at a space and leave `calc.py` alone on its row, which
+never had the bug, so that screen is cut to 39 columns, where the break falls inside the path. Before
+`idle.frame.bottomWraps` none of the four had a box, and the Codex adapter showed the unread-dialog card
+on the 56-column working screen. Tests: `web/src/lib/surface/frame.bottom-wraps.test.ts`,
+`web/src/lib/harness/codex/status-wrap.test.ts`, `bridge/surface/protocol.codex-status-wrap.test.ts`.
+
 ## Claude Code 2.1.322 on macOS: `⏺ main` background-agents footer (captured 2026-11-11)
 
 On macOS, stock Claude Code 2.1.322 draws the background-agents footer header with `⏺` (`U+23FA`,

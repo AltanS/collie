@@ -2560,6 +2560,26 @@
    "version": "0.167.0",
    "state": "running"
   },
+  "codex--v0166-core-idle-status-wrap--w56.txt": {
+   "harness": "codex",
+   "version": "0.166.0",
+   "state": "idle"
+  },
+  "codex--v0166-core-draft-status-wrap--w56.txt": {
+   "harness": "codex",
+   "version": "0.166.0",
+   "state": "draft"
+  },
+  "codex--v0166-core-working-status-wrap--w56.txt": {
+   "harness": "codex",
+   "version": "0.166.0",
+   "state": "running"
+  },
+  "codex--v0167-working-status-wrap--w39.txt": {
+   "harness": "codex",
+   "version": "0.167.0",
+   "state": "running"
+  },
   "codex--working.txt": {
    "harness": "codex",
    "version": "unversioned",

@@ -107,6 +107,13 @@ export interface Frame {
    * so (`idle.frame.trailer.hint`). No modal cue reads these rows (cues.ts `readCuesFor`). Absent otherwise.
    */
   readonly hint?: RowSpan;
+  /**
+   * The rows the bottom edge wrapped onto (`idle.frame.bottomWraps`, #838): the rows right under `bottom`
+   * that have the edge's shape too. They walk with the status rows, and the modal cues read them as rows
+   * under the box all the same (cues.ts `belowRows`), so a dialog's key row there is never taken for the
+   * rest of a status row. Absent on a box whose edge is one row.
+   */
+  readonly bottomWrap?: RowSpan;
   /** The layout's `answers`: this box answers a question the agent asked (profile.ts {@link FrameLayout.answers}). */
   readonly answers?: true;
   /** The layout's own submit keys (`idle.frame.submit`), when it names them. */
@@ -1237,9 +1244,49 @@ function findLayout(rows: readonly FrameRow[], idle: IdleProfile): Frame | null 
   // or up to `maxWidgetRows` above it when those rows are one unbroken run of a widget ({@link openFrame}).
   if (c.bottom.open) return openFrame(rows, end, idle) ?? listedLayout(rows, end, idle);
   for (let b = end - 1; b >= 0 && end - 1 - b <= idle.frame.maxTailRows; b--) {
-    if (anchored(rowText(rows[b]!), c.bottom) !== null) return frameAt(rows, b, idle);
+    if (anchored(rowText(rows[b]!), c.bottom) !== null) return frameAt(rows, b, idle) ?? wrappedEdgeFrame(rows, b, idle);
   }
   return listedLayout(rows, end, idle);
+}
+
+/**
+ * The frame over a bottom edge that wrapped (`idle.frame.bottomWraps`, #838), when the frame at the lowest
+ * edge-shaped row `lowest` did not close. On a narrow pane Codex wraps its status row, and the row it wraps
+ * onto has the edge's shape too, so the walk up from it meets the real edge where the prompt row should be.
+ * One row up at a time, at most `bottomWraps` rows: the row there must have the edge's shape and be full
+ * where the row under it goes on ({@link wrapsOnto}), and the frame must close at it with every check of
+ * {@link frameAt}. The rows under that edge then walk as status rows, and the wrapped ones are named in
+ * {@link Frame.bottomWrap}, where the modal cues still read them. Any other reason the lowest frame
+ * failed finds no box, as before, and so does a run of edge-shaped rows taller than the bound.
+ */
+function wrappedEdgeFrame(rows: readonly FrameRow[], lowest: number, idle: IdleProfile): Frame | null {
+  const wraps = idle.frame.bottomWraps ?? 0;
+  if (wraps === 0 || idle.frame.walk === "interior") return null;
+  const c = compile(idle);
+  const texts = rows.map(rowText);
+  const width = Math.max(...texts.map(displayWidth));
+  for (let k = 1; k <= wraps; k++) {
+    const edge = lowest - k;
+    if (edge < 0 || anchored(texts[edge]!, c.bottom) === null || !wrapsOnto(texts[edge]!, texts[edge + 1]!, width)) return null;
+    const frame = frameAt(rows, edge, idle);
+    if (frame !== null) return { ...frame, bottomWrap: { first: edge + 1, last: lowest } };
+  }
+  return null;
+}
+
+/**
+ * Whether row `lower` can be the soft wrap of row `upper` on a screen `width` cells wide (its widest row,
+ * the most a read tells): the first word of `lower` would not have fit after `upper`'s last cell, with
+ * its space, or straight on after a hyphen the wrap broke at. A harness wraps greedily, so a row that
+ * had room for that word was not wrapped onto the next one. One cell of slack, for a glyph the harness
+ * measures one cell differently from {@link displayWidth}. An unpadded read whose widest row is `upper`
+ * passes whatever follows: there the edge's shape, the frame's own checks and the modal cues on the
+ * wrapped rows ({@link Frame.bottomWrap}) are what hold.
+ */
+function wrapsOnto(upper: string, lower: string, width: number): boolean {
+  const head = upper.trimEnd();
+  const need = (head.endsWith("-") ? 0 : 1) + displayWidth(firstToken(lower.trim()));
+  return width - displayWidth(head) <= need;
 }
 
 /** How far up from the screen's end a box past its own command list is looked for: a list and its footer are never taller. */

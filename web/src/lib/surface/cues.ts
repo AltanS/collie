@@ -43,7 +43,7 @@
 import { displayWidth } from "../text-width";
 import { commandListNear, edgeRunListRow, openedByText, pointsAt, type CommandListRead } from "./command-list";
 import { popupUnder, type PopupRead } from "./popup";
-import { promptDraft, rowText, type Frame, type FrameRow, type IdleProfile } from "./frame";
+import { promptDraft, rowText, type Frame, type FrameRow, type IdleProfile, type RowSpan } from "./frame";
 import { isSingleKeyRow } from "./key-row";
 import { readAboveNotice, type AboveNotice } from "./notice";
 import type { CommandListRows } from "./profile";
@@ -244,12 +244,21 @@ function aboveRun(texts: readonly string[], frame: Frame): number[] {
 }
 
 /** The rows under a frame's bottom edge when they do not walk as status and footer rows. A row the
- *  profile names as a footer row (`frame.volatile.named`) is never one of them. */
+ *  profile names as a footer row (`frame.volatile.named`) is never one of them. The rows the bottom edge
+ *  wrapped onto (`frame.bottomWrap`, #838) are always among them: they have the edge's shape, and only
+ *  their words tell the rest of a status row from a dialog's key row. */
 function belowRows(texts: readonly string[], frame: Frame): number[] {
-  if (frame.volatile.status !== null || frame.volatile.footer !== null) return [];
+  if (frame.volatile.status !== null || frame.volatile.footer !== null) return spanRows(texts, frame.bottomWrap);
   const named = new Set(frame.volatile.named.map((hit) => hit.row));
   const rows: number[] = [];
   for (let i = frame.bottom + 1; i < texts.length; i++) if (!isBlank(texts[i]!) && !named.has(i)) rows.push(i);
+  return rows;
+}
+
+/** The non-blank rows of a span, or none for no span. */
+function spanRows(texts: readonly string[], span: RowSpan | undefined): number[] {
+  const rows: number[] = [];
+  if (span !== undefined) for (let i = span.first; i <= span.last && i < texts.length; i++) if (!isBlank(texts[i]!)) rows.push(i);
   return rows;
 }
 

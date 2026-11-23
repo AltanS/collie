@@ -421,6 +421,16 @@ export interface FrameLayout {
    */
   readonly maxWidgetRows?: number;
   /**
+   * The edges walk only: how many more rows the status row that is the bottom edge may wrap onto (#838).
+   * On a narrow pane a harness may wrap that row, and its next row has the bottom edge's shape too. Then
+   * the lowest row of that shape is no edge: when the row over it has the shape as well, and the upper
+   * row is full to the screen's width where the lower one goes on, the walk tries the box one row up, at
+   * most this many times, and the rows under the edge walk as status rows. A third row of the shape past
+   * the bound, or an upper row with room for the lower row's first word, finds no box. Optional: with
+   * none, only the lowest row is tried. At most {@link MAX_BOTTOM_WRAPS}.
+   */
+  readonly bottomWraps?: number;
+  /**
    * How the walk finds the box. `edges` (the default) walks up from the bottom edge: rows that are
    * no edge are the wrapped draft, the first edge row is the prompt row, the top edge is over it.
    * `interior` walks up from the bottom edge (or from the last row, with no bottom anchor) to the
@@ -1610,6 +1620,9 @@ function parseScroll(value: JsonValue, maxDraftRows: number): FrameScroll {
   return { keeps, rows, marker: pattern(node.marker, "idle.frame.scroll.marker").source };
 }
 
+/** The most rows `idle.frame.bottomWraps` may name: each one is a row of the bottom edge's shape the walk passes. */
+export const MAX_BOTTOM_WRAPS = 2;
+
 /** `idle.frame`: the three anchors, the bounds, and the interior walk's own fields when the profile names that walk. */
 function parseFrame(frameNode: JsonObject): FrameLayout {
   const walk = frameNode.walk === undefined ? "edges" : oneOf(frameNode.walk, "idle.frame.walk", FRAME_WALKS);
@@ -1640,8 +1653,13 @@ function parseFrame(frameNode: JsonObject): FrameLayout {
     }
     const edgeBottom = anchor(field(frameNode, "bottom", "idle.frame"), "idle.frame.bottom", null, true);
     if (edgeBottom.open === true) fail("idle.frame.bottom.open", "belongs to the interior walk");
-    return { ...base, bottom: edgeBottom };
+    if (frameNode.bottomWraps === undefined) return { ...base, bottom: edgeBottom };
+    const bottomWraps = whole(frameNode.bottomWraps, "idle.frame.bottomWraps", 1);
+    if (bottomWraps > MAX_BOTTOM_WRAPS) fail("idle.frame.bottomWraps", `must be at most ${String(MAX_BOTTOM_WRAPS)}`);
+    if (edgeBottom.blank === true) fail("idle.frame.bottomWraps", "needs a bottom edge that is not a blank row");
+    return { ...base, bottom: edgeBottom, bottomWraps };
   }
+  if (frameNode.bottomWraps !== undefined) fail("idle.frame.bottomWraps", "belongs to the edges walk");
   const interior = { ...base, bottom: anchor(field(frameNode, "bottom", "idle.frame"), "idle.frame.bottom", null, true), walk };
   if (maxWidgetRows !== undefined) {
     if (interior.bottom.open !== true) fail("idle.frame.maxWidgetRows", "belongs to an open box");
