@@ -55,8 +55,8 @@ describe("the list this release carries", () => {
     if (!list.ok) throw new Error(list.reason);
     expect(list.entries.map((e) => e.id)).toEqual(["morph", "design-review", "pr-inbox", "running-builds"]);
     expect(list.entries.map((e) => e.name)).toEqual(["Morph", "Design Review", "PR Inbox", "Running Builds"]);
-    // One commit of the tricks repository's main pins them all (collie-tricks 270e386, the helper v8; Design Review and PR Inbox decide with "reply").
-    expect(new Set(list.entries.map((e) => e.commit))).toEqual(new Set(["270e38621edba959fd1e0acbc4df8dd3de8cbdcb"]));
+    // One commit of the tricks repository's main pins them all (collie-tricks 4e78f23, the helper v12; Design Review and PR Inbox ask with "reply").
+    expect(new Set(list.entries.map((e) => e.commit))).toEqual(new Set(["4e78f2394b6323f1b867ef3f8ca9684982cfff72"]));
     expect(list.entries.some((e) => e.id === "release-gates")).toBe(false);
     for (const e of list.entries) {
       expect(OFFICIAL_REPOS).toContain(e.repo);
@@ -69,11 +69,11 @@ describe("the list this release carries", () => {
     }
   });
 
-  test("morph is an agent view with no program: contract 2, its rules pinned by sha256, its two earlier commits carrying the same hash", () => {
+  test("morph is an agent view with no program: contract 2, its rules pinned by sha256, its three earlier commits carrying the same hash", () => {
     const list = shippedOfficialList();
     if (!list.ok) throw new Error(list.reason);
     const morph = list.entries.find((e) => e.id === "morph");
-    expect(morph).toMatchObject({ repo: REPO, dir: "morph", contract: 2, rules: "9ee603082182156a4dd0160b7b8eafbf6e83ceba02b8be6cda2f80f6b71d050f", previous: [{ commit: "9473ce07c1ce1a11ca49510671c71badbe2857ac", hash: morph?.hash }, { commit: "0c1e5d82346486815073fedcdb994bc4c2041b55", hash: morph?.hash }] });
+    expect(morph).toMatchObject({ repo: REPO, dir: "morph", contract: 2, rules: "9ee603082182156a4dd0160b7b8eafbf6e83ceba02b8be6cda2f80f6b71d050f", previous: [{ commit: "270e38621edba959fd1e0acbc4df8dd3de8cbdcb", hash: morph?.hash }, { commit: "9473ce07c1ce1a11ca49510671c71badbe2857ac", hash: morph?.hash }, { commit: "0c1e5d82346486815073fedcdb994bc4c2041b55", hash: morph?.hash }] });
     expect(morph?.description).toBe("Your agent answers with one screen you can tap, not a wall of text.");
   });
 
