@@ -87,8 +87,16 @@ async function openActions(page: Page, desk: boolean): Promise<Locator> {
   return sheet;
 }
 
-/** The box of `target` once it has stopped moving (a sheet's entrance runs a moment), read the same twice in a row. */
+/** The box of `target` once its entrance is over (every finite animation finished) and it reads the same twice in a row. */
 async function settled(target: Locator) {
+  await target.page().evaluate(() =>
+    Promise.all(
+      document
+        .getAnimations()
+        .filter((animation) => animation.effect?.getTiming().iterations !== Infinity)
+        .map((animation) => animation.finished.catch(() => undefined)),
+    ),
+  );
   let last = await target.boundingBox();
   await expect
     .poll(async () => {
@@ -187,6 +195,7 @@ for (const mode of [
       const sheet = await openActions(page, mode.desk);
       await page.clock.pauseAt(new Date(Date.now() + 60_000));
       const block = replyBlock(page);
+      await settled(block);
       const before = await boxes(block);
 
       await sheet.getByRole("button", { name: en["pins.action.copy"], exact: true }).click();
