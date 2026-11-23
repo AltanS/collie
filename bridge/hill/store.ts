@@ -1,7 +1,11 @@
-// The decisions of the hill (M96), kept on the machine whose bridge took the post.
+// The asks (M96, renamed in ADR 0179), kept on the machine whose bridge took the post.
 //
-//   <stateDir>/hill/decisions.json
+//   <stateDir>/asks/asks.json
 //   { "v": 1, "decisions": [ HillDecision, ... ] }
+//
+// THE FOLDER. Its name is {@link ASKS_DIR}, the one place it is spelled. Builds before ADR 0179 kept the
+// same files under `<stateDir>/hill/`. This build never reads, writes or deletes that old folder: the
+// rename starts clean, with no migration and nothing carried over (the owner's answer, 2026-11-23).
 //
 // Every open decision, plus the {@link HILL_CLOSED_KEPT} newest closed ones; an older closed one goes at
 // the next write. The folder is 0700 and the file 0600, written whole to a temp file and renamed over
@@ -47,17 +51,23 @@ import { join } from "node:path";
 
 import type { JsonValue } from "../json.ts";
 import { asJsonNumber, asJsonObject, asJsonString, parseJsonObject } from "../../web/src/lib/json.ts";
-import { HILL_CLOSED_SERVED, HILL_STATES, type HillDecision, type HillList, type HillState } from "../../web/src/lib/hill/wire.ts";
+import { HILL_ASK_ID_RE, HILL_CLOSED_SERVED, HILL_STATES, type HillDecision, type HillList, type HillState } from "../../web/src/lib/hill/wire.ts";
 import { HILL_MAX_EXPIRY_MS } from "../../web/src/lib/tricks/limits.ts";
 import { readDecision } from "./parse.ts";
 
-/** The hill's folder inside a state dir. */
+/** The name of the asks folder inside a state dir (ADR 0179). The one place it is spelled. */
+export const ASKS_DIR = "asks";
+
+/** The folder that builds before ADR 0179 used. Named only so a test can prove it stays untouched. */
+export const OLD_HILL_DIR = "hill";
+
+/** The asks folder inside a state dir. */
 export function hillDir(stateDir: string): string {
-  return join(stateDir, "hill");
+  return join(stateDir, ASKS_DIR);
 }
 
-/** The decisions file's name inside the hill folder. */
-export const DECISIONS_FILE = "decisions.json";
+/** The asks file's name inside the asks folder. */
+export const DECISIONS_FILE = "asks.json";
 
 /** How many closed decisions the file keeps, newest first. Every open one is kept. */
 export const HILL_CLOSED_KEPT = 100;
@@ -170,7 +180,8 @@ export class HillStore {
     for (const entry of file.decisions) {
       // This bridge's own file: the one place a Decision of Collie's own reads (parse.ts `collie`).
       const decision = readDecision(entry, { collie: true });
-      if (decision === null) opaque.push(entry);
+      // An id that is not an ask id (an old `dc_`, ADR 0179) is not read: kept raw, never listed.
+      if (decision === null || !HILL_ASK_ID_RE.test(decision.id)) opaque.push(entry);
       // A second entry under a held id is a duplicate this build wrote; the first one stands.
       else if (!read.some((held) => held.id === decision.id)) read.push(decision);
     }
@@ -234,9 +245,9 @@ export class HillStore {
     const aside = `${this.path}.bad-${String(this.now())}`;
     try {
       renameSync(this.path, aside);
-      this.warn(`[hill] ${this.path} did not read; set aside as ${aside}, starting with no decisions`);
+      this.warn(`[asks] ${this.path} did not read; set aside as ${aside}, starting with no asks`);
     } catch (err) {
-      this.warn(`[hill] ${this.path} did not read and could not be set aside: ${err instanceof Error ? err.message : String(err)}`);
+      this.warn(`[asks] ${this.path} did not read and could not be set aside: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
@@ -318,7 +329,7 @@ export class HillStore {
       renameSync(temp, this.path);
       return true;
     } catch (err) {
-      this.warn(`[hill] could not save ${this.path}: ${err instanceof Error ? err.message : String(err)}`);
+      this.warn(`[asks] could not save ${this.path}: ${err instanceof Error ? err.message : String(err)}`);
       return false;
     }
   }

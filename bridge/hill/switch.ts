@@ -6,7 +6,7 @@ import { hillDir } from "./store.ts";
 
 // THE HILL'S SWITCH (2026-11-10). The Hill is an experiment and OFF by default (2026-11-13); this one
 // bridge setting turns it on for this instance. Bridge state, not a phone preference, so two phones agree and an
-// agent's post is refused on the machine itself. One file, `<stateDir>/hill/switch.json`, mode 0600:
+// agent's post is refused on the machine itself. One file, `<stateDir>/asks/switch.json`, mode 0600:
 //
 //   { "v": 1, "on": false, "at": "2026-11-10T09:41:00.000Z" }
 //
@@ -70,7 +70,7 @@ export function parseHillSwitch(text: string | null): ParsedHillSwitch {
   if (text === null) return { on: false, problem: null };
   const doc = asJsonObject(parseJson(text));
   const on = asJsonBoolean(doc?.on);
-  if (doc?.v !== 1 || on === undefined) return { on: false, problem: `${HILL_SWITCH_FILE} is not a version 1 switch file; the Hill reads as off` };
+  if (doc?.v !== 1 || on === undefined) return { on: false, problem: `${HILL_SWITCH_FILE} is not a version 1 switch file; Asks reads as off` };
   return { on, problem: null };
 }
 
@@ -143,7 +143,7 @@ export class HillSwitch {
     private readonly stateDir: string,
     /** The bridge's skill sync after a real change (hill/skill-follow.ts); null where nothing follows. */
     private readonly follow: SwitchFollower | null,
-    private readonly warn: (line: string) => void = (line) => console.warn(`[hill] ${line}`),
+    private readonly warn: (line: string) => void = (line) => console.warn(`[asks] ${line}`),
     private readonly now: () => number = Date.now,
   ) {}
 

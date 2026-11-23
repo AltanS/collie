@@ -7,7 +7,7 @@ import { headerField } from "../walky/types.ts";
 import { hillDir } from "./store.ts";
 
 // THE CREW STATE (1.29.0). The person tells the agents of the crew how fast an answer can come: `here`
-// (as always), `quiet` or `away`. One value per lead, in `<stateDir>/hill/state.json`, mode 0600:
+// (as always), `quiet` or `away`. One value per lead, in `<stateDir>/asks/state.json`, mode 0600:
 //
 //   { "v": 1, "state": "away", "at": 1762873260000, "by": "Pixel 9" }
 //
@@ -101,7 +101,7 @@ export class HillCrewStateFile {
 
   constructor(
     private readonly stateDir: string,
-    private readonly warn: (line: string) => void = (line) => console.warn(`[hill] ${line}`),
+    private readonly warn: (line: string) => void = (line) => console.warn(`[asks] ${line}`),
     private readonly now: () => number = Date.now,
   ) {}
 
