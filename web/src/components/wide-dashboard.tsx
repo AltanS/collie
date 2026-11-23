@@ -6,7 +6,7 @@
 // (`SectionHeader`, strong, with its urgent mark and `StatusCounts`), the rows (`AgentCard`, 44px, the dot,
 // the tint, the unseen mark), one `ListGroup` per Space, the Pinned group and the host chip of a crew.
 // What changes is where a Space stands: in a grid of fixed 384px columns that wrap in rows, in the list's
-// own order (machine, Space number, tab number), never by status.
+// own order (machine, Space number, tab place), never by status.
 //
 // ONE EXCEPTION to "urgency is a mark, not a position" (ADR 0147, amended by 0158): a band above the grid
 // repeats every session that needs the person or finished unseen, as a card with its question. The band

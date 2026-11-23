@@ -87,7 +87,7 @@ export function shownGroups(
 
 /**
  * The Pinned group's rows (ADR 0070), in PLACE ORDER: the groups flattened as they run (machine,
- * workspace number, tab number, position in the tab), keeping the pinned panes. Hand it every group,
+ * workspace number, tab place, position in the tab), keeping the pinned panes. Hand it every group,
  * BEFORE isolate and hide apply, because a pin means "always show me this one". It never reads
  * status, so no state change moves a pinned row, and the dashboard and the switcher agree by
  * construction. The time of the pin is not an order: the screen never shows it.

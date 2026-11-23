@@ -10,7 +10,7 @@
 //   2. guards      the repo-rule tests that read source (`GUARD_*` in scripts/test-sets.ts), always
 //   3. near tests  the tests of the files you changed; or, with --full, every suite
 //
-// Near tests: for each changed file in bridge, cli, scripts, herdr-app-mod and omp-extension, the
+// Near tests: for each changed file in bridge, cli, scripts, herdr-app-mod, omp-extension and pi-extension, the
 // changed test file itself, and the tests in the same folder named after a changed source file
 // (`foo.ts` gives `foo.test.ts` and `foo.part.test.ts`). In `web/`, `vitest --changed <base>` runs the
 // files whose imports reach a change. `*.slow.test.*` and `*.quarantine.test.*` are left out.

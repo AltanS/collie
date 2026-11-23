@@ -404,8 +404,8 @@ export function AgentList({
   const stillShells = useStillList(shellPanes, paneRowKey, listRoot);
   const listAgents = stillAgents.items;
   const listShells = stillShells.items;
-  // A row's PLACE is read from the tab and the workspace it sits in (tabs by number, workspaces by number), so
-  // those two lists are held with the panes: a pane held through its tab's removal must keep the place it was
+  // A row's PLACE is read from the tab and the workspace it sits in (tabs in the multiplexer's tab order,
+  // workspaces by number), so those two lists are held with the panes: a pane held through its tab's removal must keep the place it was
   // drawn at, not fall to the fallback sort of a tab the live list no longer has.
   const heldTabs = useStillWhileTouched(tabs ?? NO_TABS, tabRowKey, listRoot);
   const heldWorkspaces = useStillWhileTouched(workspaces ?? NO_WORKSPACES, workspaceRowKey, listRoot);
@@ -526,9 +526,9 @@ export function AgentList({
   }
 
   // ONE PASS, NOTHING MOVES (2026-09-16, after four arrangements on the phone and a counsel).
-  // Every pane stays in its workspace, in the multiplexer's own order: workspaces by number, tabs by
-  // number, panes by id. A status change never moves a row or a group, because the operator finds a
-  // pane by where it sits, and the urgent sections that used to pull a pane to the top broke exactly
+  // Every pane stays in its workspace, in the multiplexer's own order: workspaces by number, tabs in the
+  // multiplexer's tab order (a moved tab keeps its number), panes by their position in the tab. A status
+  // change never moves a row or a group, because the operator finds a pane by where it sits, and the urgent sections that used to pull a pane to the top broke exactly
   // that. Urgency is a MARK now, never a position: a full-row wash, a lit heading, a lit chip, and
   // the one summary line. Push and the badge carry the alarm; this screen answers "where".
   const all = triage(agents);

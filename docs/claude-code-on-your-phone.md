@@ -94,7 +94,7 @@ take up to a minute on a large repo. If the phone loses the reply, the page says
 it again. Look at the dashboard first. **Try again** sends the same request, so Collie answers with
 the worktree it already made and does not make a second one. Collie makes the worktree with git,
 on the machine you pick, and opens it as a new space. So the switch needs git on that machine and a
-multiplexer that opens a space: Herdr, the Herdr core, tmux, tuios, tern or Rex. On zellij, or on a
+multiplexer that opens a space: Herdr, the Herdr core, tmux, tuios, Tern or Rex. On zellij, or on a
 machine with no git, it stays on the page, off, and says why. When the checkout is made but the space
 does not open, the checkout stays, and the same request again only opens it. This holds in Herdr's
 folder and in a folder you picked. A retry opens a finished checkout only: a folder that holds
@@ -116,7 +116,7 @@ Running multiple sessions creates multiple waiting prompts. Collie groups panes 
 marks the ones that need input: a red wash on the row, a dot on the workspace heading, and a count
 on the line at the top, which jumps to the first of them. Hold a row to pin that pane to the top. The
 clock and hourglass beside the count order the list by recent activity or by the cache that goes
-cold first. On tmux, zellij and tern, these marks require the beacon hooks from
+cold first. On tmux, zellij and Tern, these marks require the beacon hooks from
 [step 3](#3-run-claude-code-in-a-pane).
 
 A green dot, and the green count at the top, mean a pane that finished and that nobody has looked at
@@ -144,8 +144,8 @@ changes.
 ## What you need
 
 - A Linux or macOS host with Claude Code installed.
-- A terminal multiplexer: Herdr, the Herdr core, tmux, zellij, tuios, tern or Rex (experimental). Herdr, tuios and Rex detect
-  agents directly. On tmux, zellij and tern, Collie uses beacon hooks, which require Linux.
+- A terminal multiplexer: Herdr, the Herdr core, tmux, zellij, tuios, Tern or Rex (experimental). Herdr, tuios and Rex detect
+  agents directly. On tmux, zellij and Tern, Collie uses beacon hooks, which require Linux.
 - Tailscale installed on the host and phone, with HTTPS enabled on your tailnet. For other setups,
   see [Deployment](deployment.md).
 - An iPhone or an Android phone.

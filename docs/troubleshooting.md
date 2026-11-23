@@ -197,7 +197,7 @@ run `collie hooks install claude`, then restart the Claude in that pane.
    started from a shell that another agent opened. Oh My Pi's hook stays silent when `OMPCODE=1` is
    inherited from the parent agent. Start it from a fresh terminal.
 
-On tmux, zellij, tern and Rex Claude Code reports a session through Collie's beacon hooks. Run
+On tmux, zellij, Tern and Rex Claude Code reports a session through Collie's beacon hooks. Run
 `collie hooks install claude` ([Collie writes hooks into Claude's own
 settings](multiplexers.md#collie-writes-hooks-into-claudes-own-settings)). On tmux, zellij and the
 Herdr core, pi and Oh My Pi need no hook: Collie finds their log from the pane's folder, and a fresh
@@ -387,7 +387,8 @@ the Claude in that pane. For pi and Oh My Pi, check the session directories in t
 the bridge does not inherit a pane's project-local profile. Set `COLLIE_PI_ROOT` to include those
 `sessions` directories and the defaults used by other panes, then restart that Collie instance
 ([Journal roots](configure.md#what-each-section-holds)). Two unnamed pi or Oh My Pi sessions in the
-same working directory are ambiguous; start each with its explicit session path or ID to resume it.
+same working directory are ambiguous; install the session-label extension (`pi-extension/README.md` or
+`omp-extension/README.md`), or start each with its explicit session path or ID to resume it.
 When a transcript is missing, the terminal view still offers Load older for retained screen history.
 
 **A dialog of a pi pane does not show on the phone.** On the core, a read of older lines can stall

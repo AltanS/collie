@@ -11,8 +11,9 @@
 // The shape it reads: a version's section groups its bullets under `### Added`, `### Changed`,
 // `### Fixed`, `### Packaging` and `### Docs`, and every bullet opens with a bold lead sentence
 // (`- **Lead sentence.** detail …`). The page lists the leads, one line per bullet, under the
-// group's name, and links the changelog for the detail. That is the whole reason the lead is
-// bold and short: it is the release page's own sentence, written once.
+// group's name, and links the changelog for the detail. The groups come in the order the section's
+// headings stand, so a patch may open with its fixes. That is the whole reason the lead is bold and
+// short: it is the release page's own sentence, written once.
 //
 // A lead keeps its credit. When the bullet's detail credits someone ("Thanks @x (#12).",
 // "Reported by @y (#34)."), the page line ends with that credit, so a reader sees who did what,
@@ -34,7 +35,8 @@ import { readFileSync } from "node:fs";
 
 import { isEdgeVersion, sectionVersion } from "./release-version.ts";
 
-/** The five group headings, in the order the release page prints them. */
+/** The five group headings the changelog may use. The release page prints the groups in the order a
+ *  section's own headings stand, not in this order (see `groupsOf`). */
 export const GROUPS = ["Added", "Changed", "Fixed", "Packaging", "Docs"] as const;
 
 export type GroupName = (typeof GROUPS)[number];
@@ -268,7 +270,11 @@ function groupsOf(lines: string[], where: string): Group[] {
 		current.credits.push(creditsOf(line));
 	}
 
-	groups.sort((a, b) => GROUPS.indexOf(a.name) - GROUPS.indexOf(b.name));
+	// THE SECTION'S OWN ORDER. A patch may open with its fixes: the page lists the groups as the
+	// headings stand. A group named twice keeps one block per heading, and the later block is pulled up
+	// beside the first one, so a repeat is never split by another group (the old fixed order did the same).
+	const firstSeen = (name: GroupName): number => groups.findIndex((group) => group.name === name);
+	groups.sort((a, b) => firstSeen(a.name) - firstSeen(b.name));
 	return groups;
 }
 

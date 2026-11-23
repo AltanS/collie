@@ -78,6 +78,8 @@ describe("moveProfile", () => {
 });
 
 describe("publishPass", () => {
+  // Every test here runs real git several times, and git is slow on the Windows runner (5 s was too short).
+  const GIT_TEST_MS = 30_000;
   const input = (repo: string, labRoot: string): PassInput => ({ repo, labRoot, harness: "claude", version: "2.1.301", date: "2026-10-16", log: "line one\nline two", evidence: "harness lab run" });
 
   test("one commit on its own branch in a scratch worktree, touching exactly two files, never pushing", () => {
@@ -102,7 +104,7 @@ describe("publishPass", () => {
     // The repo it branched from is untouched: still on main, still clean, still at the old version.
     expect(realGit(repo, ["status", "--porcelain"]).stdout.trim()).toBe("");
     expect(JSON.parse(readFileSync(join(repo, LEDGER_REL), "utf8")).agents.claude.version).not.toBe("2.1.301");
-  });
+  }, GIT_TEST_MS);
 
   test("a profile that already reaches the version: the commit moves the row alone and says so", () => {
     const repo = makeRepo();
@@ -120,7 +122,7 @@ describe("publishPass", () => {
     expect(files).toEqual([LEDGER_REL]);
     expect(realGit(done.worktree, ["log", "-1", "--format=%B"]).stdout).toContain("This commit moves one file: the verified-versions row.");
     expect(readFileSync(join(done.worktree, profileRel("claude")), "utf8")).toContain('"verifiedOn": "2026-10-14"');
-  });
+  }, GIT_TEST_MS);
 
   test("a pass that cannot commit leaves no branch and no worktree, so the next try is not refused", () => {
     const repo = makeRepo();
@@ -130,14 +132,14 @@ describe("publishPass", () => {
     expect(existsSync(join(labRoot, "worktrees", "claude-2.1.100"))).toBe(false);
     expect(realGit(repo, ["worktree", "list"]).stdout.trim().split("\n")).toHaveLength(1);
     expect(() => publishPass({ ...input(repo, labRoot), version: "2.1.100" })).toThrow(/older than verifiedThrough/);
-  });
+  }, GIT_TEST_MS);
 
   test("a second run on the same pair refuses and changes nothing", () => {
     const repo = makeRepo();
     const labRoot = temp();
     publishPass(input(repo, labRoot));
     expect(() => publishPass(input(repo, labRoot))).toThrow(/exists already/);
-  });
+  }, GIT_TEST_MS);
 
   test("a commit body longer than the cap is cut and says so", () => {
     const repo = makeRepo();
@@ -147,7 +149,7 @@ describe("publishPass", () => {
     const body = realGit(done.worktree, ["log", "-1", "--format=%B"]).stdout;
     expect(body).toContain("more lines in the run log");
     expect(body).not.toContain("line 299");
-  });
+  }, GIT_TEST_MS);
 });
 
 describe("the fail issue", () => {

@@ -20,6 +20,7 @@ import { memoryTrickReceipts, TrickReceiptStore } from "./receipts.ts";
 import { tricksTapRoute } from "./routes.ts";
 import { backoffAfter, BACKOFF_MS, LINK_LINE, NO_PROGRAM_LINE, SWITCH_MOVED, NOT_APPROVED_LINE, PENDING_LINE, PENDING_SETTLE_MS, RUNS_MAX, TAMPERED_LINE, RIGHTS_LINE, TAP_LOST_LINE, STALE_CARD_LINE, TAP_REFUSED_LINES, TricksService, WATCH_WINDOW_MS, type TricksServiceDeps, type TapAnswer } from "./service.ts";
 import { updateSwitches, withEntry, withSwitch, writeSwitches, type Switches } from "./switches.ts";
+import { tapQueued, until } from "./wait.rig.ts";
 
 const dirs: string[] = [];
 async function tempDir(): Promise<string> {
@@ -582,7 +583,7 @@ describe("the watched gate and the timer", () => {
     r.service.noteWatched();
     await r.service.refresh(true);
     const first = r.service.tick();
-    await Bun.sleep(20);
+    await until(() => r.specs.length === 1, "the first run");
     r.clock.t = T0 + 60_000;
     // A tick resolves when the run going is done, so it is not awaited before the release.
     const second = r.service.tick();
@@ -810,7 +811,7 @@ describe("taps", () => {
     };
     const r = await onRig([slow]);
     const a = r.service.tap(HOST, "legs", tapBody(r.rev));
-    await Bun.sleep(20);
+    await until(() => r.specs.length === 2, "the first tap's run");
     const b = r.service.tap(HOST, "legs", tapBody(r.rev));
     await Bun.sleep(20);
     release();
@@ -832,9 +833,9 @@ describe("taps", () => {
     r.clock.t = T0 + 30_000;
     r.service.noteWatched();
     const timer = r.service.tick();
-    await Bun.sleep(20);
+    await until(() => r.specs.length === 2, "the timer run");
     const queued = r.service.tap(HOST, "legs", tapBody(r.rev, REQ));
-    await Bun.sleep(20);
+    await until(() => tapQueued(r.service, "legs"), "the queued tap");
     const busy = await r.service.tap(HOST, "legs", tapBody(r.rev, REQ2));
     expect(ok200(busy).code).toBe("rejected");
     expect(ok200(busy).message).toContain("busy");
@@ -860,10 +861,10 @@ describe("taps", () => {
     r.clock.t = T0 + 30_000;
     r.service.noteWatched();
     const timer = r.service.tick();
-    await Bun.sleep(20);
+    await until(() => r.specs.length === 2, "the timer run");
     // Checked against the part as it was drawn when it queued: it passes, and waits for the slot.
     const queued = r.service.tap(HOST, "legs", tapBody(r.rev, REQ));
-    await Bun.sleep(20);
+    await until(() => tapQueued(r.service, "legs"), "the queued tap");
     release();
     await timer;
     const reply = ok200(await queued);
@@ -1482,7 +1483,7 @@ describe("taps, answers and slots", () => {
     await r.service.refresh(true);
     r.service.noteWatched();
     const timer = r.service.tick();
-    await Bun.sleep(20);
+    await until(() => g.running() === 1, "the timer run");
     const answers = [REQ, REQ2, REQ3].map((rid, i) => r.service.tapFromHill(HOST, "legs", { rid, node: "hill/a", intent: "rerun", value: { text: String(i) } }, "dc_x"));
     await Bun.sleep(20);
     expect(g.running()).toBe(1);
@@ -1503,7 +1504,7 @@ describe("taps, answers and slots", () => {
     r.service.noteWatched();
     await r.service.refresh(true);
     const tick = r.service.tick();
-    await Bun.sleep(30);
+    await until(() => g.running() === RUNS_MAX, "four programs");
     expect(g.running()).toBe(RUNS_MAX);
     expect(r.service.runsHeld()).toBe(RUNS_MAX);
     g.releaseAll();
@@ -1527,9 +1528,9 @@ describe("taps, answers and slots", () => {
     r.clock.t = T0 + 30_000;
     r.service.noteWatched();
     const timer = r.service.tick();
-    await Bun.sleep(20);
+    await until(() => r.specs.length === 2, "the timer run");
     const queued = beltTap(r, REQ);
-    await Bun.sleep(10);
+    await until(() => tapQueued(r.service, "legs"), "the queued tap");
     await writeSwitches(r.stateDir, { on: new Map() });
     await r.service.refresh(true);
     release();
@@ -3432,14 +3433,14 @@ describe("changes show at once: the start run goes right after the event, not at
     r.service.noteWatched();
     await r.service.refresh(true);
     const timerRun = r.service.tick();
-    await Bun.sleep(20);
+    await until(() => specs.length === 2, "the timer run");
     expect(specs.length).toBe(2);
     expect(await r.service.approvePending("legs", v2, "phone")).toMatchObject({ ok: true });
     // The yes started nothing next to the run that goes.
     expect(specs.length).toBe(2);
     gate.resolve();
     await timerRun;
-    await Bun.sleep(20);
+    await until(() => specs.length === 3, "the new code's run");
     await r.service.idle();
     expect(specs.length).toBe(3);
     expect(peak).toBe(1);
@@ -3505,14 +3506,14 @@ describe("changes show at once: the start run goes right after the event, not at
     r.service.noteWatched();
     await r.service.refresh(true);
     const timerRun = r.service.tick();
-    await Bun.sleep(20);
+    await until(() => seen.length === 2, "the timer run");
     expect(seen).toEqual(["a = 1\n", "a = 1\n"]);
     await writeFile(join(dir, "config.toml"), "a = 2\n");
     await r.service.refresh(true);
     expect(seen.length).toBe(2);
     gate.resolve();
     await timerRun;
-    await Bun.sleep(20);
+    await until(() => seen.length === 3, "the run with the new settings");
     await r.service.idle();
     expect(seen).toEqual(["a = 1\n", "a = 1\n", "a = 2\n"]);
     expect(JSON.stringify((await r.service.reply(undefined)).parts)).toContain("a = 2");
@@ -3536,7 +3537,8 @@ describe("changes show at once: the start run goes right after the event, not at
     expect(r.specs.length).toBe(0);
     on = true;
     for (const listener of listeners) listener(true);
-    await Bun.sleep(50);
+    // The listener's scan runs in the background; no tick comes, so only that scan can start the run.
+    await until(() => r.specs.length > 0, "the start run after the switch");
     await r.service.idle();
     expect(r.specs.length).toBe(1);
     expect(factsOf(r.specs[0]).trigger).toEqual({ kind: "start" });

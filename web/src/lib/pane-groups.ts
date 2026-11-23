@@ -18,9 +18,10 @@
 //
 // NOTHING HERE READS STATUS (ADR 0063). The machine order used to be the order a machine's first
 // pane arrived in, and the bridge sent panes status-first, so a peer whose pane blocked had its
-// whole block of groups jump above the lead's. Inside a group, "fixed" orders tabs by number and
-// panes by their position in the tab; "bridge" keeps the arrival order, which is now place order.
-// A row never moves because a pane changed state.
+// whole block of groups jump above the lead's. Inside a group, "fixed" orders tabs by their place in
+// the multiplexer's tab list (not by `number`: Herdr keeps a moved tab's number) and panes by their
+// position in the tab; "bridge" keeps the arrival order, which is now place order. A row never moves
+// because a pane changed state.
 //
 // ── SHELLS SIT WITH THEIR TAB ────────────────────────────────────────────────
 // A bare shell is a pane of the tab it is in, so it lands after that tab's agents rather than in a
@@ -36,12 +37,13 @@ import type { AgentView, ServerSummary, SessionSummary, TabView, WorkspaceView }
 /**
  * How the rows inside a group run.
  *   "bridge"  the order the lists arrived in (the bridge's place order);
- *   "fixed"   the multiplexer's own, recomputed here: tabs by their number, panes by their position
- *             in the tab, so no arrival order can move a row (agent-list.tsx, agent-sidebar.tsx).
+ *   "fixed"   the multiplexer's own, recomputed here: tabs by their place in the `tabs` list (the
+ *             order the multiplexer gives, which a moved tab changes and its number does not), panes
+ *             by their position in the tab, so no arrival order can move a row (agent-list.tsx, agent-sidebar.tsx).
  */
 export interface GroupOptions {
   order?: "bridge" | "fixed";
-  /** The raw tab list, for the tab numbers "fixed" runs by. A tab not in it sorts after the known ones. */
+  /** The raw tab list, in the multiplexer's order, for the tab ranks "fixed" runs by. A tab not in it sorts after the known ones. */
   tabs?: readonly TabView[] | undefined;
   /**
    * The snapshot's machine list, for the order machines run in: this list's own, the lead first.
@@ -201,11 +203,21 @@ export function groupPanesByWorkspace(
   shellPanes: readonly AgentView[] = [],
   { order = "bridge", tabs, servers, workspaces, scope, sessions }: GroupOptions = {},
 ): WorkspaceGroup[] {
-  // A tab's own number, host-qualified the way panePlaceParts matches (an id is unique per machine).
-  const tabNumber = (pane: AgentView): number => {
-    const known = tabs?.find((tv) => tv.tabId === pane.tabId && (tv.host === undefined || tv.host === pane.host));
-    return known?.number ?? Number.MAX_SAFE_INTEGER;
-  };
+  // A tab's RANK: its index in the `tabs` list the bridge sends, which is the multiplexer's own order (Herdr
+  // keeps a tab's creation `number` when a person moves it, so the number is not the order a person sees).
+  // The list is read once per call. Host-qualified the way panePlaceParts matches (an id is unique per
+  // machine): a crew's list holds each machine's tabs in that machine's order, and a space's tabs all come
+  // from one machine, so the index orders them right inside a space. A tab not in the list ranks after
+  // the known ones.
+  const tabRanks = new Map<string, { host: string | undefined; rank: number }[]>();
+  tabs?.forEach((tv, rank) => {
+    const entries = tabRanks.get(tv.tabId);
+    if (entries === undefined) tabRanks.set(tv.tabId, [{ host: tv.host, rank }]);
+    else entries.push({ host: tv.host, rank });
+  });
+  const unknownTabRank = tabs?.length ?? 0;
+  const tabRank = (pane: AgentView): number =>
+    tabRanks.get(pane.tabId)?.find((e) => e.host === undefined || e.host === pane.host)?.rank ?? unknownTabRank;
   // Issue #587: map each linked git worktree to the open workspace holding its repo root on the same
   // machine, using the same `repoRoot` + `isWorktree` predicate `nestWorktrees` and `isolateSpaces`
   // use (lib/spaces.ts). An orphan worktree whose repo is not open has no entry here and stays its
@@ -301,7 +313,7 @@ export function groupPanesByWorkspace(
       tab = {
         worktreeRank: parent !== undefined && pane.workspaceId !== parent.workspaceId ? 1 : 0,
         spaceOrder: order === "fixed" ? pane.workspaceNumber * 1e6 + spaceSeq : spaceSeq,
-        seq: order === "fixed" ? tabNumber(pane) * 1e6 + tabSeq++ : tabSeq++,
+        seq: order === "fixed" ? tabRank(pane) * 1e6 + tabSeq++ : tabSeq++,
         agents: [],
         shells: [],
       };
