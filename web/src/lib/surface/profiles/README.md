@@ -47,6 +47,7 @@ need a rule to be read right.
 
 ## Rows under the box
 
+- `idle.frame.bottomWraps` says how many more rows the status row that is the bottom edge may wrap onto on a narrow pane (Codex: 1). When the row over the lowest edge-shaped row has the edge's shape too, and the upper row is full where the lower one goes on, the box is tried one row up. The rows under the edge are then status rows. A run of edge-shaped rows past the bound, or an upper row with room for the lower row's first word, finds no box. The edges walk only, with a bottom edge that is not a blank row; at most 2.
 - `idle.volatile.below.hints` lists the rows under the box that the harness hides or swaps while the box holds text. The Send Protocol leaves them out of its count of rows under the box.
 - `idle.volatile.below.losesText: true` says a hint row may lose words when the box gets its first character, and keep the rest (Codex hides `? for shortcuts` and keeps a notice after it). A later row under the box then counts as that hint row when its words are the hint row's words with some left out, in the same order, at least one kept. Each hint row stands for at most one later row. A row with a word added or changed, and a row that no hint row of the first read gives, still count. The field needs `hints` and may only be `true`.
 

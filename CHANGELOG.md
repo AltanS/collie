@@ -37,6 +37,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 - **Cancel on a waiting message never drops its text.** When you cancel a message that Collie held for later and the message box already holds other text, that text stays, and the cancelled message waits on the Put back notice above the box. Before, Collie put the cancelled text back only into an empty box and lost it otherwise.
 - **The Dashboard's Place order follows a tab you moved in Herdr.** When you move a tab to another place in Herdr, the Dashboard now lists its rows at the new place, as the pane strip and Herdr do. It kept the order the tabs were created in. Thanks @stankolubomir (#850).
+- **A narrow Codex pane takes your messages.** In a narrow terminal, about 56 columns wide, Codex wraps the status row under its input box onto two rows. Collie then found no input box, showed the card "Collie cannot read this dialog" over a pane that was only working or waiting, and refused a message sent to it. Collie now reads the box with its wrapped status row, so the card is gone and the message goes in. Thanks @hump-back (#838).
 
 ## [1.30.1] - 2026-11-22
 
