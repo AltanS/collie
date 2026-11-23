@@ -3861,10 +3861,18 @@ export interface ParsedTrickDocument {
 
 /** Every top-level key of a trick document. */
 export const DOCUMENT_KEYS = ["v", "parts", "asOf", "fresh", "asks"] as const;
+/** The two halves of the one sentence about the old document key `decisions` (ADR 0179), shared by its two notes. */
+const OLD_ASKS_KEY_NOW = '"decisions" is "asks" now (ADR 0179)';
+const HELPER_FIX = "Update the helper with: collie trick helper <id>.";
+/**
+ * The note for an old key `decisions` that lists asks: a `dropped` note, so the trick's row says it (the asks
+ * are not shown). The `<id>` stays literal here; the bridge puts the trick's own id in its place.
+ */
+export const OLD_ASKS_LISTED_LINE = `${OLD_ASKS_KEY_NOW}, so the asks listed under it are not shown. ${HELPER_FIX}`;
 /** Top-level keys of the first schema, refused with what replaced them. */
 const REMOVED_DOCUMENT_KEYS = {
   draft: '"draft" is gone as a key of the document. A button with "does": "draft" puts its "value" into the reply box of the session the page is open for, and the person sends it. Or post an ask with "replyTo", and the person\'s answer reaches the session as their own message.',
-  decisions: '"decisions" is "asks" now (ADR 0179). Update the helper with: collie trick helper <id>.',
+  decisions: `${OLD_ASKS_KEY_NOW}. ${HELPER_FIX}`,
   open: '"open" is gone: a tap moves nothing on the phone. Draw a "link", or a "row" with "href".',
 } as const satisfies Readonly<Record<string, string>>;
 
@@ -3907,7 +3915,12 @@ export function parseTrickDocument(raw: JsonValue | undefined, opts: ParseTrickD
   const refusals: Refusal[] = [];
   const notes: Refusal[] = [];
   const top = new Fields(obj, "", refusals, "a trick document", notes);
-  top.keys(DOCUMENT_KEYS, (key) => {
+  // The old key `decisions` with asks in it is not ignored quietly: one `dropped` note, which the row shows.
+  // An empty list, or a value that is no list, loses nothing and stays an `ignored` note (check and dev only).
+  // The old key's content is never read as asks.
+  const oldAsksListed = Array.isArray(obj.decisions) && obj.decisions.length > 0;
+  if (oldAsksListed) notes.push({ code: "dropped", path: pointer("", "decisions"), reason: OLD_ASKS_LISTED_LINE });
+  top.keys(oldAsksListed ? [...DOCUMENT_KEYS, "decisions"] : DOCUMENT_KEYS, (key) => {
     const removed = reasonOf(REMOVED_DOCUMENT_KEYS, key);
     return removed === undefined ? undefined : { code: "removed", reason: removed };
   });

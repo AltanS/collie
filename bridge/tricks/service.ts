@@ -22,6 +22,7 @@ import {
   type TricksRunsOn,
   type FactsSession,
   partKey,
+  OLD_ASKS_LISTED_LINE,
   type ParsedTrickDocument,
   type Refusal,
   TAP_REFUSED_LINES,
@@ -670,6 +671,12 @@ interface TrickRuntime {
 interface Receipt {
   digest: string;
   reply: TrickTapReply;
+}
+
+/** The note of an old `decisions` key with asks in it, with the trick's id in the command; any other note as it is. */
+function withTrickId(note: Refusal, id: string): Refusal {
+  if (note.reason !== OLD_ASKS_LISTED_LINE) return note;
+  return { ...note, reason: note.reason.replaceAll("<id>", id) };
 }
 
 /**
@@ -2362,8 +2369,9 @@ export class TricksService implements TricksSurface {
     // An absent `decisions` key leaves the trick's Decisions as they were, so it leaves this as it was too.
     if (!listRefused && decisionsListed) rt.decides = parsed.decisions.length > 0;
     // What the tolerant read left out (a node kind or a place this Collie does not draw) is one note on
-    // the trick's row; an ignored key is for `collie trick check` and `dev` only.
-    const dropped = [...parsed.notes.filter((note) => note.code === "dropped"), ...binding.notes];
+    // the trick's row; an ignored key is for `collie trick check` and `dev` only. The old key `decisions` with asks
+    // in it is one `dropped` note of the parser (those asks are not shown); its `<id>` becomes this trick's id.
+    const dropped = [...parsed.notes.filter((note) => note.code === "dropped").map((note) => withTrickId(note, id)), ...binding.notes];
     this.succeeded(rt, startedAt, [...parsed.refusals, ...dropped, ...posted]);
     this.publish(id);
     const mine = this.store.trickParts(host, id, revBefore);
