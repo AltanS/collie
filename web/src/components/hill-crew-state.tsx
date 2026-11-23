@@ -17,6 +17,12 @@ import { cn } from "@/lib/utils";
 // the cards below glide rather than jump. This file draws; the route hands it the hook's values
 // (hooks/use-hill-crew-state.ts), and the playground fixed ones.
 
+// The pointer on a segment that is not chosen (Asks build 5, 2026-11-23): the house hover, `--state-hover`, and the full ink the
+// pressed state already takes. The chosen segment keeps its look, a segment of a disabled row gets nothing, and a phone, which
+// has no hover, looks as before (Tailwind waits for `(hover: hover)`). It stands here and not in `Segmented`, so no other
+// segmented control of the app changes. Colour only: the border and the box stay.
+const SEGMENT_HOVER = "[&>button[aria-checked=false]:enabled]:hover:bg-(--state-hover) [&>button[aria-checked=false]:enabled]:hover:text-foreground";
+
 const LABEL = {
   here: "hill.state.here",
   quiet: "hill.state.quiet",
@@ -77,6 +83,7 @@ export function HillCrewStateBar({ value, saved, told, setBy, canWrite, busy, fa
         value={value}
         onChange={onChange}
         disabled={!canWrite || busy}
+        className={SEGMENT_HOVER}
         options={HILL_CREW_STATES.map((state) => ({ value: state, label: t(LABEL[state]) }))}
       />
       <p data-slot="hill-crew-state-help" className="pt-2 text-xs text-muted-foreground">
