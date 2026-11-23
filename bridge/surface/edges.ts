@@ -6,7 +6,8 @@
 // `TMUX_PANE`, `ZELLIJ_PANE_ID`, with the scope of each). Each terminal session's adapter has a beacon
 // matcher; exactly one pane across all sessions must match. The pid must still be the process that
 // wrote the edge (its start time), and where the multiplexer reports the pane's foreground pids, the
-// pid must be one of them. An edge that fails any of these is logged and dropped.
+// pid must be one of them. An edge that fails any of these is logged and dropped (one that only waits for
+// a trailing foreground is held first, see below).
 //
 // What an edge does is the fold's business (web/src/lib/surface/fold.ts): it marks the read stale and
 // asks for a fresh read about 700 ms later, it may say "a turn runs" or "a modal is up", and a prompt
@@ -18,6 +19,18 @@
 // so a restarted bridge reads a hooked pane as live at once, before its agent's next event: each saved
 // source is placed again like an edge (its markers, its pid and start time), and one whose pid is gone
 // is dropped.
+//
+// A FOREGROUND THAT TRAILS (2026-11-24). Where the multiplexer answers the pane's foreground from its last
+// snapshot rather than a live read, an agent typed into the pane's shell runs its first hook before that
+// snapshot names it, so the edge reads `not-foreground` though the process is the pane's. A target that says
+// its foreground may trail ({@link EdgeTarget.foregroundLagMs}) gets such an edge HELD, not dropped: the
+// router places it again on each take, and applies it, with the time it was first taken, as soon as the
+// foreground names its pid. Order per process is kept: while one edge of a process waits, every later edge of
+// that process queues behind it, and edges of other processes go on at once. One that is still not the
+// foreground after the bound is dropped as before, with the same line, and that process is never held again,
+// so a second agent process that is truly not the pane's (a nested run from the agent's own shell) stays
+// dropped. Held edges are capped ({@link HELD_EDGES_MAX}) and live in memory only: a restart forgets them.
+// A target that says nothing drops at once, as it always did.
 //
 // THE START'S MODEL. A start edge may name the model the session starts on (`EdgeRecord.model`). The
 // router keeps it on the pane's hook source, carries it over the later edges of the same pid, and drops
@@ -70,6 +83,10 @@ export const HOOK_LIVENESS_MS = 2000;
 const DROP_LOG_REPEAT_MS = 60_000;
 /** The journal tag of a placed edge. `journalctl ... | grep surface.edge` reads them. */
 export const EDGE_TAG = "surface.edge";
+/** At most this many edges wait for a trailing foreground, over every process. A later one is dropped. */
+export const HELD_EDGES_MAX = 64;
+/** At most this many processes are remembered as "held once, never the foreground"; then the list starts over. */
+const GAVE_UP_MAX = 256;
 
 export type DropReason = "unparsed" | "old" | "foreign-mux" | "no-pane" | "ambiguous" | "dead-pid" | "not-foreground";
 
@@ -81,6 +98,12 @@ export interface EdgeTarget {
   paneIds(): readonly string[];
   /** The pane's foreground processes, when the multiplexer reports them. */
   readonly foreground?: (paneId: string) => Promise<MuxOutcome<readonly ForegroundProcess[]>>;
+  /**
+   * How long {@link foreground} may trail the process that took the pane, in ms: a read from the last
+   * snapshot rather than a live one. An edge whose pid it does not name yet is held that long (see the
+   * header). Absent or 0: the read is live, and such an edge is dropped at once.
+   */
+  readonly foregroundLagMs?: number;
   /** Hand a placed edge to the pane's Surface and Send Protocol. Never throws to the router. */
   deliver(paneId: string, edge: PlacedEdge): void;
 }
@@ -307,12 +330,29 @@ function keyOf(session: string, paneId: string): string {
   return `${session}\u0000${paneId}`;
 }
 
+/** One process, by its pid and start time: the key edges of one process are held under. */
+function processKeyOf(record: EdgeRecord): string {
+  return `${String(record.pid)}:${String(record.pidStartTime)}`;
+}
+
+/** The edges of one process that wait for the pane's foreground to name it, oldest first. */
+interface HeldQueue {
+  /** Until when the oldest may still wait, on the router's clock. */
+  readonly until: number;
+  /** Each edge with the time the router first took it. */
+  readonly edges: { readonly record: EdgeRecord; readonly at: number }[];
+}
+
 /** Takes the spool, places each edge, and keeps the live hook source of each pane. */
 export class EdgeRouter {
   private readonly sources = new Map<string, HookSource>();
   private readonly dropLogged = new Map<string, number>();
   /** The agent session of a source an end edge closed, by pane, until the next edge of that pane. */
   private readonly ended = new Map<string, Pick<HookSource, "pid" | "pidStartTime" | "agentSession">>();
+  /** Edges held for a trailing foreground, by process ({@link processKeyOf}). */
+  private readonly held = new Map<string, HeldQueue>();
+  /** Processes held once that never became the foreground in time: never held again. */
+  private readonly gaveUp = new Set<string>();
   private timer: ReturnType<typeof setInterval> | null = null;
   private taking = false;
   private lastLiveness = Number.NEGATIVE_INFINITY;
@@ -359,7 +399,8 @@ export class EdgeRouter {
     try {
       const texts = await this.deps.spool.take().catch(() => []);
       if (this.seeds.length > 0) await this.seed();
-      const targets = texts.length === 0 ? [] : this.deps.targets();
+      const targets = texts.length === 0 && this.held.size === 0 ? [] : this.deps.targets();
+      if (this.held.size > 0) await this.placeHeld(targets);
       for (const text of texts) await this.route(text, targets);
       await this.checkLiveness();
     } catch (err) {
@@ -374,11 +415,82 @@ export class EdgeRouter {
     if (record === null) return this.drop(null, "unparsed");
     const now = this.now();
     if (now - record.at > EDGE_MAX_AGE_MS) return this.drop(record, "old");
+    const queue = this.held.get(processKeyOf(record));
+    if (queue !== undefined) return this.holdBehind(queue, record, now);
     const placement = await placeEdge(record, targets, this.deps.liveness);
     if (placement.kind === "dropped") {
-      if (placement.pane !== undefined) this.foreign(placement.pane, record);
-      return this.drop(record, placement.reason);
+      if (this.hold(record, placement, targets, now)) return;
+      return this.refuse(record, placement);
     }
+    this.apply(record, placement, now, null);
+  }
+
+  /** A dropped placement: the foreign note for a `not-foreground` one, then the drop. */
+  private refuse(record: EdgeRecord, placement: Extract<Placement, { kind: "dropped" }>): void {
+    if (placement.pane !== undefined) this.foreign(placement.pane, record);
+    this.drop(record, placement.reason);
+  }
+
+  /** The number of edges held now, over every process. */
+  private heldCount(): number {
+    let count = 0;
+    for (const queue of this.held.values()) count += queue.edges.length;
+    return count;
+  }
+
+  /**
+   * Hold a `not-foreground` edge when its pane's target says the foreground may trail, the process was
+   * not held once in vain before, and the cap has room. True when held.
+   */
+  private hold(record: EdgeRecord, placement: Extract<Placement, { kind: "dropped" }>, targets: readonly EdgeTarget[], now: number): boolean {
+    if (placement.reason !== "not-foreground" || placement.pane === undefined) return false;
+    const session = placement.pane.session;
+    const lag = targets.find((target) => target.session === session)?.foregroundLagMs ?? 0;
+    if (lag <= 0) return false;
+    const key = processKeyOf(record);
+    if (this.gaveUp.has(key) || this.heldCount() >= HELD_EDGES_MAX) return false;
+    this.held.set(key, { until: now + lag, edges: [{ record, at: now }] });
+    return true;
+  }
+
+  /** A later edge of a process that has one waiting queues behind it, so its order holds. A full cap drops it. */
+  private holdBehind(queue: HeldQueue, record: EdgeRecord, now: number): void {
+    if (this.heldCount() >= HELD_EDGES_MAX) return this.drop(record, "not-foreground");
+    queue.edges.push({ record, at: now });
+  }
+
+  /**
+   * Place the held edges again, each process oldest first. A placed one is applied with the time it was
+   * first taken, and the next of that process is tried at once. One still not the foreground waits while
+   * its bound runs, and the rest of its process with it. After the bound each is dropped as before, and
+   * the process is never held again.
+   */
+  private async placeHeld(targets: readonly EdgeTarget[]): Promise<void> {
+    for (const [key, queue] of this.held) {
+      const now = this.now();
+      while (queue.edges.length > 0) {
+        const head = queue.edges[0]!;
+        const placement = await placeEdge(head.record, targets, this.deps.liveness);
+        if (placement.kind === "dropped" && placement.reason === "not-foreground" && now < queue.until) break;
+        queue.edges.shift();
+        if (placement.kind === "placed") {
+          this.apply(head.record, placement, head.at, now - head.at);
+          continue;
+        }
+        if (placement.reason === "not-foreground") this.giveUp(key);
+        this.refuse(head.record, placement);
+      }
+      if (queue.edges.length === 0) this.held.delete(key);
+    }
+  }
+
+  private giveUp(key: string): void {
+    if (this.gaveUp.size >= GAVE_UP_MAX) this.gaveUp.clear();
+    this.gaveUp.add(key);
+  }
+
+  /** Apply one placed edge: the pane's hook source, the journal line, the delivery. `heldMs`: how long it waited. */
+  private apply(record: EdgeRecord, placement: Extract<Placement, { kind: "placed" }>, at: number, heldMs: number | null): void {
     const kind = kindOfEdge(record);
     const key = keyOf(placement.target.session, placement.paneId);
     if (kind === "end") {
@@ -402,9 +514,10 @@ export class EdgeRouter {
         `pane=${placement.paneId}`,
         `prompt=${record.promptHash === null ? "-" : "hashed"}`,
         ...(record.model === undefined ? [] : [`model=${record.model}`]),
+        ...(heldMs === null ? [] : [`held=${String(heldMs)}ms`]),
       ].join(" "),
     );
-    this.deliver(placement.target, placement.paneId, { kind, record, at: now });
+    this.deliver(placement.target, placement.paneId, { kind, record, at });
   }
 
   /**

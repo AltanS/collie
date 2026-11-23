@@ -78,6 +78,13 @@ export interface MuxAdapterFactory {
    */
   beaconMatcher?(target: MuxTarget): BeaconMatcher;
   /**
+   * How long the adapter's `foregroundProcesses` may trail the process that took a pane, in ms, when it
+   * answers from its last snapshot rather than a live read. The hook edges (bridge/surface/edges.ts) hold
+   * an edge whose pid that read does not name yet for this long, instead of dropping it. Absent: the read
+   * is live (Herdr's `pane.process_info`), and such an edge is dropped at once.
+   */
+  readonly foregroundLagMs?: number;
+  /**
    * How this adapter names the multiplexer an endpoint addresses, in ITS own words — a tmux server,
    * a zellij session, a Herdr socket. One short phrase, for {@link describeMux}.
    *
