@@ -20,7 +20,7 @@ import { spaceOf } from "../bridge/walky/space.ts";
 import type { JsonObject } from "../bridge/json.ts";
 import { parseJsonObject } from "../web/src/lib/json.ts";
 import { HILL_ASK_CLEARED } from "../web/src/lib/hill/wire.ts";
-import { cmdWalkyAsk } from "./ask.ts";
+import { cmdAskCancel, cmdWalkyAsk } from "./ask.ts";
 import { ASKS_LIMIT_MS, asksOfPayload, cmdBeaconAsks, fullReminder, shortReminder, shownQuestion, socketAsk, type BeaconAsksDeps } from "./beacon-asks.ts";
 import { promptHashOf } from "./beacon.ts";
 import { capture, context, fakeFiles } from "./fakes.ts";
@@ -203,8 +203,18 @@ describe("what it prints", () => {
     const two = [...LIST.asks, { id: "ak_bbbbbbbbbbbb", title: "Which disk?" }];
     const f = fake({ answers: { "/s/one": JSON.stringify({ ok: true, remind: "short", asks: two }) } });
     await cmdBeaconAsks(f.deps);
-    expect(JSON.parse(f.printed[0]!).hookSpecificOutput.additionalContext).toBe("Collie: asks ak_aaaaaaaaaaaa, ak_bbbbbbbbbbbb are still open. Close what this turn settles.");
-    expect(shortReminder(LIST.asks)).toBe("Collie: ask ak_aaaaaaaaaaaa is still open. Close what this turn settles.");
+    expect(JSON.parse(f.printed[0]!).hookSpecificOutput.additionalContext).toBe("Collie: open asks ak_aaaaaaaaaaaa, ak_bbbbbbbbbbbb.");
+    expect(shortReminder(LIST.asks)).toBe("Collie: open ask ak_aaaaaaaaaaaa.");
+  });
+
+  test("shortReminder: one id, two ids, five ids; six given, five listed", () => {
+    const ask = (n: number) => ({ id: `ak_aaaaaaaaaaa${String(n)}`, title: "x?" });
+    const six = [1, 2, 3, 4, 5, 6].map(ask);
+    expect(shortReminder(six.slice(0, 1))).toBe("Collie: open ask ak_aaaaaaaaaaa1.");
+    expect(shortReminder(six.slice(0, 2))).toBe("Collie: open asks ak_aaaaaaaaaaa1, ak_aaaaaaaaaaa2.");
+    const five = "Collie: open asks ak_aaaaaaaaaaa1, ak_aaaaaaaaaaa2, ak_aaaaaaaaaaa3, ak_aaaaaaaaaaa4, ak_aaaaaaaaaaa5.";
+    expect(shortReminder(six.slice(0, 5))).toBe(five);
+    expect(shortReminder(six)).toBe(five);
   });
 
   test("the prompt goes as its hash only, salted with each bridge's own salt; never the prompt text", async () => {
@@ -260,10 +270,52 @@ describe("what it prints", () => {
 
   test("the question is cleaned and cut; five asks stay small", () => {
     expect(shownQuestion('Ship\u0007 it\n\u001b[31mnow "today"?')).toBe("Ship it [31mnow 'today'?");
-    expect([...shownQuestion(`${"x".repeat(120)}?`)]).toHaveLength(90);
-    const five = [1, 2, 3, 4, 5].map((n) => ({ id: `ak_aaaaaaaaaaa${String(n)}`, title: `${"x".repeat(88)}?` }));
-    expect(Buffer.byteLength(fullReminder(five, BIN))).toBeLessThan(1000);
+    expect([...shownQuestion(`${"x".repeat(120)}?`)]).toHaveLength(60);
+    const five = [1, 2, 3, 4, 5].map((n) => ({ id: `ak_aaaaaaaaaaa${String(n)}`, title: `${"x".repeat(58)}?` }));
     expect(fullReminder([...five, ...five], BIN).split("\n").filter((line) => line.startsWith("  ak_"))).toHaveLength(5);
+  });
+
+  test("shownQuestion: 60 code points stay, 61 are cut to 59 and an ellipsis", () => {
+    expect(shownQuestion("x".repeat(60))).toBe("x".repeat(60));
+    expect(shownQuestion("x".repeat(61))).toBe(`${"x".repeat(59)}…`);
+    expect([...shownQuestion("x".repeat(61))]).toHaveLength(60);
+  });
+
+  test("shownQuestion: a cut never splits a surrogate pair or a combined emoji", () => {
+    // 59 letters then an astral character at the cut: the pair is dropped whole, never half of it.
+    const pair = shownQuestion(`${"x".repeat(59)}\u{1F600}${"y".repeat(5)}`);
+    expect(pair).toBe(`${"x".repeat(59)}…`);
+    expect(pair).not.toMatch(/[\ud800-\udfff]/u);
+    // An astral character that ends exactly at 59 code points stays whole.
+    const kept = shownQuestion(`${"x".repeat(58)}\u{1F600}${"y".repeat(5)}`);
+    expect(kept).toBe(`${"x".repeat(58)}\u{1F600}…`);
+    // A combined emoji (a family: several code points joined) is cut between code points, each one whole.
+    const family = "\u{1F468}\u200d\u{1F469}\u200d\u{1F467}";
+    const cut = shownQuestion(`${"x".repeat(57)}${family}${"y".repeat(5)}`);
+    expect(cut).not.toMatch(/[\ud800-\udfff]/u);
+    expect([...cut]).toHaveLength(60);
+    expect(cut.endsWith("…")).toBe(true);
+  });
+
+  test("shownQuestion: control characters and quotes at the cut", () => {
+    expect(shownQuestion(`${"x".repeat(56)}\n\n\u0007"q"${"y".repeat(10)}`)).toBe(`${"x".repeat(56)} 'q…`);
+    expect(shownQuestion('"a"\tb\u202ec')).toBe("'a' b c");
+  });
+
+  test("fullReminder: the exact text for one ask and for five; five stay under 1,000 bytes", () => {
+    expect(fullReminder(LIST.asks, BIN)).toBe(FULL_TEXT);
+    const long = "x".repeat(59);
+    const five = [1, 2, 3, 4, 5].map((n) => ({ id: `ak_aaaaaaaaaaa${String(n)}`, title: `${long}y?` }));
+    const path = `/${"p".repeat(59)}`;
+    const text = fullReminder(five, path);
+    expect(text.split("\n")).toEqual([
+      "Collie: your open asks.",
+      ...[1, 2, 3, 4, 5].map((n) => `  ak_aaaaaaaaaaa${String(n)} "${long}…"`),
+      "If this message or your work settles one, close it with your next command:",
+      `  ${path} walky cancel <id>... --answered   (or --because "<reason>", or ask --replaces <id>)`,
+      "Still true: do nothing.",
+    ]);
+    expect(Buffer.byteLength(text)).toBeLessThan(1000);
   });
 });
 
@@ -380,7 +432,7 @@ describe("the whole round over the socket", () => {
     clock.now += 10_000;
     const second: string[] = [];
     await cmdBeaconAsks(hookDeps(b, { ...PROMPT, prompt: "and then?" }, second, clock));
-    expect(contextOf(second[0]!)).toBe("Collie: asks ak_rmnd00000001, ak_rmnd00000002 are still open. Close what this turn settles.");
+    expect(contextOf(second[0]!)).toBe("Collie: open asks ak_rmnd00000001, ak_rmnd00000002.");
 
     const compact: string[] = [];
     await cmdBeaconAsks(hookDeps(b, START("compact"), compact, clock));
@@ -391,6 +443,21 @@ describe("the whole round over the socket", () => {
     expect(cleared).toEqual([]);
     expect(b.hill.list().open).toEqual([]);
     for (const id of ["ak_rmnd00000001", "ak_rmnd00000002"]) expect(b.hill.list().closed.find((decision) => decision.id === id)).toMatchObject({ state: "withdrawn", closedReason: HILL_ASK_CLEARED });
+  });
+
+  socketTest("a closed ask: two asks, full; one is taken back; the next prompt is short with the one id", async () => {
+    const clock = { now: 1_000_000 };
+    const b = await bridge(clock);
+    for (const n of [1, 2]) expect(await cmdWalkyAsk(cliDeps(b.socket, clock), ASK(n))).toBe(EXIT.OK);
+    clock.now += 60_000;
+    const first: string[] = [];
+    await cmdBeaconAsks(hookDeps(b, PROMPT, first, clock));
+    expect(contextOf(first[0]!)).toContain("Collie: your open asks.");
+    expect(await cmdAskCancel(cliDeps(b.socket, clock), ["ak_rmnd00000002", "--answered"])).toBe(EXIT.OK);
+    clock.now += 10_000;
+    const second: string[] = [];
+    await cmdBeaconAsks(hookDeps(b, { ...PROMPT, prompt: "next" }, second, clock));
+    expect(contextOf(second[0]!)).toBe("Collie: open ask ak_rmnd00000001.");
   });
 
   socketTest("a stopped bridge: silent, exit 0, within the limit", async () => {

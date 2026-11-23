@@ -63,13 +63,24 @@ describe("ask.remind for a prompt", () => {
     expect(prompt(r)).toEqual({ kind: "none" });
   });
 
-  test("the same set again is the short form; a changed set is full again", () => {
+  test("the same set again is the short form; a new ask makes it full once, then short again", () => {
     const r = rig();
     const a = post(r, 1);
     expect(prompt(r, "h1")).toMatchObject({ kind: "list", form: "full" });
     expect(prompt(r, "h2")).toMatchObject({ kind: "list", form: "short", asks: [{ id: a.id }] });
     post(r, 2);
     expect(prompt(r, "h3")).toMatchObject({ kind: "list", form: "full" });
+    expect(prompt(r, "h4")).toMatchObject({ kind: "list", form: "short" });
+  });
+
+  test("two asks, full; one is taken back; the next prompt is short with one id", () => {
+    const r = rig();
+    const a = post(r, 1);
+    const b = post(r, 2);
+    expect(prompt(r, "h1")).toMatchObject({ kind: "list", form: "full", asks: [{ id: a.id }, { id: b.id }] });
+    r.hill.cancelAsk(ONE, b.id, { answered: true, because: null });
+    expect(prompt(r, "h2")).toMatchObject({ kind: "list", form: "short", asks: [{ id: a.id }] });
+    expect(prompt(r, "h3")).toMatchObject({ kind: "list", form: "short", asks: [{ id: a.id }] });
   });
 
   test("at most 5 asks are listed, oldest first", () => {
