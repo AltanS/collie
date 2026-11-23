@@ -132,7 +132,7 @@ Settings has eleven pages, each with one line on the index that says what it hol
 (theme, light or dark, language, fonts, text sizes), **Chat and terminal** (what a pane shows),
 **Keys and touch** (Enter sends, the Keys pad, shortcuts, gestures, haptics, zen), **Notifications**,
 **Voice**, **Dashboard and projects** (pane order, repo search, worktree folder), **Profiles**,
-**Tricks** (the Tricks switch, your tricks, the Hill), **Devices and machines** (pairing,
+**Tricks** (the Tricks switch, your tricks, Asks), **Devices and machines** (pairing,
 paired devices, your machines, the connection), **Privacy and data** (saved chat copies, telemetry)
 and **Updates and about**. The search at the top of Settings finds a setting by its name, and says
 where a setting is when it lives in a pane's own sheet. The pages used to be Appearance, Harness
@@ -234,11 +234,11 @@ The one sentence on the update card, under an **Urgent** label, that says why a 
 It is rare. An urgent patch keeps the daily update cadence, and its version stays an ordinary patch
 ([From the phone](upgrading.md#from-the-phone)).
 
-## Question card (ask)
+## Question card
 
 A question that a durable agent raises. The phone shows it as a card, and one tap answers it
 once. Collie never answers for you ([Durable agents](durable-agents.md#what-the-phone-shows)). It is not
-an [ask](#ask): an ask is a question an agent posts to the Asks page.
+an [ask](#ask): an ask is a question an agent sends to [Asks](#asks).
 
 ## Belt
 
@@ -340,9 +340,9 @@ receipts in its state folder
 A [WalkyTalky](#walkytalky) message has a receipt too. It says whether the message is queued, typed
 into the pane, waiting in the inbox or refused, and why ([Receipts](walky-talky.md#receipts)).
 
-Your answer to a [Decision](#decision) has a receipt as well. The card says whether the answer was
+Your answer to a card of a trick or of Collie has a receipt as well. The card says whether the answer was
 typed into the session, is waiting for its turn, was refused, or was taken by the trick that asked
-([Receipts](hill.md#receipts)). A tap on a [trick](#trick)'s button keeps a receipt too, so a tap
+([Receipts](asks.md#receipts)). A tap on a [trick](#trick)'s button keeps a receipt too, so a tap
 that is sent again runs once.
 
 ## Conversation
@@ -417,15 +417,15 @@ different thing, a panel of that app
 
 The one switch for tricks as a whole on a machine, in Settings → Tricks and in
 `collie tricks on|off|status`. Tricks are an experiment, so it is off until you switch it on. While it
-is on, that page shows the list of tricks under it, with the Hill as the first row. While it is off the
-Hill's row stays on its own, and no trick runs or draws, and each
+is on, that page shows the list of tricks under it, with Asks as the first row. While it is off the
+Asks row stays on its own, and no trick runs or draws, and each
 trick keeps its own switch for when you switch it on
 ([Switch tricks on or off](tricks.md#switch-tricks-on-or-off)).
 
 ## Program trick
 
 A trick with a program on your machine. The bridge runs it on a timer or on your tap, reads the one
-JSON document it prints, and the phone draws the parts in it. It can also ask you on the Hill
+JSON document it prints, and the phone draws the parts in it. It can also ask you in Asks
 ([Example 1: a program trick](tricks.md#example-1-a-program-trick)).
 
 ## Agent view
@@ -459,7 +459,7 @@ you add one by its address, and its row says "ColliePWA did not check this code.
 A spot on the phone where a trick can show (a surface). A program trick draws in seven: `belt`,
 `session` (shown as Page), `dashboard`, `status`, `tabbar`, `menu` (rows in a session's settings) and
 `float` (a small moving picture over the app, "Moving pictures from tricks" in Settings → Look and feel).
-An agent view is the eighth, `agent-view`. The Hill is built in, and a trick posts there without
+An agent view is the eighth, `agent-view`. Asks is built in, and a trick asks there without
 naming it. A place is not a [space](#space). Each place is
 described in [Places](tricks-reference.md#places).
 
@@ -499,7 +499,7 @@ sometimes say "rights" for the same thing ([What a trick may and may not do](tri
 ## Access (of a trick)
 
 How much of Collie's [local API](#local-api) a trick reads: `none` (the default), `see` or `read`. `see`
-holds your machines, your sessions and their states, your usage and the Hill, and never the text of a
+holds your machines, your sessions and their states, your usage and Asks, and never the text of a
 screen. `read` adds what is on a session's screen. The trick says it with `access` in `trick.toml`, and it
 is a [power](#power): a version that raises it waits for your yes. The level is what the trick declares,
 and the bridge checks it for each read through the [run token](#run-token)
@@ -530,46 +530,69 @@ A value a trick asks you for, such as a repository or a branch. The trick lists 
 setting is your data: the trick gets it, Collie runs nothing with it
 ([Settings a trick asks you for](tricks-authoring.md#settings-a-trick-asks-you-for)).
 
-## Decision
+## Asks
 
-One question that an agent or a trick puts on the Hill, with the options you pick from. You answer it by
-tapping an option, and the answer goes back to the session that asked, as your own message. A Decision
-is not a [question card](#question-card-ask): that card is a durable agent's own question
-([Decisions](hill.md#what-a-decision-is)).
+The list of open questions from all your sessions, on the phone. It is the fourth item of the Dashboard's
+bottom bar, and on a large screen a button beside Actions in the Dashboard's header. One crew has one
+Asks list, on the lead. Its switch is the first row of the trick list in Settings → Tricks. It sends no
+notification for an ask of an agent ([Asks](asks.md)).
 
 ## Ask
 
-One question an agent posts with `collie walky ask`, for you to answer when you have time. It shows
-the question, what the agent knows, the answers it offers and a card for your own answer. You mark an
-answer on the ask's screen. Nothing goes back to the agent until you tap Send, and one Send answers every
-marked ask of one session in one message. An ask is a [Decision](#decision) with a question on it. It is
-not a [question card](#question-card-ask), which is a durable agent's own question.
+One question that an agent leaves for you with `collie walky ask`. It stays open until you answer it or
+the agent takes it back. It shows the question, what the agent knows, the answers it offers and a card
+for your own answer. You mark an answer on the ask's screen. Nothing goes back to the agent until you
+tap Send, and one Send answers every marked ask of one session in one message. A trick can ask too. An
+ask is not a [question card](#question-card), which is a durable agent's own question
+([What an ask is](asks.md#what-an-ask-is)).
 
-## Board (Asks)
+## Board
 
-The first page of Asks: one card for each session that has an open ask, with a row for each question.
-The sessions stand in the order of their prompt cache, warm ones first. A row opens the ask. Cards that
-are not asks, such as a trick's card, stand in a last group under "Other cards".
+The first page of [Asks](#asks): one card for each session that has an open ask, with a row for each
+question. The sessions stand in the order of their prompt cache, warm ones first. A row opens the ask.
+Cards that are not asks of an agent, such as an ask from a trick, stand in a last group under "Other
+cards" ([What you see on the phone](asks.md#what-you-see-on-the-phone)).
+
+## Ask back
+
+The button in an ask's bottom bar for a question that is not clear to you. You write what is missing, and
+the agent gets "I need more context" with your words. It then sends the ask again with a better
+background ([What you see on the phone](asks.md#what-you-see-on-the-phone)).
+
+## Context page
+
+The page behind an ask's Context row: the agent's background in Markdown, its pictures, and its files,
+which open in the Files view. Back goes up one level, to the answers
+([What you see on the phone](asks.md#what-you-see-on-the-phone)).
+
+## Reminder of open asks
+
+The short note an agent reads next to each prompt you send in its session, listing its open asks, so that
+it closes one your prompt settled. It comes from Collie's hooks on Claude Code, adds no model call, and
+needs Asks on ([How an agent is reminded](asks.md#how-an-agent-is-reminded)).
+
+## Crew state
+
+Here, Quiet or Away: how much you want to hear now. Only you set it, in the control at the top of
+[Asks](#asks) or with `collie asks state`. It never refuses an ask
+([Here, Quiet and Away](asks.md#here-quiet-and-away)).
+
+## Choice block
+
+The part of an agent view that asks one question, with 1 to 5 options. A tap on an option sends it to
+that session, and Collie marks the pick, never the agent ([Write a trick](tricks-authoring.md)).
 
 ## Proposal card
 
 The card of a trick that an agent wrote for you. It is titled "Switch on the trick `<id>`?", and it
 shows what the trick asks for, the warnings of the text search, and every file of its code. Nothing
 runs before your yes. The yes is a hold of 1.5 seconds, or two presses of a key. Reading the code is
-up to you ([A trick an agent proposes](hill.md#a-trick-an-agent-proposes)).
+up to you ([A trick an agent proposes](asks.md#a-trick-an-agent-proposes)).
 
 ## Version card
 
 The card of a new version of a trick that a proposal made. It asks "Use the new version of `<id>`?",
-and the code is replaced only on your yes ([A trick an agent proposes](hill.md#a-trick-an-agent-proposes)).
-
-## Hill
-
-The page of Decisions that wait for you, grouped Now, Today and Later, with the answered ones below.
-It is the fourth item of the Dashboard's bottom bar, and on a large screen a button beside Actions in
-the dashboard's header. One crew has one Hill, on the lead. The app calls this page **Asks**, and "Hill"
-is its older name, which the docs still use. Its switch is the first row of the trick list in
-Settings → Tricks ([The Hill](hill.md)).
+and the code is replaced only on your yes ([A trick an agent proposes](asks.md#a-trick-an-agent-proposes)).
 
 ## Event
 

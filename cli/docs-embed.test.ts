@@ -2,8 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
 
-import { DOC_PAGE_ALIASES, DOC_PAGES, findDocPage, SKILL_TEMPLATE } from "./docs-embed.ts";
-import { docsTable, pageTitle } from "./docs.ts";
+import { DOC_PAGE_ALIASES, DOC_PAGES, findDocPage, RENAMED_DOC_PAGES, renamedDocPageLine, SKILL_TEMPLATE } from "./docs-embed.ts";
+import { EXIT } from "./io.ts";
+import { cmdDocs, docsTable, pageTitle } from "./docs.ts";
 
 // The drift guard. `cli/docs-embed.ts` is a hand-written list of ten imports, so a page added to
 // `docs/` without a line there would simply not be in the binary and nothing would say so.
@@ -84,6 +85,27 @@ describe("the embedded docs registry", () => {
 
   test("an unknown name resolves to nothing", () => {
     expect(findDocPage("herd")).toBeUndefined();
+  });
+
+  test("the Hill page is Asks now: the old name is unknown, and the error line names the new page", () => {
+    expect(findDocPage("hill")).toBeUndefined();
+    expect(findDocPage("asks")?.name).toBe("asks");
+    expect(renamedDocPageLine("hill")).toBe("hill is now asks");
+    expect(renamedDocPageLine("herd")).toBeUndefined();
+    expect(renamedDocPageLine("constructor")).toBeUndefined();
+    const out: string[] = [];
+    const err: string[] = [];
+    expect(cmdDocs({ out: (line) => out.push(line), err: (line) => err.push(line) }, ["hill"])).toBe(EXIT.USAGE);
+    expect(out).toEqual([]);
+    expect(err[0]).toBe("error: no page named `hill` is embedded in this binary");
+    expect(err[1]).toBe("hill is now asks");
+  });
+
+  test("a renamed page points at a page that exists, and is not itself a page", () => {
+    for (const [old, now] of Object.entries(RENAMED_DOC_PAGES)) {
+      expect(DOC_PAGES.map((p) => p.name)).not.toContain(old);
+      expect(DOC_PAGES.map((p) => p.name)).toContain(now);
+    }
   });
 
   test("the skill text holds both placeholders the printer resolves", () => {

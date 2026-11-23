@@ -19,7 +19,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 export interface DocFile {
-  /** Path from the repository root, for example `docs/hill.md`. */
+  /** Path from the repository root, for example `docs/asks.md`. */
   name: string;
   text: string;
 }

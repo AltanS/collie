@@ -21,7 +21,7 @@ describe("check-docs-placeholders: the real docs", () => {
   test("reads the README and every docs page", () => {
     expect(files[0]?.name).toBe("README.md");
     expect(files.length).toBeGreaterThanOrEqual(25);
-    expect(files.some((file) => file.name === "docs/hill.md")).toBe(true);
+    expect(files.some((file) => file.name === "docs/asks.md")).toBe(true);
   });
 
   test("has no finding", () => {
@@ -87,7 +87,7 @@ describe("check-docs-placeholders: what is code", () => {
   });
 
   test("skips a code span that crosses a line break", () => {
-    expect(tagsOf("Run `collie hill\nstatus <id>` now.")).toEqual([]);
+    expect(tagsOf("Run `collie walky\nstatus <id>` now.")).toEqual([]);
   });
 
   test("skips a backtick fence, with an info string", () => {

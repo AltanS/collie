@@ -17,6 +17,7 @@
 // lands in `docs/` without a line below. The root contributor specifications are deliberately not
 // here: the largest of them is 194 KB on its own, and an agent that needs them has the checkout.
 
+import asks from "../docs/asks.md" with { type: "text" };
 import changes from "../docs/changes.md" with { type: "text" };
 import claudeCodeOnYourPhone from "../docs/claude-code-on-your-phone.md" with { type: "text" };
 import commands from "../docs/commands.md" with { type: "text" };
@@ -30,7 +31,6 @@ import durableAgentsTroubleshooting from "../docs/durable-agents-troubleshooting
 import durableSdk from "../docs/durable-sdk.md" with { type: "text" };
 import durableWire from "../docs/durable-wire.md" with { type: "text" };
 import fiveMinuteInstall from "../docs/five-minute-install.md" with { type: "text" };
-import hill from "../docs/hill.md" with { type: "text" };
 import install from "../docs/install.md" with { type: "text" };
 import keyboardShortcuts from "../docs/keyboard-shortcuts.md" with { type: "text" };
 import multiplexers from "../docs/multiplexers.md" with { type: "text" };
@@ -179,9 +179,9 @@ export const DOC_PAGES: readonly DocPage[] = [
     text: walkyTalky,
   },
   {
-    name: "hill",
-    purpose: "Where agents and tricks ask you a question: Decisions, collie hill post, how you answer, receipts, Clear, Here, Quiet and Away, proposals",
-    text: hill,
+    name: "asks",
+    purpose: "The open questions of all your sessions: collie walky ask, how you answer and send, the reminder, Clear, Here, Quiet and Away, proposals",
+    text: asks,
   },
   {
     name: "tricks",
@@ -244,6 +244,19 @@ export const DOC_PAGES: readonly DocPage[] = [
  * prints lists the name to learn, not the name to unlearn.
  */
 export const DOC_PAGE_ALIASES = { pack: "crew" } as const satisfies Readonly<Record<string, string>>;
+
+/**
+ * Pages that were renamed with no alias, each with the page that took its place. `collie docs hill` fails as
+ * any unknown page does, and the error line adds `hill is now asks` so a reader finds the new name. Nothing
+ * here prints a page: a name that is only a removed one stays unknown.
+ */
+export const RENAMED_DOC_PAGES = { hill: "asks" } as const satisfies Readonly<Record<string, string>>;
+
+/** The one line that names the new page of a renamed one, or undefined for a name that was never a page. */
+export function renamedDocPageLine(name: string): string | undefined {
+  const now = Object.entries(RENAMED_DOC_PAGES).find(([old]) => old === name)?.[1];
+  return now === undefined ? undefined : `${name} is now ${now}`;
+}
 
 function isDocPageAlias(name: string): name is keyof typeof DOC_PAGE_ALIASES {
   return name in DOC_PAGE_ALIASES;

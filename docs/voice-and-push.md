@@ -472,7 +472,7 @@ Six kinds, each with its own switch under **Settings → Notifications → Notif
 | A new Collie version | a newer Collie release is available | on |
 | Machine load stays high | a machine's CPU, memory or fullest disk stays above a rule you set for it | on |
 | Cache about to go cold | a pane's prompt cache expires in about five minutes | off |
-| A Decision marked Now on the Hill | an agent or a trick posts a Decision marked `now` on the Hill | on |
+| An ask marked Now | a trick marks its ask `now`, or you send a test ask | on |
 
 Finished fires when an agent goes from working to idle, so an agent you interrupt also counts as finished.
 
@@ -486,21 +486,22 @@ Machine load sends nothing until you set a rule on a machine's page. The switch 
 once. One alert is sent each time a value climbs and stays high, and a tap opens that machine's Status view. See
 [Machines](crew.md#machines).
 
-A Decision marked `now` sends one notification, with the Decision's title and summary and nothing
-else. A tap opens the Hill at that card. A newer version of the Decision replaces the notification,
-and the notification closes when the Decision is answered, withdrawn or expires. One session sends at
-most three an hour, and all of them together at most ten. In a crew, the agents of one member send at
-most six an hour together ([Decisions from any machine](crew.md#decisions-from-any-machine)). Past
-that the Decision still shows on the Hill, without a notification.
+An ask marked `now` sends one notification, with the ask's title and summary and nothing else. A trick
+marks its own ask `now`. An ask that an agent sends with `collie walky ask` has no mark and sends no
+notification. A tap opens Asks at that card. A newer version of the ask replaces the notification, and
+the notification closes when the ask is answered, taken back or expires. One session sends at most three
+an hour, and all of them together at most ten. Past that the ask still shows in Asks, without a
+notification.
 
-The Hill is an experiment with its own switch in Settings → Tricks, and it is off by default.
-Off, agents and tricks cannot post Decisions, nothing about a Decision is sent, and the Hill leaves the bar. Switching
-it off closes the notifications of the open Decisions. Those Decisions stay on the bridge and show
-again when you switch the Hill on. `collie hill off` and `collie hill on` move the same switch.
+Asks is an experiment with its own switch in Settings → Tricks, and it is off by default. Off, agents and
+tricks cannot ask, nothing about an ask is sent, and Asks leaves the bar. Switching it off closes the
+notifications of the open asks. Those asks stay on the bridge and show again when you switch Asks on.
+`collie asks off` and `collie asks on` move the same switch. See [Turn Asks on or
+off](asks.md#turn-asks-on-or-off).
 
 Each device shows an alert's title in its own [language](configure.md#language), and English on a
-device that has not opened Collie since it was updated. The body stays as the bridge wrote it, and a
-Decision's title stays in the words its poster wrote.
+device that has not opened Collie since it was updated. The body stays as the bridge wrote it, and an
+ask's title stays in the words its sender wrote.
 
 Every switch is bridge-wide. A push fans out to every subscribed device, so there is nothing
 per-device to set.
