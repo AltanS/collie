@@ -85,6 +85,9 @@ export const routes: RouteObject[] = [
       // The hill (M96): the Decisions agents posted, one level below the Dashboard. No loader: its
       // lists live in lib/hill/store.ts, kept current by the root loader.
       { path: "hill", lazy: lazyScreen(() => import("@/routes/hill"), (m) => m.HillRoute) },
+      // One ask, and the page of its context (Asks build 2): children of the board, one level each.
+      { path: "hill/ask/:id", lazy: lazyScreen(() => import("@/routes/ask"), (m) => m.AskRoute) },
+      { path: "hill/ask/:id/context", lazy: lazyScreen(() => import("@/routes/ask-context"), (m) => m.AskContextRoute) },
       // One card of Collie's own about a trick (M96 spec 14), with the Hill on or off. No loader: the card
       // lives in lib/hill/store.ts, kept current by the root loader.
       { path: "trick-card/:decisionId", lazy: lazyScreen(() => import("@/routes/trick-card"), (m) => m.TrickCardRoute) },
