@@ -442,7 +442,7 @@ describe("collie doctor — the contract", () => {
       ...(HOST.platform === "win32" ? ["windows-task", "windows-long-paths", "secrets-private"] : []),
       "beacon-hooks-claude",
       "statusline-claude",
-      "ask-check-claude",
+      "ask-reminder-claude",
       "beacons",
       "skill-walky-talky",
       "account-windows",
@@ -1680,8 +1680,8 @@ const SETTINGS = `${HOME}/.claude/settings.json`;
 function settingsWith(command: string, check = true): string {
   const hooks: JsonObject = {};
   for (const registration of BEACON_HOOKS) {
-    // The Stop group carries the check at the end of a turn beside the emitter, as an install writes it (.adr/0177).
-    const extra = check && registration.event === "Stop" ? [{ type: "command", command: command.replace(" beacon emit ", " beacon check ") }] : [];
+    // The UserPromptSubmit and SessionStart groups carry the reminder of open asks beside the emitter, as an install writes it (.adr/0178).
+    const extra = check && (registration.event === "UserPromptSubmit" || registration.event === "SessionStart") ? [{ type: "command", command: command.replace(" beacon emit ", " beacon asks ") }] : [];
     hooks[registration.event] = [{ matcher: registration.matcher, hooks: [{ type: "command", command }, ...extra] }];
   }
   return JSON.stringify({ hooks }, null, 2);
@@ -1976,7 +1976,7 @@ describe("the finding set is scoped by the chosen multiplexer", () => {
       ...(HOST.platform === "win32" ? ["windows-task", "windows-long-paths", "secrets-private"] : []),
       "beacon-hooks-claude",
       "statusline-claude",
-      "ask-check-claude",
+      "ask-reminder-claude",
       "beacons",
       "skill-walky-talky",
       "account-windows",
@@ -3027,8 +3027,8 @@ describe("plain output parity (M43 spec 04, wrapped at 80 by M71 spec 03)", () =
   // finds its own session now, so an omp pane needs no Herdr hook. M99 spec 09 added the four
   // `link-*` rows, none linked in this fixture. MiniMax Code (mcode) added its `integration-mcode`
   // row and a twelfth `sends-*` row, and its root is one more in the journal-roots count. The
-  // `secrets-private` line is Windows-only: on a POSIX host it does not exist at all. The check at the end
-  // of a turn (.adr/0177) added the `ask-check-claude` row.
+  // `secrets-private` line is Windows-only: on a POSIX host it does not exist at all. The reminder of open
+  // asks (.adr/0178) added the `ask-reminder-claude` row, in place of 0177's `ask-check-claude`.
   test("the plain doctor output on a POSIX host matches the golden, wrapped at 80 columns", async () => {
     const out = `${await render()}---\n${await render(blocked())}`;
     const golden = readFileSync(GOLDEN, "utf8");

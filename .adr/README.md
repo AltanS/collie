@@ -357,7 +357,8 @@ The rule today: Tricks that react and the local API stand on one internal event 
 | [0168](./0168-a-trick-that-is-off-is-removed-on-its-machine-through-one-function.md) | One function removes a trick that is off and that no run holds, for `collie trick remove` and `POST /api/tricks/<host>/<id>/remove`; real-path checks, a receipt per `rid`, one audit line, this machine only. | Accepted |
 | [0175](./0175-collie-can-post-a-test-decision.md) | Collie posts one test Decision, marked Now, 20 seconds after a press on the Hill's page, and the answer names the first reason no notification would be sent. | Accepted |
 | [0176](./0176-an-ask-is-a-decision-with-an-ask-field.md) | An ask (`collie walky ask`) is a Hill Decision with an `ask` field: `ak_` id, its own limits, no push, no end by age, five open per session, linked files as pointers under the Files rules; one Send (`POST /api/hill/answers`) types one message for a session's answers. | Proposed |
-| [0177](./0177-the-check-at-the-end-of-a-turn.md) | At the end of a Claude Code turn a second `Stop` entry (`collie beacon check`) shows the agent its open asks once; the bridge decides (once per turn, untouched asks only, a brake of 2, 4, 8 turns), `collie walky keep` confirms an ask, and the pane reads as working during the check. | Proposed |
+| [0177](./0177-the-check-at-the-end-of-a-turn.md) | At the end of a Claude Code turn a second `Stop` entry (`collie beacon check`) showed the agent its open asks once and `collie walky keep` confirmed an ask. | Superseded by 0178 |
+| [0178](./0178-the-reminder-of-open-asks-rides-on-the-prompt.md) | Claude Code's `UserPromptSubmit` and `SessionStart` hooks run `collie beacon asks`, which prints the session's open asks as context next to the prompt; the bridge decides, marks asks fresh, unchecked or carried, closes them on `/clear`, and `collie walky cancel` takes 1 to 5 ids. | Proposed |
 
 ### Process, lint and tests
 

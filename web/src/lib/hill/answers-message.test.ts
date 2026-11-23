@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { answerLine, answersMessage, answersMessageLength, answersMessageOver, ASKS_ANSWERS_SUBJECT, openLine, type AnsweredAsk } from "./answers-message.ts";
-import { askTakenBack, askTakenBackBecause, HILL_ANSWERS_MESSAGE_MAX, HILL_ASK_ID_RE, HILL_BY_THE_POSTER, HILL_ID_RE, HILL_MORE_CONTEXT, isHillOptionIntent } from "./wire.ts";
+import { askTakenBack, askTakenBackBecause, HILL_ANSWERS_MESSAGE_MAX, HILL_ASK_ID_RE, HILL_BY_THE_POSTER, HILL_ID_RE, HILL_MORE_CONTEXT, HILL_OWN_ANSWER, isHillOptionIntent } from "./wire.ts";
 
 const withRec: AnsweredAsk = {
   id: "ak_aaaaaaaaaaaa",
@@ -34,6 +34,11 @@ describe("the answers message", () => {
     expect(answerLine({ ask: withRec, intent: HILL_MORE_CONTEXT, text: null })).toBe(`ak_aaaaaaaaaaaa "Ship the fix on Edge first?": I need more context. ${tail}`);
     expect(answerLine({ ask: withRec, intent: HILL_MORE_CONTEXT, text: "What is Edge" })).toBe(`ak_aaaaaaaaaaaa "Ship the fix on Edge first?": I need more context. Note: What is Edge. ${tail}`);
     expect(answerLine({ ask: withRec, intent: HILL_MORE_CONTEXT, text: "What is Edge?" })).toBe(`ak_aaaaaaaaaaaa "Ship the fix on Edge first?": I need more context. Note: What is Edge? ${tail}`);
+  });
+
+  it("says Your own answer with its text, further lines indented", () => {
+    expect(answerLine({ ask: withRec, intent: HILL_OWN_ANSWER, text: "Ship both, Edge today." })).toBe('ak_aaaaaaaaaaaa "Ship the fix on Edge first?": Your own answer: Ship both, Edge today.');
+    expect(answerLine({ ask: noRec, intent: HILL_OWN_ANSWER, text: "Neither.\nWait a week." })).toBe('ak_bbbbbbbbbbbb "Which branch takes it?": Your own answer: Neither.\n  Wait a week.');
   });
 
   it("carries the words of a --words ask, further lines indented", () => {
@@ -69,8 +74,9 @@ describe("the ask ids and words on the wire", () => {
     expect(HILL_ASK_ID_RE.test("dc_000000000000")).toBe(false);
   });
 
-  it("reserves more-context: no option may take it", () => {
+  it("reserves more-context and own: no option may take them", () => {
     expect(isHillOptionIntent(HILL_MORE_CONTEXT)).toBe(false);
+    expect(isHillOptionIntent(HILL_OWN_ANSWER)).toBe(false);
   });
 
   it("round-trips the agent's reason of a take back", () => {

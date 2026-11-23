@@ -44,8 +44,16 @@ export const HILL_INTENT_RE = /^[a-z][a-z0-9-]{0,31}$/;
 export const HILL_MORE_CONTEXT = "more-context";
 /** The label the stored answer of {@link HILL_MORE_CONTEXT} carries. */
 export const HILL_MORE_CONTEXT_LABEL = "I need more context";
+/**
+ * The fixed free-text answer every ask with options takes besides its options (Asks build 2, 2026-11-23):
+ * "Your own answer". An entry with this intent needs a non-empty `text`; a `--words` ask answers with
+ * `answer` instead and refuses it. It closes the ask as answered, as an option does.
+ */
+export const HILL_OWN_ANSWER = "own";
+/** The label the stored answer of {@link HILL_OWN_ANSWER} carries, and the words the agent reads before the text. */
+export const HILL_OWN_ANSWER_LABEL = "Your own answer";
 /** Intents the hill itself uses. A poster may not name an option with one of them. */
-export const HILL_RESERVED_INTENTS: readonly string[] = ["answer", "dismiss", HILL_MORE_CONTEXT];
+export const HILL_RESERVED_INTENTS: readonly string[] = ["answer", "dismiss", HILL_MORE_CONTEXT, HILL_OWN_ANSWER];
 /** A device id on an answer: "dv_" and 16 hex characters, derived by the bridge from a pairing record. */
 export const HILL_DEVICE_ID_RE = /^dv_[0-9a-f]{16}$/;
 /**
@@ -82,7 +90,7 @@ export const HILL_CLOSED_SERVED = 20;
 
 /** The question (`title`), in characters. It ends with `?`. */
 export const HILL_ASK_QUESTION_MAX = 90;
-/** The fact that decides it (`summary`), in characters. */
+/** The fact that decides it (`summary`, optional: `""` when the agent sent none), in characters. */
 export const HILL_ASK_FACT_MAX = 240;
 /** The background (`body`), Markdown, in characters. */
 export const HILL_ASK_BODY_MAX = 20_000;
@@ -91,8 +99,10 @@ export const HILL_ASK_OPTIONS_MIN = 2;
 export const HILL_ASK_OPTIONS_MAX = 5;
 /** An option's label, in characters. Never a bare word of {@link HILL_ASK_BARE_LABELS}. */
 export const HILL_ASK_LABEL_MAX = 60;
-/** What an option does (its `detail`, required on an ask), in characters. */
+/** What an option does (its `detail`, optional), in characters. */
 export const HILL_ASK_DOES_MAX = 300;
+/** What an option costs (its `cost`, optional, an ask's option only), in characters. */
+export const HILL_ASK_COST_MAX = 300;
 /** The reason for the recommendation, in characters. */
 export const HILL_ASK_WHY_MAX = 200;
 /** Linked files one ask may carry. */
@@ -103,6 +113,8 @@ export const HILL_ASK_FILE_PATH_MAX = 4096;
 export const HILL_ASK_HEADING_MAX = 120;
 /** Open asks one session may hold at once. The machine and total caps of the Hill stay beside it. */
 export const HILL_ASK_OPEN_MAX = 5;
+/** The ids one `collie walky cancel` (socket op `ask.cancel`) may close at once. */
+export const HILL_ASK_CANCEL_MAX = 5;
 /** The agent's reason on a take back (`collie walky cancel <id> --because`), in characters. */
 export const HILL_ASK_BECAUSE_MAX = 200;
 /** Labels an ask's option may not be, compared lowercase with a trailing period dropped: they say nothing. */
@@ -202,6 +214,12 @@ export const HILL_BY_THE_POSTER = "by the poster";
  * sets when it only saw the person write.
  */
 export const HILL_ASK_ANSWERED_HERE = "answered in the session";
+/**
+ * The closed reason of an ask the bridge closed because the person ran `/clear` in its session (Asks build 2,
+ * 2026-11-23): Claude Code's `SessionStart` hook with source `clear`, for that pane's own open asks. State
+ * `withdrawn`. The phone says "The conversation was cleared".
+ */
+export const HILL_ASK_CLEARED = "conversation cleared";
 /** The prefix of an ask's closed reason when the agent gave a reason for its take back. */
 const BECAUSE_PREFIX = `${HILL_BY_THE_POSTER}: `;
 
@@ -305,8 +323,10 @@ export interface HillOption {
   intent: string;
   /** The words on the button. */
   label: string;
-  /** One line of explanation under the label. */
+  /** One line of explanation under the label. On an ask: what happens then (`--does`), optional. */
   detail?: string;
+  /** On an ask only: what this answer costs (`--cost`), at most {@link HILL_ASK_COST_MAX} characters. Absent when not sent. */
+  cost?: string;
   /** A short word for a second tap that confirms the choice. */
   confirm?: string;
 }
@@ -335,6 +355,24 @@ export interface HillAskFile {
   line?: number;
 }
 
+/**
+ * What the bridge knows of an ask's freshness (ADR on the reminder that rides on the prompt):
+ * - `fresh`: no prompt reached the session since the ask was posted.
+ * - `carried`: at least one prompt since, and for the NEWEST prompt the bridge handed the list with this ask to
+ *   the agent and that turn ended with the ask still open (`confirmedAt` is that turn's end).
+ * - `unchecked`: at least one prompt since, and the newest prompt's turn did not hand the list out or has not
+ *   ended with a confirmation (Codex, no hooks, a hook fault, a turn cut by Escape, a turn still running).
+ * A closed ask keeps its last mark.
+ */
+export type HillAskMark = "fresh" | "carried" | "unchecked";
+export const HILL_ASK_MARKS: readonly HillAskMark[] = ["fresh", "carried", "unchecked"];
+
+/** The mark of a stored ask that has none (a record from before the mark): `carried` with a `confirmedAt`, else `fresh`. */
+export function askMarkOrDefault(mark: HillAskMark | undefined, confirmedAt: number | undefined): HillAskMark {
+  if (mark !== undefined) return mark;
+  return confirmedAt === undefined ? "fresh" : "carried";
+}
+
 /** What makes a Decision an ask (`collie walky ask`, 2026-11-22). */
 export interface HillAsk {
   /** The ask takes its answer in words and has no options. */
@@ -349,7 +387,9 @@ export interface HillAsk {
    * cannot see the member's disk). The phone adds `?host=<from.memberId>` for a crew member's pane.
    */
   root: string | null;
-  /** Part B fills this: ms of the agent's last keep. Absent until then. */
+  /** What the bridge knows of the ask's freshness (ADR on the reminder that rides on the prompt). */
+  mark: HillAskMark;
+  /** ms of the last turn end after which the bridge counted the ask as seen by its agent and still open. Absent until then. */
   confirmedAt?: number;
 }
 
@@ -721,11 +761,14 @@ export const HILL_TELL_RECENT_MS = 60 * 60 * 1000;
 // ask in the answer lane, closes each as answered with its own receipt, and types ONE WalkyTalky message
 // from the operator into the session (answers-message.ts `answersMessage`, which the phone shows first).
 
-/** One answer of a Send: an open ask's id, and `intent` one of its options, `more-context`, or `answer` for a `--words` ask. */
+/**
+ * One answer of a Send: an open ask's id, and `intent` one of its options, `more-context`, `own` (with a
+ * non-empty `text`, an ask with options only), or `answer` for a `--words` ask.
+ */
 export interface HillAnswersEntry {
   id: string;
   intent: string;
-  /** The note (optional on every answer), or the words of a `--words` ask (required there). */
+  /** The note (optional on an option and `more-context`), or the words of `own` and of a `--words` ask (required there). */
   text?: string | null;
 }
 

@@ -6,6 +6,7 @@
 import {
   HILL_ASK_BARE_LABELS,
   HILL_ASK_BODY_MAX,
+  HILL_ASK_COST_MAX,
   HILL_ASK_DOES_MAX,
   HILL_ASK_FACT_MAX,
   HILL_ASK_LABEL_MAX,
@@ -32,13 +33,26 @@ export interface HillPostLimits {
   readonly label: number;
   readonly detail: number;
   readonly why: number;
+  /** An ask: the summary (`--fact`) may be empty. Absent: every other Decision needs one. */
+  readonly summaryOptional?: true;
+  /** An ask: an option may carry a `cost` of at most this many characters. Absent: a cost is refused. */
+  readonly cost?: number;
 }
 
 /** The Hill's own caps, for every Decision that is not an ask. */
 export const HILL_LIMITS: HillPostLimits = { title: HILL_TITLE_MAX, summary: HILL_SUMMARY_MAX, body: HILL_BODY_MAX, label: HILL_OPTION_LABEL_MAX, detail: HILL_OPTION_DETAIL_MAX, why: HILL_WHY_MAX };
 
 /** An ask's caps. */
-export const HILL_ASK_LIMITS: HillPostLimits = { title: HILL_ASK_QUESTION_MAX, summary: HILL_ASK_FACT_MAX, body: HILL_ASK_BODY_MAX, label: HILL_ASK_LABEL_MAX, detail: HILL_ASK_DOES_MAX, why: HILL_ASK_WHY_MAX };
+export const HILL_ASK_LIMITS: HillPostLimits = {
+  title: HILL_ASK_QUESTION_MAX,
+  summary: HILL_ASK_FACT_MAX,
+  body: HILL_ASK_BODY_MAX,
+  label: HILL_ASK_LABEL_MAX,
+  detail: HILL_ASK_DOES_MAX,
+  why: HILL_ASK_WHY_MAX,
+  summaryOptional: true,
+  cost: HILL_ASK_COST_MAX,
+};
 
 /** A refusal: the contract's code and the words the CLI prints. */
 export interface AskRefusal {
@@ -54,7 +68,7 @@ export function isBareLabel(label: string): boolean {
 /**
  * Why a cleaned ask breaks a rule of its own, or null. The lengths were measured already (`cleanPost` with
  * {@link HILL_ASK_LIMITS}); here: the question ends with `?`, a `--words` ask has no options and every other
- * ask 2 to 5, no bare label, and every option says what it does.
+ * ask 2 to 5, and no bare label. `--fact`, `--does` and `--cost` are optional (Asks build 2, 2026-11-23).
  */
 export function askRuleRefusal(fields: Pick<HillDecision, "title" | "options">, words: boolean): AskRefusal | null {
   if (!fields.title.endsWith("?")) return { code: "bad_title", error: 'the question must end with "?"' };
@@ -67,7 +81,6 @@ export function askRuleRefusal(fields: Pick<HillDecision, "title" | "options">, 
   }
   for (const option of fields.options) {
     if (isBareLabel(option.label)) return { code: "bad_option", error: `--option ${option.intent} label "${option.label}" is not allowed: an option says what happens, start it with a verb` };
-    if (option.detail === undefined || option.detail === "") return { code: "bad_option", error: `--does ${option.intent} is required: a reader with no memory cannot judge a bare label` };
   }
   return null;
 }

@@ -27,6 +27,7 @@ import {
   HILL_ASK_FILE_PATH_MAX,
   HILL_ASK_FILES_MAX,
   HILL_ASK_HEADING_MAX,
+  HILL_ASK_MARKS,
   HILL_GROUP_HASH_RE,
   HILL_GROUP_PARTS,
   HILL_MEDIA_BYTES_MAX,
@@ -38,6 +39,7 @@ import {
   HILL_STATES,
   HILL_TEXT_MODES,
   HILL_TRICK_DELIVERIES,
+  askMarkOrDefault,
   cardName,
   hillCollieRef,
   isHillCrewState,
@@ -111,6 +113,8 @@ function readOption(value: JsonValue): HillOption | null {
   const option: HillOption = { intent, label };
   const detail = asJsonString(o.detail);
   if (detail !== undefined && detail !== "") option.detail = detail;
+  const cost = asJsonString(o.cost);
+  if (cost !== undefined && cost !== "") option.cost = cost;
   const confirm = asJsonString(o.confirm);
   if (confirm !== undefined && confirm !== "") option.confirm = confirm;
   return option;
@@ -146,9 +150,12 @@ export function readAsk(value: JsonValue | undefined): HillAsk | undefined {
   const rawFiles = arrayOf(o.files);
   if (root === undefined || rawFiles === undefined) return undefined;
   const files = rawFiles.map(readAskFile).filter((file) => file !== null).slice(0, HILL_ASK_FILES_MAX);
-  const ask: HillAsk = { words, files, root };
-  const confirmedAt = asJsonNumber(o.confirmedAt);
-  if (confirmedAt !== undefined && Number.isSafeInteger(confirmedAt) && confirmedAt > 0) ask.confirmedAt = confirmedAt;
+  const rawConfirmed = asJsonNumber(o.confirmedAt);
+  const confirmedAt = rawConfirmed !== undefined && Number.isSafeInteger(rawConfirmed) && rawConfirmed > 0 ? rawConfirmed : undefined;
+  // A mark that is no known word reads as `unchecked`: never a `carried` the bridge did not say.
+  const mark = o.mark === undefined ? askMarkOrDefault(undefined, confirmedAt) : (oneOf(HILL_ASK_MARKS, o.mark) ?? "unchecked");
+  const ask: HillAsk = { words, files, root, mark };
+  if (confirmedAt !== undefined) ask.confirmedAt = confirmedAt;
   return ask;
 }
 

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { ASKS_ANSWERS_SUBJECT, openLine } from "../../web/src/lib/hill/answers-message.ts";
-import { HILL_MORE_CONTEXT, type HillAnswersRequest } from "../../web/src/lib/hill/wire.ts";
+import { HILL_MORE_CONTEXT, HILL_OWN_ANSWER, type HillAnswersRequest } from "../../web/src/lib/hill/wire.ts";
 import { askAnswerRid } from "./answers.ts";
 import { askInput, askRig, ONE, posted, TWO, uuid } from "./ask-rig.ts";
 import { memoryHillReceipts } from "./receipts.ts";
@@ -68,6 +68,21 @@ describe("one Send", () => {
     const none = await r.hill.answerAsks(send(91, [{ id: a.id, intent: "edge", text: null }]), "Pixel 9");
     expect(none).toMatchObject({ kind: "done", result: { delivery: "none", items: [{ id: a.id, code: "gone" }] } });
     expect(r.sent).toHaveLength(1);
+  });
+
+  test("Your own answer: taken with text on an ask with options; a Send with it empty or on a --words ask is refused whole", async () => {
+    const r = askRig();
+    const a = posted(r.hill.post(ONE, askInput(1)));
+    const b = posted(r.hill.post(ONE, askInput(2, { options: [], recommends: null, ask: { words: true, files: [] } })));
+    expect(await r.hill.answerAsks(send(89, [{ id: b.id, intent: HILL_OWN_ANSWER, text: "Lead with the phone." }]), "Pixel 9")).toMatchObject({ kind: "refused", refusal: { code: "bad_answer", id: b.id } });
+    expect(await r.hill.answerAsks(send(88, [{ id: a.id, intent: HILL_OWN_ANSWER, text: null }]), "Pixel 9")).toMatchObject({ kind: "refused", refusal: { id: a.id } });
+    expect(r.sent).toHaveLength(0);
+    expect(r.store.get(a.id)?.state).toBe("open");
+    const outcome = await r.hill.answerAsks(send(90, [{ id: a.id, intent: HILL_OWN_ANSWER, text: "Ship it on both lines." }]), "Pixel 9");
+    expect(outcome).toMatchObject({ kind: "done", result: { items: [{ id: a.id, code: "ok", state: "answered" }] } });
+    expect(r.store.get(a.id)).toMatchObject({ state: "answered", answer: { intent: HILL_OWN_ANSWER, text: "Ship it on both lines." } });
+    expect(r.sent).toHaveLength(1);
+    expect(r.sent[0]!.body.split("\n")[0]).toBe(`${a.id} "${a.title}": Your own answer: Ship it on both lines.`);
   });
 
   test("too long: 409 too_long with how far over, and nothing is closed", async () => {

@@ -36,6 +36,8 @@ import {
   HILL_ASK_FILE_PATH_MAX,
   HILL_ASK_FILES_MAX,
   HILL_ASK_HEADING_MAX,
+  HILL_ASK_MARKS,
+  askMarkOrDefault,
   type HillAnswersEntry,
   type HillAnswersRequest,
   type HillAsk,
@@ -92,18 +94,20 @@ function isState(value: string | undefined): value is HillState {
   return HILL_STATES.some((state) => state === value);
 }
 
-/** One option as posted: `{ intent, label, detail?, confirm? }`, every part a string. */
+/** One option as posted: `{ intent, label, detail?, cost?, confirm? }`, every part a string. */
 function readOption(value: JsonValue | undefined): HillOption | null {
   const row = asJsonObject(value);
   if (row === undefined) return null;
   const intent = asJsonString(row.intent);
   const label = asJsonString(row.label);
   const detail = optionalText(row, "detail");
+  const cost = optionalText(row, "cost");
   const confirm = optionalText(row, "confirm");
-  if (intent === undefined || label === undefined || label.length > HILL_RAW_MAX || detail === undefined || confirm === undefined) return null;
+  if (intent === undefined || label === undefined || label.length > HILL_RAW_MAX || detail === undefined || cost === undefined || confirm === undefined) return null;
   const base: HillOption = { intent, label };
   const withDetail = detail === null ? base : { ...base, detail };
-  return confirm === null ? withDetail : { ...withDetail, confirm };
+  const withCost = cost === null ? withDetail : { ...withDetail, cost };
+  return confirm === null ? withCost : { ...withCost, confirm };
 }
 
 /** One image as posted: `{ path, caption? }`. What the path names is the service's to check. */
@@ -275,10 +279,14 @@ function readStoredAsk(value: JsonValue | undefined): HillAsk | null {
   }
   const root = row.root === null ? null : asJsonString(row.root);
   if (root === undefined || (root !== null && (root === "" || root.length > 256))) return null;
-  const ask: HillAsk = { words, files, root };
-  if (row.confirmedAt === undefined) return ask;
-  const confirmedAt = asJsonNumber(row.confirmedAt);
-  return confirmedAt !== undefined && Number.isSafeInteger(confirmedAt) && confirmedAt > 0 ? { ...ask, confirmedAt } : null;
+  const confirmedAt = row.confirmedAt === undefined ? undefined : asJsonNumber(row.confirmedAt);
+  if (row.confirmedAt !== undefined && (confirmedAt === undefined || !Number.isSafeInteger(confirmedAt) || confirmedAt <= 0)) return null;
+  // A record from before the mark reads by its confirmedAt; a mark word this bridge does not know reads as
+  // `unchecked`, never as a `carried` nobody set.
+  const known = HILL_ASK_MARKS.find((mark) => mark === row.mark);
+  const mark = row.mark === undefined ? askMarkOrDefault(undefined, confirmedAt) : (known ?? "unchecked");
+  const ask: HillAsk = { words, files, root, mark };
+  return confirmedAt === undefined ? ask : { ...ask, confirmedAt };
 }
 
 /** What `readAnswersRequest` answers: the request, or the words of the 400. */

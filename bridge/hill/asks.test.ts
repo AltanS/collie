@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { HILL_ASK_ANSWERED_HERE, HILL_MORE_CONTEXT, HILL_MORE_CONTEXT_LABEL, askTakenBack, type HillAnswerRequest, type HillDecision } from "../../web/src/lib/hill/wire.ts";
+import { HILL_ASK_ANSWERED_HERE, HILL_MORE_CONTEXT, HILL_MORE_CONTEXT_LABEL, HILL_OWN_ANSWER, HILL_OWN_ANSWER_LABEL, askTakenBack, type HillAnswerRequest, type HillDecision } from "../../web/src/lib/hill/wire.ts";
 import { ASKS_ANSWERS_SUBJECT } from "../../web/src/lib/hill/answers-message.ts";
 import { askInput, askRig, ONE, posted, TWO, uuid } from "./ask-rig.ts";
 import type { JsonObject } from "../json.ts";
@@ -64,7 +64,22 @@ describe("posting an ask", () => {
       { intent: "edge", label: "Ship it on Edge first" },
       { intent: "stable", label: "Ship it on Stable now", detail: "Everyone." },
     ];
-    expect(refused(r.hill.post(ONE, askInput(9, { options: noDetail }))).error).toContain("--does edge is required");
+    // Only the question and the options are required: --does, --cost and --fact are each optional.
+    expect(posted(r.hill.post(ONE, askInput(9, { options: noDetail }))).options[0]).toEqual({ intent: "edge", label: "Ship it on Edge first" });
+    const bare2 = posted(r.hill.post(ONE, askInput(12, { summary: "", recommends: null, options: [{ intent: "edge", label: "Ship it on Edge first" }, { intent: "stable", label: "Ship it on Stable now" }] })));
+    expect(bare2.summary).toBe("");
+    const priced = [
+      { intent: "edge", label: "Ship it on Edge first", cost: "One more day." },
+      { intent: "stable", label: "Ship it on Stable now" },
+    ];
+    expect(posted(r.hill.post(TWO, askInput(13, { options: priced, recommends: null }))).options).toEqual(priced);
+    const dear = [
+      { intent: "edge", label: "Ship it on Edge first", cost: "x".repeat(301) },
+      { intent: "stable", label: "Ship it on Stable now" },
+    ];
+    expect(refused(r.hill.post(TWO, askInput(14, { options: dear, recommends: null }))).error).toContain("300");
+    // A cost is an ask's: a plain Decision with one is refused.
+    expect(refused(r.hill.post(TWO, { requestId: "00000000-0000-4000-8000-000000000015", title: "Plain?", summary: "A plain card.", options: [{ intent: "go", label: "Go ahead", cost: "x" }], recommends: null })).ok).toBe(false);
     const long = [
       { intent: "edge", label: "x".repeat(61), detail: "Testers." },
       { intent: "stable", label: "Ship it on Stable now", detail: "Everyone." },
@@ -210,6 +225,23 @@ describe("the single answer to an ask", () => {
     const bare = await r.hill.answer(answerOf(options, 51, "answer", "Ship it"), options.id, "Pixel 9");
     expect(bare).toMatchObject({ kind: "receipt", receipt: { code: "rejected", reason: "not an option of this decision" } });
     expect(r.store.get(options.id)?.state).toBe("open");
+  });
+
+  test("takes Your own answer with text on an ask with options; refuses it with none, on a --words ask and on a plain Decision", async () => {
+    const r = askRig();
+    const ask = posted(r.hill.post(ONE, askInput(1)));
+    const empty = await r.hill.answer(answerOf(ask, 50, HILL_OWN_ANSWER, "  "), ask.id, "Pixel 9");
+    expect(empty).toMatchObject({ kind: "receipt", receipt: { code: "rejected", reason: "text is required" } });
+    expect(r.store.get(ask.id)?.state).toBe("open");
+    const own = await r.hill.answer(answerOf(ask, 51, HILL_OWN_ANSWER, "Ship it on both lines."), ask.id, "Pixel 9");
+    expect(own).toMatchObject({ kind: "receipt", receipt: { code: "ok", state: "answered" } });
+    expect(r.store.get(ask.id)).toMatchObject({ state: "answered", answer: { intent: HILL_OWN_ANSWER, label: HILL_OWN_ANSWER_LABEL, text: "Ship it on both lines." } });
+    expect(r.sent[0]!.body).toBe(`${ask.id} "${ask.title}": Your own answer: Ship it on both lines.`);
+    const words = posted(r.hill.post(ONE, askInput(2, { options: [], recommends: null, ask: { words: true, files: [] } })));
+    expect(await r.hill.answer(answerOf(words, 52, HILL_OWN_ANSWER, "Lead with the phone."), words.id, "Pixel 9")).toMatchObject({ kind: "receipt", receipt: { code: "rejected" } });
+    expect(r.store.get(words.id)?.state).toBe("open");
+    const plain = posted(r.hill.post(ONE, { requestId: uuid(3), title: "Plain?", summary: "A plain card.", options: [{ intent: "yes", label: "Yes" }], recommends: null }));
+    expect(await r.hill.answer(answerOf(plain, 53, HILL_OWN_ANSWER, "Mine."), plain.id, "Pixel 9")).toMatchObject({ kind: "receipt", receipt: { code: "rejected" } });
   });
 
   test("a plain Decision takes no more-context", async () => {
