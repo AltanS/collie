@@ -27,6 +27,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 - **Two pi panes in one folder each get their own Chat on the Herdr core.** This is for the experimental `herdr-core` backend only. Collie could not tell the two logs apart, so both panes showed the empty card. A pi extension now labels its terminal with the path of its session file, which holds your home folder and project name, and Collie opens that file for that pane. To turn it on, copy `pi-extension/collie-session-label.ts` into `~/.pi/agent/extensions/` and start pi again (see `pi-extension/README.md`). To turn it off, delete that file and start pi again. Thanks @GGGODLIN (#846), based on @ibrmora's port (#780).
 
+### Changed
+
+- **An agent picks the recipient of a WalkyTalky message with more care.** It no longer swaps the token of an old address from a note for the current one, and it no longer takes a session name that only holds the word, such as `seo via an` for "the seo session", as a match. "The lead" is the lead of its own space. It adds `--outside` only when you named the other space or gave the address. It answers the newest message from another agent with `reply`, also in the middle of an exchange with a third session, so the answer no longer goes to the wrong one. The installed skill text carries the new rules; `collie skill sync` writes it now, and every update does.
+
 ## [1.30.1] - 2026-11-22
 
 ### Fixed
