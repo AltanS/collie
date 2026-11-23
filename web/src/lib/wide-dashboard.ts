@@ -3,7 +3,7 @@
 // A Space keeps ONE fixed width, the column of a large phone, and Spaces wrap across the free width. The
 // count of columns is a function of the width the dashboard is given and nothing else: no status, no row
 // count, no name can change it, so a Space never changes column while the window keeps its size. The order
-// is the list's own (machine, then Space number, then tab number, lib/pane-groups.ts), the order the phone
+// is the list's own (machine, then Space number, then tab place, lib/pane-groups.ts), the order the phone
 // list and the large screen's sidebar already show.
 //
 // The grid begins in the `expanded` width class (900px, ADR 0120) and never in `medium`: two columns need

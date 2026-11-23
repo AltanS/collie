@@ -27,6 +27,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 - **Two pi panes in one folder each get their own Chat on the Herdr core.** This is for the experimental `herdr-core` backend only. Collie could not tell the two logs apart, so both panes showed the empty card. A pi extension now labels its terminal with the path of its session file, which holds your home folder and project name, and Collie opens that file for that pane. To turn it on, copy `pi-extension/collie-session-label.ts` into `~/.pi/agent/extensions/` and start pi again (see `pi-extension/README.md`). To turn it off, delete that file and start pi again. Thanks @GGGODLIN (#846), based on @ibrmora's port (#780).
 
+### Fixed
+
+- **The Dashboard's Place order follows a tab you moved in Herdr.** When you move a tab to another place in Herdr, the Dashboard now lists its rows at the new place, as the pane strip and Herdr do. It kept the order the tabs were created in. Thanks @stankolubomir (#850).
+
 ## [1.30.1] - 2026-11-22
 
 ### Fixed
