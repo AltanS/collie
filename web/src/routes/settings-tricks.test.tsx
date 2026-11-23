@@ -52,7 +52,7 @@ describe("Settings → Tricks", () => {
     expect(await screen.findByRole("heading", { name: "Tricks" })).toBeInTheDocument();
     expect(router.state.location.pathname).toBe("/settings/tricks");
     expect(await screen.findByRole("switch", { name: "Tricks" })).not.toBeChecked();
-    expect(screen.getByRole("switch", { name: "The Hill" })).toBeInTheDocument();
+    expect(screen.getByRole("switch", { name: "Asks" })).toBeInTheDocument();
     expect(screen.queryByTestId("tricks-settings")).toBeNull();
     // The Hill's own card at the foot of the page is gone: the row stands in a list card of its own.
     expect(screen.getByTestId("hill-row-card").querySelector("[data-hill-row]")).not.toBeNull();
@@ -62,7 +62,7 @@ describe("Settings → Tricks", () => {
   it("puts the Tricks switch first and the Hill's row under it, each with the Experimental badge", async () => {
     mount("/settings/tricks", { tricksOff: true });
     const tricks = await screen.findByRole("switch", { name: "Tricks" });
-    const hill = await screen.findByRole("switch", { name: "The Hill" });
+    const hill = await screen.findByRole("switch", { name: "Asks" });
     expect(precedes(tricks, hill)).toBe(true);
     expect(document.querySelectorAll('[data-slot="experimental-badge"]')).toHaveLength(2);
     expect(screen.queryByText(/Anything here may change/)).toBeNull();
@@ -110,7 +110,7 @@ describe("Settings → Tricks", () => {
     expect(screen.getByText("Added by CLI")).toBeInTheDocument();
     expect(precedes(screen.getByRole("switch", { name: "Tricks" }), list)).toBe(true);
     // The Hill is the first row of the list: above the trick, inside the same card, and there is no card of its own below.
-    const hill = screen.getByRole("switch", { name: "The Hill" });
+    const hill = screen.getByRole("switch", { name: "Asks" });
     expect(list.contains(hill)).toBe(true);
     expect(precedes(hill, screen.getByRole("switch", { name: "Browser leg" }))).toBe(true);
     expect(screen.queryByTestId("hill-row-card")).toBeNull();

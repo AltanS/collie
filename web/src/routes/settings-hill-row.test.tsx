@@ -42,7 +42,7 @@ async function flipsTheHill(): Promise<void> {
       return HttpResponse.json({ on: false });
     }),
   );
-  await userEvent.click(await screen.findByRole("switch", { name: "The Hill" }));
+  await userEvent.click(await screen.findByRole("switch", { name: "Asks" }));
   await waitFor(() => expect(posted).toBe('{"on":false}'));
 }
 
@@ -53,7 +53,7 @@ describe("the Hill's row without the Tricks switch", () => {
   it("is drawn and works with tricks off as a whole", async () => {
     mount({ tricksOff: true });
     expect(await screen.findByRole("switch", { name: "Tricks" })).not.toBeChecked();
-    expect(screen.getByRole("link", { name: "About The Hill" }).getAttribute("href")).toBe("/settings/tricks/hill");
+    expect(screen.getByRole("link", { name: "About Asks" }).getAttribute("href")).toBe("/settings/tricks/hill");
     await flipsTheHill();
   });
 
@@ -77,15 +77,15 @@ describe("the Hill's row without the Tricks switch", () => {
 });
 
 describe("the Settings search finds the Hill's row", () => {
-  it.each(["hill", "decisions"])("for %s, on the Tricks page, with the row's own id", (query) => {
+  it.each(["asks", "decisions"])("for %s, on the Tricks page, with the row's own id", (query) => {
     const hit = searchSettings(query).find((each) => each.setting.id === "tricks.hill");
     expect(hit, query).toBeDefined();
     expect(settingPath(hit!.setting)).toBe("/settings/tricks#tricks.hill");
     expect(hit!.page).toBe("Tricks");
   });
 
-  it("no longer finds the Tricks switch or the list for hill: the page's name does not say it", () => {
-    const ids = searchSettings("hill").map((hit) => hit.setting.id);
+  it("no longer finds the Tricks switch or the list for asks: the page's name does not say it", () => {
+    const ids = searchSettings("asks").map((hit) => hit.setting.id);
     expect(ids).not.toContain("tricks.enabled");
     expect(ids).not.toContain("tricks.addRepo");
     expect(ids).toContain("tricks.hill");

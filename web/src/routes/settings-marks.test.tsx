@@ -145,7 +145,7 @@ async function readTrickPage(): Promise<Read> {
 async function readHillPage(): Promise<Read> {
   const store = createTricksStore({ fetchTricks: async () => ({ rev: 1, tricks: [], parts: [], present: [] }), tapTrick: async () => Promise.reject(new Error("no tap")), mintRequestId: () => "r" });
   renderTricksPages({ store, entries: ["/settings/tricks/hill"] });
-  await screen.findByRole("heading", { name: "The Hill" });
+  await screen.findByRole("heading", { name: "Asks" });
   const read = readPage(document.body, "/settings/tricks/hill");
   cleanup();
   return read;

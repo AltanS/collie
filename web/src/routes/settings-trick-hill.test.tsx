@@ -41,22 +41,22 @@ afterEach(() => cleanup());
 describe("the address settings/tricks/hill", () => {
   it("draws the Hill's page with tricks on, titled and headed The Hill", async () => {
     renderTricksPages({ store: await storeWith([LEGS]), entries: [trickDetailPath(HILL_DETAIL_KEY)] });
-    expect(await screen.findByRole("heading", { name: "The Hill" })).toBeInTheDocument();
-    expect(screen.getAllByRole("heading", { level: 1 }).map((h) => h.textContent)).toEqual(["The Hill"]);
+    expect(await screen.findByRole("heading", { name: "Asks" })).toBeInTheDocument();
+    expect(screen.getAllByRole("heading", { level: 1 }).map((h) => h.textContent)).toEqual(["Asks"]);
     expect(document.querySelector('[data-slot="settings-page-title"]')).toHaveTextContent("Trick details");
     expect(detail().getAttribute("data-detail-hill")).toBe("");
   });
 
   it("draws it with tricks switched off as a whole, with no redirect", async () => {
     const router = renderTricksPages({ store: await storeWith([LEGS]), loader: () => ({ tricksOff: true }), entries: ["/settings/tricks/hill"] });
-    expect(await screen.findByRole("heading", { name: "The Hill" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Asks" })).toBeInTheDocument();
     expect(router.state.location.pathname).toBe("/settings/tricks/hill");
   });
 
   it("draws it where the phone holds no tricks reply yet", async () => {
     const store = createTricksStore({ fetchTricks: async () => ({ rev: 1, tricks: [], parts: [], present: [] }), tapTrick: async () => Promise.reject(new Error("no tap")), mintRequestId: () => "r" });
     renderTricksPages({ store, entries: ["/settings/tricks/hill"] });
-    expect(await screen.findByRole("heading", { name: "The Hill" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Asks" })).toBeInTheDocument();
   });
 
   it("is never a trick's page: the key is reserved, and a trick on a machine keeps its own host:id key", async () => {
@@ -69,7 +69,7 @@ describe("the address settings/tricks/hill", () => {
 
   it("Back goes up to the Tricks page", async () => {
     const router = renderTricksPages({ store: await storeWith([LEGS]), entries: ["/settings/tricks", "/settings/tricks/hill"] });
-    await screen.findByRole("heading", { name: "The Hill" });
+    await screen.findByRole("heading", { name: "Asks" });
     await userEvent.click(screen.getByRole("button", { name: "Back" }));
     await vi.waitFor(() => expect(router.state.location.pathname).toBe("/settings/tricks"));
   });
@@ -79,12 +79,12 @@ describe("the page's words", () => {
   it("heads it with the mountain, the three labels and the switch with its state in words", () => {
     page({ on: true });
     const head = section("head");
-    expect(head.querySelector('[data-slot="trick-detail-name"]')).toHaveTextContent("The Hill");
+    expect(head.querySelector('[data-slot="trick-detail-name"]')).toHaveTextContent("Asks");
     const labels = head.querySelector('[data-slot="trick-detail-labels"]')!;
     expect(labels).toHaveTextContent("Built in");
     expect(labels.querySelector('[data-slot="experimental-badge"]')).not.toBeNull();
     expect(labels.querySelector('[data-slot="token-use"]')).toHaveTextContent("Uses agent tokens");
-    expect(within(head).getByRole("switch", { name: "The Hill" })).toBeChecked();
+    expect(within(head).getByRole("switch", { name: "Asks" })).toBeChecked();
     expect(head).toHaveTextContent("On");
   });
 
@@ -129,7 +129,7 @@ describe("the page's words", () => {
     const quiet = section("quiet");
     expect(within(quiet).getByText("If nothing arrives")).toBeInTheDocument();
     expect(quiet.querySelector('[data-line="quiet-choice"]')).toHaveTextContent("An agent decides by itself when to post.");
-    expect(quiet.querySelector('[data-line="quiet-tell"]')?.textContent).toBe("To get more questions here, tell your agents to post them to the Hill, for example in your project's AGENTS.md or CLAUDE.md.");
+    expect(quiet.querySelector('[data-line="quiet-tell"]')?.textContent).toBe("To get more questions here, tell your agents to post them to Asks, for example in your project's AGENTS.md or CLAUDE.md.");
     expect(quiet.querySelector('[data-line="quiet-fresh"]')).toHaveTextContent("Start a new session.");
     expect(quiet.querySelector('[data-line="quiet-skill"]')?.textContent).toBe("Collie's skill must be installed for your agent. Check with collie skill status.");
     expect(SKILL_STATUS_COMMAND).toBe("collie skill status");
@@ -161,21 +161,21 @@ describe("the head's switch", () => {
   it("turns on with one tap and never asks", () => {
     const onToggle = vi.fn();
     page({ on: false, waiting: 3, onToggle });
-    fireEvent.click(screen.getByRole("switch", { name: "The Hill" }));
+    fireEvent.click(screen.getByRole("switch", { name: "Asks" }));
     expect(onToggle).toHaveBeenCalledExactlyOnceWith(true);
   });
 
   it("turns off at once when no Decision waits", () => {
     const onToggle = vi.fn();
     page({ onToggle });
-    fireEvent.click(screen.getByRole("switch", { name: "The Hill" }));
+    fireEvent.click(screen.getByRole("switch", { name: "Asks" }));
     expect(onToggle).toHaveBeenCalledExactlyOnceWith(false);
   });
 
   it("arms the first tap off while Decisions wait, shows the row's warning line, and the second tap switches off", () => {
     const onToggle = vi.fn();
     page({ waiting: 3, onToggle });
-    const sw = screen.getByRole("switch", { name: "The Hill" });
+    const sw = screen.getByRole("switch", { name: "Asks" });
     const t0 = Date.now();
     const clock = vi.spyOn(Date, "now").mockReturnValue(t0);
     // The note sits below the switch and is drawn only while armed: no slot is held before the tap.
@@ -195,7 +195,7 @@ describe("the head's switch", () => {
     try {
       page({ waiting: 2 });
       const head = section("head");
-      fireEvent.click(screen.getByRole("switch", { name: "The Hill" }));
+      fireEvent.click(screen.getByRole("switch", { name: "Asks" }));
       const note = head.querySelector('[data-line="armed"]')!;
       expect(note.getAttribute("aria-hidden")).toBeNull();
       expect(note.className).not.toContain("invisible");
@@ -210,6 +210,6 @@ describe("the head's switch", () => {
 
   it("is disabled where the device may not write", () => {
     page({ disabled: true });
-    expect(screen.getByRole("switch", { name: "The Hill" })).toBeDisabled();
+    expect(screen.getByRole("switch", { name: "Asks" })).toBeDisabled();
   });
 });
