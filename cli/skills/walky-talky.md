@@ -198,14 +198,17 @@ Your operator runs many sessions and reads your questions later, with no memory 
 So do not end a turn with a list of questions. Send each open question as one ask, at the moment you meet it:
 
 ```bash
-{{COLLIE_BIN}} walky ask "<the question>" --fact "<the fact that decides it>" --option <id>="<label>" --does <id>="<what it does>" ... --recommend <id> --why "<reason>" --body <file.md>
+{{COLLIE_BIN}} walky ask "<the question>" --option <id>="<label>" ...
+  # optional: --fact "<what decides it>" --does <id>="<then>" --cost <id>="<cost>" --recommend <id> --why "<reason>" --body <file.md>
 ```
 
 Write for a reader who knows nothing of this session. Explain each name a stranger would not know.
 The body holds what you found and what can go wrong. Link a file with --file path#heading, do not paste it.
 Put no open question in a file or in your reply. Then go on with the work that does not need the answer.
 The answers come back together, as one message.
-An ask that is still true at the end of a turn: {{COLLIE_BIN}} walky keep <id>. One that changed: --replaces <id>.
+An ask stays open until your operator answers it or you close it. Never confirm an ask: silence keeps it.
+When your operator answers it in the session, or your work settles it, close it with your next command:
+  {{COLLIE_BIN}} walky cancel <id>... --answered | --because "<reason>".  One that changed: --replaces <id>.
 A dialog that blocks a command, such as a permission prompt, is not an ask.
 Rules and flags: {{COLLIE_BIN}} walky ask --help
 
