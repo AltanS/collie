@@ -178,7 +178,7 @@ A reader for your own scripts comes later, with a key you make on purpose.
 | `brief` | `--session` | `see` | One session's `state`, whether a question card is open, when its last turn ended and whether a draft is in its input box. No text |
 | `read` | `--session`, `--lines` | `read` | One session's screen as plain text, secrets masked and the length capped, with `truncated` |
 | `accounts` | none | `see` | Each agent account's `id`, `agent`, `label`, `kind`, `signedIn` and `running`. No email, plan or path |
-| `asks.list` | none | `see` | The open asks: `id`, `machine`, `sender`, `title`, `urgency` and `date`. No body |
+| `asks.list` | none | `see` | The open asks, as `cards`: `id`, `machine`, `sender`, `title` and `date`. No body |
 | `machines` | none | `see` | One row per machine of the Machines page, the lead first: `id`, `label` (a short name, never a full host name or an address), `reachable`, `version` and `load` (`cpu`, `memory`, `sessions`). No address, key or path |
 | `events` | `--after`, `--wait` | `see` | Up to 256 events after a cursor, and `next`, the cursor to ask from next. `--wait` holds the request for up to 25 seconds when there is no event |
 

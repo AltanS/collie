@@ -71,7 +71,7 @@ A question card is open from the durable agent's `ask` event until its `ask-clos
 | state | who sets it | what the phone shows |
 | --- | --- | --- |
 | Open | The durable agent raises the question card. The pane reads `waiting` while any question card is open | A card under "Needs your answer", with the durable agent's name, and the time left when the question card has `expiresAt` |
-| Changed | The durable agent changes the question card in place, and its `revision` rises | The card redraws. A tap on the old form gets 409 `stale`, and the card says "This ask changed. Read it again, then tap an answer." |
+| Changed | The durable agent changes the question card in place, and its `revision` rises | The card redraws. A tap on the old form gets 409 `stale`, and the card says "This question card changed. Read it again, then tap an answer." |
 | Taken | The phone answers, and the durable agent closes the question card with `by: "phone"` | The card goes, and the tool runs or is denied as the option says |
 | Decided in the durable agent | The durable agent closes the question card itself, `decidedBy: "program"`. A stop of the turn counts | A line in Chat that starts "Decided in the durable agent", with the card's title |
 | Timed out | The clock passes `expiresAt`, `decidedBy: "timeout"` | A line in Chat that starts "Timed out before an answer", with the card's title |

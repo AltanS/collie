@@ -449,8 +449,9 @@ ask there, with the machine it came from on its first line.
 A member checks its own switches first: with Asks or WalkyTalky off on that machine, the ask is refused
 there. It reads the images from its own disk, under the same rules as on the lead, and sends them to the
 lead before the ask. The lead checks the member's signature, and takes the machine from it. A member
-cannot ask for a session of another machine. The files an ask of a member links are not opened on the
-phone, and a member's sessions get no reminder of their open asks ([How an agent is
+cannot ask for a session of another machine. A member takes no `--file` in an ask, and refuses it with
+"linked files work on the lead's own sessions in this build; send the ask again without --file". A member's
+sessions get no reminder of their open asks ([How an agent is
 reminded](asks.md#how-an-agent-is-reminded)).
 
 Your answers go back to the session as a WalkyTalky message, through the lead. When the session's
@@ -474,9 +475,13 @@ the same ask again, with its `--request-id`: the lead keeps one ask for it.
 
 One machine's agents hold at most 40 open asks on the lead.
 
-> **Note.** Asks from a member need Collie 1.29.0 on the lead and on that member. An older lead
-> is refused with "the lead runs a Collie older than 1.29.0", and the ask is not sent. Ask from a
-> session on the lead machine, or run `collie crew update --all` to level the crew
+> **Note.** An ask from a member needs a lead that takes asks from other machines. A lead below 1.29.0
+> does not, and the member says "the lead (`<name>`) runs a Collie older than 1.29.0, which takes no asks
+> from other machines: update the lead, or ask from a session on the lead machine". A lead from 1.29.0 on
+> that does not know asks yet takes the ask as a plain card. The member takes it back at once and says
+> "the lead of this crew runs a Collie that does not know asks; the post was taken back. Update the lead,
+> or ask from a session on the lead". In both cases nothing is left open. Ask from a session on the lead
+> machine, or run `collie crew update --all` to level the crew
 > ([Update a crew](upgrading.md#updating-the-rest-of-the-crew)).
 
 ## Tricks that read files on every machine
@@ -573,7 +578,7 @@ the deputy changes, the old one removes its copy.
 The lead also keeps a copy of its open asks on its deputy, with their pictures, up to 32 MB
 of pictures, newest first. The deputy shows none of them while the lead is alive. Its standby page says
 how many come along, and the Take over button or `collie promote` on the deputy puts them on the
-deputy's Asks. Each keeps its place, and no phone gets a second notification for it.
+deputy's Asks. Each keeps its place.
 
 A picture that did not reach the deputy is left out, and the card says
 "A picture stayed on `<old lead>`." A question from a trick that did not start on the deputy closes,

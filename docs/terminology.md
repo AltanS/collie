@@ -534,8 +534,8 @@ setting is your data: the trick gets it, Collie runs nothing with it
 
 The list of open questions from all your sessions, on the phone. It is the fourth item of the Dashboard's
 bottom bar, and on a large screen a button beside Actions in the Dashboard's header. One crew has one
-Asks list, on the lead. Its switch is the first row of the trick list in Settings → Tricks. It sends no
-notification for an ask of an agent ([Asks](asks.md)).
+Asks list, on the lead. Its switch is the first row of the trick list in Settings → Tricks. No ask and no
+card in it has a priority or sends a notification ([Asks](asks.md)).
 
 ## Ask
 
