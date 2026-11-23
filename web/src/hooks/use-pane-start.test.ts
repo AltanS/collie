@@ -24,9 +24,13 @@ describe("nextSeen", () => {
     expect(nextSeen(null, "p", "codex", false, "idle", false)?.history).toBe("fresh");
     expect(nextSeen(null, "p", "pi", false, "idle", true)?.history).toBe("fresh");
     expect(nextSeen(null, "p", "omp", false, "idle", true)?.history).toBe("fresh");
-    // Claude reports at start: an idle Claude with no readable log is not new.
+    // Claude Code names its session at start and writes its log at the first prompt: a session and
+    // no log is expected, so it is new. Without a session there is no excuse.
+    expect(nextSeen(null, "p", "claude", false, "idle", true)?.history).toBe("fresh");
     expect(nextSeen(null, "p", "claude", false, "idle", false)?.history).toBe("unknown");
-    expect(nextSeen(null, "p", "claude", false, "idle", true)?.history).toBe("unknown");
+    // An agent in no set gets no excuse, with a session or without one.
+    expect(nextSeen(null, "p", "opencode", false, "idle", true)?.history).toBe("unknown");
+    expect(nextSeen(null, "p", "opencode", false, "idle", false)?.history).toBe("unknown");
     // Codex with a session already named it, and pi without one has a missing hook.
     expect(nextSeen(null, "p", "codex", false, "idle", true)?.history).toBe("unknown");
     expect(nextSeen(null, "p", "pi", false, "idle", false)?.history).toBe("unknown");
@@ -186,9 +190,17 @@ describe("usePaneStart", () => {
     expect(result.current).toMatchObject({ history: "fresh", activity: "none" });
   });
 
-  it("an idle Claude pane met first with no readable session is not fresh, so the gate keeps its terminal", () => {
+  it("an idle Claude pane met first with no session is not fresh, so the gate keeps its terminal", () => {
     const { result } = setup({ pane: "p", harness: "claude", shell: false, status: "idle", session: false });
     expect(result.current.history).toBe("unknown");
+  });
+
+  it("an idle Claude pane met first with a session and no log yet is fresh, as it is after a remount", () => {
+    const first = setup({ pane: "p", harness: "claude", shell: false, status: "idle", session: true });
+    expect(first.result.current.history).toBe("fresh");
+    first.unmount();
+    const again = setup({ pane: "p", harness: "claude", shell: false, status: "idle", session: true });
+    expect(again.result.current.history).toBe("fresh");
   });
 
   it("an idle Codex pane with no session yet is fresh, and one this view watched start is fresh", () => {

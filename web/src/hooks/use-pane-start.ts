@@ -11,7 +11,8 @@ import type { AgentStatus, AgentView } from "@/lib/types";
 //
 //   history   `fresh` when this view watched the pane turn from a shell into the agent, or first saw
 //             an agent idle that has an excuse for having nothing to read yet (Codex with no session,
-//             pi with a session and no log: lib/journal-agents.ts `mayBeNewWithNothingToRead`).
+//             pi or Claude Code with a session and no log: lib/journal-agents.ts
+//             `mayBeNewWithNothingToRead`).
 //             `unknown` otherwise: first sight already busy, done or unknown, or idle with nothing
 //             to read and no such excuse, which may be a long conversation Chat cannot show.
 //   activity  the EVENTS seen since the agent began: it worked, it asked for input, its first turn

@@ -27,6 +27,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 - **Two pi panes in one folder each get their own Chat on the Herdr core.** This is for the experimental `herdr-core` backend only. Collie could not tell the two logs apart, so both panes showed the empty card. A pi extension now labels its terminal with the path of its session file, which holds your home folder and project name, and Collie opens that file for that pane. To turn it on, copy `pi-extension/collie-session-label.ts` into `~/.pi/agent/extensions/` and start pi again (see `pi-extension/README.md`). To turn it off, delete that file and start pi again. Thanks @GGGODLIN (#846), based on @ibrmora's port (#780).
 
+### Fixed
+
+- **A new Claude Code session stays in Chat when you open it again before its first message.** The session opened on "Send a message to start" the first time and on the terminal the second time, because Claude Code writes its log only at the first prompt. It now opens on Chat both times. A Claude Code session whose log was deleted opens on the empty Chat until it asks a question or finishes a turn, then shows the terminal. Thanks @viniciosrab (#853).
+
 ## [1.30.1] - 2026-11-22
 
 ### Fixed
