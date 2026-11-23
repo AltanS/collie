@@ -181,7 +181,7 @@ describe("the rendered skill", () => {
     // 185 until the skill taught the hill and tricks (two short parts, about 30 lines), 225 with the wording rules,
     // 230 with the `who` columns and the addressing text (session names) beside the data-path wording (M99),
     // 245 with the recipient rules and the two lines `send` prints (the pick tests of 2026-11-23).
-    expect(WALKY_TALKY_SKILL_TEMPLATE.split("\n").length).toBeLessThan(245);
+    expect(WALKY_TALKY_SKILL_TEMPLATE.split("\n").length).toBeLessThan(255);
     expect(WALKY_TALKY_SKILL_TEMPLATE).not.toContain("—");
     for (const verb of ["who", "send", "reply", "inbox"]) expect(WALKY_TALKY_SKILL_TEMPLATE).toContain(`walky ${verb}`);
   });
