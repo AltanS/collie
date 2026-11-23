@@ -37,7 +37,7 @@ function AskRow({ ask, number, answered, onOpen }: { ask: AskDecision; number: n
         className={cn("flex min-h-11 w-full items-center gap-2.5 px-3.5 py-2 text-left", FOCUS_RING_INSET, HOVER_FILL, muted && "text-muted-foreground")}
       >
         <span className="w-4 shrink-0 text-xs text-muted-foreground tabular-nums">{number}</span>
-        <span className="font-content min-w-0 flex-1 truncate text-sm">{questionLine(ask)}</span>
+        <span className="font-content line-clamp-2 min-w-0 flex-1 text-sm leading-snug">{questionLine(ask)}</span>
         <OneOf
           active={answered ? "answered" : null}
           className="inline-grid shrink-0 justify-items-end"

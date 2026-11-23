@@ -103,7 +103,7 @@ export function AskAnswerCard({ kind, number, title, does, cost, why, recommende
           {folded === "" ? null : t("asks.card.note", { note: folded })}
         </span>
       </button>
-      <span aria-hidden className="pointer-events-none absolute left-3.5 top-0 -translate-y-1/2">
+      <span aria-hidden className="pointer-events-none absolute left-3.5 top-0 flex -translate-y-1/2 rounded-md bg-background">
         <KeyBadge tone={on ? "selected" : "default"}>{number}</KeyBadge>
       </span>
       <span aria-hidden className="pointer-events-none absolute right-3.5 top-0 -translate-y-1/2">
@@ -114,19 +114,23 @@ export function AskAnswerCard({ kind, number, title, does, cost, why, recommende
             {
               key: "recommended",
               node: (
-                <Badge variant="value" data-slot="ask-badge-recommended">
-                  <Icon name="recommended" aria-hidden className="size-3.5 shrink-0 text-status-working" />
-                  {t("asks.card.recommended")}
-                </Badge>
+                <span className="inline-flex rounded-md bg-background">
+                  <Badge variant="value" data-slot="ask-badge-recommended">
+                    <Icon name="recommended" aria-hidden className="size-3.5 shrink-0 text-status-working" />
+                    {t("asks.card.recommended")}
+                  </Badge>
+                </span>
               ),
             },
             {
               key: "answered",
               node: (
-                <Badge variant="ok" data-slot="ask-badge-answered">
-                  <Icon name="done" aria-hidden className="size-3.5 shrink-0" />
-                  {t("asks.card.answered")}
-                </Badge>
+                <span className="inline-flex rounded-md bg-background">
+                  <Badge variant="ok" data-slot="ask-badge-answered">
+                    <Icon name="done" aria-hidden className="size-3.5 shrink-0" />
+                    {t("asks.card.answered")}
+                  </Badge>
+                </span>
               ),
             },
           ]}
