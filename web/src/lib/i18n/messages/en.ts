@@ -4560,29 +4560,7 @@ export type Messages = typeof en;
  * already carries, so the list cannot outlive its translations. Never a way to skip translating a
  * key for good: a key stays here only between a feature and its translation pass.
  */
-export const PENDING_TRANSLATION = [
-  "shortcuts.action.open_space",
-  "actions.command.openSpace",
-  "wide.space.openAria",
-  "asks.board.nextUp",
-  "asks.board.answer",
-  "asks.board.lineWarm",
-  "asks.board.lineWorking",
-  "asks.board.section",
-  "asks.board.sectionCount",
-  "asks.board.sectionOpen",
-  "asks.board.minLeft",
-  "asks.board.underMin",
-  "asks.header.inOne",
-  "asks.header.inMany",
-  "asks.mode.aria",
-  "asks.mode.title",
-  "asks.board.rowAnsweredWith",
-  "shortcuts.action.answer_next_ask",
-  "actions.command.answerNext",
-  "pins.action.copyAll",
-  "pins.textSheet.aria",
-] as const satisfies readonly MessageKey[];
+export const PENDING_TRANSLATION = [] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */
 export type PendingKey = (typeof PENDING_TRANSLATION)[number];
