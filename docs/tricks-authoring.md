@@ -423,11 +423,19 @@ alone, with the line `an ask has no priority: remove the key "priority".`, and t
 | `collie hill clear`, `state`, `on`, `off` | `collie asks clear`, `state`, `on`, `off` |
 
 The document key `decisions` is the one old name that does not fail. A program that still uses helper v10
-or older prints it on every run. Collie drops the key and reads no asks from it, so the trick's asks do
-not show. The note says `"decisions" is "asks" now (ADR 0179). Update the helper with: collie trick helper
-<id>. This Collie ignores it.` It shows in `collie trick dev` and `collie trick check --run`, and not on
-the trick's row. The trick's other parts draw as before. Run `collie trick helper <id>`, then change
-`t.decide` to `t.ask`.
+or older prints it on every run, also when the trick asks nothing. Collie never reads asks from it, so the
+trick's parts draw as before and the asks it lists do not show.
+
+- When the list holds asks, the trick's row in Settings, Tricks says it in one line: `"decisions" is "asks"
+  now (ADR 0179), so the asks listed under it are not shown. Update the helper with: collie trick helper
+  <id>.` The row has the trick's own id in place of `<id>`. `collie trick check --run` and `collie trick
+  dev` print the same line, with `<id>` as it is.
+- When the list is empty, or the key holds something that is not a list, nothing is lost and the row stays
+  quiet. `collie trick check --run` and `collie trick dev` name the key as ignored.
+- A document that holds both `asks` and a `decisions` list shows the asks of `asks` only, and the row says
+  the line.
+
+Run `collie trick helper <id>`, then change `t.decide` to `t.ask`.
 
 ## Where to go next
 
