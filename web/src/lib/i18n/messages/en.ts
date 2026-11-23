@@ -3638,7 +3638,7 @@ export const en = {
   "settings.tricks.hillOff": "Asks is off: this trick's asks are not shown.",
   "settings.tricks.pending": "A new version waits for your yes.",
   "settings.tricks.waiting.title": "Waiting for your yes",
-  // The same row with the Hill off (2026-11-13): the new version's card is a Decision on the Hill.
+  // The same row with Asks off (2026-11-13): the new version's card is an ask in Asks.
   // Fault B: the trick stopped because its code asks for a right the person's yes did not hold.
   "settings.tricks.rightsMoved": "Its rights changed. Switch it on again.",
   // Update this trick without asking, and the undo of an automatic change (crew slice 3).
@@ -3882,7 +3882,7 @@ export const en = {
   "hill.receipt.failed": "Not sent.",
   // An answer to a session on a crew machine that is not answering (CREW_PROTOCOL §22).
   "hill.receipt.offline": "{machine} is not answering. Your answer was not sent.",
-  // An answer to a Decision of Collie's own (crew slice 3): Collie acted itself, nothing was typed.
+  // An answer to an ask of Collie's own (crew slice 3): Collie acted itself, nothing was typed.
   "hill.receipt.versionUsed": "Now running the new version.",
   "hill.receipt.versionKept": "Kept the old version.",
   "hill.receipt.collieDone": "Done.",
@@ -4023,12 +4023,12 @@ export const en = {
   "settings.hill.label": "Asks",
   "settings.hill.hint": "Agents and tricks ask you here. Off: they cannot post, and Asks leaves the bar.",
   "settings.hill.switchFailed": "Could not switch Asks. Try again.",
-  // The armed second tap on the Hill's switch in Settings, Experiments (it had been the Tricks card's About
+  // The armed second tap on the Asks switch in Settings, Experiments (it had been the Tricks card's About
   // sheet until 2026-11-13).
   "settings.tricks.hill.waits.one": "{count} question waits in Asks. You cannot answer it while it is off.",
   "settings.tricks.hill.waits.other": "{count} questions wait in Asks. You cannot answer them while it is off.",
   // The switch for tricks as a whole, a card in Settings, Experiments (2026-11-18, it began first on Settings, Tricks on 2026-11-17): off by default. Its armed second tap
-  // counts the Decisions that tricks posted (they stay stored and come back when tricks are on).
+  // counts the asks that tricks posted (they stay stored and come back when tricks are on).
   "settings.tricks.switch.about": "Tricks are small programs that add buttons, lines and pages to Collie. A trick's program runs as you on this machine.",
   "settings.tricks.switch.contract": "Tricks are an experiment: they may change, lose settings, or be withdrawn in a patch release.",
   "settings.tricks.switch.failed": "Could not switch tricks. Try again.",

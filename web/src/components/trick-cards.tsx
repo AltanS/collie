@@ -26,8 +26,8 @@ import { cn } from "@/lib/utils";
 //   2. The Dashboard: one quiet bordered line while a card is open and the Hill is off, in the box the
 //      update line wears (`Notice`, ui/notice.tsx), with one button to the oldest card. With the Hill on
 //      the bar's Hill item is the signal, so the line is not drawn.
-//   3. A card's notification: none rings today. Collie's cards are posted as `today`, and only a `now`
-//      Decision pushes (bridge/hill/push.ts), with the Hill on as with it off.
+//   3. A card's notification: none rings. No ask and no card of Collie's own sends a notification, with
+//      Asks on as with it off (ADR 0179 addendum; bridge/hill/no-push.test.ts pins it).
 //
 // The page itself is routes/trick-card.tsx: the same card component with the same guards.
 
