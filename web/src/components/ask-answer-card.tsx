@@ -70,7 +70,7 @@ export function AskAnswerCard({ kind, number, title, does, cost, why, recommende
   const folded = note === undefined ? "" : noteLine(note);
   const badge = answered ? "answered" : recommended ? "recommended" : null;
   return (
-    <div data-slot="ask-card" data-intent={intent} data-kind={kind} data-state={answered ? "answered" : picked ? "picked" : "rest"} className="relative">
+    <div data-slot="ask-card" data-intent={intent} data-kind={kind} data-state={answered ? "answered" : picked ? "picked" : "rest"} className="relative scroll-mt-4">
       <button
         type="button"
         aria-pressed={answered}

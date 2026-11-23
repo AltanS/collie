@@ -1,8 +1,8 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
 import { askDecision } from "@/test/asks-fixtures";
 
-import { installWorld } from "./hitbox/world";
+import { installWorld, richSnapshot } from "./hitbox/world";
 
 // THE ASKS PAGES, THE WHOLE FLOW (Asks build 2, 2026-11-23). The board, one ask, a pick that waits as a mark, a note, the
 // keys that move between asks, one Send for one session, the context page, "Your own answer", and a refused Send. The
@@ -42,13 +42,14 @@ const SECOND = askDecision({ id: "ak_e2e000000002", title: "Drop the flag?", add
 const OTHER = askDecision({ id: "ak_e2e000000003", title: "Which port for the preview?", address: "local/w2:p1", at: AT - 7_200_000 });
 
 async function world(page: Page, answers?: (body: Sent) => { status: number; body: object }) {
-  await installWorld(page);
+  const control = await installWorld(page);
   await page.route("**/api/hill", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ v: 1, rev: 1, open: [FIRST, SECOND, OTHER], closed: [] }) }));
   await page.route("**/api/hill/answers", async (route) => {
     const sent: Sent = route.request().postDataJSON();
     const made = answers?.(sent) ?? { status: 200, body: { rid: sent.rid, items: [{ id: FIRST.id, code: "ok", reason: null, state: "answered" }], delivery: "typed", at: AT } };
     await route.fulfill({ status: made.status, contentType: "application/json", body: JSON.stringify(made.body) });
   });
+  return control;
 }
 
 async function openFirstAsk(page: Page) {
@@ -199,4 +200,79 @@ test("on a large screen the ask is one centred column and the keys still work", 
   expect(Math.abs(b!.x + b!.width / 2 - 720)).toBeLessThanOrEqual(2);
   await page.keyboard.press("j");
   await expect(page).toHaveURL(/ak_e2e000000002/u);
+});
+
+// THE CONFIRM SHEET STANDS WHOLE IN THE WINDOW (2026-11-23, after the first review shots showed only its title: they
+// were taken while it still slid in). The panel's own box is read after its open animation has ended, never after a
+// sleep: Confirm and Cancel end inside the window, on a phone the sheet leaves the chosen card in view above it, and
+// that card wears the chosen look (`border-primary bg-primary/10`).
+async function boxOf(locator: Locator) {
+  const b = await locator.boundingBox();
+  expect(b).not.toBeNull();
+  return b!;
+}
+
+const SHEET_WINDOWS = [
+  { width: 360, height: 740 },
+  { width: 390, height: 844 },
+  { width: 1440, height: 900 },
+] as const;
+
+for (const { width, height } of SHEET_WINDOWS) {
+  for (const kind of ["option", "option with its note open", "own answer"] as const) {
+    test(`the confirm sheet is whole in the window: ${kind}, ${width} x ${height}`, async ({ page }) => {
+      await page.setViewportSize({ width, height });
+      await world(page);
+      await page.goto(`/hill/ask/${FIRST.id}`);
+      await expect(page.getByRole("heading", { name: FIRST.title })).toBeVisible();
+      const intent = kind === "own answer" ? "own" : "drop";
+      await card(page, intent).scrollIntoViewIfNeeded();
+      await card(page, intent).getByRole("button").click();
+      const dialog = page.getByRole("dialog");
+      await expect(dialog).toBeVisible();
+      if (kind === "option with its note open") await dialog.getByRole("button", { name: /Add a note/u }).click();
+      const panel = page.locator("[data-presentation]");
+      await panel.evaluate((el) => Promise.all(el.getAnimations({ subtree: true }).map((animation) => animation.finished)).then(() => undefined));
+      const confirm = dialog.getByRole("button", { name: "Confirm" });
+      const cancel = dialog.getByRole("button", { name: "Cancel" });
+      const sheetBox = await boxOf(panel);
+      expect(sheetBox.y).toBeGreaterThanOrEqual(0);
+      expect(sheetBox.y + sheetBox.height).toBeLessThanOrEqual(height);
+      const confirmBox = await boxOf(confirm);
+      expect(confirmBox.y).toBeGreaterThanOrEqual(sheetBox.y);
+      expect(confirmBox.y + confirmBox.height).toBeLessThanOrEqual(height);
+      const cancelBox = await boxOf(cancel);
+      expect(cancelBox.y + cancelBox.height).toBeLessThanOrEqual(Math.min(height, sheetBox.y + sheetBox.height));
+      if (width >= 1000) return;
+      // A phone: the chosen card is marked and stands between the page's top and the sheet.
+      const chosen = card(page, intent);
+      await expect(chosen).toHaveAttribute("data-state", "picked");
+      await expect(chosen.getByRole("button")).toHaveClass(/border-primary/u);
+      await expect(chosen.getByRole("button")).toHaveClass(/bg-primary\/10/u);
+      const chosenBox = await boxOf(chosen);
+      const scrollBox = await boxOf(page.locator('[data-slot="ask-scroll"]'));
+      expect(chosenBox.y).toBeGreaterThanOrEqual(scrollBox.y);
+      expect(chosenBox.y + chosenBox.height).toBeLessThanOrEqual(sheetBox.y);
+    });
+  }
+}
+
+test("a session card on the board says its cache in words when the phone knows it", async ({ page }) => {
+  const control = await world(page);
+  control.body = () =>
+    richSnapshot(1, (agents) =>
+      agents.map((agent) => {
+        if (agent.paneId === "w1:p1") return { ...agent, status: "idle", cache: { state: "warm", expiresAt: AT + 38.5 * 60_000, ttlSeconds: 300, ruleId: "e2e", confidence: "observed" } };
+        if (agent.paneId === "w2:p4") return { ...agent, status: "idle", cache: { state: "cold", ttlSeconds: 300, ruleId: "e2e", confidence: "observed" } };
+        return agent;
+      }),
+    );
+  // The second session is a pane the herd holds (the stub's panes are w1:p1 to w4:p11).
+  const cold = askDecision({ id: "ak_e2e000000004", title: "Which port for the preview?", address: "local/w2:p4", at: AT - 7_200_000 });
+  await page.route("**/api/hill", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ v: 1, rev: 1, open: [FIRST, cold], closed: [] }) }));
+  await page.goto("/hill");
+  const cards = page.locator('[data-slot="asks-session"]');
+  await expect(cards).toHaveCount(2);
+  await expect(cards.nth(0).locator('[data-slot="asks-session-cache"]')).toHaveText("warm, 38 min left");
+  await expect(cards.nth(1).locator('[data-slot="asks-session-cache"]')).toHaveText("cold");
 });
