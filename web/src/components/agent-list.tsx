@@ -16,6 +16,8 @@ import {
 import { StatusCounts, StatusSummaryLine } from "@/components/status-counts";
 import { ATTENTION, bucketOf, needsYou, triage, worstTriage } from "@/lib/triage";
 import { groupHost, pinnedRows, shownGroups, stripEntries } from "@/lib/dash-view";
+import { SpaceLanding } from "@/components/space-landing";
+import { peekSpaceLanding } from "@/lib/space-landing";
 import type { AgentView, BridgeStatus, ServerSummary, SessionSummary, TabView, WorkspaceView } from "@/lib/types";
 import { paneRowKey, paneScope } from "@/lib/hosts";
 import { machinesHiddenFrom } from "@/lib/hidden-machines";
@@ -830,8 +832,46 @@ export function AgentList({
       : waitingPanes(shown, heldNeeds === null ? needsYou : (p) => heldNeeds.has(paneRowKey(p))).filter(keep);
     const bandOpen = waiting.length > 0;
     const place = !ranked && bestRows === null && !renderBody;
+    // THE LANDING (open_space, lib/space-landing.ts): the Dashboard opened at one space. What this list narrows
+    // by (the workspace choice, hide, the machine, the needs-you switch, the filter text) is read as it stands,
+    // and the component clears the one that hides the space. The sort is never touched.
+    const askedKey = peekSpaceLanding();
+    const asked = askedKey === null ? undefined : groups.find((g) => g.key === askedKey);
+    const askedColumn = asked === undefined || !place ? undefined : drawnShown.find((d) => d.group === asked);
+    const askedRows = asked === undefined ? NO_PANES : shownRows.filter((p) => workspaceGroupKey(p) === asked.key);
+    const askedFirst = askedColumn?.rows[0] ?? askedRows[0];
+    const landing =
+      askedKey === null ? null : (
+        <SpaceLanding
+          facts={{
+            exists: asked !== undefined,
+            choiceExcludes: asked !== undefined && isolatedGroups.length > 0 && !isolatedGroups.includes(asked),
+            hiddenSpace: asked !== undefined && isolatedGroups.length === 0 && hiddenSet.has(workspacePrefKey(asked)),
+            hiddenMachine: asked !== undefined && isolatedGroups.length === 0 && machineHidden.has(groupHost(asked)),
+            needsYouHides: asked !== undefined && needsYouOnly && asked.panes.some((p) => !isPinned(p)) && !drawn.some((d) => d.group === asked),
+            queryHides: asked !== undefined && hits !== null && askedRows.length === 0 && baseRows.some((p) => workspaceGroupKey(p) === asked.key),
+            drawn: askedFirst !== undefined,
+          }}
+          clear={{
+            workspaceChoice: () => {
+              if (asked !== undefined) onIsolate?.(groups.filter((x) => x === asked || isolatedGroups.includes(x)).map(workspacePrefKey));
+            },
+            hiddenSpace: () => {
+              if (asked !== undefined) onToggleHidden?.(workspacePrefKey(asked));
+            },
+            hiddenMachine: () => {
+              if (asked !== undefined) onShowMachine?.(groupHost(asked));
+            },
+            needsYouOnly: () => onNeedsYouOnlyChange?.(false),
+            query: () => filter.setQuery(""),
+          }}
+          columnId={askedColumn === undefined || asked === undefined ? null : groupDomId(asked.key)}
+          rowId={askedFirst === undefined ? null : rowDomId(paneRowKey(askedFirst))}
+        />
+      );
     return (
       <div ref={listRoot} data-slot="wide-dashboard" className="flex flex-col pb-4">
+        {landing}
         {/* THE COMMAND ROW STAYS (ADR 0158, addendum 2026-11-21): the summary, the filter, the order, the switch, the
             magnifier and New, sticky under the header on the page plane, so New and the filter are always in reach.
             It wears the page's own ground (the theme's grain, fixed to the window like the page's, which never scrolls),

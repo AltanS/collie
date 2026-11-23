@@ -1522,6 +1522,8 @@ The layout has three parts.
   (right-click with a mouse) to **Rename** it or **Close tab**, as on the phone. Closing the tab you
   work in moves you to a pane of the tab beside it. The Actions button opens [Actions](sessions.md#actions).
   Two arrow buttons, or a vertical swipe, move to the space above or below.
+  The name is a button: it opens the dashboard at this space, with its column in view and the focus on its
+  first row, and `prefix+o` does the same.
 
 Each pane has a width: **1/2**, **4/5** or **Full** of the row. A pane is never narrower than 440
 pixels, so a width that would make it narrower is not offered. When the row cannot hold two panes at

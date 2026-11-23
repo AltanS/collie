@@ -26,6 +26,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Added
 
 - **Two pi panes in one folder each get their own Chat on the Herdr core.** This is for the experimental `herdr-core` backend only. Collie could not tell the two logs apart, so both panes showed the empty card. A pi extension now labels its terminal with the path of its session file, which holds your home folder and project name, and Collie opens that file for that pane. To turn it on, copy `pi-extension/collie-session-label.ts` into `~/.pi/agent/extensions/` and start pi again (see `pi-extension/README.md`). To turn it off, delete that file and start pi again. Thanks @GGGODLIN (#846), based on @ibrmora's port (#780).
+- **From a pane, one key or a tap opens its space.** Press the prefix (`Ctrl+B`), then `o`. On a large screen the space's name in the bar at the top is a button that does the same. The Dashboard opens with that space's column in view and the focus on its first row. A choice that would hide the space is cleared for the visit: the chosen workspaces, a hidden space or machine, the needs-you switch or the filter text. The sort stays. On a phone or tablet, and with Large-screen layout set to Off in Settings, the key opens the space's own page, as a tap on its name does. The action is called `open_space`; to change its key, write it in `shortcuts.toml` (see the keyboard shortcuts page). It also stands in Actions as **Open this space**.
 
 ## [1.30.1] - 2026-11-22
 

@@ -106,6 +106,7 @@ is written `prefix+<key>`. A key inside a mode is a bare key.
 | `new_space` | `prefix+shift+n` | Navigation | Opens the New page, to start a new space. | [Space](terminology.md#space) |
 | `new_agent` | - | Navigation | Opens the New page, as the New button does. | - |
 | `rename_space` | - | Navigation | Renames the space you are in, on its page or, on a large screen, in the session view, where its multiplexer takes a rename. | [Space](terminology.md#space) |
+| `open_space` | `prefix+o` | Navigation | Opens the overview of the space you are in. On a phone or tablet that is the space's page. On a large screen it is the dashboard, with the space's column in view and the focus on its first row. | [Space](terminology.md#space) |
 | `previous_space` | `prefix+k` | Navigation | Goes to the space before this one. | [Space](terminology.md#space) |
 | `next_space` | `prefix+j` | Navigation | Goes to the space after this one. | [Space](terminology.md#space) |
 | `navigate_mode` | `prefix+w` | Navigation | Opens Navigate mode. | [Navigate mode](terminology.md#navigate-mode) |
