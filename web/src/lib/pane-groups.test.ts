@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { groupPanesByWorkspace, resolveIsolatedPrefKeys, workspaceGroupKey } from "./pane-groups";
-import type { AgentView, WorkspaceView } from "./types";
+import type { AgentView, ServerSummary, TabView, WorkspaceView } from "./types";
 
 function pane(paneId: string, over: Partial<AgentView> = {}): AgentView {
   return {
@@ -420,5 +420,89 @@ describe("groupPanesByWorkspace — a repo opened twice (issue #743)", () => {
     expect(resolveIsolatedPrefKeys([key], { workspaces: [rootA, wt] })).toEqual([
       `\u0000\u0000${rootA.label}`,
     ]);
+  });
+});
+
+// A tab moved in Herdr keeps its creation `number`; only the tab list's own order changes (issue #850).
+describe("groupPanesByWorkspace — tabs run in the multiplexer's tab order", () => {
+  const tab = (tabId: string, number: number, over: Partial<TabView> = {}): TabView => ({
+    tabId,
+    workspaceId: "w1",
+    number,
+    label: tabId,
+    focused: false,
+    paneCount: 1,
+    ...over,
+  });
+  const onTab = (paneId: string, tabId: string, over: Partial<AgentView> = {}) => pane(paneId, { tabId, ...over });
+
+  it("follows the list, not the numbers, after a tab was moved", () => {
+    // Created as 1, 2, 3; the person moved the third tab to the front, then the first to the end.
+    const tabs = [tab("w1:t3", 3), tab("w1:t2", 2), tab("w1:t1", 1)];
+    const groups = groupPanesByWorkspace(
+      [onTab("a", "w1:t1"), onTab("b", "w1:t2"), onTab("c", "w1:t3")],
+      [],
+      { order: "fixed", tabs },
+    );
+    expect(ids(groups)).toEqual([["c", "b", "a"]]);
+  });
+
+  it("is the same whatever order the panes arrive in", () => {
+    const tabs = [tab("w1:t3", 3), tab("w1:t2", 2), tab("w1:t1", 1)];
+    const groups = groupPanesByWorkspace(
+      [onTab("c", "w1:t3"), onTab("a", "w1:t1"), onTab("b", "w1:t2")],
+      [],
+      { order: "fixed", tabs },
+    );
+    expect(ids(groups)).toEqual([["c", "b", "a"]]);
+  });
+
+  it("puts a tab that is not in the list after the known ones", () => {
+    const tabs = [tab("w1:t2", 2), tab("w1:t1", 1)];
+    const groups = groupPanesByWorkspace(
+      [onTab("gone", "w1:t0"), onTab("a", "w1:t1"), onTab("b", "w1:t2")],
+      [],
+      { order: "fixed", tabs },
+    );
+    expect(ids(groups)).toEqual([["b", "a", "gone"]]);
+  });
+
+  it("keeps the arrival order of tabs when no tab list is given", () => {
+    const groups = groupPanesByWorkspace([onTab("a", "w1:t2"), onTab("b", "w1:t1")], [], { order: "fixed" });
+    expect(ids(groups)).toEqual([["a", "b"]]);
+  });
+
+  it("keeps each machine's own order when two machines share tab ids", () => {
+    // Both machines name their tabs w1:t1 .. w1:t3. The lead's list is first, the peer's follows.
+    const tabs = [
+      tab("w1:t2", 2, { host: "lead" }),
+      tab("w1:t1", 1, { host: "lead" }),
+      tab("w1:t3", 3, { host: "lead" }),
+      tab("w1:t1", 1, { host: "peer" }),
+      tab("w1:t3", 3, { host: "peer" }),
+      tab("w1:t2", 2, { host: "peer" }),
+    ];
+    const panes = ["lead", "peer"].flatMap((host) =>
+      ["w1:t1", "w1:t2", "w1:t3"].map((tabId) => onTab(`${host}-${tabId}`, tabId, { host })),
+    );
+    const servers: ServerSummary[] = [
+      { id: "lead", name: "lead", isLead: true, reachable: true, protocol: "ok", lastSeenAt: 0 },
+      { id: "peer", name: "peer", isLead: false, reachable: true, protocol: "ok", lastSeenAt: 0 },
+    ];
+    const groups = groupPanesByWorkspace(panes, [], { order: "fixed", tabs, servers });
+    expect(ids(groups)).toEqual([
+      ["lead-w1:t2", "lead-w1:t1", "lead-w1:t3"],
+      ["peer-w1:t1", "peer-w1:t3", "peer-w1:t2"],
+    ]);
+  });
+
+  it("leaves the order \"bridge\" as the lists arrived, whatever the tab list says", () => {
+    const tabs = [tab("w1:t3", 3), tab("w1:t2", 2), tab("w1:t1", 1)];
+    const groups = groupPanesByWorkspace(
+      [onTab("a", "w1:t1"), onTab("b", "w1:t2"), onTab("c", "w1:t3")],
+      [],
+      { order: "bridge", tabs },
+    );
+    expect(ids(groups)).toEqual([["a", "b", "c"]]);
   });
 });
