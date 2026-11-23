@@ -27,6 +27,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 - **Two pi panes in one folder each get their own Chat on the Herdr core.** This is for the experimental `herdr-core` backend only. Collie could not tell the two logs apart, so both panes showed the empty card. A pi extension now labels its terminal with the path of its session file, which holds your home folder and project name, and Collie opens that file for that pane. To turn it on, copy `pi-extension/collie-session-label.ts` into `~/.pi/agent/extensions/` and start pi again (see `pi-extension/README.md`). To turn it off, delete that file and start pi again. Thanks @GGGODLIN (#846), based on @ibrmora's port (#780).
 
+### Fixed
+
+- **A narrow Codex pane takes your messages.** In a narrow terminal, about 56 columns wide, Codex wraps the status row under its input box onto two rows. Collie then found no input box, showed the card "Collie cannot read this dialog" over a pane that was only working or waiting, and refused a message sent to it. Collie now reads the box with its wrapped status row, so the card is gone and the message goes in. Thanks @hump-back (#838).
+
 ## [1.30.1] - 2026-11-22
 
 ### Fixed

@@ -18,7 +18,8 @@
 // walk reaches, not the thing that decides whether the composer exists.
 
 import { trimTrailingBlank, type StyledLine } from "../../blocks";
-import { readIsUnstyled } from "../../surface/frame";
+import { findInputFrame, readIsUnstyled } from "../../surface/frame";
+import { requireProfile } from "../../surface/profile";
 import {
   isBlank,
   isHintRow,
@@ -39,8 +40,26 @@ export interface ComposerBox {
   /** The `› ` prompt row. */
   promptRow: number;
   /** The status row under it: the last non-blank row of the frame, or the row above 0.157.0's
-   *  key-hint row. */
+   *  key-hint row. On a status row that wrapped, its first row. */
   statusRow: number;
+  /** The last row the status row wrapped onto on a narrow pane (#838, {@link wrappedStatus}). Absent
+   *  on a status row of one row. */
+  statusLast?: number;
+}
+
+/** The Codex profile's idle block: the frame module reads the same screen with it. */
+const CODEX_IDLE = requireProfile("codex").idle;
+
+/**
+ * The first row of the status row that ends at `last`, when it wrapped there on a narrow pane (#838), or
+ * `last` itself. Codex wraps its status row onto two rows on a narrow pane, and both rows are status rows.
+ * The walk below would take the upper one for a second status row and leave the frame. The frame module
+ * decides the wrap from the profile's `idle.frame.bottomWraps`, so this reader and the Surface agree on it:
+ * the rows it names under the box's edge (`Frame.bottomWrap`) must end at `last`.
+ */
+function wrappedStatus(lines: StyledLine[], last: number): number {
+  const wrap = findInputFrame(lines, CODEX_IDLE)?.bottomWrap;
+  return wrap !== undefined && wrap.last === last ? wrap.first - 1 : last;
 }
 
 // A draft wraps onto indented continuation rows between the prompt row and the status row.
@@ -101,15 +120,21 @@ export function locateComposer(lines: StyledLine[]): ComposerBox | null {
   const texts = clean.map((l) => rstrip(lineText(l)));
   // A read with no styling anywhere (herdr-core): the status and hint rows are read by their text.
   const plain = readIsUnstyled(lines);
-  const statusRow = locateStatusRow(texts, clean, plain);
-  if (statusRow < 0) return null;
+  const statusLast = locateStatusRow(texts, clean, plain);
+  if (statusLast < 0) return null;
+  // A status row that wrapped: every row of it is a status row by this reader's own test too. The frame
+  // module is asked only when the row over the last one is a status row as well.
+  const above = statusLast - 1;
+  const statusRow = above >= 0 && isStatusRow(texts[above]!, clean[above], plain) ? wrappedStatus(lines, statusLast) : statusLast;
+  for (let i = statusRow; i < statusLast; i++) if (!isStatusRow(texts[i]!, clean[i], plain)) return null;
 
   for (let i = statusRow - 1; i >= 0 && statusRow - 1 - i <= MAX_DRAFT_ROWS; i--) {
     const t = texts[i]!;
     const body = promptText(t);
     if (body !== null) {
       if (plain && POINTED_OPTION.test(body)) return null;
-      return { top: bandTop(lines, texts, i), promptRow: i, statusRow };
+      const box = { top: bandTop(lines, texts, i), promptRow: i, statusRow };
+      return statusRow === statusLast ? box : { ...box, statusLast };
     }
     // Transcript at column 0, or a second status row: the walk has left this frame.
     if (/^\S/.test(t) || isStatusRow(t, clean[i], plain)) return null;
@@ -154,11 +179,11 @@ export function stripChrome(lines: StyledLine[]): StyledLine[] {
   return trimTrailingBlank(lines.slice(0, box.top));
 }
 
-/** The status row, styled, for the strip above the phone composer. Empty when no composer. */
+/** The status row, styled, for the strip above the phone composer: each of its rows when it wrapped. Empty when no composer. */
 export function extractStatusLines(lines: StyledLine[]): StyledLine[] {
   const box = locateComposer(lines);
   if (box === null) return [];
-  return [withoutSparkles(lines[box.statusRow]!)];
+  return lines.slice(box.statusRow, (box.statusLast ?? box.statusRow) + 1).map(withoutSparkles);
 }
 
 /**
