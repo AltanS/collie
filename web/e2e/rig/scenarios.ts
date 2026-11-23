@@ -43,6 +43,9 @@ export const SCENARIOS = [
   { id: "queued-omp", title: "29 a queued send on omp: card, Stop, Send or Discard", only: ["omp"] },
   // Edit on Claude's waiting card (ADR 0122, the 2026-11-22 addendum), case 37: the take-back, then the changed text sent.
   { id: "queue-edit", title: "37 edit a waiting message", only: ["claude"] },
+  // The reminder of open asks (.adr/0178), case 38: a Claude session of its own with the hooks an install
+  // writes, two asks posted and closed by the agent after a prompt that settles each, one across `--resume`.
+  { id: "ask-remind", title: "38 Asks: the reminder of open asks reaches Claude, also after a resume", only: ["claude"] },
   // The space border (M98 spec 06): an agent's message stays in its space. Cases 30 to 33 start a throwaway
   // Claude as the sender, in the run's own space (30) or in another one (31 to 33), and send through the CLI.
   // Only 33 spends a model turn; the others hold what passes behind a draft, or are refused.

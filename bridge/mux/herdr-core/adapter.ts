@@ -700,6 +700,15 @@ export class HerdrCoreMux implements MuxAdapter {
 }
 
 /**
+ * How long {@link HerdrCoreMux.foregroundProcesses} may trail a process that just took a terminal. It
+ * answers from the last snapshot. The core reads the foreground about twice a second, and its
+ * `foreground` event pokes a fresh snapshot at once; with the event stream down the poll runs every 1.5 s
+ * (`COLLIE_POLL_MS`). So a new foreground shows within about 2.2 s, and a hook edge an agent typed into
+ * the terminal's shell sends before that is held this long instead of dropped (bridge/surface/edges.ts).
+ */
+export const HERDR_CORE_FOREGROUND_LAG_MS = 3000;
+
+/**
  * herdr-core's entry in the mux registry.
  *
  * `endpoint` is the core's client socket (`COLLIE_MUX_ENDPOINT_HERDR_CORE`). Empty means the one an
@@ -718,6 +727,7 @@ export const herdrCoreMuxFactory: MuxAdapterFactory = {
   beaconMatcher(target: MuxTarget) {
     return herdrCoreBeaconMatcher(HERDR_CORE_MUX, herdrCoreSocketFor(target.endpoint));
   },
+  foregroundLagMs: HERDR_CORE_FOREGROUND_LAG_MS,
   describeTarget(endpoint: string) {
     return `socket ${herdrCoreSocketFor(endpoint)}`;
   },

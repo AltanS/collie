@@ -2300,12 +2300,14 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
 
   // This session's hook edges (M56 spec 11): a terminal session with a Surface and a beacon matcher.
   // Herdr has a matcher for this alone; tmux and zellij use the one that lifts their agents.
-  const edgeMatcher = surface === undefined || edgeRouter === null ? undefined : factoryFor(muxRegistry, built.adapter.mux)?.beaconMatcher?.(target);
+  const edgeFactory = factoryFor(muxRegistry, built.adapter.mux);
+  const edgeMatcher = surface === undefined || edgeRouter === null ? undefined : edgeFactory?.beaconMatcher?.(target);
   if (surface !== undefined && edgeRouter !== null && edgeMatcher !== undefined) {
     const foreground = herdr.foregroundProcesses?.bind(herdr);
     const edgeTarget: EdgeTarget = {
       session: name,
       matcher: edgeMatcher,
+      foregroundLagMs: edgeFactory?.foregroundLagMs ?? 0,
       paneIds: () => {
         const { agents, shellPanes } = engine.current();
         return [...agents, ...shellPanes].map((pane) => pane.paneId);

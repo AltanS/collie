@@ -77,7 +77,9 @@ export function record(row: LedgerRow): void {
 // ── model turns ──────────────────────────────────────────────────────────────────────────────────
 
 /** Model turns one full run may spend on one harness. */
-export const TURN_CAP = 26;
+// 26 for the leg's own Claude session (the data run's case 36 is the 26th), and 5 for case 38, which runs a
+// Claude session of its own (asks.spec.ts).
+export const TURN_CAP = 31;
 
 /**
  * Count one model turn (a prompt the agent answers with the model). Throws when the harness has no
@@ -735,7 +737,12 @@ async function stubMismatches(port: number | null, caseId: string): Promise<stri
   return jsonRows(stats?.mismatches).flatMap((m) => (m.case === caseId ? [`${String(m.harness)}: ${String(m.message)}`] : []));
 }
 
-export async function runScenario(harness: HarnessId, id: ScenarioId, session: Session, body: (paneId: string, trail: Trail) => Promise<ScenarioResult>): Promise<void> {
+/**
+ * `open` starts the case's own pane once the stub files the calls under this case, so a session that boots
+ * inside the case (case 38's own Claude) has its first calls in the case's recording. Its pane id stands for
+ * `session.paneId`, and a NotReached from it is the case's "not reached".
+ */
+export async function runScenario(harness: HarnessId, id: ScenarioId, session: Session, body: (paneId: string, trail: Trail) => Promise<ScenarioResult>, open?: () => Promise<string>): Promise<void> {
   const caseId = `${harness}.${id}`;
   const stubPort = await stubCase(caseId);
   // Every end of the case writes its row and tells the stub the verdict (M67).
@@ -744,7 +751,7 @@ export async function runScenario(harness: HarnessId, id: ScenarioId, session: S
     record(stale.length === 0 ? r : { ...r, note: [...stale, r.note].join("; ") });
     await stubVerdict(stubPort, caseId, r.verdict);
   };
-  if (session.paneId === null) {
+  if (session.paneId === null && open === undefined) {
     await settle({ harness, scenario: id, verdict: "not reached", taps: null, note: `no session: ${session.startNote}` });
     test.skip(true, session.startNote);
     return;
@@ -754,9 +761,11 @@ export async function runScenario(harness: HarnessId, id: ScenarioId, session: S
   try {
     // A gap the start went ahead without (pi's example extensions) shows in the row of a case that stops.
     if (session.startNote !== "") trail.notes.push(session.startNote);
-    const reset = await resetBox(new Rig(), session.paneId, session.host);
+    const paneId = open === undefined ? session.paneId : await open();
+    if (paneId === null) throw new NotReached(session.startNote);
+    const reset = await resetBox(new Rig(), paneId, session.host);
     if (reset !== null) trail.notes.push(reset);
-    row = await body(session.paneId, trail);
+    row = await body(paneId, trail);
   } catch (err) {
     // A cassette mismatch is the cause whatever the case saw after it: say so first, and fail.
     const mismatch = await stubMismatches(stubPort, caseId);

@@ -1,0 +1,15 @@
+{
+  "v": 1,
+  "harness": "claude",
+  "version": "2.1.331",
+  "legs": {
+    "solo": {
+      "model": "haiku",
+      "skill": "1b62724c3fd6484e",
+      "recordedAt": "2026-11-23T23:12:51.755Z",
+      "cases": [
+        "claude.ask-remind"
+      ]
+    }
+  }
+}
