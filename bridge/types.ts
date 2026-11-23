@@ -336,6 +336,16 @@ export type PaneWire = Omit<AgentView, "agentSession" | "sessionAgent"> & {
    *  file is missing still answers `available:false` with reason `no-log`. */
   hasSession?: boolean;
   /**
+   * Present (and `true`) only when the bridge KNOWS that no prompt has reached this pane's session yet: the
+   * pane's hook source saw a start edge that opened a new conversation (`startup` or `clear`) and no prompt
+   * edge since. So a session that is named and has no log is new, not a past the log cannot show. Absent in
+   * every other state: a prompted session, a state the bridge cannot say (a resumed conversation, a bridge
+   * that joined late, an older hook) and a pane with no Collie hooks installed. The phone's Chat gate reads
+   * it beside `hasSession` (web/src/lib/journal-agents.ts). In a crew a member's field reaches the phone
+   * through the lead unchanged; an older bridge never sends it.
+   */
+  noPromptYet?: true;
+  /**
    * The pane's walky talky instance token (bridge/walky/instances.ts): four characters of [a-z0-9]
    * that name the session holding this pane id now. A multiplexer reuses a pane id once the pane
    * closes; the token does not carry over, so `<member>/<pane>#<token>` reaches this pane only.
@@ -753,6 +763,15 @@ export function toPaneWire(
   const placed = instance === undefined ? wire : { ...wire, instance };
   const flagged = walkyOff ? { ...placed, walkyOff: true as const } : placed;
   return pins > 0 ? { ...flagged, pins } : flagged;
+}
+
+/**
+ * The pane with its `noPromptYet` word: `true` only when the bridge knows that no prompt has reached the
+ * pane's session (`PaneWire.noPromptYet`). Any other state returns the pane as it is, with no such key, so
+ * a pane with no Collie hooks and every older body stay what they were.
+ */
+export function withNoPromptYet(wire: PaneWire, known: boolean): PaneWire {
+  return known ? { ...wire, noPromptYet: true as const } : wire;
 }
 
 /** A Herdr workspace ("space") — a project-scoped container of tabs. From `workspace.list`. */

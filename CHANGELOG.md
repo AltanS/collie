@@ -29,7 +29,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Fixed
 
-- **A new Claude Code session stays in Chat when you open it again before its first message.** The session opened on "Send a message to start" the first time and on the terminal the second time, because Claude Code writes its log only at the first prompt. It now opens on Chat both times. A Claude Code session whose log was deleted opens on the empty Chat until it asks a question or finishes a turn, then shows the terminal. Thanks @viniciosrab (#853).
+- **A new Claude Code session stays in Chat when you open it again before its first message.** The session opened on "Send a message to start" the first time and on the terminal the second time, because Claude Code writes its log only at the first prompt. Where Collie's hooks are installed, Collie now knows that the session has had no prompt, so it opens on Chat both times. A session with a past whose log Collie cannot find still opens on the terminal. On Herdr with no Collie hooks the session still shows the terminal when you open it again. Thanks @viniciosrab (#853).
 
 ## [1.30.1] - 2026-11-22
 

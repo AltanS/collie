@@ -287,7 +287,7 @@ import {
   type WhistleRouteDeps,
 } from "./stt/whistle-http.ts";
 import { uploadTooLarge } from "./uploads.ts";
-import { MUX_LOGO_PATH, OPERATOR_FONTS_PATH, isErrorBlocked, isQuestionPane, journalAgentOf, toPaneWire } from "./types.ts";
+import { MUX_LOGO_PATH, OPERATOR_FONTS_PATH, isErrorBlocked, isQuestionPane, journalAgentOf, toPaneWire, withNoPromptYet } from "./types.ts";
 import type { LaunchCheckResponse, MachineAlertsResponse } from "./types.ts";
 import { parseMachineAlerts } from "./machine-parse.ts";
 import { SPARK_MAX_MINUTES } from "./machine-history.ts";
@@ -2097,12 +2097,17 @@ export function startServer(opts: {
         // back from `withOpenAsks` and `withTurn` as the same object. One whose program lists belt actions
         // carries them (M53 spec 07), the same way.
         panes: pick(from).map((p) =>
-          withLinked(
-            withSurface(
-              withActions(withTurn(withOpenAsks(toPaneWire(withActivity(from, p), hasJournal, discoversSessions, walkyInstance?.(from.name, p.paneId), walkyPaneOff?.(from.name, p.paneId), pinCountOf(from, p)), from.herdr), from.herdr), from.herdr),
+          // A pane whose hook source knows that no prompt has reached its session yet says so. Only a `true` rides;
+          // no Collie hooks, a prompted session, an unknown one and every older body carry no key.
+          withNoPromptYet(
+            withLinked(
+              withSurface(
+                withActions(withTurn(withOpenAsks(toPaneWire(withActivity(from, p), hasJournal, discoversSessions, walkyInstance?.(from.name, p.paneId), walkyPaneOff?.(from.name, p.paneId), pinCountOf(from, p)), from.herdr), from.herdr), from.herdr),
+                from,
+              ),
               from,
             ),
-            from,
+            from.noPromptYet?.(p.paneId) === true,
           ),
         ),
       }));

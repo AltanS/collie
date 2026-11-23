@@ -5,7 +5,7 @@ import { isAbsolute, join, posix } from "node:path";
 
 import { BEACON_DIR_MODE, beaconFileName, beaconKey, beaconsDir, EDGE_FILE, EDGE_MAX_AGE_MS, EDGE_SPOOL_MAX, edgesDir } from "../bridge/beacon/paths.ts";
 import { HOOK_TARGET_FILE, HOOK_TARGETS_MAX, hookTargetsDir, parseHookTarget, type HookTargetRecord } from "../bridge/beacon/hook-targets.ts";
-import { edgeModelOf } from "../bridge/beacon/parse.ts";
+import { edgeModelOf, edgeSourceOf } from "../bridge/beacon/parse.ts";
 import { procStatPath, readStartTimeWith, startTimeProbe, type StartTimeCommand } from "../bridge/beacon/liveness.ts";
 import { HOST } from "../bridge/host.ts";
 import { win32ProcessInfo, win32StartTime } from "../bridge/win32-process.ts";
@@ -605,6 +605,9 @@ export async function cmdBeaconEmit(deps: BeaconEmitDeps): Promise<number> {
     // turn: Claude Code writes no transcript until the first message or local command (seen on
     // 2.1.310). Bounded and raw; a name that is not one adds no field and still writes the edge.
     const model = registration.event === "SessionStart" ? edgeModelOf(payload.model) : null;
+    // How the session began rides on the start edge too (`startup`, `resume`, `clear`, `compact`, `fork`), so
+    // the bridge can tell a new conversation from one with a past. A short word only; nothing else of the payload.
+    const source = registration.event === "SessionStart" ? edgeSourceOf(payload.source) : null;
     for (const stateDir of stateDirs()) {
       try {
         const record: EdgeRecord = {
@@ -619,7 +622,8 @@ export async function cmdBeaconEmit(deps: BeaconEmitDeps): Promise<number> {
           promptHash: promptHashOf(deps, stateDir, payload),
           holds,
         };
-        writeEdge(deps, stateDir, model === null ? record : { ...record, model });
+        const withModel = model === null ? record : { ...record, model };
+        writeEdge(deps, stateDir, source === null ? withModel : { ...withModel, source });
       } catch {
         // No edge for this target. The screen still reads the pane on its own poll.
       }

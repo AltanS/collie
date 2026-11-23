@@ -215,4 +215,12 @@ export interface EdgeRecord {
    * older emitter, from every other edge, and from a start that named none (`claude -p` sends none).
    */
   readonly model?: string;
+  /**
+   * How the session began, as the harness's start hook names it (`startup`, `resume`, `clear`,
+   * `compact`, `fork`), on a start edge only. The router reads it to tell a new conversation from a
+   * resumed one (`bridge/surface/edges.ts` `promptStateAfter`). A short lower-case word; a value that is
+   * not one is dropped at the emitter and at the parser. Absent from an older emitter, from every other
+   * edge, and from a start that named none. Nothing else of the payload rides: no transcript path, no prompt.
+   */
+  readonly source?: string;
 }

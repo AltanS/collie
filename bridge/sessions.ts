@@ -127,6 +127,11 @@ export interface SessionParts {
    * undefined. The pane's label weighs it against the log's (bridge/pane-model.ts).
    */
   hookModel?: (paneId: string) => ModelReading | undefined;
+  /**
+   * Set with `hooks`: whether the pane's live hook source knows that no prompt has reached its session
+   * yet (a new conversation, no prompt edge since). True only then; the pane's `noPromptYet` on the wire.
+   */
+  noPromptYet?: (paneId: string) => boolean;
   /** Set with `asks` when the bridge takes holds (M56 spec 12): the pane's hold note for the phone. */
   hold?: (paneId: string) => HoldNote | null;
 }

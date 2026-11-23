@@ -24,6 +24,15 @@
 // it with the source, so a pane whose agent left names no model from a hook. It is saved with the
 // source, so a restarted bridge still knows it. bridge/pane-model.ts decides when it is shown.
 //
+// A PROMPT LATCH PER SOURCE. The source also keeps one fact about its session: whether a prompt has
+// reached it ({@link PromptState}). A prompt edge sets it; a start edge whose `source` is `startup` or
+// `clear` (a new conversation) says no prompt yet; every other start (`resume`, `compact`, `fork`, a word
+// this build does not know, or none from an older emitter) and every other edge leaves it as it was.
+// A source with no known state reads `unknown`, and so does a new process on the pane that no start
+// edge opened as a new conversation. It is saved with the source, so a restart keeps it, and a saved
+// record from before the latch reads `unknown`. The phone gets `noPromptYet` in the one known state
+// only (bridge/types.ts), so an excuse for an empty log never rests on a guess.
+//
 // No harness name lives here (no-harness-names.test.ts scans this folder). The edge names its own
 // harness, and that harness's profile maps the event to a kind.
 
@@ -33,6 +42,7 @@ import type { BeaconLiveness } from "../beacon/reader.ts";
 import type { EdgeRecord } from "../beacon/types.ts";
 import type { EdgeSpool } from "../beacon-io.ts";
 import type { ForegroundProcess } from "../journal/types.ts";
+import type { JsonValue } from "../json.ts";
 import type { MuxOutcome } from "../mux/types.ts";
 import type { ModelReading } from "../pane-model.ts";
 import { edgeKindOf, type EdgeKind } from "../../web/src/lib/surface/edges.ts";
@@ -154,6 +164,30 @@ export async function placeEdge(record: EdgeRecord, targets: readonly EdgeTarget
   return { kind: "placed", target: hit.target, paneId: hit.paneId };
 }
 
+/**
+ * Whether a prompt has reached the session a pane's hook source speaks for. `no-prompt-yet`: a start edge
+ * opened a new conversation and no prompt edge came after it. `prompted`: a prompt edge came. `unknown`:
+ * the router cannot say (it joined the session mid-way, an older emitter, a resumed conversation).
+ */
+export type PromptState = "no-prompt-yet" | "prompted" | "unknown";
+
+/** The words a saved record may carry for {@link PromptState}. Anything else reads as `unknown`. */
+export function promptStateOf(raw: JsonValue | undefined): PromptState {
+  return raw === "no-prompt-yet" || raw === "prompted" ? raw : "unknown";
+}
+
+/**
+ * The prompt state after one more edge. The state carries over only while the process is the same one
+ * that held it: a new process on the pane starts from `unknown`, and only a start edge that opens a new
+ * conversation (`startup`, `clear`) makes it `no-prompt-yet`. A prompt edge makes it `prompted`.
+ */
+export function promptStateAfter(known: Pick<HookSource, "pid" | "pidStartTime" | "prompt"> | undefined, record: EdgeRecord, kind: EdgeKind): PromptState {
+  if (kind === "prompt") return "prompted";
+  if (kind === "start" && (record.source === "startup" || record.source === "clear")) return "no-prompt-yet";
+  if (known === undefined || known.pid !== record.pid || known.pidStartTime !== record.pidStartTime) return "unknown";
+  return known.prompt;
+}
+
 /** The live hook source of one pane. */
 interface HookSource {
   readonly target: EdgeTarget;
@@ -167,6 +201,8 @@ interface HookSource {
    * Undefined when no start of this pid named one.
    */
   readonly model: ModelReading | undefined;
+  /** Whether a prompt has reached the pane's session ({@link PromptState}). */
+  readonly prompt: PromptState;
 }
 
 /**
@@ -186,6 +222,8 @@ export interface SavedSource {
   readonly record: EdgeRecord;
   /** When the hook that named `record.model` ran, which may be an earlier edge than `record`. */
   readonly modelAt?: number;
+  /** The prompt latch ({@link PromptState}). Absent from a record saved before the latch, which reads `unknown`. */
+  readonly prompt?: PromptState;
 }
 
 /** Where the live sources are kept across a restart. Both calls never throw to the router. */
@@ -221,8 +259,9 @@ export interface EdgeRouterDeps {
 /** A live source as it is saved. The model rides on the saved record, with the time its own hook ran. */
 function savedOf(source: HookSource): SavedSource {
   const saved: SavedSource = { session: source.target.session, paneId: source.paneId, record: source.record };
-  if (source.model === undefined) return saved;
-  return { ...saved, record: { ...source.record, model: source.model.model }, modelAt: source.model.at };
+  const latched = source.prompt === "unknown" ? saved : { ...saved, prompt: source.prompt };
+  if (source.model === undefined) return latched;
+  return { ...latched, record: { ...source.record, model: source.model.model }, modelAt: source.model.at };
 }
 
 function keyOf(session: string, paneId: string): string {
@@ -304,7 +343,8 @@ export class EdgeRouter {
     if (kind === "end") this.forget(key);
     else {
       const model = modelAfter(this.sources.get(key), record);
-      this.remember(key, { target: placement.target, paneId: placement.paneId, pid: record.pid, pidStartTime: record.pidStartTime, record, model });
+      const prompt = promptStateAfter(this.sources.get(key), record, kind);
+      this.remember(key, { target: placement.target, paneId: placement.paneId, pid: record.pid, pidStartTime: record.pidStartTime, record, model, prompt });
     }
     this.log(
       [
@@ -335,7 +375,7 @@ export class EdgeRouter {
         const key = keyOf(placement.target.session, placement.paneId);
         // The saved model keeps the time its hook ran, so a log that named a model after it still wins.
         const model = saved.record.model === undefined ? undefined : { model: saved.record.model, at: saved.modelAt ?? saved.record.at };
-        if (!this.sources.has(key)) this.remember(key, { target: placement.target, paneId: placement.paneId, pid: saved.record.pid, pidStartTime: saved.record.pidStartTime, record: saved.record, model });
+        if (!this.sources.has(key)) this.remember(key, { target: placement.target, paneId: placement.paneId, pid: saved.record.pid, pidStartTime: saved.record.pidStartTime, record: saved.record, model, prompt: promptStateOf(saved.prompt) });
       } else if (placement.reason === "no-pane" && this.now() < this.seedUntil) {
         waiting.push(saved);
       }
@@ -352,11 +392,19 @@ export class EdgeRouter {
     return this.sources.get(keyOf(session, paneId))?.model;
   }
 
-  /** A pane's source is live, its pid changed, or its start named another model: saved when that is news. */
+  /**
+   * Whether the pane's live hook source knows that no prompt has reached its session yet. True only in
+   * that one known state: no live source, a prompted session and an unknown one all read false.
+   */
+  noPromptYet(session: string, paneId: string): boolean {
+    return this.sources.get(keyOf(session, paneId))?.prompt === "no-prompt-yet";
+  }
+
+  /** A pane's source is live, its pid changed, its start named another model, or its latch moved: saved when that is news. */
   private remember(key: string, source: HookSource): void {
     const known = this.sources.get(key);
     this.sources.set(key, source);
-    if (known === undefined || known.pid !== source.pid || known.pidStartTime !== source.pidStartTime || known.model?.model !== source.model?.model) this.persist();
+    if (known === undefined || known.pid !== source.pid || known.pidStartTime !== source.pidStartTime || known.model?.model !== source.model?.model || known.prompt !== source.prompt) this.persist();
   }
 
   private forget(key: string): void {

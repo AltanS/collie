@@ -161,6 +161,18 @@ const PROMPT_HASH = /^[0-9a-f]{64}$/u;
 /** A model name on a start edge: printable ASCII, no newline, at most 128 characters. */
 const EDGE_MODEL = /^[\x20-\x7e]{1,128}$/u;
 
+/** How a session began, as a start edge names it: a short lower-case word (`startup`, `resume`, ...). */
+const EDGE_SOURCE = /^[a-z_]{1,32}$/u;
+
+/**
+ * A start edge's `source` as an edge may carry it, or null. A word the build does not know is carried
+ * as text, because the router treats every word but `startup` and `clear` alike (it clears nothing);
+ * only a value that is not a short lower-case word is dropped.
+ */
+export function edgeSourceOf(raw: JsonValue | undefined): string | null {
+  return typeof raw === "string" && EDGE_SOURCE.test(raw) ? raw : null;
+}
+
 /**
  * A model name as an edge may carry it, or null. Read raw, never trimmed: a value with a newline or a
  * control character is refused whole rather than cleaned, because the emitter (`cli/beacon.ts`) and
@@ -215,5 +227,8 @@ export function parseEdge(text: string): EdgeRecord | null {
   // The start edge's model: a malformed one drops the field, never the edge.
   const model = edgeModelOf(row.model);
   if (model !== null) record = { ...record, model };
+  // The start edge's source: a malformed one drops the field, never the edge.
+  const source = edgeSourceOf(row.source);
+  if (source !== null) record = { ...record, source };
   return record;
 }

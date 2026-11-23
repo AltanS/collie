@@ -16,7 +16,7 @@ import { muxOk, type MuxGrid, type MuxGridRequest, type MuxOutcome } from "../mu
 import type { JsonValue } from "../json.ts";
 import type { AgentView } from "../types.ts";
 import { isFree, modalWord } from "../../web/src/lib/surface/surface.ts";
-import { deliverEdge, EDGE_MAX_AGE_MS, EDGE_TAG, EdgeRouter, HOOK_LIVENESS_MS, kindOfEdge, modelAfter, placeEdge, type EdgeHoldInfo, type EdgeSinks, type EdgeTarget, type PlacedEdge, type SavedSource, type SourceStore } from "./edges.ts";
+import { deliverEdge, EDGE_MAX_AGE_MS, EDGE_TAG, EdgeRouter, HOOK_LIVENESS_MS, kindOfEdge, modelAfter, placeEdge, promptStateAfter, promptStateOf, type EdgeHoldInfo, type EdgeSinks, type EdgeTarget, type PlacedEdge, type SavedSource, type SourceStore } from "./edges.ts";
 import { SurfaceShadow } from "./shadow.ts";
 
 const PANES = join(import.meta.dir, "..", "..", "web", "src", "fixtures", "panes");
@@ -430,6 +430,126 @@ describe("the live sources across a restart", () => {
     await gone.tick();
     expect(gone.hooksOf("main", "w1:p1")).toBe("none");
     expect(store.saved).toEqual([]);
+  });
+});
+
+describe("the prompt latch (a new conversation is told from one with a past)", () => {
+  const start = (source: string | undefined, at = 1_000_100) => {
+    const edge = record({ event: "SessionStart", at });
+    return JSON.stringify(source === undefined ? edge : { ...edge, source });
+  };
+  const prompt = (at = 1_000_200) => JSON.stringify(record({ event: "UserPromptSubmit", at }));
+  const stop = (at = 1_000_300) => JSON.stringify(record({ event: "Stop", at }));
+  const end = (at = 1_000_400) => JSON.stringify(record({ event: "SessionEnd", at }));
+  const feed = async (r: EdgeRouter, spool: FakeSpool, ...files: string[]) => {
+    for (const file of files) {
+      spool.files.push(file);
+      await r.tick();
+    }
+  };
+  const state = (r: EdgeRouter) => r.noPromptYet("main", "w1:p1");
+
+  test("a start of a new conversation says no prompt yet, and a prompt ends that", async () => {
+    const { r, spool } = router([target()]);
+    expect(state(r)).toBe(false);
+    await feed(r, spool, start("startup"));
+    expect(state(r)).toBe(true);
+    await feed(r, spool, stop());
+    expect(state(r)).toBe(true);
+    await feed(r, spool, prompt());
+    expect(state(r)).toBe(false);
+    await feed(r, spool, stop());
+    expect(state(r)).toBe(false);
+  });
+
+  test("a pane reopened with no prompt sent keeps saying so, whatever the other panes do", async () => {
+    const { r, spool } = router([target()]);
+    await feed(r, spool, start("startup"), stop(), stop());
+    expect(state(r)).toBe(true);
+    expect(r.noPromptYet("main", "w1:p2")).toBe(false);
+  });
+
+  test("a resumed, compacted or forked start does not clear a prompt and does not make one known", async () => {
+    for (const source of ["resume", "compact", "fork", "teleport", undefined]) {
+      const fresh = router([target()]);
+      await feed(fresh.r, fresh.spool, start(source));
+      expect(state(fresh.r)).toBe(false);
+      const prompted = router([target()]);
+      await feed(prompted.r, prompted.spool, start("startup"), prompt(), start(source, 1_000_500));
+      expect(state(prompted.r)).toBe(false);
+      const quiet = router([target()]);
+      await feed(quiet.r, quiet.spool, start("startup"), start(source, 1_000_500));
+      expect(state(quiet.r)).toBe(true);
+    }
+  });
+
+  test("a clear after prompts starts a new conversation, and a startup after an end does too", async () => {
+    const { r, spool } = router([target()]);
+    await feed(r, spool, start("startup"), prompt(), stop());
+    expect(state(r)).toBe(false);
+    await feed(r, spool, start("clear", 1_000_500));
+    expect(state(r)).toBe(true);
+    await feed(r, spool, prompt(1_000_600), end(1_000_700));
+    expect(state(r)).toBe(false);
+    await feed(r, spool, start("startup", 1_000_800));
+    expect(state(r)).toBe(true);
+  });
+
+  test("a source joined mid-session, or in another process of the pane, is unknown until a new conversation starts", async () => {
+    const { r, spool } = router([target()]);
+    await feed(r, spool, stop());
+    expect(state(r)).toBe(false);
+    await feed(r, spool, start("startup", 1_000_500));
+    expect(state(r)).toBe(true);
+    // The same pane under another pid that no start opened: it does not inherit the fact.
+    const known = { pid: PID, pidStartTime: START, prompt: "no-prompt-yet" as const };
+    expect(promptStateAfter(known, record({ event: "Stop" }), "stop")).toBe("no-prompt-yet");
+    expect(promptStateAfter(known, record({ event: "Stop", pid: PID + 1 }), "stop")).toBe("unknown");
+    expect(promptStateAfter(known, record({ event: "Stop", pidStartTime: START + 1 }), "stop")).toBe("unknown");
+    expect(promptStateAfter(known, record({ event: "SessionStart", pid: PID + 1, source: "startup" }), "start")).toBe("no-prompt-yet");
+    expect(promptStateAfter(known, record({ event: "SessionStart", pid: PID + 1, source: "resume" }), "start")).toBe("unknown");
+  });
+
+  test("a restarted bridge keeps the latch, and a record saved before the latch reads unknown", async () => {
+    const saved: SavedSource[][] = [];
+    const store: SourceStore = { load: () => saved.at(-1) ?? [], save: (sources) => void saved.push([...sources]) };
+    const spool = new FakeSpool();
+    const first = new EdgeRouter({ spool, store, liveness: alive, targets: () => [target()], log: () => undefined, now: () => 1_000_500 });
+    await feed(first, spool, start("startup"));
+    expect(saved.at(-1)?.map((s) => s.prompt)).toEqual(["no-prompt-yet"]);
+    const restarted = new EdgeRouter({ spool: new FakeSpool(), store, liveness: alive, targets: () => [target()], log: () => undefined, now: () => 2_000_000 });
+    await restarted.tick();
+    expect(restarted.noPromptYet("main", "w1:p1")).toBe(true);
+    // A prompt after the first run is saved too, and the restart reads it.
+    await feed(first, spool, prompt());
+    expect(saved.at(-1)?.map((s) => s.prompt)).toEqual(["prompted"]);
+    const later = new EdgeRouter({ spool: new FakeSpool(), store, liveness: alive, targets: () => [target()], log: () => undefined, now: () => 2_000_000 });
+    await later.tick();
+    expect(later.noPromptYet("main", "w1:p1")).toBe(false);
+    // An older saved record has no latch at all.
+    const [only] = saved.at(-1) ?? [];
+    const { prompt: _latch, ...old } = only!;
+    const aged = new EdgeRouter({ spool: new FakeSpool(), store: { load: () => [old], save: () => undefined }, liveness: alive, targets: () => [target()], log: () => undefined, now: () => 2_000_000 });
+    await aged.tick();
+    expect(aged.hooksOf("main", "w1:p1")).toBe("live");
+    expect(aged.noPromptYet("main", "w1:p1")).toBe(false);
+  });
+
+  test("a saved word that is not a latch reads as unknown", () => {
+    expect(promptStateOf("no-prompt-yet")).toBe("no-prompt-yet");
+    expect(promptStateOf("prompted")).toBe("prompted");
+    for (const bad of ["unknown", "yes", 1, null, undefined, {}]) expect(promptStateOf(bad)).toBe("unknown");
+  });
+
+  test("the parse keeps a start's source, and drops one that is not a short lower-case word, never the edge", () => {
+    const parse = (source: JsonValue) => parseEdge(JSON.stringify({ ...record({ event: "SessionStart" }), source }));
+    expect(parse("startup")?.source).toBe("startup");
+    for (const bad of ["Startup", "start up", "s".repeat(33), "", 7, null, ["startup"]]) {
+      const edge = parse(bad);
+      expect(edge?.event).toBe("SessionStart");
+      expect(edge?.source).toBeUndefined();
+    }
+    expect(parseEdge(JSON.stringify(record({ event: "SessionStart" })))?.source).toBeUndefined();
   });
 });
 
