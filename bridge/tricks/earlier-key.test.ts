@@ -14,7 +14,7 @@ import { diskTrickFs, trickCodeHash } from "./code-hash.ts";
 import { readEarlierManifest, readManifestText, scanTrickDir } from "./discover.ts";
 import { TRICKS_DIR } from "./paths.ts";
 import { PENDING_SETTLE_MS, TricksService } from "./service.ts";
-import { withSwitch, writeSwitches } from "./switches.ts";
+import { withEntry, withSwitch, writeSwitches } from "./switches.ts";
 import { VersionCards } from "./version-card.ts";
 import { versionDiff, type DiffRun } from "./version-diff.ts";
 
@@ -116,10 +116,10 @@ async function life(approved: string, opts: { auto?: boolean; powers?: string | 
   const code = await trickCodeHash(dir);
   if (!code.ok) throw new Error(code.reason);
   const powers = opts.powers === undefined ? earlierPowers(approved) : opts.powers;
-  const switches = withSwitch({ on: new Map() }, "legs", true, "2026-11-20T08:00:00Z", code.hash, powers);
-  const entry = switches.on.get("legs");
-  if (entry !== undefined && opts.auto === true) switches.on.set("legs", { ...entry, auto: true });
-  await writeSwitches(stateDir, switches);
+  const switched = withSwitch({ on: new Map() }, "legs", true, "2026-11-20T08:00:00Z", code.hash, powers);
+  const entry = switched.on.get("legs");
+  if (entry === undefined) throw new Error("no switch entry");
+  await writeSwitches(stateDir, opts.auto === true ? withEntry(switched, "legs", { ...entry, auto: true }) : switched);
   const clock = { t: T0 };
   let n = 0;
   let service: TricksService | null = null;
