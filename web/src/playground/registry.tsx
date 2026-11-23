@@ -201,6 +201,10 @@ export const ENTRIES: readonly SectionEntry[] = [
     load: () => import("./sections/hill").then((m) => ({ default: m.HillSection })),
   },
   {
+    def: { id: "asks", group: "Tricks and Hill", title: "Asks", keywords: ["asks", "ask", "board", "AskScreen", "AsksBoard", "AskAnswerCard", "AskClosed", "answer", "send", "mark", "context"] },
+    load: () => import("./sections/asks").then((m) => ({ default: m.AsksSection })),
+  },
+  {
     def: { id: "token-label", group: "Tricks and Hill", title: "Uses agent tokens", keywords: ["tokens", "token-use", "label", "chip", "TokenUseLookProvider", "TricksSettingsCard"] },
     load: () => import("./sections/token-label").then((m) => ({ default: m.TokenLabelSection })),
   },

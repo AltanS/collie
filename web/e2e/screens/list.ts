@@ -89,6 +89,8 @@ export const SCREENS: readonly Screen[] = [
 
   // ── The Hill ─────────────────────────────────────────────────────────────
   { id: "hill", route: "hill", path: "/hill", title: "Asks, the board", wide: "column", setup: "rich" },
+  { id: "ask", route: "hill/ask/:id", path: "/hill/ask/ak_screens00001", title: "Asks, one ask", wide: "same", note: "one centred column on purpose in Asks build 2: no master-detail yet, the keys work on a large screen", setup: "askScreen" },
+  { id: "ask-context", route: "hill/ask/:id/context", path: "/hill/ask/ak_screens00001/context", title: "Asks, context of an ask", wide: "same", note: "one centred column on purpose in Asks build 2: a reading page, no second pane yet", setup: "askScreen" },
   { id: "trick-card", route: "trick-card/:decisionId", path: "/trick-card/dc_screens0001", title: "A card of Collie's own", wide: "column", setup: "hillCard" },
 
   // ── New ──────────────────────────────────────────────────────────────────

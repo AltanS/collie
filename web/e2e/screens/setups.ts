@@ -7,6 +7,7 @@ import {
   fixtureLaunchersWithAgents,
   fixtureSnapshot,
 } from "@/test/handlers";
+import { askDecision } from "@/test/asks-fixtures";
 import { collieCard } from "@/test/hill-fixtures";
 import { partKey, type MenuRow, type WireTrickInfo, type WireTrickPart } from "@/lib/tricks/schema";
 
@@ -483,6 +484,23 @@ export const SETUPS = {
     await installWorld(page);
     const card = collieCard("proposal", "legs", { id: "dc_screens0001" });
     await page.route("**/api/hill", (route) => json(route, { rev: 1, open: [card], closed: [] }));
+    await visit(page, screen);
+  },
+  /** An ask on the board: one ask with its background, a file and a recommendation, from a session the stub knows. */
+  askScreen: async (page, screen) => {
+    await installWorld(page);
+    const ask = askDecision({
+      id: "ak_screens00001",
+      address: "local/w1:p1",
+      title: "Keep the old answer route beside the new Send?",
+      summary: "The phone can send all answers of a session at once now.",
+      body: "The single answer route is used by every phone bundle.\n\nIf we drop it, an old bundle gets a 404.",
+      recommend: "keep",
+      why: "A phone that did not reload would lose an answer.",
+      files: [{ path: "docs/plan.md", heading: "Plan" }],
+      root: "w1:p1",
+    });
+    await page.route("**/api/hill", (route) => json(route, { v: 1, rev: 1, open: [ask], closed: [] }));
     await visit(page, screen);
   },
   /** Accounts: the list, the add form and one account. */
