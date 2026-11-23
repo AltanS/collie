@@ -148,6 +148,7 @@ import { HILL_CREW_STATE_DEFAULT, type HillCrewStateFile } from "./crew-state.ts
 import type { HillSwitchReading } from "./switch.ts";
 import { askRuleRefusal, HILL_ASK_LIMITS, HILL_LIMITS, tooManyAsks, type HillPostLimits } from "./ask-rules.ts";
 import type { HillAskFilesAnswer } from "./ask-files.ts";
+import type { AskCheckBook, AskCheckDecision } from "./check.ts";
 import { askAnswerRid, resultOf, sendDigest, sendRecord } from "./answers.ts";
 import { answersMessage, ASKS_ANSWERS_SUBJECT } from "../../web/src/lib/hill/answers-message.ts";
 
@@ -295,6 +296,11 @@ export interface HillServiceDeps {
    * ask records no root, and a `--file` is refused.
    */
   readonly askFiles?: (address: string, files: readonly HillAskFileInput[]) => Promise<HillAskFilesAnswer>;
+  /**
+   * The check at the end of a turn (check.ts, .adr/0177): the turn each pane is in, the brake, and the lift of
+   * a pane while its check runs. Absent: `ask.check` answers "none" and nothing is counted.
+   */
+  readonly checks?: AskCheckBook;
   readonly audit?: (entry: AuditEntry) => void;
   /**
    * Run a trick's program with an answer as its tap (bridge/index.ts wires it to the tricks runner).
@@ -418,6 +424,8 @@ export interface HillPostOptions {
 }
 
 /** The sentence a `--file` gets where the bridge cannot check the files: a crew member's ask, in this build. */
+/** What a crew member answers `ask.keep` with: its asks are on the lead, and the crew wire carries no keep yet. */
+export const ASK_KEEP_MEMBER = "keep works on the lead's own sessions in this build; the asks of this machine stay as they are";
 export const ASK_FILES_LEAD_ONLY = "linked files work on the lead's own sessions in this build; send the ask again without --file";
 
 /**
@@ -1470,6 +1478,8 @@ export class HillService {
     };
     if (input.view !== undefined) decision.view = input.view;
     if (ask !== undefined) decision.ask = { words: ask.words, files: opts.askFiles?.files ?? [], root: opts.askFiles?.root ?? null };
+    // A replace is the agent saying what is true now: the new ask is confirmed at its post (.adr/0177).
+    if (decision.ask !== undefined && decision.supersedes !== null) decision.ask.confirmedAt = now;
     if (input.group !== undefined && from.kind === "collie") {
       const made = makeGroup(input.group, from.ref, decision.options);
       if (!made.ok) return refuse("bad_body", made.error);
@@ -2222,7 +2232,9 @@ export class HillService {
     if (this.refusesHere()) return refuse("hill_off", HILL_OFF);
     const files = this.deps.askFiles === undefined ? null : await this.deps.askFiles(from.address, ask.files);
     if (files !== null && !files.ok) return refuse("bad_file", files.error);
-    return this.withCrewState(this.postDecision(from, read.input, files === null ? {} : { askFiles: { root: files.root, files: files.files } }));
+    const posted = this.withCrewState(this.postDecision(from, read.input, files === null ? {} : { askFiles: { root: files.root, files: files.files } }));
+    if (posted.ok) this.deps.checks?.noteVerb(senderKey(from));
+    return posted;
   }
 
   /** `ask.list` from the socket: the sender's own OPEN asks, oldest first, from this bridge or the lead. */
@@ -2235,7 +2247,60 @@ export class HillService {
   /** `ask.cancel` from the socket: {@link cancelAsk} here, or on a crew member the lead's. */
   async askCancel(sender: HillAgentSender, id: string, how: HillAskCancel): Promise<HillOneAnswer> {
     const forward = this.forwardOf();
-    return forward === null ? this.cancelAsk(sender, id, how) : forward.one("withdraw", sender, id, how);
+    if (forward !== null) return forward.one("withdraw", sender, id, how);
+    const answer = this.cancelAsk(sender, id, how);
+    if (answer.ok) this.deps.checks?.noteVerb(senderKey(sender));
+    return answer;
+  }
+
+  /**
+   * `ask.keep` from the socket (.adr/0177): the agent says "still true" for one or more of its own open asks,
+   * and each gets `ask.confirmedAt` now. All or nothing: an id that is not an open ask of this session refuses
+   * the whole call, with a sentence that names it. Works with the Hill off, as a take back does: it types
+   * nothing and rings nothing. On a crew member it is refused: the asks are on the lead, and the crew wire
+   * carries no keep in this build.
+   */
+  askKeep(sender: HillAgentSender, ids: readonly string[]): HillListAnswer {
+    if (this.forwardOf() !== null) return { ok: false, error: ASK_KEEP_MEMBER };
+    if (this.deps.crewMode() === "peer" || this.deps.deposed?.() === true) return { ok: false, error: NOT_ON_LEAD };
+    const unique = [...new Set(ids)];
+    if (unique.length === 0 || unique.length > HILL_ASK_OPEN_MAX) return { ok: false, error: `keep takes 1 to ${String(HILL_ASK_OPEN_MAX)} ask ids` };
+    const kept: HillDecision[] = [];
+    const now = this.now();
+    for (const id of unique) {
+      const decision = this.mine(sender, id);
+      if (decision === null || decision.ask === undefined) return { ok: false, error: `${id} is not an ask of this session` };
+      if (decision.state !== "open") return { ok: false, error: `${id} is ${decision.state}, only an open ask can be kept` };
+      kept.push({ ...decision, ask: { ...decision.ask, confirmedAt: now } });
+    }
+    if (!this.save(...kept)) return { ok: false, error: "the change could not be saved on this machine; nothing was kept" };
+    this.deps.checks?.noteVerb(senderKey(sender));
+    this.deps.audit?.({ action: "hill.ask.keep", detail: { asks: kept.length } });
+    return { ok: true, decisions: kept.map((decision) => served(this.named(decision))) };
+  }
+
+  /**
+   * `ask.check` from the socket (.adr/0177): whether the session in the pane `where` looks at its open asks at
+   * the end of this turn. "check" only when the Hill is on here, the session has open asks, the bridge knows
+   * the turn, no check ran in it, the brake allows it and an ask was left untouched in it (check.ts). Then the
+   * pane reads as working until the check's turn ends. Every error, and a crew member, is "none".
+   */
+  askCheck(sender: HillAgentSender, where: { readonly session: string; readonly paneId: string }): AskCheckDecision {
+    try {
+      const book = this.deps.checks;
+      if (book === undefined) return { kind: "none", why: "off" };
+      if (this.forwardOf() !== null || this.deps.crewMode() === "peer" || this.deps.deposed?.() === true) return { kind: "none", why: "off" };
+      if (this.refusesHere()) return { kind: "none", why: "off" };
+      const key = senderKey(sender);
+      const open = this.deps.store.all().filter((decision) => decision.state === "open" && decision.ask !== undefined && keyOf(decision) === key);
+      const decided = book.decide(key, book.turn(where.session, where.paneId), open);
+      if (decided.kind !== "check") return decided;
+      book.lift(where.session, where.paneId);
+      this.deps.audit?.({ action: "hill.ask.check", detail: { asks: decided.asks.length } });
+      return decided;
+    } catch {
+      return { kind: "none", why: "error" };
+    }
   }
 
   /**

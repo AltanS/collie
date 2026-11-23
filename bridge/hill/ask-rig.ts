@@ -4,7 +4,7 @@
 
 import type { HillDecision, HillPostInput } from "../../web/src/lib/hill/wire.ts";
 import { memoryHillReceipts, type HillReceiptSurface } from "./receipts.ts";
-import { HillService, type HillAgentSender, type HillPostAnswer, type HillSendResult } from "./service.ts";
+import { HillService, type HillAgentSender, type HillPostAnswer, type HillSendResult, type HillServiceDeps } from "./service.ts";
 import { HillStore } from "./store.ts";
 
 export const ONE: HillAgentSender = { kind: "agent", address: "local/%1#aaaa", memberId: null, harness: "claude", label: "repo#one", host: "desk" };
@@ -41,7 +41,7 @@ export interface AskRig {
   delivery: HillSendResult | "throw";
 }
 
-export function askRig(receipts: HillReceiptSurface = memoryHillReceipts()): AskRig {
+export function askRig(receipts: HillReceiptSurface = memoryHillReceipts(), over: (clock: () => number) => Partial<HillServiceDeps> = () => ({})): AskRig {
   let n = 0;
   let a = 0;
   const store = new HillStore(null, () => state.clock);
@@ -63,6 +63,7 @@ export function askRig(receipts: HillReceiptSurface = memoryHillReceipts()): Ask
     mintId: () => `dc_test${String((n += 1)).padStart(8, "0")}`,
     mintAskId: () => `ak_test${String((a += 1)).padStart(8, "0")}`,
     push: { check: () => "send", send: () => void (state.pushed += 1), clear: () => undefined },
+    ...over(() => state.clock),
   });
   return Object.assign(state, { hill });
 }

@@ -429,6 +429,8 @@ export class StateEngine {
   // The screen's ask, when the bridge reads screens (see liftScreenAsks). Absent: the mux's status
   // stands as reported.
   private screenAsk: ScreenAsk | undefined;
+  // The check at the end of a turn (see liftChecks). Absent: nothing is raised.
+  private checkLift: ((paneId: string) => boolean) | undefined;
   constructor(
     private readonly mux: MuxAdapter,
     private readonly pollMs: number,
@@ -452,6 +454,16 @@ export class StateEngine {
    */
   liftScreenAsks(fn: ScreenAsk): void {
     this.screenAsk = fn;
+  }
+
+  /**
+   * A pane whose session works on the check at the end of a turn reads `working` (.adr/0177,
+   * bridge/hill/check.ts). The `Stop` that started the check wrote an idle beacon, and the check's turn
+   * runs with no new prompt, so without this the pane would read idle, or done, while its agent works.
+   * Only an idle or a done pane is raised; a `blocked` one (a question, a dialog, an error) stays as it is.
+   */
+  liftChecks(fn: (paneId: string) => boolean): void {
+    this.checkLift = fn;
   }
 
   onTransition(fn: TransitionListener): () => void {
@@ -756,6 +768,19 @@ export class StateEngine {
         if (p.revision !== undefined) revisions.set(p.paneId, p.revision);
       }
       await this.enrichSessionNames(agents, revisions);
+
+      // A check's turn reads as working (see liftChecks). Before the screen's ask, which still wins for `blocked`.
+      const checkLift = this.checkLift;
+      if (checkLift !== undefined) {
+        for (const a of agents) {
+          if (a.status !== "idle" && a.status !== "done") continue;
+          try {
+            if (checkLift(a.paneId)) a.status = "working";
+          } catch {
+            // A lift that cannot answer raises nothing.
+          }
+        }
+      }
 
       // The screen's ask wins for `blocked` (see liftScreenAsks). It also wins over an error: a pane whose
       // program reported `error` while a dialog shows on its screen is a question, with every guard a
