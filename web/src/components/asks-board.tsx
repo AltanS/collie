@@ -218,6 +218,7 @@ export function AsksBoard({
   send,
   sendRequest = null,
   onSendRequestDone = NO_DONE,
+  loaded = true,
 }: {
   sessions: readonly AskSession[];
   live: WalkyLivePanes;
@@ -227,6 +228,8 @@ export function AsksBoard({
   send: AsksSend;
   sendRequest?: string | null;
   onSendRequestDone?: () => void;
+  /** False while the list the sessions come from has not landed: a Send request waits instead of being dropped. */
+  loaded?: boolean;
 }) {
   useLocale();
   const [sending, setSending] = useState<string | null>(null);
@@ -236,13 +239,19 @@ export function AsksBoard({
   const sendSession = sessions.find((session) => session.key === sending);
   const review = sendSession === undefined ? null : reviewOf(sendSession.asks, drafts);
 
-  // A shortcut asked for a session's Send: open it when the session still holds a mark, drop the request either way.
+  // A shortcut asked for a session's Send: open it when the session still holds a mark. The request waits while the deck is
+  // loading (the session may not be in it yet); once the deck has loaded it is answered or dropped.
   useEffect(() => {
     if (sendRequest === null) return;
     const target = sessions.find((session) => session.key === sendRequest);
-    if (target !== undefined && reviewOf(target.asks, drafts).count > 0) setSending(target.key);
+    if (target !== undefined && reviewOf(target.asks, drafts).count > 0) {
+      setSending(target.key);
+      onSendRequestDone();
+      return;
+    }
+    if (!loaded) return;
     onSendRequestDone();
-  }, [sendRequest, sessions, drafts, onSendRequestDone]);
+  }, [sendRequest, sessions, drafts, onSendRequestDone, loaded]);
 
   const close = () => {
     setSending(null);
