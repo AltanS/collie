@@ -121,7 +121,7 @@ export const SCREENS: readonly Screen[] = [
   { id: "settings-account-login", route: "settings/accounts/:id/login", path: "/settings/accounts/acct-work/login", title: "Settings, change a profile's login", wide: "designed", setup: "accounts" },
   { id: "settings-tricks", route: "settings/tricks", path: "/settings/tricks", title: "Settings, Tricks", wide: "designed", setup: "tricks", waive: { "targets@390": PHONE_TARGETS } },
   { id: "settings-trick", route: "settings/tricks/:key", path: "/settings/tricks/lodge%3Akettle", title: "Settings, one trick's details", wide: "designed", setup: "tricks", waive: { "targets@390": PHONE_TARGETS } },
-  { id: "settings-hill", route: "settings/tricks/:key", path: "/settings/tricks/hill", title: "Settings, the Hill's details", wide: "designed", setup: "tricks", waive: { "targets@390": PHONE_TARGETS } },
+  { id: "settings-hill", route: "settings/tricks/:key", path: "/settings/tricks/asks", title: "Settings, the Asks details", wide: "designed", setup: "tricks", waive: { "targets@390": PHONE_TARGETS } },
   { id: "settings-trick-remove", route: "settings/tricks/:key", path: "/settings/tricks/lodge%3Akettle", title: "A trick that is off, Remove", wide: "designed", state: "trick off, Remove section in view", setup: "trickRemove", waive: { "targets@390": PHONE_TARGETS } },
   { id: "settings-trick-remove-confirm", route: "settings/tricks/:key", path: "/settings/tricks/lodge%3Akettle", title: "The Remove confirm open", wide: "designed", state: "Remove confirm open", setup: "trickRemoveConfirm" },
   { id: "settings-devices", route: "settings/devices", path: "/settings/devices", title: "Settings, Devices and machines", wide: "designed" },

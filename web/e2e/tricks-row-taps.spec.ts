@@ -131,7 +131,7 @@ test("the Hill's row: its lines open its page, the switch keeps its own taps and
   await expect(page).toHaveURL(/\/settings\/tricks$/);
   const { x, y } = await centre(page, `${row} [data-line="description"]`);
   await page.mouse.click(x, y);
-  await expect(page).toHaveURL(/\/settings\/tricks\/hill$/);
+  await expect(page).toHaveURL(/\/settings\/tricks\/asks$/);
   await expect(page.locator('[data-slot="trick-detail-name"]')).toHaveText("Asks");
 });
 
@@ -144,7 +144,7 @@ test("the Hill's row with Decisions waiting: arming swaps the text for the note 
   await page.route((url) => url.pathname === "/api/hill", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ v: 1, rev: 1, open, closed: [] }) }));
   await page.goto("/settings/tricks");
   const row = "[data-hill-row]";
-  await expect(page.locator(`${row} [data-line="slot"]`)).toHaveText("3 Decisions wait on you");
+  await expect(page.locator(`${row} [data-line="slot"]`)).toHaveText("3 asks wait on you");
   // The token chip is drawn whole on the row (scrollWidth against clientWidth, chip and text).
   const whole = await page.locator(`${row} [data-slot="token-use"]`).evaluate((el) => {
     const text = el.querySelector("span")!;
@@ -197,7 +197,7 @@ test("at 360 px Design Review keeps its whole name beside Official and Uses agen
       {
         id: "design-review",
         name: "Design Review",
-        description: "Turns an agent's UI notes into Decisions you approve by name.",
+        description: "Turns an agent's UI notes into asks you approve by name.",
         repo: "https://github.com/AltanS/collie-tricks",
         repoName: "AltanS/collie-tricks",
         commit: "0c1e5d82346486815073fedcdb994bc4c2041b55",
