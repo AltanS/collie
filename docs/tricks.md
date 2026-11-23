@@ -517,6 +517,12 @@ and any new power the version asks for. You have three options:
 
 Switching the trick on again, or `collie trick on <id>`, approves the new version as well.
 
+Two official tricks, `design-review` and `pr-inbox`, need `collie trick on <id>` once after the Collie
+update that brought Asks. Tap Update on the trick's row in Settings → Tricks first. Then run
+`collie trick on design-review` (or `collie trick on pr-inbox`) in a terminal on the machine, not in a
+pane where an agent works. The phone cannot approve these two, because it cannot show all of their
+code.
+
 Your yes starts the new version at once. The trick does not wait for its `every` time, and the phone
 draws what the new version prints within a second or two, with no reload. The same holds after you
 switch a trick on or change a setting. An edit of `config.toml` by hand runs the trick as soon as

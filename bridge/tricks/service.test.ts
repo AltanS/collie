@@ -776,7 +776,7 @@ describe("last good, per part, and the rev", () => {
       const reply = await r.service.reply(undefined);
       return { posted, reply, row: reply.tricks[0] };
     }
-    const LINE = '"decisions" is "asks" now (ADR 0179), so the asks listed under it are not shown. Update the helper with: collie trick helper legs.';
+    const LINE = '"decisions" is "asks" now, so the asks listed under it are not shown. Update the helper with: collie trick helper legs.';
 
     test("a list with asks in it puts one line on the row, with the trick's id, and no ask is posted; the parts draw", async () => {
       const { posted, reply, row } = await ran({ decisions: [ASK] });

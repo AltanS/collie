@@ -427,7 +427,7 @@ or older prints it on every run, also when the trick asks nothing. Collie never 
 trick's parts draw as before and the asks it lists do not show.
 
 - When the list holds asks, the trick's row in Settings, Tricks says it in one line: `"decisions" is "asks"
-  now (ADR 0179), so the asks listed under it are not shown. Update the helper with: collie trick helper
+  now, so the asks listed under it are not shown. Update the helper with: collie trick helper
   <id>.` The row has the trick's own id in place of `<id>`. `collie trick check --run` and `collie trick
   dev` print the same line, with `<id>` as it is.
 - When the list is empty, or the key holds something that is not a list, nothing is lost and the row stays

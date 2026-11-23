@@ -561,7 +561,12 @@ Behavior details for Claude configuration changes:
 
 - Modifies the **global** `~/.claude/settings.json` and any active `CLAUDE_CONFIG_DIR`.
   Project-level `.claude/settings.json` files are untouched.
-- Injects **five** hooks tagged `# collie-beacon v1` with 10-second timeouts. Existing hooks are
+- Injects **seven** hook entries tagged `# collie-beacon v1`. Five run `collie beacon emit`, one each
+  on `SessionStart`, `UserPromptSubmit`, `Stop`, `SessionEnd` and `Notification`, with 10-second
+  timeouts. Two run `collie beacon asks`, one beside the emitter on `UserPromptSubmit` and one on
+  `SessionStart`, with 3-second timeouts. That entry hands the agent the asks that wait for it, as
+  context next to your prompt. It prints nothing while [Asks](asks.md) is off or no ask is open
+  (see [How an agent is reminded](asks.md#how-an-agent-is-reminded)). Existing hooks are
   preserved. `hooks uninstall claude` removes only Collie entries.
 - **Wraps your statusLine, if you have one.** The install points `statusLine.command` at
   `collie beacon statusline …`, which reads what Claude Code hands it and then runs your own command
