@@ -70,6 +70,14 @@ export interface SegmentedProps<V extends string | number> {
 }
 
 /**
+ * The pointer on a segment that is not chosen: the house hover, `--state-hover` (the hover of the plane the control stands on,
+ * DESIGN.md section 14), and the full ink the pressed state already takes. `enabled:` keeps a disabled segment, or a disabled
+ * row, quiet; `hover:` waits for `(hover: hover)`, so a phone looks as before. Colour only: no border, size or weight (section 2).
+ * The chosen segment keeps its own look, so it is the one that never changes under a pointer.
+ */
+const SEGMENT_HOVER = "enabled:hover:bg-(--state-hover) enabled:hover:text-foreground";
+
+/**
  * ONE SEGMENT'S LOOK, without its width or its air: the border, the overlap with its neighbour, the corners at
  * the row's two ends, the selected ink and the focus ring. Exported for a row that continues a segmented control
  * with items that are not choices of it (the large-screen dashboard's views control, where the tricks' items open
@@ -78,7 +86,7 @@ export interface SegmentedProps<V extends string | number> {
 export function segmentLook({ on, compact }: { on: boolean; compact: boolean }): string {
   return cn(
     "relative -ml-px min-h-11 truncate border text-sm font-medium first:ml-0 first:rounded-l-sm last:rounded-r-sm focus-visible:z-20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50",
-    on ? "z-10 border-foreground text-foreground" : "border-border text-muted-foreground active:text-foreground",
+    on ? "z-10 border-foreground text-foreground" : cn("border-border text-muted-foreground active:text-foreground", SEGMENT_HOVER),
     compact && "h-9 min-h-9 px-0 before:absolute before:inset-x-0 before:-inset-y-1 before:content-['']",
     compact && on && "border-border bg-accent text-accent-foreground",
   );
