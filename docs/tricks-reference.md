@@ -238,7 +238,7 @@ A program prints:
 
 ### `tabbar`
 
-![The Dashboard, with a trick's item at the end of the bottom bar, after the Hill.](images/tricks/place-tabbar.png)
+![The Dashboard, with a trick's item at the end of the bottom bar, after Asks.](images/tricks/place-tabbar.png)
 
 **Where.** An item in the Dashboard's bottom bar, after Asks. On a large screen there is no bar: the item stands after the views, in the control of the Dashboard's header.
 
