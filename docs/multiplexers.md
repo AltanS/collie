@@ -15,7 +15,7 @@ Name the backend in `COLLIE_MUX`, point it at an endpoint, restart, and install 
 > **Experimental.** tmux and zellij (since 1.0) were tested on **tmux 3.6b** and **zellij 0.44.2**,
 > on a single host. tuios (since 1.15.0) was tested on **tuios 0.8.4**. The Herdr core (since 1.25.0)
 > was tested on **hc 0.1.14**, a 0.x preview. Tern was probed by its
-> contributor on **tern 0.4.5**, a closed beta that the maintainers cannot run. Rex was probed by
+> contributor on **Tern 0.4.5**, a closed beta that the maintainers cannot run. Rex was probed by
 > its contributor on **Rex 0.0.1795019727**, the Linux server of an invite-only beta.
 > Herdr is the default and the primary supported backend. **Testers wanted:** open an issue on
 > [AltanS/collie](https://github.com/AltanS/collie/issues/new) titled `tmux: …`, `zellij: …`,
@@ -61,7 +61,7 @@ COLLIE_MUX_ENDPOINT_ZELLIJ=collie-zellij
 | `COLLIE_MUX_ENDPOINT_TUIOS` | empty | `$XDG_RUNTIME_DIR/tuios/tuios.sock`, else `/tmp/tuios-<uid>/tuios.sock` |
 | `COLLIE_MUX_ENDPOINT_TERN` | `/run/user/1000/tern/daemon.sock` | the Tern daemon's socket PATH |
 | `COLLIE_MUX_ENDPOINT_TERN` | empty | `$XDG_RUNTIME_DIR/tern/daemon.sock`, else `/tmp/tern-<uid>/daemon.sock` |
-| `COLLIE_TERN_BIN` | `/home/you/.local/opt/tern/tern` | only if tern sits somewhere unusual |
+| `COLLIE_TERN_BIN` | `/home/you/.local/opt/tern/tern` | only if the `tern` binary sits somewhere unusual |
 | `COLLIE_MUX_ENDPOINT_REX` | `unix:///run/user/1000/rex/server.sock` | a Rex server, as `rex -S` takes it: an address or a host label |
 | `COLLIE_MUX_ENDPOINT_REX` | empty | the server `rex` finds by itself |
 | `COLLIE_REX_BIN` | `/opt/rex/bin/rex` | only if the `rex` binary sits somewhere unusual |
@@ -101,7 +101,7 @@ Herdr TUI ([herdr-core notes](#herdr-core-notes)). For the full configuration re
 [`MUX_CONTRACT.md` → Pointing a collie at a multiplexer](../MUX_CONTRACT.md#pointing-a-collie-at-a-multiplexer).
 
 `collie hooks install claude` installs Collie's [beacon](#agent-beacons-optional-linux) hooks, which
-tmux, zellij and tern require. They expose panes as generic shells, so without hooks every pane appears as
+tmux, zellij and Tern require. They expose panes as generic shells, so without hooks every pane appears as
 `bash`. Rex names its agents itself, so there the hooks only give a Claude pane its History.
 
 The command updates `~/.claude/settings.json` and leaves project configs untouched
@@ -158,7 +158,7 @@ zellij.
 Zellij 0.44 and later reports each pane's folder, so zellij panes get the Files button and show
 their branch. An older zellij reports no folder, and its panes have neither.
 
-### tern notes
+### Tern notes
 
 Point Collie at Tern:
 
@@ -545,7 +545,7 @@ would install: /home/you/collie/bin/collie beacon emit  (this checkout)
 /home/you/.claude/settings.json: installed (v1)
 ```
 
-Because tmux, zellij and tern expose panes as generic shells, agents must announce themselves. This
+Because tmux, zellij and Tern expose panes as generic shells, agents must announce themselves. This
 requires installing Collie's [beacon](#agent-beacons-optional-linux) hooks into Claude Code's
 configuration. On Herdr, the same hooks give [hook edges](#hook-edges) only. The file is
 `$CLAUDE_CONFIG_DIR/settings.json` when that variable is set to an absolute path, and
@@ -636,7 +636,7 @@ exact specification.
 | [a **New worktree**](../MUX_CONTRACT.md#contract-owned-rules) | yes, with git | yes, with git | **no**, it cannot open a space | yes, with git |
 | [pane history](../MUX_CONTRACT.md#capabilities) | from Herdr's own pane record | from the beacon's session key | from the beacon's session key | from the beacon's session key (Claude Code only) |
 
-Without active beacons, tmux, zellij and tern present panes as raw shells, and pane history is marked
+Without active beacons, tmux, zellij and Tern present panes as raw shells, and pane history is marked
 unavailable rather than returning empty content.
 
 ### Two things that feel different on the phone
@@ -689,7 +689,7 @@ agents inside it, reconnecting each with `claude --resume` or `claude --continue
 
 ## Agent beacons (optional, Linux)
 
-A **beacon** is how an agent identifies itself to Collie, on tmux, zellij and tern, where a pane otherwise
+A **beacon** is how an agent identifies itself to Collie, on tmux, zellij and Tern, where a pane otherwise
 appears as a generic shell.
 
 ```console

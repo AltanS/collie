@@ -197,7 +197,7 @@ run `collie hooks install claude`, then restart the Claude in that pane.
    started from a shell that another agent opened. Oh My Pi's hook stays silent when `OMPCODE=1` is
    inherited from the parent agent. Start it from a fresh terminal.
 
-On tmux, zellij, tern and Rex Claude Code reports a session through Collie's beacon hooks. Run
+On tmux, zellij, Tern and Rex Claude Code reports a session through Collie's beacon hooks. Run
 `collie hooks install claude` ([Collie writes hooks into Claude's own
 settings](multiplexers.md#collie-writes-hooks-into-claudes-own-settings)). On tmux, zellij and the
 Herdr core, pi and Oh My Pi need no hook: Collie finds their log from the pane's folder, and a fresh
