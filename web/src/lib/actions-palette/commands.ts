@@ -43,6 +43,7 @@ export const PALETTE_COMMANDS: readonly PaletteCommand[] = [
   { id: "switch_pane", labelKey: "chat.switcher.title", icon: "pane-switcher" },
   { id: "open_dashboard", labelKey: "actions.command.dashboard", icon: "tab-dashboard" },
   { id: "open_crew", labelKey: "actions.command.crew", icon: "crew" },
+  { id: "answer_next_ask", labelKey: "actions.command.answerNext", icon: "hill" },
   { id: "settings", labelKey: "settings.title", icon: "settings" },
   { id: "open_shortcuts", labelKey: "shortcuts.list.title", icon: "keys-drawer" },
 ];

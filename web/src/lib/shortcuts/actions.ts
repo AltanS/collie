@@ -85,6 +85,7 @@ export const ACTIONS = [
   { id: "open_shortcuts", group: "global", defaults: [], labelKey: "shortcuts.action.open_shortcuts" },
   { id: "open_crew", group: "global", defaults: [], labelKey: "shortcuts.action.open_crew" },
   { id: "open_files", group: "global", defaults: [], labelKey: "shortcuts.action.open_files" },
+  { id: "answer_next_ask", group: "global", defaults: ["prefix+a"], labelKey: "shortcuts.action.answer_next_ask" },
 
   // Since the Actions palette (ADR 0165) `prefix+g` opens Actions; the pane list keeps its action, unbound.
   { id: "switch_pane", group: "navigation", defaults: [], labelKey: "shortcuts.action.switch_pane" },

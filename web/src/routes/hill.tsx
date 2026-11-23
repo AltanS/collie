@@ -3,10 +3,11 @@ import { useLocation } from "react-router";
 
 import { DashboardRouteBar, footAir } from "@/components/dashboard-route-bar";
 import { AsksBoard } from "@/components/asks-board";
-import { HillCrewStateBar } from "@/components/hill-crew-state";
+import { HillCrewStateMenu } from "@/components/hill-crew-state";
 import { HillHeader, HillOff, HillView, LiveDecisionCard } from "@/components/hill-view";
 import { BandMain } from "@/components/ui/strip-host";
 import { useAsksDeck } from "@/hooks/use-asks-deck";
+import { useAsksSend } from "@/hooks/use-asks-send";
 import { useBoundedHold } from "@/hooks/use-bounded-hold";
 import { useDashboardBar } from "@/hooks/use-dashboard-bar";
 import { useHillClear } from "@/hooks/use-hill-clear";
@@ -16,6 +17,7 @@ import { useLocale } from "@/hooks/use-locale";
 import { useNav } from "@/hooks/use-nav";
 import { openCardsOf } from "@/lib/hill/asks";
 import { useAskDrafts } from "@/lib/hill/asks-drafts";
+import { clearAsksSendRequest, useAsksSendRequest } from "@/lib/hill/asks-next";
 import { useHillClosed, useHillClosedTotal, useHillHeld, useHillKept, useHillKeptTitles, useHillOpen } from "@/lib/hill/store";
 import type { HillDecision } from "@/lib/hill/wire";
 import { askPath, homePath } from "@/lib/nav";
@@ -50,9 +52,10 @@ import { cn } from "@/lib/utils";
 // person who lands here from an old notification or a bookmark learns why the Hill is empty, and turns
 // it on in one tap. The bar has no Hill item then, as on the Dashboard.
 //
-// THE CREW STATE (1.29.0) sits at the top of the list, above the cards: Here / Quiet / Away and its
-// helper line (components/hill-crew-state.tsx). Only where the bridge serves one: a member's own Hill,
-// which is not there (the Hill lives on the lead), and an older bridge show no control.
+// THE MODE CONTROL (1.29.0's crew state, Asks build 6): a bell in the header band, Here / Quiet / Away in a menu under it
+// (components/hill-crew-state.tsx). Only where the bridge serves one: a member's own Hill, which is not there (the Hill
+// lives on the lead), and an older bridge show no control. While the first list is on its way the band holds the
+// button's own box, invisible, so the bell arrives in a box that was already there.
 
 const AT_HILL = { kind: "hill" } as const;
 
@@ -78,37 +81,56 @@ export function HillRoute() {
   // The asks are the session cards at the top; every other open card stands under "Other cards" (Asks build 2).
   const board = useAsksDeck();
   const drafts = useAskDrafts();
+  const send = useAsksSend();
+  const sendRequest = useAsksSendRequest();
   const cards = openCardsOf(open);
   const askCount = board.deck.length;
+  const mode =
+    holding ? (
+      <HillCrewStateHold />
+    ) : (
+      crew.view !== null && (
+        <HillCrewStateMenu
+          value={crew.value}
+          saved={crew.view.state}
+          told={crew.view.told}
+          setBy={crew.view.by === null || crew.view.at === null ? null : { by: crew.view.by, at: crew.view.at }}
+          canWrite={crew.canWrite}
+          busy={crew.busy}
+          failed={crew.failed}
+          telling={crew.telling}
+          tellFailed={crew.tellFailed}
+          onChange={(next) => void crew.set(next)}
+          onTell={() => void crew.tell()}
+        />
+      )
+    );
   return (
     <div className="mx-auto flex min-h-0 w-full max-w-screen-sm flex-1 flex-col">
-      <HillHeader count={open.length} onBack={() => nav.up(homePath(scope))} off={off} held={holding} />
+      <HillHeader count={open.length} onBack={() => nav.up(homePath(scope))} off={off} held={holding} asks={{ count: askCount, sessions: board.sessions.length }} mode={off ? undefined : mode} />
       <BandMain base={16} data-slot="hill-scroll" className={cn("relative flex min-h-0 flex-1 flex-col overflow-y-auto px-4 pt-4", footAir(bar.shown, "pb-4"))}>
         {off ? (
           <HillOff canWrite={sw.canWrite} busy={sw.busy} onTurnOn={() => void sw.set(true)} />
         ) : (
-          <>
-            {holding ? (
-              <HillCrewStateHold />
-            ) : (
-              crew.view !== null && (
-              <HillCrewStateBar
-                value={crew.value}
-                saved={crew.view.state}
-                told={crew.view.told}
-                setBy={crew.view.by === null || crew.view.at === null ? null : { by: crew.view.by, at: crew.view.at }}
-                canWrite={crew.canWrite}
-                busy={crew.busy}
-                failed={crew.failed}
-                telling={crew.telling}
-                tellFailed={crew.tellFailed}
-                onChange={(next) => void crew.set(next)}
-                onTell={() => void crew.tell()}
-              />
-              )
-            )}
-            {!holding && <HillView listed={listed} open={cards} asks={{ count: askCount, node: askCount === 0 ? null : <AsksBoard sessions={board.sessions} live={board.live} now={board.now} drafts={drafts} onOpen={(id) => nav.down(askPath(id, scope))} /> }} closed={closed} closedTotal={closedTotal} clear={{ canWrite: clearing.canWrite, busy: clearing.busy, onClear: () => void clearing.clear(), spoken: spoken.length, onClearSpoken: () => void clearing.clearSpoken(spoken) }} kept={kept} keptTitles={keptTitles} renderCard={(decision) => <LiveDecisionCard key={decision.id} decision={decision} />} />}
-          </>
+          !holding && (
+            <HillView
+              listed={listed}
+              open={cards}
+              asks={{
+                count: askCount,
+                node:
+                  askCount === 0 ? null : (
+                    <AsksBoard sessions={board.sessions} live={board.live} now={board.now} drafts={drafts} send={send} sendRequest={sendRequest} onSendRequestDone={clearAsksSendRequest} onOpen={(id) => nav.down(askPath(id, scope))} />
+                  ),
+              }}
+              closed={closed}
+              closedTotal={closedTotal}
+              clear={{ canWrite: clearing.canWrite, busy: clearing.busy, onClear: () => void clearing.clear(), spoken: spoken.length, onClearSpoken: () => void clearing.clearSpoken(spoken) }}
+              kept={kept}
+              keptTitles={keptTitles}
+              renderCard={(decision) => <LiveDecisionCard key={decision.id} decision={decision} />}
+            />
+          )
         )}
       </BandMain>
       <DashboardRouteBar bar={bar} at={AT_HILL} />
@@ -117,15 +139,14 @@ export function HillRoute() {
 }
 
 /**
- * The crew-state bar's box while the first list is on its way: the real bar at its resting value
- * (`here`, which offers no tell row), invisible, so it has the bar's height at any width and in any
- * language. No words and no control a person can reach (DESIGN.md §2, a state with nothing to say keeps
- * its slot). The bar that follows is a new element, so its own Collapse mounts settled.
+ * The mode button's box while the first list is on its way: the real button at its resting value (here, the bell alone),
+ * invisible, so the band has the button's width at any width and in any language. No words and nothing a person can reach
+ * (DESIGN.md §2, a state with nothing to say keeps its slot). The button that follows is a new element.
  */
 function HillCrewStateHold() {
   return (
     <div data-slot="hill-crew-state-hold" aria-hidden="true" className="invisible">
-      <HillCrewStateBar value="here" saved="here" told={null} setBy={null} canWrite={false} busy={false} failed={false} telling={false} tellFailed={false} onChange={() => undefined} onTell={() => undefined} />
+      <HillCrewStateMenu value="here" saved="here" told={null} setBy={null} canWrite={false} busy={false} failed={false} telling={false} tellFailed={false} onChange={() => undefined} onTell={() => undefined} />
     </div>
   );
 }

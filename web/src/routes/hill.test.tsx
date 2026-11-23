@@ -219,19 +219,20 @@ describe("the hill route on a cold open (calm load, row 4)", () => {
     return { seen, stop: () => observer.disconnect() };
   }
 
-  it("never draws the clear hill while asks wait: the bar's box is held, then bar and cards land together", async () => {
+  it("never draws the clear hill while asks wait: the button's box is held, then button and cards land together", async () => {
     const release = heldList([hillDecision({ priority: "now" }), hillDecision()], [hillDecision({ state: "expired" })]);
     await act(async () => syncHill(1));
     const watch = watchForClear();
     renderHill();
     await screen.findByRole("heading", { name: "Asks" });
     const scroller = document.querySelector('[data-slot="hill-scroll"]')!;
-    // First frame: the crew bar's own box, invisible; no ridge, no cards, no claim in the count line.
-    expect([...scroller.firstElementChild!.querySelectorAll("[data-slot]")].map((el) => el.getAttribute("data-slot"))).toContain("hill-crew-state");
-    expect(scroller.firstElementChild).toHaveAttribute("data-slot", "hill-crew-state-hold");
-    expect(scroller.firstElementChild).toHaveClass("invisible");
-    expect(scroller.firstElementChild).toHaveAttribute("aria-hidden", "true");
-    expect(scroller.children).toHaveLength(1);
+    // First frame: the mode button's own box in the band, invisible; no ridge, no cards, no claim in the count line.
+    const hold = document.querySelector('[data-slot="hill-crew-state-hold"]')!;
+    expect(hold).not.toBeNull();
+    expect(hold.closest("header")).not.toBeNull();
+    expect(hold).toHaveClass("invisible");
+    expect(hold).toHaveAttribute("aria-hidden", "true");
+    expect(scroller.children).toHaveLength(0);
     expect(document.querySelector('[data-slot="hill-empty"]')).toBeNull();
     expect(document.querySelector('[data-slot="hill-count"]')).not.toHaveTextContent("All clear");
     expect(document.querySelector('[data-slot="decision-card"]')).toBeNull();
@@ -239,9 +240,9 @@ describe("the hill route on a cold open (calm load, row 4)", () => {
     release();
     await act(() => __settleHill());
     await waitFor(() => expect(document.querySelectorAll('[data-slot="decision-card"]')).toHaveLength(2));
-    // The neighbours did not move: the bar is still first in the scroller, the cards follow it, the hold is gone.
-    expect(scroller.firstElementChild).toHaveAttribute("data-slot", "hill-crew-state");
+    // The bell took the hold's place in the band, and the cards landed with it.
     expect(document.querySelector('[data-slot="hill-crew-state-hold"]')).toBeNull();
+    expect(document.querySelector('[data-slot="hill-crew-state-button"]')).not.toBeNull();
     expect(document.querySelector('[data-slot="hill-count"]')).toHaveTextContent("2 open");
     // The fold is chosen from the real list: closed while asks are open.
     expect(document.querySelector('[data-slot="hill-answered"] button[aria-expanded]')).toHaveAttribute("aria-expanded", "false");

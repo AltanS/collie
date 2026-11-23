@@ -20,6 +20,7 @@ import { useLocale } from "@/hooks/use-locale";
 import type { HillDecision, HillState } from "@/lib/hill/wire";
 import { answeredInSession, answerLine, closedWord } from "@/lib/hill/words";
 import { hillDraft, noteHillDraft } from "@/lib/hill/store";
+import { headerAsksWords } from "@/lib/hill/asks-board";
 import { hostSlot } from "@/lib/hosts";
 import { t, tn } from "@/lib/i18n";
 import { useTricksState } from "@/lib/tricks/store";
@@ -46,9 +47,33 @@ import { cn } from "@/lib/utils";
  * `held` is the first list still on its way (routes/hill.tsx): the line keeps its place and says
  * nothing, because "All clear" would be a claim about a hill nobody has read yet.
  */
-export function HillHeader({ count, onBack, off = false, held = false }: { count: number; onBack: () => void; off?: boolean; held?: boolean }) {
+export function HillHeader({
+  count,
+  onBack,
+  off = false,
+  held = false,
+  asks,
+  mode,
+}: {
+  count: number;
+  onBack: () => void;
+  off?: boolean;
+  held?: boolean;
+  /** How many asks are open and in how many sessions: the line then says "5 open in 3 sessions". */
+  asks?: { count: number; sessions: number };
+  /** The mode control (components/hill-crew-state.tsx), at the right end of the band. */
+  mode?: ReactNode;
+}) {
   useLocale();
-  const line = off ? t("hill.off.line") : held ? "\u00a0" : count === 0 ? t("hill.clear") : tn("hill.open", count);
+  const line = off
+    ? t("hill.off.line")
+    : held
+      ? "\u00a0"
+      : asks !== undefined && asks.count > 0
+        ? headerAsksWords(asks.count, asks.sessions)
+        : count === 0
+          ? t("hill.clear")
+          : tn("hill.open", count);
   return (
     <RouteHeader
       width="column"
@@ -68,12 +93,13 @@ export function HillHeader({ count, onBack, off = false, held = false }: { count
           <span aria-hidden data-slot="hill-mark" className="flex size-9 shrink-0 items-center justify-center rounded-full border border-border bg-card text-foreground">
             <Icon name="hill" className="size-5" />
           </span>
-          <div className="ml-1 flex min-w-0 flex-col">
+          <div className="ml-1 flex min-w-0 flex-1 flex-col">
             <h1 className="min-w-0 truncate text-lg font-semibold leading-tight tracking-tight">{t("hill.title")}</h1>
             <p data-slot="hill-count" className="truncate text-xs text-muted-foreground tabular-nums">
               {line}
             </p>
           </div>
+          {mode}
         </>
       }
     />

@@ -54,6 +54,10 @@
 # open_dashboard = "prefix+q"
 # new_space = "prefix+shift+n"
 
+# Open the next ask that waits for your answer, while Asks is on and one is open. It does what the
+# Answer button on the Asks page does.
+# answer_next_ask = "prefix+a"
+
 # Tabs of the space you are in: a new one, the one before, the one after, one by number.
 # new_tab = "prefix+c"
 # previous_tab = "prefix+p"

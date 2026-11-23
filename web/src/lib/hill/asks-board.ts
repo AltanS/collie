@@ -93,6 +93,63 @@ export function neighboursOf(deck: readonly Pick<AskDecision, "id">[], id: strin
   return { previous: deck[at - 1]?.id ?? null, next: deck[at + 1]?.id ?? null };
 }
 
+/**
+ * What the board's cache clock draws for a session: the prompt cache itself (`cacheOf`), whether or not the pane works. A
+ * working pane keeps its reading, as the Dashboard chip does; `sessionClock` hides it behind `working` for the order.
+ * `none` is a session with no reading (a gone pane, a harness with no cache adapter): the clock draws nothing.
+ */
+export type CacheClock = { kind: "warm"; msLeft?: number } | { kind: "cold" } | { kind: "none" };
+
+/** The cache clock of a session's pane at `now`. */
+export function cacheClockOf(pane: Pick<AgentView, "cache"> | null, now: number): CacheClock {
+  const cache = cacheOf(pane, now);
+  if (cache.state === "cold") return { kind: "cold" };
+  if (cache.state === "unknown") return { kind: "none" };
+  return cache.msLeft === undefined ? { kind: "warm" } : { kind: "warm", msLeft: cache.msLeft };
+}
+
+/** The cache's whole life, as the clock's bar reads it: minutes left are shown out of this many. */
+export const CACHE_BAR_MINUTES = 60;
+
+/** How full the clock's bar is, in percent: whole minutes left out of {@link CACHE_BAR_MINUTES}, never past either end. */
+export function cacheBarPercent(msLeft: number): number {
+  const minutes = Math.floor(Math.max(0, msLeft) / 60_000);
+  return Math.min(100, (minutes / CACHE_BAR_MINUTES) * 100);
+}
+
+/** The words of the board's cache clock ("12 min left", "cold"), or null when it draws nothing. */
+export function cacheClockWords(clock: CacheClock): string | null {
+  switch (clock.kind) {
+    case "none":
+      return null;
+    case "cold":
+      return t("asks.clock.cold");
+    case "warm": {
+      if (clock.msLeft === undefined) return t("asks.clock.warm");
+      const minutes = Math.floor(clock.msLeft / 60_000);
+      return minutes < 1 ? t("asks.board.underMin") : t("asks.board.minLeft", { minutes });
+    }
+  }
+}
+
+/** The muted line beside "Answer", from the cache and from how many sessions wait: null when it has nothing to say. */
+export function nextUpLine(sessionCount: number, clock: SessionClock): string | null {
+  if (sessionCount < 2) return null;
+  if (clock.kind === "warm") return t("asks.board.lineWarm");
+  if (clock.kind === "working") return t("asks.board.lineWorking");
+  return null;
+}
+
+/** The header's sub line, "5 open in 3 sessions". */
+export function headerAsksWords(asks: number, sessions: number): string {
+  return sessions === 1 ? t("asks.header.inOne", { count: asks }) : t("asks.header.inMany", { count: asks, sessions });
+}
+
+/** The right end of the section line: "5 open · 1 answered", the answered part only when there is one. */
+export function sectionCountWords(open: number, answered: number): string {
+  return answered > 0 ? t("asks.board.sectionCount", { open, answered }) : t("asks.board.sectionOpen", { open });
+}
+
 /** The cache in words a session's header and its board card say, or null when there is nothing to say (unknown). */
 export function clockWords(clock: SessionClock): string | null {
   switch (clock.kind) {

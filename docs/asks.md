@@ -49,7 +49,7 @@ With Asks off:
 - The open asks stay stored. They show again when you turn Asks on.
 - An agent can still run `collie walky asks`, `collie walky status` and `collie walky cancel`, so it can
   clean up.
-- The Crew state control is not shown, and "Tell all sessions now" is refused.
+- The Mode bell is not shown, and "Tell all sessions now" is refused.
 
 The installed WalkyTalky skill names asks only while Asks is on. Each change of the switch writes the
 skill again, as `collie skill sync` does. A session that started before you turned Asks on may not know
@@ -172,14 +172,30 @@ and the same id with other content is refused.
 
 Asks is the fourth item of the Dashboard's bottom bar, with the count of asks that wait on you. On a
 large screen the bar is gone, and Asks is a button in the Dashboard's header, beside Actions. The
-Crew state control sits at the top of the page ([Here, Quiet and Away](#here-quiet-and-away)).
+Mode control is the bell in the page's header ([Here, Quiet and Away](#here-quiet-and-away)).
 
-**The board** has one card for each session that has an open ask. A card says the session's name, where
-it works, and whether the session's prompt cache is warm or cold. It shows how many questions the session
-holds, how many you answered here, and how many the agent has not checked. Under it, one row for each
-question. The sessions stand in the order of their cache: warm sessions with the fewest minutes left
-first, then working ones, then the rest. **Answer next** opens the first ask. With nothing open, the page
-says "No asks wait on you."
+**The list** has three parts, top to bottom. The header says "5 open in 3 sessions", and its right end holds
+the Mode bell ([Here, Quiet and Away](#here-quiet-and-away)).
+
+**Next up** is one card with the question to answer first: the session's name and state, the question, the
+agent's suggestion when it sent one, and **Answer**, the one filled button of the page. It opens the first
+open ask that has no answer marked here. When every ask has an answer marked, the card says "2 of 2
+answered" and its button is **Send 2**, for the first session with marks. With several sessions open, a line
+beside the button says that a warm session's cache runs out first, or that a working session takes the answer
+when its turn ends. On a large screen the keys `prefix+a` do what the button does, from any screen: the
+button wears the key while the prefix waits. The action is `answer_next_ask`, and you can change its key in
+`shortcuts.toml` ([Keyboard shortcuts](keyboard-shortcuts.md)).
+
+**The sessions** follow under "All open asks, by cache time left", with "5 open · 1 answered" at the right.
+There is one card for each session that has an open ask. A card says the session's status mark, name,
+where it works and its state, and the time its prompt cache has left ("12 min left", or "cold"). Under it,
+one row for each question, with a plain number that counts within the card, and, at the right end, "Next"
+on the question that Next up shows, your answer as "Answered: Stop it", or a chevron. A card whose session
+has answers marked ends with a foot: "1 of 2 answered", and **Send 1**, which opens the Send sheet for that
+session. The sessions stand in the order of their cache: warm sessions with the fewest minutes left
+first, then working ones, then the rest. A cold session's card has no fill. The asks that the agent has
+not checked sink to the end of their card and turn muted. With nothing open, the page says
+"No asks wait on you."
 
 **An ask** opens on its own screen, from top to bottom:
 
@@ -227,7 +243,8 @@ Markdown, the pictures, and the files with **Open**, which opens the file in the
 one level, to the answers.
 
 **Keys.** Left and right arrows, `j` and `k` move between asks. `1` to `9` mark an answer. Enter confirms
-and Escape closes a sheet or goes up one level. Every key has a button.
+and Escape closes a sheet or goes up one level. Every key has a button. On every screen `prefix+a` opens
+the next ask that waits for your answer.
 
 **Answered in the session.** Say you answer in the terminal and not on the phone. The agent closes the
 ask with `collie walky cancel <id> --answered`, and the phone shows "You answered it in the session."
@@ -388,8 +405,10 @@ collie asks state
 collie asks state quiet
 ```
 
-`collie asks state` prints the state and since when it holds. The Crew state control sits at the top of
-Asks. It has three states, and under each one the control says in words what the agents do:
+`collie asks state` prints the state and since when it holds. The Mode control is a bell in the header of
+Asks. In Here it is the bell alone. In Quiet or Away it is a crossed bell with the word, so a state that
+quiets your agents is never hidden. Tap it to open the menu "How agents ask you". It has three rows, and
+under each one the menu says in words what the agents do:
 
 | State | The phone says |
 | --- | --- |
@@ -402,13 +421,14 @@ to the end of the result of each `collie walky ask`, and to the end of each answ
 nothing more with the state: the bridge refuses no ask, holds none back, and sends no notification. The
 agent reads the line and decides. The result of `collie walky ask` has no such line under Here.
 
-Under Quiet and Away the control also says who set the state and when ("Set by `<device>` at `<time>`.", or
-"Set from a terminal at `<time>`."). The state stays until you tap Here, or run `collie asks state here`.
+Under Quiet and Away the menu also says who set the state and when ("Set by `<device>` at `<time>`.", or
+"Set from a terminal at `<time>`."). The state stays until you choose Here in the menu, or run
+`collie asks state here`.
 
 `collie asks state` with a word refuses in a pane where an agent works. On a crew member it is refused
 too: the state lives on the lead.
 
-**Tell all sessions now.** Under Quiet or Away, the control shows this button. One tap types the line
+**Tell all sessions now.** Under Quiet or Away, the menu shows this button. One tap types the line
 "Crew state: away." (or "quiet") into each agent session that waits on Asks, as a message from you. Those
 are the sessions of the lead's own machine with an open ask, or one asked in the last hour, at most 20 of
 them, newest first. A busy session gets the line when its turn ends. The button then says "Told 3
