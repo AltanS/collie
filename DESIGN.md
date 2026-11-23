@@ -549,7 +549,8 @@ full-bleed; only viewport chrome under the header bar is — the two-placement r
 `expanded` width class (900px and wider, Large-screen layout not Off) the dashboard is a grid of Space
 columns 384px wide, centred, with the header, the tab bar and the New button as wide as the grid
 (ADR 0158, `lib/wide-dashboard.ts`). The parts that keep the phone's 16px gutter (banners, the Spaces
-navigator, the footer lines) stand on the grid's left edge through a `-mx-4` wrapper, in one Space's width.
+navigator, the footer lines) stand in one Space's width through a `-mx-4` wrapper: the grid keeps its left edge,
+and the stack under it is centred in the window on one centre line (operator, 2026-11-23, ADR 0158).
 The band of what needs you opens and closes through `Collapse`: that is the one movement of the grid that
 a state causes, accepted by the operator (2026-11-19), and a cold open draws the band in the first frame.
 

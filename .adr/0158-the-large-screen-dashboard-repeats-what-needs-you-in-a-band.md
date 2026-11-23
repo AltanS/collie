@@ -95,6 +95,10 @@ waits, else Appearance. Machines stays a page of its own, and its row leaves Set
 `web/src/components/settings-shell.tsx`, `web/src/components/settings-page.tsx`, `web/src/hooks/use-settings-rows.ts`,
 `web/e2e/settings-wide.spec.ts`.
 
+## Addendum — 2026-11-23: the parts under the grid are centred
+
+By the operator's word of 2026-11-23 ("this needs to be centered on desktop"), the parts under the grid on the Dashboard (Launch, the Spaces navigator, Programs, the Tricks Space, and the footer lines: the crew line, the update line, the build stamp) stand in one Space's width centred in the window, on one centre line, and no longer on the grid's left edge; the grid keeps its place, and the Files view keeps its own column. Files: `web/src/routes/home.tsx`, `web/e2e/wide-under-grid.spec.ts`.
+
 ## Addenda moved to ADR 0173
 
 - 2026-11-21, Files and Changes are two columns under one header: moved to [ADR 0173](./0173-files-new-and-the-space-address-take-the-large-screen.md), word for word.

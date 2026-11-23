@@ -384,7 +384,7 @@ export function HomeRoute() {
   const scrolled = useScrolledPast(scrollRef, 24);
   // Only the Dashboard tab with herd rows is the grid. Crew, Files and the durable home keep the phone's column,
   // centred under the wide header, and the parts under the grid (Launch, the Spaces navigator, Programs, the
-  // Tricks Space) stand in one Space's width after the last Space.
+  // Tricks Space) stand in one Space's width, centred in the window, after the last Space.
   const gridList = wide && view === "dashboard" && !screenless;
   const inColumn = (node: ReactNode) => (wide ? <WideColumn width={columnWidth}>{node}</WideColumn> : node);
   // The Files view on a large screen (ADR 0173): one line a space, in a column of at most
@@ -405,7 +405,7 @@ export function HomeRoute() {
     );
   const underGrid = (node: ReactNode) =>
     gridList ? (
-      <div className={cn(emptyHome && "mx-auto")} style={{ width: SPACE_WIDTH }}>
+      <div data-slot="wide-under-grid" className="mx-auto" style={{ width: SPACE_WIDTH }}>
         <PhoneParts on>{node}</PhoneParts>
       </div>
     ) : (
@@ -664,9 +664,9 @@ export function HomeRoute() {
 
         {wide ? (
           <WideColumn width={columnWidth}>
-            {/* Under the grid the foot lines stand in the first Space's column; under a centred column (Files, Crew,
-                the durable home, an empty dashboard) they centre with it. */}
-            <div className={cn((emptyHome || !gridList) && !filesWide && "mx-auto")} style={{ width: SPACE_WIDTH }}>
+            {/* The foot lines centre in the window with the parts above them (ADR 0158, addendum 2026-11-23); only the
+                Files view keeps them on its column's left edge. */}
+            <div data-slot="wide-foot" className={cn(!filesWide && "mx-auto")} style={{ width: SPACE_WIDTH }}>
               <PhoneParts on>{footer}</PhoneParts>
             </div>
           </WideColumn>
