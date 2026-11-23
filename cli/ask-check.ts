@@ -19,7 +19,8 @@ import { askSocket } from "./walky.ts";
 //    hook. After it, it prints nothing and exits, whatever is still pending.
 //  - The gates, in this order, each one silent with exit 0: a stop hook already continued this stop
 //    (`stop_hook_active`); the payload is not a main agent's `Stop` (a subagent, a teammate); no multiplexer
-//    markers; no bridge answers; the bridge's answer is anything but "check".
+//    markers; no bridge answers; no bridge's answer is a valid "check" list (every other answer, a refusal or "none" too,
+//    leads to the next bridge, since bridges of different releases can share a machine and a pane).
 //  - It never decides. The bridge decides (bridge/hill/check.ts): once per operator turn, the brake, the
 //    Hill's switch. This verb only prints what the bridge listed.
 //
@@ -135,7 +136,17 @@ function socketPaths(deps: BeaconCheckDeps): string[] {
   return [...new Set(listed)].filter((path) => holdSocketSafe(deps, path));
 }
 
-/** The whole check, without the time limit. The line to print, or null for silence. */
+/**
+ * The whole check, without the time limit. The line to print, or null for silence.
+ *
+ * Only a valid "check" list ends the walk. Every other answer leads to the next socket: no answer, a late
+ * answer, text that is not JSON, `not here`, a refusal, `check: "none"`, a "check" list that fails its checks.
+ * A machine can run several bridges of different releases that all know the same pane, as `cli/hill.ts` `walk`
+ * assumes too. An older one answers a refusal because it does not know `ask.check`; a newer one may have its
+ * switch off or hold no asks of this pane while another holds them. Stopping at the first answer that is a JSON
+ * object would leave the check silent for ever. The walk stays bounded by the list of sockets and by the one
+ * deadline of the whole verb.
+ */
 async function decide(deps: BeaconCheckDeps, deadline: number): Promise<string | null> {
   const payload = parseJsonObject(await deps.readStdin());
   if (payload === undefined || !checkablePayload(payload)) return null;
@@ -147,12 +158,8 @@ async function decide(deps: BeaconCheckDeps, deadline: number): Promise<string |
     const left = deadline - now();
     if (left <= 0) return null;
     const raw = await deps.ask(path, line, left).catch(() => null);
-    const answer = raw === null ? undefined : parseJsonObject(raw);
-    if (answer === undefined) continue;
-    // Another bridge on this machine may hold the pane.
-    if (answer.ok === false && answer.error === "not here") continue;
     const asks = checkAsksOf(raw);
-    return asks === null ? null : checkOutput(checkReason(asks, deps.binary(), now()));
+    if (asks !== null) return checkOutput(checkReason(asks, deps.binary(), now()));
   }
   return null;
 }

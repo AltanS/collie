@@ -39,7 +39,9 @@ agent keeps (`collie walky keep <id>`), replaces, or takes back each listed ask.
 1. **The hook prints nothing, or one block line, and always exits 0.** Gates in order, each silent: `stop_hook_active`
    is anything but absent or `false`; the event is not `Stop`, or the payload names an `agent_id`; no multiplexer
    markers; no bridge answers; the answer is anything but `check`. It has its own limit of 3 s, under the 10 s the
-   install writes, and after it prints nothing.
+   install writes, and after it prints nothing. It asks the bridges on the machine in turn and goes on to the next after every answer that is not a valid
+   `check` list (a refusal from an older release, `none`, `not here`, no answer), because bridges of different
+   releases can share a machine and a pane; only a `check` list ends the walk, within that one limit.
 2. **The bridge decides (`ask.check`), in one synchronous call**, so two hook processes of one stop cannot both get
    `check`. It answers `check` only when the Hill is on here (a crew member answers `none`: its asks are on the lead),
    the session has open asks, the bridge knows the turn, no check ran in it, the brake allows it, and an open ask was
