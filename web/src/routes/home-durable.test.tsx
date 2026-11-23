@@ -237,7 +237,7 @@ describe("durable home: one list with no filter", () => {
     renderHome(homeData({ hill: true }));
     await waitFor(() => expect(list()).not.toBeNull());
     const bar = await screen.findByRole("navigation", { name: "Dashboard views" });
-    expect([...bar.querySelectorAll<HTMLElement>('[data-slot="tab"], [data-slot="tab-link"]')].map((cell) => cell.querySelector(".truncate")?.textContent)).toEqual(["Dashboard", "Hill"]);
+    expect([...bar.querySelectorAll<HTMLElement>('[data-slot="tab"], [data-slot="tab-link"]')].map((cell) => cell.querySelector(".truncate")?.textContent)).toEqual(["Dashboard", "Asks"]);
   });
 });
 

@@ -45,7 +45,7 @@ describe("the Hill's row in Settings, Tricks", () => {
   it("is one row: the mountain, the name, the labels, one line of what it is, and the switch", () => {
     render(<Row on disabled={false} onToggle={() => {}} />);
     const row = document.querySelector('[data-hill-row]')!;
-    expect(row.querySelector('[data-slot="row-name"]')).toHaveTextContent("The Hill");
+    expect(row.querySelector('[data-slot="row-name"]')).toHaveTextContent("Asks");
     expect(row.querySelector('[data-line="description"]')).toHaveTextContent("Agents and tricks ask you a question here. You answer with one tap.");
     // Built in is a neutral label: no Official accent, no mark that claims safety.
     const built = row.querySelector('[data-slot="trick-origin"]')!;
@@ -56,7 +56,7 @@ describe("the Hill's row in Settings, Tricks", () => {
     expect(row.querySelector('[data-slot="experimental-badge"]')).not.toBeNull();
     // Answers to Decisions are typed into sessions: the chip after the label says it costs agent tokens.
     expect(row.querySelector('[data-slot="token-use"]')?.textContent).toBe("Uses agent tokens");
-    expect(screen.getByRole("switch", { name: "The Hill" })).toBeChecked();
+    expect(screen.getByRole("switch", { name: "Asks" })).toBeChecked();
     // The old card's long words are gone from the row: the page holds them.
     expect(screen.queryByText(/Off: they cannot post/)).toBeNull();
     expect(screen.queryByText(/An experiment: it may change/)).toBeNull();
@@ -64,9 +64,9 @@ describe("the Hill's row in Settings, Tricks", () => {
 
   it("opens the details page from the name's link, and the switch is no part of that link", () => {
     render(<Row on disabled={false} onToggle={() => {}} />);
-    const link = screen.getByRole("link", { name: "About The Hill" });
+    const link = screen.getByRole("link", { name: "About Asks" });
     expect(link.getAttribute("href")).toBe("/settings/tricks/hill");
-    expect(link.contains(screen.getByRole("switch", { name: "The Hill" }))).toBe(false);
+    expect(link.contains(screen.getByRole("switch", { name: "Asks" }))).toBe(false);
     expect(document.querySelector('[data-hill-row]')!.getAttribute("data-setting")).toBe("tricks.hill");
   });
 
@@ -84,7 +84,7 @@ describe("the Hill's row in Settings, Tricks", () => {
 
   it("reads on when the snapshot carries no hillOff", async () => {
     renderRow({});
-    expect(await screen.findByRole("switch", { name: "The Hill" })).toBeChecked();
+    expect(await screen.findByRole("switch", { name: "Asks" })).toBeChecked();
   });
 
   it("a tap off writes { on: false }, holds the position, and the read snapshot agrees", async () => {
@@ -96,11 +96,11 @@ describe("the Hill's row in Settings, Tricks", () => {
       }),
     );
     const holder = renderRow({});
-    const sw = await screen.findByRole("switch", { name: "The Hill" });
+    const sw = await screen.findByRole("switch", { name: "Asks" });
     holder.data = { hillOff: true };
     await userEvent.click(sw);
     await waitFor(() => expect(posted).toBe('{"on":false}'));
-    await waitFor(() => expect(screen.getByRole("switch", { name: "The Hill" })).not.toBeChecked());
+    await waitFor(() => expect(screen.getByRole("switch", { name: "Asks" })).not.toBeChecked());
   });
 
   it("starts off with hillOff, and a tap on writes { on: true }", async () => {
@@ -112,25 +112,25 @@ describe("the Hill's row in Settings, Tricks", () => {
       }),
     );
     const holder = renderRow({ hillOff: true });
-    const sw = await screen.findByRole("switch", { name: "The Hill" });
+    const sw = await screen.findByRole("switch", { name: "Asks" });
     expect(sw).not.toBeChecked();
     holder.data = {};
     await userEvent.click(sw);
     await waitFor(() => expect(posted).toBe('{"on":true}'));
-    await waitFor(() => expect(screen.getByRole("switch", { name: "The Hill" })).toBeChecked());
+    await waitFor(() => expect(screen.getByRole("switch", { name: "Asks" })).toBeChecked());
   });
 
   it("a refused write puts the switch back and says so on the status line", async () => {
     server.use(http.post("/api/hill/switch", () => new HttpResponse("the Hill's switch could not be saved on this machine; nothing changed", { status: 503 })));
     renderRow({});
-    await userEvent.click(await screen.findByRole("switch", { name: "The Hill" }));
-    await waitFor(() => expect(currentStatus()).toMatchObject({ text: "Could not switch the Hill. Try again.", tone: "error" }));
-    expect(screen.getByRole("switch", { name: "The Hill" })).toBeChecked();
+    await userEvent.click(await screen.findByRole("switch", { name: "Asks" }));
+    await waitFor(() => expect(currentStatus()).toMatchObject({ text: "Could not switch Asks. Try again.", tone: "error" }));
+    expect(screen.getByRole("switch", { name: "Asks" })).toBeChecked();
   });
 
   it("a device that may only read sees the switch, disabled", async () => {
     renderRow({ device: { enforced: true, device: "tablet", authorized: false } });
-    expect(await screen.findByRole("switch", { name: "The Hill" })).toBeDisabled();
+    expect(await screen.findByRole("switch", { name: "Asks" })).toBeDisabled();
   });
 });
 
@@ -150,7 +150,7 @@ describe("the armed second tap on the switch", () => {
   it("with no Decision waiting, one tap switches off at once", () => {
     const onToggle = vi.fn();
     render(<Row {...props} onToggle={onToggle} />);
-    fireEvent.click(screen.getByRole("switch", { name: "The Hill" }));
+    fireEvent.click(screen.getByRole("switch", { name: "Asks" }));
     expect(onToggle).toHaveBeenCalledExactlyOnceWith(false);
     expect(document.querySelector('[data-line="armed"]')).toBeNull();
   });
@@ -158,7 +158,7 @@ describe("the armed second tap on the switch", () => {
   it("with questions waiting, the first tap arms with the count of all of them, the second switches off", () => {
     const onToggle = vi.fn();
     render(<Row {...props} waiting={3} onToggle={onToggle} />);
-    const sw = screen.getByRole("switch", { name: "The Hill" });
+    const sw = screen.getByRole("switch", { name: "Asks" });
     const t0 = Date.now();
     const clock = vi.spyOn(Date, "now").mockReturnValue(t0);
     fireEvent.click(sw);
@@ -177,7 +177,7 @@ describe("the armed second tap on the switch", () => {
 
   it("says one question in the singular", () => {
     render(<Row {...props} waiting={1} onToggle={() => {}} />);
-    fireEvent.click(screen.getByRole("switch", { name: "The Hill" }));
+    fireEvent.click(screen.getByRole("switch", { name: "Asks" }));
     expect(screen.getByRole("status")).toHaveTextContent("1 question waits on the Hill. You cannot answer it while it is off.");
   });
 
@@ -196,7 +196,7 @@ describe("the armed second tap on the switch", () => {
     expect(text).not.toHaveClass("invisible");
     expect(text.getAttribute("aria-hidden")).toBeNull();
     expect(screen.queryByRole("status")).toBeNull();
-    fireEvent.click(screen.getByRole("switch", { name: "The Hill" }));
+    fireEvent.click(screen.getByRole("switch", { name: "Asks" }));
     // Armed: the note shows, the text is the ghost. Same two elements, none added or removed.
     expect(cell.querySelector('[data-line="armed"]')).toBe(note);
     expect(note).not.toHaveClass("invisible");
@@ -210,7 +210,7 @@ describe("the armed second tap on the switch", () => {
     const { rerender } = render(<Row {...props} waiting={3} onToggle={() => {}} />);
     const note = document.querySelector('[data-line="armed"]');
     expect(note).not.toBeNull();
-    fireEvent.click(screen.getByRole("switch", { name: "The Hill" }));
+    fireEvent.click(screen.getByRole("switch", { name: "Asks" }));
     rerender(<Row {...props} waiting={0} onToggle={() => {}} />);
     expect(document.querySelector('[data-line="armed"]')).toBe(note);
   });
@@ -225,7 +225,7 @@ describe("the armed second tap on the switch", () => {
 
   it("the stretched link still opens the page from the text area while unarmed: the text layer is no control and sits under the link's layer", () => {
     render(<Row {...props} waiting={3} onToggle={() => {}} />);
-    const link = screen.getByRole("link", { name: "About The Hill" });
+    const link = screen.getByRole("link", { name: "About Asks" });
     expect(link.className).toContain("after:absolute");
     expect(document.querySelector('[data-layer="text"]')!.closest("a")).toBeNull();
     expect(document.querySelector('[data-hill-row]')!.querySelector('[data-layer="text"] button, [data-layer="text"] a')).toBeNull();
@@ -236,7 +236,7 @@ describe("the armed second tap on the switch", () => {
     try {
       const onToggle = vi.fn();
       render(<Row {...props} waiting={2} onToggle={onToggle} />);
-      const sw = screen.getByRole("switch", { name: "The Hill" });
+      const sw = screen.getByRole("switch", { name: "Asks" });
       fireEvent.click(sw);
       expect(shown()).not.toBeNull();
       act(() => vi.advanceTimersByTime(5000));
@@ -251,7 +251,7 @@ describe("the armed second tap on the switch", () => {
   it("turning on never asks", () => {
     const onToggle = vi.fn();
     render(<Row on={false} disabled={false} waiting={3} onToggle={onToggle} />);
-    fireEvent.click(screen.getByRole("switch", { name: "The Hill" }));
+    fireEvent.click(screen.getByRole("switch", { name: "Asks" }));
     expect(onToggle).toHaveBeenCalledExactlyOnceWith(true);
   });
 });
@@ -295,7 +295,7 @@ describe("the switch over the list the phone holds", () => {
     expect(before).toHaveLength(3);
     requests.length = 0;
 
-    const sw = await screen.findByRole("switch", { name: "The Hill" });
+    const sw = await screen.findByRole("switch", { name: "Asks" });
     const t0 = Date.now();
     const clock = vi.spyOn(Date, "now").mockReturnValue(t0);
     fireEvent.click(sw);

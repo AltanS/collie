@@ -3,7 +3,7 @@
 
 import { t } from "@/lib/i18n";
 
-import { HILL_ANSWERED_IN_SESSION, RIGHTS_CLOSED, RIGHTS_CLOSED_KEYS, type HillDecision, type HillPriority, type HillReceipt, type HillState } from "./wire";
+import { HILL_ANSWERED_IN_SESSION, HILL_ASK_ANSWERED_HERE, HILL_ASK_CLEARED, RIGHTS_CLOSED, RIGHTS_CLOSED_KEYS, type HillDecision, type HillPriority, type HillReceipt, type HillState } from "./wire";
 
 export function priorityWord(priority: HillPriority): string {
   return t(`hill.priority.${priority}`);
@@ -31,6 +31,10 @@ export function closedWord(decision: Pick<HillDecision, "state" | "from" | "clos
   if (decision.state === "open") return "";
   // The person wrote in the session (M96 spec 10): never "Withdrawn by the poster".
   if (answeredInSession(decision)) return t("hill.state.answeredInSession");
+  // The person answered the ask in the session itself (the bridge closes it with HILL_ASK_ANSWERED_HERE): in its own words.
+  if (decision.state === "withdrawn" && decision.from.kind === "agent" && decision.closedReason === HILL_ASK_ANSWERED_HERE) return t("asks.closed.answeredHere");
+  // The person ran /clear in the session (Asks build 2): the ask is closed for that reason, in its own words.
+  if (decision.state === "withdrawn" && decision.from.kind === "agent" && decision.closedReason === HILL_ASK_CLEARED) return t("asks.closed.cleared");
   if (decision.state !== "withdrawn" || decision.from.kind !== "collie" || decision.from.ref?.type !== "rights") return stateWord(decision.state);
   const why = RIGHTS_CLOSED_KEYS.find((key) => RIGHTS_CLOSED[key] === decision.closedReason);
   return why === undefined ? stateWord(decision.state) : t(`hill.rightsClosed.${why}`);

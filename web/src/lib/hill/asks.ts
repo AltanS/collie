@@ -15,7 +15,13 @@ import type { AgentStatus, AgentView, ServerSummary, SessionSummary } from "../t
 import { livePaneAt, type WalkyLivePanes } from "../walky-names";
 import { NO_DRAFT, type AskDraft } from "./asks-drafts";
 import { answersMessage, answersMessageLength, answersMessageOver, type MarkedAnswer } from "./answers-message";
-import { askTakenBackBecause, HILL_ANSWERS_MAX, HILL_ANSWERS_MESSAGE_MAX, HILL_ASK_ANSWERED_HERE, HILL_MORE_CONTEXT, HILL_MORE_CONTEXT_LABEL, isAsk, type HillAsk, type HillAskFile, type HillDecision } from "./wire";
+import { askTakenBackBecause, HILL_ANSWERS_MAX, HILL_ANSWERS_MESSAGE_MAX, HILL_ASK_ANSWERED_HERE, HILL_ASK_CLEARED, HILL_MORE_CONTEXT, HILL_MORE_CONTEXT_LABEL, HILL_OWN_ANSWER, HILL_OWN_ANSWER_LABEL, isAsk, type HillAsk, type HillAskFile, type HillDecision, type HillOption } from "./wire";
+
+/** What an option costs (`--cost`), or undefined when the agent sent none or only spaces. */
+export function optionCost(option: Pick<HillOption, "cost">): string | undefined {
+  const cost = option.cost;
+  return cost === undefined || cost.trim() === "" ? undefined : cost;
+}
 
 /** A Decision known to be an ask: the `ask` field is there. */
 export type AskDecision = HillDecision & { ask: HillAsk };
@@ -177,6 +183,8 @@ export function markedAnswer(ask: AskDecision, draft: AskDraft): MarkedAnswer | 
   const text = draft.text.trim();
   if (ask.ask.words) return text === "" ? null : { ask, intent: "answer", text };
   if (draft.intent === null) return null;
+  // "Your own answer" is its text: with no words it is no answer.
+  if (draft.intent === HILL_OWN_ANSWER) return text === "" ? null : { ask, intent: HILL_OWN_ANSWER, text };
   const known = draft.intent === HILL_MORE_CONTEXT || ask.options.some((option) => option.intent === draft.intent);
   if (!known) return null;
   return { ask, intent: draft.intent, text: text === "" ? null : text };
@@ -185,6 +193,7 @@ export function markedAnswer(ask: AskDecision, draft: AskDraft): MarkedAnswer | 
 /** The label of a marked answer, as the row and the review say it: the option's label, "I need more context", or the first words. */
 export function answerLabel(answer: MarkedAnswer): string {
   if (answer.intent === HILL_MORE_CONTEXT) return HILL_MORE_CONTEXT_LABEL;
+  if (answer.intent === HILL_OWN_ANSWER) return HILL_OWN_ANSWER_LABEL;
   if (answer.intent === "answer") return wordsPreview(answer.text ?? "");
   return answer.ask.options.find((option) => option.intent === answer.intent)?.label ?? answer.intent;
 }
@@ -242,6 +251,7 @@ export function foldsOf(closed: readonly HillDecision[]): AskFold[] {
 export type ClosedAskWhy =
   | { kind: "answered"; label: string | null }
   | { kind: "answeredHere" }
+  | { kind: "cleared" }
   | { kind: "takenBack"; because: string | null }
   | { kind: "replaced"; by: string | null }
   | { kind: "gone" }
@@ -260,6 +270,7 @@ export function closedAskWhy(ask: Pick<HillDecision, "state" | "closedReason" | 
       return { kind: "gone" };
     case "withdrawn":
       if (ask.closedReason === HILL_ASK_ANSWERED_HERE) return { kind: "answeredHere" };
+      if (ask.closedReason === HILL_ASK_CLEARED) return { kind: "cleared" };
       if (ask.closedReason?.includes("session ended") === true) return { kind: "gone" };
       return { kind: "takenBack", because: askTakenBackBecause(ask.closedReason) };
     case "dismissed":

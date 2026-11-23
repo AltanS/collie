@@ -237,7 +237,8 @@ It is rare. An urgent patch keeps the daily update cadence, and its version stay
 ## Question card (ask)
 
 A question that a durable agent raises. The phone shows it as a card, and one tap answers it
-once. Collie never answers for you ([Durable agents](durable-agents.md#what-the-phone-shows)).
+once. Collie never answers for you ([Durable agents](durable-agents.md#what-the-phone-shows)). It is not
+an [ask](#ask): an ask is a question an agent posts to the Asks page.
 
 ## Belt
 
@@ -536,6 +537,20 @@ tapping an option, and the answer goes back to the session that asked, as your o
 is not a [question card](#question-card-ask): that card is a durable agent's own question
 ([Decisions](hill.md#what-a-decision-is)).
 
+## Ask
+
+One question an agent posts with `collie walky ask`, for you to answer when you have time. It shows
+the question, what the agent knows, the answers it offers and a card for your own answer. You mark an
+answer on the ask's screen. Nothing goes back to the agent until you tap Send, and one Send answers every
+marked ask of one session in one message. An ask is a [Decision](#decision) with a question on it. It is
+not a [question card](#question-card-ask), which is a durable agent's own question.
+
+## Board (Asks)
+
+The first page of Asks: one card for each session that has an open ask, with a row for each question.
+The sessions stand in the order of their prompt cache, warm ones first. A row opens the ask. Cards that
+are not asks, such as a trick's card, stand in a last group under "Other cards".
+
 ## Proposal card
 
 The card of a trick that an agent wrote for you. It is titled "Switch on the trick `<id>`?", and it
@@ -552,8 +567,8 @@ and the code is replaced only on your yes ([A trick an agent proposes](hill.md#a
 
 The page of Decisions that wait for you, grouped Now, Today and Later, with the answered ones below.
 It is the fourth item of the Dashboard's bottom bar, and on a large screen a button beside Actions in
-the dashboard's header. One crew has one Hill, on the lead. "Hill" is the
-view's name and stays the same in every language. Its switch is the first row of the trick list in
+the dashboard's header. One crew has one Hill, on the lead. The app calls this page **Asks**, and "Hill"
+is its older name, which the docs still use. Its switch is the first row of the trick list in
 Settings → Tricks ([The Hill](hill.md)).
 
 ## Event

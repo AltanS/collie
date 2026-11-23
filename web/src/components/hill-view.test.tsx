@@ -63,8 +63,8 @@ describe("the Hill", () => {
   it("draws the clear hill when no Decision is open", () => {
     const { container } = renderView([]);
     const empty = container.querySelector('[data-slot="hill-empty"]');
-    expect(empty).toHaveTextContent("The hill is clear.");
-    expect(empty).toHaveTextContent("Nothing waits on you.");
+    expect(empty).toHaveTextContent("No asks wait on you.");
+    expect(empty).toHaveTextContent("New ones appear here.");
     expect(empty?.querySelector("[data-mark]")).not.toBeNull();
     expect(container.querySelector('[data-slot="hill-answered"]')).toBeNull();
   });
@@ -415,7 +415,7 @@ describe("the Clear button on the Answered group", () => {
       expect(container.querySelector('[data-slot="hill-clear"]')).toBeNull();
       expect(rowsOf(container)).toHaveLength(0);
       // The empty hill stands where the group was, as after the last open card.
-      expect(container.querySelector('[data-slot="hill-empty"]')).toHaveTextContent("Nothing waits on you.");
+      expect(container.querySelector('[data-slot="hill-empty"]')).toHaveTextContent("New ones appear here.");
     });
 
     it("grows the rows back when the clear failed, before or after the fold is over", () => {

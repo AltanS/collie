@@ -78,10 +78,10 @@ describe("the sentence under the button", () => {
     expect(hillTestSentence(true, sent("something_new"))).toBe("A test Decision arrives in 20 seconds. A notification may not be sent.");
   });
 
-  it("says a failure in one line, and 'Switch the Hill on first.' while the Hill is off, whatever the result", () => {
+  it("says a failure in one line, and 'Switch Asks on first.' while Asks is off, whatever the result", () => {
     expect(hillTestSentence(true, { kind: "failed" })).toBe("Could not send the test. Try again.");
-    expect(hillTestSentence(false, null)).toBe("Switch the Hill on first.");
-    expect(hillTestSentence(false, sent(null))).toBe("Switch the Hill on first.");
+    expect(hillTestSentence(false, null)).toBe("Switch Asks on first.");
+    expect(hillTestSentence(false, sent(null))).toBe("Switch Asks on first.");
     expect(hillTestSentence(true, null)).toBe("");
   });
 
@@ -96,7 +96,7 @@ describe("the disabled states", () => {
   it("disables the button while the Hill is off, and the slot says to switch it on", () => {
     group({ on: false });
     expect(screen.getByRole("button", { name: "Send a test Decision" })).toBeDisabled();
-    expect(screen.getByText("Switch the Hill on first.")).toBeInTheDocument();
+    expect(screen.getByText("Switch Asks on first.")).toBeInTheDocument();
   });
 
   it("disables it where the device may not write", () => {

@@ -75,7 +75,7 @@ export const SCREENS: ScreenRecipe[] = [
   { id: "composer-attach", group: "Session", title: "Composer, attach menu", world: "kiro", path: PANE, open: (p) => tapByName(p, "Attach file") },
 
   // ── Hill ─────────────────────────────────────────────────────────────────
-  { id: "hill", group: "Hill", title: "Hill, open decisions", world: "rich", path: "/hill" },
+  { id: "hill", group: "Hill", title: "Asks, the board", world: "rich", path: "/hill" },
 
   // ── Settings ─────────────────────────────────────────────────────────────
   { id: "settings", group: "Settings", title: "Settings index", world: "rich", path: "/settings" },

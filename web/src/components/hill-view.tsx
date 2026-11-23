@@ -353,6 +353,7 @@ export function HillView({
   clear,
   keptTitles,
   listed = true,
+  asks,
 }: {
   open: readonly HillDecision[];
   closed: readonly HillDecision[];
@@ -368,16 +369,22 @@ export function HillView({
    * empty one that stood in for it. A view with no such wait leaves it true.
    */
   listed?: boolean;
+  /**
+   * The Asks board (components/asks-board.tsx): the session cards the route drew from the open asks, and how many asks they
+   * hold. `open` then holds the OTHER cards only (`openCardsOf`), which stand in a last group under their own heading.
+   */
+  asks?: { count: number; node: ReactNode };
 }) {
   useLocale();
-  const [answeredOpen, setAnsweredOpen] = useState(open.length === 0);
+  const askCount = asks?.count ?? 0;
+  const [answeredOpen, setAnsweredOpen] = useState(open.length + askCount === 0);
   // The fold starts open on a clear hill. If that first look was the empty stand-in, look again, once, at the real list.
   const seeded = useRef(listed);
   useEffect(() => {
     if (!listed || seeded.current) return;
     seeded.current = true;
-    setAnsweredOpen(open.length === 0);
-  }, [listed, open.length]);
+    setAnsweredOpen(open.length + askCount === 0);
+  }, [listed, open.length, askCount]);
   const answeredId = useId();
   // The closed list holds closed decisions only (lib/hill/reader.ts); an open one would draw an empty row.
   const closedRows = closed.filter((d) => d.state !== "open");
@@ -387,15 +394,26 @@ export function HillView({
     <div className="flex flex-col gap-7">
       {/* The open cards and the clear hill take turns in one band: the last card collapses while the
           ridge fades in where it stood, and back. The ridge is always the shorter of the two. */}
-      <CollapseSwap open={open.length > 0} standIn={<HillClear answered={closed.filter((d) => d.state === "answered").length} />}>
+      <CollapseSwap open={open.length + askCount > 0} standIn={<HillClear answered={closed.filter((d) => d.state === "answered").length} />}>
         <div data-slot="hill-open" className="flex flex-col gap-7">
-          {/* 28 is this column's own gap-7: a group that leaves takes it along. */}
-          <PresenceList gap={28}>
-            {HILL_PRIORITIES.flatMap((priority) => {
-              const group = open.filter((d) => d.priority === priority);
-              return group.length === 0 ? [] : [<PriorityGroup key={priority} priority={priority} decisions={group} renderCard={renderCard} />];
-            })}
-          </PresenceList>
+          {asks?.node}
+          {/* The cards that are not asks keep today's groups and cards; next to the asks they stand under one heading. */}
+          <Collapse open={askCount === 0 || open.length > 0}>
+            <div data-slot="hill-others" className="flex flex-col gap-3">
+              {askCount > 0 && (
+                <h2 data-slot="hill-others-head" className="text-[13px] font-semibold">
+                  {t("asks.board.others")}
+                </h2>
+              )}
+              {/* 28 is this column's own gap-7: a group that leaves takes it along. */}
+              <PresenceList gap={28}>
+                {HILL_PRIORITIES.flatMap((priority) => {
+                  const group = open.filter((d) => d.priority === priority);
+                  return group.length === 0 ? [] : [<PriorityGroup key={priority} priority={priority} decisions={group} renderCard={renderCard} />];
+                })}
+              </PresenceList>
+            </div>
+          </Collapse>
         </div>
       </CollapseSwap>
       {/* Answered is one item of this column's own presence list (28 is the column's gap-7). The first
