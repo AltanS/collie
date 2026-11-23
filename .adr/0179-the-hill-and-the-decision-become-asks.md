@@ -92,7 +92,7 @@ Quiet, Away (2026-11-23).
 - The word guard (`web/src/lib/i18n/asks-words.test.ts`) fails on any English value with Hill, Decision, ring or
   No push, apart from its allow-list (empty today).
 - The official tricks that ask (design-review and pr-inbox, pinned in `bridge/tricks/official.json`) use
-  `decides = "reply"` and the v10 helper; they are refused until their repository moves to `asks` and the pin moves
+  `decides = "reply"` and the v8 helper; they are refused until their repository moves to `asks` and the pin moves
   with it.
 - The other languages keep the old meaning in their values until the next translation pass; their keys are the same.
 - `collie walky status` reads both a message (`wt_`) and an ask (`ak_`); the id's prefix decides.
