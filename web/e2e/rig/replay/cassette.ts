@@ -154,6 +154,9 @@ export interface LegMeta {
 export const VOLATILE: readonly { readonly name: string; readonly re: RegExp }[] = [
   // A walky talky message id (bridge/walky/types.ts WALKY_ID), and a send id (SEND_ID).
   { name: "walky", re: /wt_[a-z0-9]{12}(?:-[0-9a-f]{8})?/gu },
+  // An ask id (web/src/lib/hill/wire.ts HILL_ASK_ID_RE): `collie walky ask` prints it, the reminder lists it,
+  // and the agent closes it with `collie walky cancel <id>` (case 38).
+  { name: "ask", re: /\bak_[a-z0-9]{12}\b/gu },
   // A walky talky pane address with its instance token (bridge/walky/address.ts): the pane id is
   // Herdr's and depends on the order panes opened in, the token is random.
   // Never inside a path: `/usr/local/bin` is not a pane.
@@ -400,6 +403,32 @@ export function summarize(path: string, raw: string, literals: readonly Literal[
   const resultsWithIt = list(items[at]?.content).some((block) => asJsonString(asJsonObject(block)?.type) === "tool_result");
   const tail = [...items.slice(before + 1, at).map(tailWord), ...(resultsWithIt ? ["result"] : [])];
   return { ...withContext, beneathQueued: { prompt: beforePrompt, tail } };
+}
+
+/** How Claude Code opens a hook's context in the `role: system` item it adds after the prompt (2.1.331). */
+const HOOK_CONTEXT = /^(UserPromptSubmit|SessionStart) hook additional context: (Collie: [\s\S]*)$/u;
+
+/**
+ * The reminders of open asks (.adr/0178) that ride on the newest prompt of a Claude Code request: each
+ * `role: system` item after the last prompt whose text is a hook's context that starts with `Collie: `, as
+ * `<event>: <text>`, cut to 400 characters. Claude Code puts a hook's context there, and the summary leaves
+ * `role: system` items out, so a recording never matches on it: this is how the stub sees it (case 38). Never
+ * stored in a cassette. Any other body: none.
+ */
+export function promptReminders(raw: string): string[] {
+  const body = asJsonObject(parseJson(raw));
+  const items = list(body?.messages).flatMap((item) => {
+    const o = asJsonObject(item);
+    return o === undefined ? [] : [o];
+  });
+  const at = items.findLastIndex((o) => asJsonString(o.role) === "user" && isPrompt(o));
+  return items.slice(at + 1).flatMap((o) => {
+    if (asJsonString(o.role) !== "system") return [];
+    return texts(o.content).flatMap((text) => {
+      const m = HOOK_CONTEXT.exec(text.trim());
+      return m?.[1] === undefined || m[2] === undefined ? [] : [`${m[1]}: ${m[2]}`.slice(0, 400)];
+    });
+  });
 }
 
 /** The summary as a cassette stores it: without the live-only `beneathQueued`. */

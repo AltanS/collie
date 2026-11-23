@@ -612,10 +612,20 @@ export function paneRun(paneId: string, line: string, machine: Machine = "lead")
  * `space` is the pane's walky talky space ({@link RigSpace}); every pane is in {@link RIG_SPACE} unless
  * the caller says another, so agents of different harnesses and machines can message each other as
  * the cases always had them do. `label` names the pane's workspace for a person reading `pane ls` only
- * where the space has no name to give it.
+ * where the space has no name to give it. With `shell` the core runs its own shell and gets the line typed
+ * in, as Herdr always does; a line that does not `exec` then leaves a shell when its program ends.
  */
-export async function startInPane(cwd: string, label: string, line: string, machine: Machine = "lead", space: RigSpace = RIG_SPACE): Promise<string> {
-  if (muxOf(machine) === "herdr-core") return coreNewTerminal(cwd, label, ["sh", "-c", line], machine, await coreSpaceLabelsFor(machine, space));
+export async function startInPane(cwd: string, label: string, line: string, machine: Machine = "lead", space: RigSpace = RIG_SPACE, options: { readonly shell?: boolean } = {}): Promise<string> {
+  if (muxOf(machine) === "herdr-core") {
+    const labels = await coreSpaceLabelsFor(machine, space);
+    if (options.shell !== true) return coreNewTerminal(cwd, label, ["sh", "-c", line], machine, labels);
+    // `shell`: the machine's own shell first, and the line typed into it, as on Herdr, so the pane outlives
+    // the program the line starts (case 38 starts Claude again in the same pane with `--resume`).
+    const address = coreNewTerminal(cwd, label, [], machine, labels);
+    await sleep(800);
+    paneRun(address, line, machine);
+    return address;
+  }
   const { paneId, workspaceId } = herdrWorkspace(cwd, space ?? label, machine);
   // A workspace labelled with its own id is a workspace with no name of its own (the Herdr adapter's `spaceNamed`).
   if (space === null && herdr(["workspace", "rename", workspaceId, workspaceId], { machine }).code !== 0) throw new Error(`herdr would not rename workspace ${workspaceId}`);
