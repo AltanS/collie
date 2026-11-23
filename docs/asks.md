@@ -131,6 +131,12 @@ collie walky cancel ak_k3f9x2m8q1a0 --answered
   session or the work settled the ask, or `--because "<reason>"`. Use `--replaces <id>` on a new ask
   when the question changed.
 
+`collie walky ask` is the old `collie hill post`, and each old flag moved or went away. The question is
+the first argument, where `--title` was. `--summary` is `--fact`, and `--supersedes` is `--replaces`.
+`--priority`, `--reply-to` and `--view` are gone. A flag that `collie walky ask` does not know is
+refused with a line that points to `collie walky ask --help`. The other old verbs moved too: `status`
+is `collie walky status`, `withdraw` is `collie walky cancel`, and `list` is `collie walky asks`.
+
 `collie walky asks` is the agent's own list. `collie asks` holds your commands, such as `on` and
 `clear`. An agent does not run those.
 
@@ -263,11 +269,17 @@ holds the question and how to close it. After that, each prompt gets one short l
 open asks. If your prompt or its work settles an ask, the agent closes it with
 `collie walky cancel <id> --answered`. An ask that is still true stays open, and the agent does nothing.
 
-- After a compaction, a resume or a fork, the agent gets the full list again.
-- A `/clear` closes the session's open asks with the reason "conversation cleared", and the phone shows
-  that. The next reminder then starts from nothing.
-- The note is left out when the prompt is Collie's own "Answers to your asks" message, because that
-  message already lists the open asks.
+- The note goes to the agent session that the pane runs now. A second Claude Code process in the same
+  pane gets none, and its `/clear` closes nothing.
+- After a compaction, the agent gets the full list again. A resumed conversation (`claude --resume` or
+  `claude --continue`) gets the full list at its first prompt. A fork is a new conversation, so it does
+  not see the asks of the conversation it came from.
+- A `/clear` closes the open asks of the cleared conversation with the reason "conversation cleared",
+  and the phone shows that. The next reminder then starts from nothing.
+- The note is left out when the prompt is a WalkyTalky message from another agent, and when it is
+  Collie's own "Answers to your asks" message, because that message already lists the open asks.
+- After 20 short lines in a row, the full form comes once again. Collie cannot know that a note reached
+  the model, so the full form never stays away for good.
 - The note never holds an answer of yours. It holds the agent's own questions and fixed sentences.
 
 Each ask shows how far the agent has seen it, in these words:
@@ -278,7 +290,8 @@ Each ask shows how far the agent has seen it, in these words:
 | "Still open. The agent saw it 15:10" | A prompt came after it, and the agent read it in a turn that finished |
 | "You wrote in this session since. Not checked." | A prompt came after it, and Collie did not see the agent read it. The row sinks to the end of its card and turns muted |
 
-The reminder needs the hooks of `collie hooks install claude` and Asks switched on. Other agents, such as
+The reminder needs the hooks of `collie hooks install claude` and Asks switched on. With Asks off the
+hook reads the switch on the machine and goes no further: it contacts no bridge. Other agents, such as
 Codex, get no reminder, and their asks never read "Still open. The agent saw it". A crew member's sessions
 get no reminder either: their asks live on the lead, which never sees the member's turns, so they read
 "Not checked". With no hooks, every ask reads "Asked" or "Not checked". `collie hooks status` and
@@ -369,6 +382,10 @@ failed, a bridge that just started, and a crew machine that does not answer clos
 card of a trick that closed without you, because it expired, was taken back or replaced, or could not be
 delivered, stays for about a minute with its state, and then leaves by itself. Collie's own cards stay
 until you clear them.
+
+When the agent's process ends and its pane is a plain shell, Collie lists no agent in that pane. The
+asks it left open close after about half a minute, as for any session that is gone. An agent that you
+start again in that pane later does not find them open.
 
 Writing in the session does not close an ask. An ask stays open until you answer it, the agent takes it
 back or replaces it, or the session is gone.
