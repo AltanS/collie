@@ -1,5 +1,6 @@
 import { LAST_RESORT_NO_JOURNAL_MS, journalReadingOf, paneBody, type ChatGateInput, type PaneBody } from "./chat-gate";
 import { savedChatWindow } from "./chat-window";
+import { NO_RECORD, activityOf, nextRecord } from "@/hooks/use-pane-start";
 
 // The whole rule, as a table. Each row is one pane a Chat device can meet, and the body it draws.
 // Read a row left to right: chat chosen and drawable, session reported, what the log said, how the
@@ -72,6 +73,7 @@ const rows: [string, ChatGateInput, PaneBody][] = [
   ["a fresh pane draws Chat with the start line", row({}), "start"],
   ["a fresh Codex pane with no session yet draws Chat", row({ journal: "unasked" }), "start"],
   ["a fresh pi pane whose log is not written yet draws Chat", row({ session: true, journal: "missing" }), "start"],
+  ["a fresh Claude pane whose log is not written yet draws Chat", row({ session: true, journal: "missing" }), "start"],
   ["a working pane with no session yet stays on Chat", row({ activity: "working" }), "start"],
   ["a working pane with no log yet stays on Chat", row({ session: true, journal: "missing", activity: "working" }), "start"],
   ["`settled` means nothing before the turn ends",
@@ -153,5 +155,46 @@ describe("the gate over a stale saved copy", () => {
   it("draws Chat for a stale saved copy, and does not fall back to the terminal", () => {
     const input = row({ session: true, journal: journalReadingOf(saved.status), history: "unknown" });
     expect(paneBody(input)).toBe("chat");
+  });
+});
+
+// A new Claude Code session has a session id at start and no log until its first prompt. The body
+// must be the same on the first open and on every later one, so this runs the gate over what the
+// start record makes of a pane met idle, then over a second record made from nothing (a remount).
+describe("an idle Claude session with a session and no log, first met idle, that the bridge says had no prompt", () => {
+  const bodyOf = (record: typeof NO_RECORD) =>
+    paneBody({
+      chat: true,
+      session: true,
+      journal: "missing",
+      history: record.seen?.history ?? "fresh",
+      activity: activityOf(record),
+      settled: false,
+    });
+  const meet = () => nextRecord(NO_RECORD, "p", "claude", false, "idle", 0, true, true);
+
+  it("draws Chat, the empty start state", () => {
+    expect(bodyOf(meet())).toBe("start");
+  });
+
+  it("draws the same body after a remount, which drops the record", () => {
+    expect(bodyOf(meet())).toBe(bodyOf(nextRecord(NO_RECORD, "p", "claude", false, "idle", 0, true, true)));
+  });
+
+  it("still takes the terminal when the pane asks for input", () => {
+    expect(bodyOf(nextRecord(meet(), "p", "claude", false, "blocked", 0, true, true))).toBe("terminal");
+  });
+
+  it("keeps the terminal for the same pane without that word: a long past with no log Collie can find", () => {
+    for (const status of ["idle", "done"] as const) {
+      const record = nextRecord(NO_RECORD, "p", "claude", false, status, 0, true);
+      expect(bodyOf(record)).toBe("terminal");
+      expect(bodyOf(nextRecord(NO_RECORD, "p", "claude", false, status, 0, true, false))).toBe("terminal");
+    }
+  });
+
+  it("keeps the terminal for a Claude pane with no session", () => {
+    const record = nextRecord(NO_RECORD, "p", "claude", false, "idle", 0, false);
+    expect(paneBody({ chat: true, session: false, journal: "unasked", history: record.seen?.history ?? "fresh", activity: activityOf(record), settled: false })).toBe("terminal");
   });
 });

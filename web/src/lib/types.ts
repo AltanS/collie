@@ -81,6 +81,11 @@ export interface AgentView {
    */
   hasSession?: boolean;
   /**
+   * Mirrors `PaneWire.noPromptYet`: present (and `true`) only when the bridge knows that no prompt has
+   * reached this pane's session yet. Absent in every other state, and from an older bridge.
+   */
+  noPromptYet?: true;
+  /**
    * Upper bound on the lines a pane read can return (Herdr's scrollback depth + viewport). The only
    * reliable "is there more scrollback" signal — `PaneReadResponse.truncated` is always false even
    * when history was cut off, which is why "Load older" never used to render. A Claude pane reports

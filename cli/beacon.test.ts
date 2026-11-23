@@ -575,6 +575,37 @@ describe("the hook edges it writes (M56 spec 11)", () => {
     expect((await run("UserPromptSubmit", "claude-opus-5-5"))?.model).toBeUndefined();
   });
 
+  test("a start edge carries how the session began, as a short word, and no other edge does", async () => {
+    const run = async (event: string, source: JsonValue | undefined): Promise<EdgeRecord | undefined> => {
+      const d = deps({ stdin: payload({ hook_event_name: event, source }) });
+      expect(await cmdBeaconEmit(d)).toBe(EXIT.OK);
+      const [edge, ...rest] = edges(d.files);
+      expect(rest).toEqual([]);
+      return edge;
+    };
+    for (const source of ["startup", "resume", "clear", "compact", "fork"]) expect((await run("SessionStart", source))?.source).toBe(source);
+    // A word this build does not know is carried as text: the bridge treats every word but two alike.
+    expect((await run("SessionStart", "teleport"))?.source).toBe("teleport");
+    // Absent, or not a short lower-case word: dropped, and the edge still goes out.
+    const absent = await run("SessionStart", undefined);
+    expect(absent?.event).toBe("SessionStart");
+    expect(absent !== undefined && "source" in absent).toBe(false);
+    for (const bad of ["Startup", "start up", "startup\n", "s".repeat(33), "", 3, null, { source: "startup" }]) {
+      const edge = await run("SessionStart", bad);
+      expect(edge?.event).toBe("SessionStart");
+      expect(edge?.source).toBeUndefined();
+    }
+    expect((await run("SessionStart", "s".repeat(32)))?.source).toHaveLength(32);
+    // Only the start speaks for it, and nothing else of the payload rides on the edge: no transcript path, no prompt.
+    for (const event of ["UserPromptSubmit", "Stop", "SessionEnd"]) expect((await run(event, "startup"))?.source).toBeUndefined();
+    const d = deps({ stdin: payload({ hook_event_name: "SessionStart", source: "startup", prompt: "do the thing" }) });
+    await cmdBeaconEmit(d);
+    const text = JSON.stringify(edges(d.files));
+    expect(text).not.toContain("transcript_path");
+    expect(text).not.toContain("projects");
+    expect(text).not.toContain("do the thing");
+  });
+
   test("an edge needs no session id: the pid places it", async () => {
     const d = deps({ stdin: payload({ hook_event_name: "Stop", session_id: undefined }) });
     await cmdBeaconEmit(d);

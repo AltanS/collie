@@ -2396,8 +2396,10 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
   const parts = built.probe === undefined ? { herdr, engine, poker, notifications } : { herdr, engine, poker, notifications, program: built.probe };
   // The start edge's model rides with the hook source that carried it (bridge/pane-model.ts).
   const hookModel = hooks === undefined || edgeRouter === null ? undefined : (paneId: string) => edgeRouter.modelOf(name, paneId);
+  const noPromptYet = hooks === undefined || edgeRouter === null ? undefined : (paneId: string) => edgeRouter.noPromptYet(name, paneId);
   const withHooks = hooks === undefined ? parts : hookModel === undefined ? { ...parts, hooks } : { ...parts, hooks, hookModel };
-  const withSurface = surface === undefined ? withHooks : { ...withHooks, surface };
+  const withPrompt = noPromptYet === undefined ? withHooks : { ...withHooks, noPromptYet };
+  const withSurface = surface === undefined ? withPrompt : { ...withPrompt, surface };
   const withSend = send === undefined ? withSurface : { ...withSurface, send };
   const withAsks = asks === undefined ? withSend : { ...withSend, asks };
   const withHold = hold === undefined ? withAsks : { ...withAsks, hold };

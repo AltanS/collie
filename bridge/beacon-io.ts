@@ -25,7 +25,7 @@ import { readStartTimeWith, startTimeProbe, type StartTimeCommand } from "./beac
 import { HOST } from "./host.ts";
 import { win32StartTime } from "./win32-process.ts";
 import { parseEdge } from "./beacon/parse.ts";
-import type { SavedSource, SourceStore } from "./surface/edges.ts";
+import { promptStateOf, type SavedSource, type SourceStore } from "./surface/edges.ts";
 import { asJsonNumber, asJsonObject, asJsonString, parseJson } from "../web/src/lib/json.ts";
 import { beaconsDir, BEACON_FILE_SUFFIX, EDGE_FILE, edgesDir } from "./beacon/paths.ts";
 import type { BeaconDirectory, BeaconLiveness, BeaconSweepDeps } from "./beacon/reader.ts";
@@ -443,7 +443,10 @@ export function fileSourceStore(stateDir: string): SourceStore {
         const record = object?.record === undefined ? null : parseEdge(JSON.stringify(object.record));
         if (session === undefined || paneId === undefined || record === null) continue;
         const modelAt = asJsonNumber(object?.modelAt);
-        out.push(modelAt !== undefined && Number.isFinite(modelAt) ? { session, paneId, record, modelAt } : { session, paneId, record });
+        const prompt = promptStateOf(object?.prompt);
+        const base = { session, paneId, record };
+        const timed = modelAt !== undefined && Number.isFinite(modelAt) ? { ...base, modelAt } : base;
+        out.push(prompt === "unknown" ? timed : { ...timed, prompt });
       }
       return out;
     },

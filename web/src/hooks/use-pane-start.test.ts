@@ -24,9 +24,19 @@ describe("nextSeen", () => {
     expect(nextSeen(null, "p", "codex", false, "idle", false)?.history).toBe("fresh");
     expect(nextSeen(null, "p", "pi", false, "idle", true)?.history).toBe("fresh");
     expect(nextSeen(null, "p", "omp", false, "idle", true)?.history).toBe("fresh");
-    // Claude reports at start: an idle Claude with no readable log is not new.
-    expect(nextSeen(null, "p", "claude", false, "idle", false)?.history).toBe("unknown");
+    // Claude Code names its session at start and writes its log at the first prompt: a session and
+    // no log is new only where the bridge says no prompt reached it. Without that word, or without a
+    // session, there is no excuse.
+    expect(nextSeen(null, "p", "claude", false, "idle", true, true)?.history).toBe("fresh");
+    expect(nextSeen(null, "p", "claude", false, "idle", true, false)?.history).toBe("unknown");
     expect(nextSeen(null, "p", "claude", false, "idle", true)?.history).toBe("unknown");
+    expect(nextSeen(null, "p", "claude", false, "idle", false, true)?.history).toBe("unknown");
+    expect(nextSeen(null, "p", "claude", false, "idle", false, false)?.history).toBe("unknown");
+    // The word excuses nothing for another agent that has no such rule.
+    expect(nextSeen(null, "p", "opencode", false, "idle", true, true)?.history).toBe("unknown");
+    // An agent in no set gets no excuse, with a session or without one.
+    expect(nextSeen(null, "p", "opencode", false, "idle", true)?.history).toBe("unknown");
+    expect(nextSeen(null, "p", "opencode", false, "idle", false)?.history).toBe("unknown");
     // Codex with a session already named it, and pi without one has a missing hook.
     expect(nextSeen(null, "p", "codex", false, "idle", true)?.history).toBe("unknown");
     expect(nextSeen(null, "p", "pi", false, "idle", false)?.history).toBe("unknown");
@@ -116,11 +126,12 @@ describe("usePaneStart", () => {
     answered?: number;
     readable?: boolean;
     session?: boolean;
+    noPromptYet?: boolean;
   };
   const setup = (p: P) =>
     renderHook(
       (q: P) =>
-        usePaneStart(q.pane, q.harness, q.shell, q.status, { asked: q.asked ?? 0, answered: q.answered ?? 0 }, q.readable ?? false, q.session ?? true),
+        usePaneStart(q.pane, q.harness, q.shell, q.status, { asked: q.asked ?? 0, answered: q.answered ?? 0 }, q.readable ?? false, q.session ?? true, q.noPromptYet ?? false),
       { initialProps: p },
     );
   const advance = (ms: number) => act(() => void vi.advanceTimersByTime(ms));
@@ -186,8 +197,21 @@ describe("usePaneStart", () => {
     expect(result.current).toMatchObject({ history: "fresh", activity: "none" });
   });
 
-  it("an idle Claude pane met first with no readable session is not fresh, so the gate keeps its terminal", () => {
+  it("an idle Claude pane met first with no session is not fresh, so the gate keeps its terminal", () => {
     const { result } = setup({ pane: "p", harness: "claude", shell: false, status: "idle", session: false });
+    expect(result.current.history).toBe("unknown");
+  });
+
+  it("an idle Claude pane met first with a session and the bridge's word that no prompt came is fresh, as after a remount", () => {
+    const first = setup({ pane: "p", harness: "claude", shell: false, status: "idle", session: true, noPromptYet: true });
+    expect(first.result.current.history).toBe("fresh");
+    first.unmount();
+    const again = setup({ pane: "p", harness: "claude", shell: false, status: "idle", session: true, noPromptYet: true });
+    expect(again.result.current.history).toBe("fresh");
+  });
+
+  it("the same pane without that word (no Collie hooks, a long past) is not fresh, so the gate keeps its terminal", () => {
+    const { result } = setup({ pane: "p", harness: "claude", shell: false, status: "idle", session: true });
     expect(result.current.history).toBe("unknown");
   });
 
