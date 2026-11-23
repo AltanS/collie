@@ -37,6 +37,7 @@ import {
   parseSseBlock,
   placeholdersFor,
   placeholdersIn,
+  promptReminders,
   redactKeys,
   rewriteResponse,
   serializeSse,
@@ -99,7 +100,16 @@ export interface StubStats {
   readonly mismatches: readonly Mismatch[];
   /** Cassette files written in this run. */
   readonly written: readonly string[];
+  /**
+   * The reminders of open asks Claude Code sent with a prompt (cassette.ts `promptReminders`), in order, one
+   * row per change, at most {@link REMINDERS_KEPT}: case 38 reads that the hook's text reached the model's
+   * request, which no recording holds. Never written to a cassette.
+   */
+  readonly reminders?: readonly { readonly case: string; readonly texts: readonly string[] }[];
 }
+
+/** How many rows of {@link StubStats.reminders} the stub keeps. */
+const REMINDERS_KEPT = 100;
 
 export interface Stub {
   readonly port: number;
@@ -198,6 +208,15 @@ export async function startStub(config: StubConfig, port = 0, host = "127.0.0.1"
   let current: string | null = null;
   let upstream = 0;
   const mismatches: Mismatch[] = [];
+  const reminders: { case: string; texts: string[] }[] = [];
+  /** A Claude request's reminders, as a new row when they differ from the last row (every request of a turn carries the same). */
+  const noteReminders = (caseId: string, texts: string[]): void => {
+    if (texts.length === 0) return;
+    const last = reminders.at(-1);
+    if (last !== undefined && last.case === caseId && JSON.stringify(last.texts) === JSON.stringify(texts)) return;
+    reminders.push({ case: caseId, texts });
+    if (reminders.length > REMINDERS_KEPT) reminders.shift();
+  };
   const written = new Set<string>();
   const counts: Record<string, HarnessCounts> = {};
   for (const h of STUB_HARNESSES) {
@@ -509,6 +528,7 @@ export async function startStub(config: StubConfig, port = 0, host = "127.0.0.1"
         return;
       }
       const caseId = current ?? NO_CASE;
+      if (VENDOR[plan.harness] === "anthropic") noteReminders(caseId, promptReminders(raw));
       if (plan.tier === "replay") await replay(plan.harness, machine, caseId, path, raw, res);
       else await live(plan, machine, caseId, path, req, raw, res);
   };
@@ -525,7 +545,7 @@ export async function startStub(config: StubConfig, port = 0, host = "127.0.0.1"
     })();
   });
 
-  const statsNow = (): StubStats => ({ upstream, harnesses: counts, mismatches: [...mismatches], written: [...written].toSorted() });
+  const statsNow = (): StubStats => ({ upstream, harnesses: counts, mismatches: [...mismatches], written: [...written].toSorted(), reminders: [...reminders] });
 
   await new Promise<void>((done, failed) => {
     server.once("error", failed);

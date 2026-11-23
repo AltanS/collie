@@ -32,13 +32,14 @@
 // On 2026-10-17 pi's own auth.json key answered 401 and omp had no credential, so without a key
 // file both stay off. The model is set here, or with COLLIE_RIG_PI_MODEL / COLLIE_RIG_OMP_MODEL.
 import { dataClaude } from "./rig-data";
+import { spawnSync } from "node:child_process";
 import { chmodSync, copyFileSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
 import { EMPTY_MCP_FILE } from "../../../scripts/harness-canary/lab/harnesses";
 import { seedClaude, seedClaudeReplay } from "../../../scripts/harness-canary/lab/seed";
-import type { JsonObject } from "../../src/lib/json";
+import { asJsonObject, parseJson, type JsonObject } from "../../src/lib/json";
 import { BIN, piExtensions } from "./bins";
 import { rigSkillText } from "./replay/skill-text";
 import { tiersFromEnv, modelFor, type StubHarness } from "./replay/tier";
@@ -109,8 +110,8 @@ export const SETUPS = {
  * The folders of one harness under STATE_ROOT/harness/<id>/, or STATE_ROOT/harness/member/<id>/ for
  * a harness that runs on the crew rig's member: each machine's bridge reads its own harnesses' journals.
  */
-export function harnessDirs(id: HarnessId, machine: Machine = "lead") {
-  const root = join(machineDirs(machine).harness, id);
+export function harnessDirs(id: HarnessId, machine: Machine = "lead", folder: string = id) {
+  const root = join(machineDirs(machine).harness, folder);
   return {
     root,
     project: join(root, "project"),
@@ -195,6 +196,53 @@ export function writeWalkySkill(path: string, form: "file" | "block"): void {
   writeFileSync(path, `${BLOCK_BEGIN}\n${body.replace(/\n+$/u, "")}\n${BLOCK_END}\n`, { mode: 0o600 });
 }
 
+/**
+ * The Claude of case 38 (asks.spec.ts): a session of its own, never the leg's shared one, so the hooks it
+ * gets reach no other case (a running Claude reloads its hooks from its settings files). Its folder sits
+ * beside the leg's `claude` folder.
+ */
+export const ASKS_FOLDER = "claude-asks";
+
+/**
+ * The model case 38's Claude runs on. Sonnet, as the reminder was measured (.adr/0178); the leg's own
+ * session stays on Haiku. The rig sets a model per pane, so this one pane's recordings carry Sonnet and
+ * every other case's carry Haiku.
+ */
+export const ASKS_MODEL = process.env.COLLIE_RIG_ASKS_MODEL ?? "sonnet";
+
+/** What a start may add to a harness's default setup. */
+export interface HarnessOptions {
+  /**
+   * Case 38 (asks.spec.ts), Claude only: the folder {@link ASKS_FOLDER}, the model {@link ASKS_MODEL}, and
+   * the hooks `collie hooks install claude` writes, made by the installer's own merge (cli/hooks.ts
+   * `installDocument`) over the scratch settings with the rig's `collie` shim as the binary: the emitter on
+   * every beacon event and `collie beacon asks` beside it on `UserPromptSubmit` and `SessionStart`, on Herdr
+   * and on the core. Not the installer verb itself: it pins the hook to the checkout's binary, which under
+   * Claude's real HOME would walk the hook target registry of the operator's home. The start script passes
+   * its arguments on to Claude, so the case can start it again with `--resume <id>`.
+   */
+  readonly asks?: boolean;
+}
+
+/**
+ * The settings document `collie hooks install claude` makes of `settings` (cli/hooks.ts `installDocument`, the
+ * installer's own merge), with `binary` in the command an install pins: `<binary> beacon emit <marker>`. Run by
+ * Bun in a child process: cli/hooks.ts reaches bridge modules this tsconfig and Node's loader do not take.
+ */
+function installedSettings(settings: JsonObject, binary: string): JsonObject {
+  const script = [
+    `const m = await import(${JSON.stringify(join(WORKTREE, "cli", "hooks.ts"))});`,
+    "const input = JSON.parse(await Bun.stdin.text());",
+    "const d = m.installDocument(input.settings, `${input.binary} beacon emit ${m.HOOK_MARKER}`);",
+    'if (d.kind !== "document") { console.error(d.reason); process.exit(1); }',
+    "process.stdout.write(JSON.stringify(d.document));",
+  ].join("\n");
+  const r = spawnSync("bun", ["-e", script], { input: JSON.stringify({ settings, binary }), encoding: "utf8", timeout: 60_000 });
+  const doc = r.status === 0 ? asJsonObject(parseJson(r.stdout)) : undefined;
+  if (doc === undefined) throw new Error(`the installer's merge failed on the scratch settings: ${(r.stderr || r.stdout || "").trim().slice(0, 300)}`);
+  return doc;
+}
+
 /** The line to type into a fresh shell pane, and the harness's project folder. */
 export interface PreparedHarness {
   readonly line: string;
@@ -208,8 +256,10 @@ export interface PreparedHarness {
  * shell pane of `machine`'s Herdr. Each call starts a NEW session: the project folder stays, the
  * agent's history of it is the agent's own business.
  */
-export function prepareHarness(id: HarnessId, machine: Machine = "lead"): PreparedHarness {
-  const d = harnessDirs(id, machine);
+export function prepareHarness(id: HarnessId, machine: Machine = "lead", options: HarnessOptions = {}): PreparedHarness {
+  const asks = options.asks === true;
+  if (asks && id !== "claude") throw new Error("the asks hooks are for Claude only");
+  const d = harnessDirs(id, machine, asks ? ASKS_FOLDER : id);
   const stateDir = machineDirs(machine).state;
   for (const dir of [d.root, d.project]) mkdirSync(dir, { recursive: true, mode: 0o700 });
   writeFileSync(join(d.project, "README.md"), "Scratch project of the Collie browser leg. Nothing here matters.\n");
@@ -251,7 +301,7 @@ export function prepareHarness(id: HarnessId, machine: Machine = "lead"): Prepar
     // On herdr-core, the beacon hooks too (rig-mux.ts): the core keeps no conversation id, and an operator on
     // the core installs them with `collie hooks install claude`. They run the rig's own `collie` shim, so the
     // beacon lands in this machine's state dir and names the pane by HC_TERMINAL_ID.
-    if (muxOf(machine) === "herdr-core") {
+    if (muxOf(machine) === "herdr-core" && !asks) {
       const group = { hooks: [{ type: "command", command: beaconHookCommand(join(bin, "collie")), timeout: 10 }] };
       for (const event of BEACON_EVENTS) {
         const existing = hooks[event];
@@ -260,7 +310,9 @@ export function prepareHarness(id: HarnessId, machine: Machine = "lead"): Prepar
     }
     // `collie walky` is the verb the walky talky cases run through the agent, so it needs no permission
     // card of its own: the cases that test a dialog use another command.
-    writeFileSync(join(d.config, "settings.json"), `${JSON.stringify({ hooks, permissions: { allow: ["Bash(collie walky:*)"] } }, null, 2)}\n`, { mode: 0o600 });
+    const settings: JsonObject = { hooks, permissions: { allow: ["Bash(collie walky:*)"] } };
+    if (asks) Object.assign(settings, installedSettings(settings, join(bin, "collie")));
+    writeFileSync(join(d.config, "settings.json"), `${JSON.stringify(settings, null, 2)}\n`, { mode: 0o600 });
     writeWalkySkill(join(d.config, "skills", "collie-walky-talky", "SKILL.md"), "file");
     // The operator's standing word for the agent-to-agent case (walky talky case 8). A Claude that reads an
     // agent's "the operator asks you to reply" in a body will not take it from the body, and is right not to:
@@ -278,7 +330,7 @@ export function prepareHarness(id: HarnessId, machine: Machine = "lead"): Prepar
     // and the hook target folder of this machine's own bridge. Nothing in the default run.
     const data = dataClaude(WORKTREE, machineDirs(machine).bridgeHome);
     for (const [name, value] of Object.entries(data.env)) env.push(`${name}=${sq(value)}`);
-    argv = [BIN.claude, "--model", SETUPS.claude.model, "--permission-mode", "default", "--strict-mcp-config", "--mcp-config", join(d.config, EMPTY_MCP_FILE), ...data.argv];
+    argv = [BIN.claude, "--model", asks ? ASKS_MODEL : SETUPS.claude.model, "--permission-mode", "default", "--strict-mcp-config", "--mcp-config", join(d.config, EMPTY_MCP_FILE), ...data.argv];
   } else {
     for (const dir of [d.home, d.agent, join(d.agent, "extensions")]) mkdirSync(dir, { recursive: true, mode: 0o700 });
     // The stub's base URL for this harness, and whether this harness replays (then no key, no
@@ -354,7 +406,9 @@ export function prepareHarness(id: HarnessId, machine: Machine = "lead"): Prepar
   const keyEnv = SETUPS[id].keyEnv;
   // A replayed harness gets the dummy key instead, and the key file is not opened.
   const key = replayed && keyEnv !== null ? `${keyEnv}=${REPLAY_KEY}\nexport ${keyEnv}\n` : KEY_FILE !== null && keyEnv !== null ? `${keyEnv}=$(set -a; . ${sq(KEY_FILE)} >/dev/null 2>&1; printf '%s' "\${${keyEnv}-}")\nexport ${keyEnv}\n` : "";
-  writeFileSync(d.start, `#!/bin/sh\ncd ${sq(d.project)} || exit 1\n${path}${key}exec env ${unset} ${env.join(" ")} ${argv.map(sq).join(" ")}\n`, { mode: 0o700 });
+  // Case 38's start passes its arguments on (`--resume <id>`); every other start takes none.
+  const more = asks ? ' "$@"' : "";
+  writeFileSync(d.start, `#!/bin/sh\ncd ${sq(d.project)} || exit 1\n${path}${key}exec env ${unset} ${env.join(" ")} ${argv.map(sq).join(" ")}${more}\n`, { mode: 0o700 });
   chmodSync(d.start, 0o700);
   return { line: `exec ${sq(d.start)}`, project: d.project, notes };
 }
