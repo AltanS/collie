@@ -32,6 +32,13 @@ const MAX_FIELD_CHARS = 4096;
 /** Most marker sets one pane can plausibly report. Nesting is real; forty deep is not. */
 const MAX_MARKERS = 8;
 
+/**
+ * An agent session id, as a hook payload's `session_id` may be: the shape `collie beacon emit` accepts
+ * (cli/beacon.ts), the edge parser keeps, and the walky socket takes on `ask.remind`. A value that never
+ * leaves this shape can never leave a path root built from it either.
+ */
+export const AGENT_SESSION_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
+
 function readObject(value: JsonValue | undefined): JsonObject | null {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
   return value;
@@ -230,5 +237,7 @@ export function parseEdge(text: string): EdgeRecord | null {
   // The start edge's source: a malformed one drops the field, never the edge.
   const source = edgeSourceOf(row.source);
   if (source !== null) record = { ...record, source };
+  // The agent session: a malformed one drops the field, never the edge.
+  if (typeof row.session === "string" && AGENT_SESSION_ID.test(row.session)) record = { ...record, session: row.session };
   return record;
 }

@@ -5,7 +5,7 @@ import { isAbsolute, join, posix } from "node:path";
 
 import { BEACON_DIR_MODE, beaconFileName, beaconKey, beaconsDir, EDGE_FILE, EDGE_MAX_AGE_MS, EDGE_SPOOL_MAX, edgesDir } from "../bridge/beacon/paths.ts";
 import { HOOK_TARGET_FILE, HOOK_TARGETS_MAX, hookTargetsDir, parseHookTarget, type HookTargetRecord } from "../bridge/beacon/hook-targets.ts";
-import { edgeModelOf, edgeSourceOf } from "../bridge/beacon/parse.ts";
+import { AGENT_SESSION_ID, edgeModelOf, edgeSourceOf } from "../bridge/beacon/parse.ts";
 import { procStatPath, readStartTimeWith, startTimeProbe, type StartTimeCommand } from "../bridge/beacon/liveness.ts";
 import { HOST } from "../bridge/host.ts";
 import { win32ProcessInfo, win32StartTime } from "../bridge/win32-process.ts";
@@ -181,7 +181,7 @@ export const BEACON_HARNESS = "claude";
  * Collie configured (.adr/0024's argument for carrying an id rather than the payload's
  * `transcript_path`). A value that never leaves this shape can never leave that root either.
  */
-const SESSION_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
+const SESSION_ID = AGENT_SESSION_ID;
 
 /** The parsed payload as an object, or null. A payload that is not an object tells us nothing. */
 function asObject(value: JsonValue): JsonObject | null {
@@ -608,6 +608,9 @@ export async function cmdBeaconEmit(deps: BeaconEmitDeps): Promise<number> {
     // How the session began rides on the start edge too (`startup`, `resume`, `clear`, `compact`, `fork`), so
     // the bridge can tell a new conversation from one with a past. A short word only; nothing else of the payload.
     const source = registration.event === "SessionStart" ? edgeSourceOf(payload.source) : null;
+    // The agent session rides on every edge of the session's own, so the bridge knows which conversation the
+    // pane runs now (the reminder of open asks answers only it, .adr/0178). Pattern-checked; none, no field.
+    const agentSession = readField(payload, "session_id", SESSION_ID);
     for (const stateDir of stateDirs()) {
       try {
         const record: EdgeRecord = {
@@ -623,7 +626,8 @@ export async function cmdBeaconEmit(deps: BeaconEmitDeps): Promise<number> {
           holds,
         };
         const withModel = model === null ? record : { ...record, model };
-        writeEdge(deps, stateDir, source === null ? withModel : { ...withModel, source });
+        const withSource = source === null ? withModel : { ...withModel, source };
+        writeEdge(deps, stateDir, agentSession === null ? withSource : { ...withSource, session: agentSession });
       } catch {
         // No edge for this target. The screen still reads the pane on its own poll.
       }

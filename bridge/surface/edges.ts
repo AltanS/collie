@@ -33,6 +33,16 @@
 // record from before the latch reads `unknown`. The phone gets `noPromptYet` in the one known state
 // only (bridge/types.ts), so an excuse for an empty log never rests on a guess.
 //
+// THE AGENT SESSION PER SOURCE (2026-11-23). An edge of the session's own names the agent session the
+// hook's payload named (`EdgeRecord.session`). The source keeps it, and the one the SAME process named just
+// before it ({@link sessionAfter}): `/clear`, `/resume` and a fork move one process to another conversation.
+// `/clear` sends an end edge (the old id) and then a start (the new one) from the same process, so the
+// session of a source an end edge closed is kept until that pane's next edge. A new process on the pane
+// starts with no previous one. The reminder of open asks reads both
+// ({@link EdgeRouter.agentSessionOf}): it answers only the pane's current agent session, and a `/clear`
+// closes only what the conversation it cleared had posted. Saved with the source; a restart keeps the
+// current one and forgets the previous.
+//
 // No harness name lives here (no-harness-names.test.ts scans this folder). The edge names its own
 // harness, and that harness's profile maps the event to a kind.
 
@@ -203,6 +213,28 @@ interface HookSource {
   readonly model: ModelReading | undefined;
   /** Whether a prompt has reached the pane's session ({@link PromptState}). */
   readonly prompt: PromptState;
+  /** The agent session its edges name now, and the one the same process named before ({@link sessionAfter}). */
+  readonly agentSession: AgentSessionPair | undefined;
+}
+
+/** A pane's current agent session as its edges name it, and the one the same process named just before. */
+export interface AgentSessionPair {
+  readonly current: string;
+  readonly previous: string | null;
+}
+
+/**
+ * The agent session a pane's hook source names after one more edge. An edge that names one sets it; when
+ * the same process named another before, that one becomes `previous` (a `/clear`, a `/resume`, a fork). An
+ * edge that names none keeps what the same process had. A new process starts from its own edge alone.
+ */
+export function sessionAfter(known: Pick<HookSource, "pid" | "pidStartTime" | "agentSession"> | undefined, record: EdgeRecord): AgentSessionPair | undefined {
+  const same = known !== undefined && known.pid === record.pid && known.pidStartTime === record.pidStartTime;
+  const had = same ? known.agentSession : undefined;
+  if (record.session === undefined) return had;
+  if (had === undefined) return { current: record.session, previous: null };
+  if (had.current === record.session) return had;
+  return { current: record.session, previous: had.current };
 }
 
 /**
@@ -258,10 +290,12 @@ export interface EdgeRouterDeps {
 
 /** A live source as it is saved. The model rides on the saved record, with the time its own hook ran. */
 function savedOf(source: HookSource): SavedSource {
-  const saved: SavedSource = { session: source.target.session, paneId: source.paneId, record: source.record };
+  // The current agent session rides on the saved record, also when the newest edge named none.
+  const record = source.agentSession === undefined ? source.record : { ...source.record, session: source.agentSession.current };
+  const saved: SavedSource = { session: source.target.session, paneId: source.paneId, record };
   const latched = source.prompt === "unknown" ? saved : { ...saved, prompt: source.prompt };
   if (source.model === undefined) return latched;
-  return { ...latched, record: { ...source.record, model: source.model.model }, modelAt: source.model.at };
+  return { ...latched, record: { ...record, model: source.model.model }, modelAt: source.model.at };
 }
 
 function keyOf(session: string, paneId: string): string {
@@ -272,6 +306,8 @@ function keyOf(session: string, paneId: string): string {
 export class EdgeRouter {
   private readonly sources = new Map<string, HookSource>();
   private readonly dropLogged = new Map<string, number>();
+  /** The agent session of a source an end edge closed, by pane, until the next edge of that pane. */
+  private readonly ended = new Map<string, Pick<HookSource, "pid" | "pidStartTime" | "agentSession">>();
   private timer: ReturnType<typeof setInterval> | null = null;
   private taking = false;
   private lastLiveness = Number.NEGATIVE_INFINITY;
@@ -340,11 +376,16 @@ export class EdgeRouter {
     }
     const kind = kindOfEdge(record);
     const key = keyOf(placement.target.session, placement.paneId);
-    if (kind === "end") this.forget(key);
-    else {
+    if (kind === "end") {
+      this.noteEnded(key);
+      this.forget(key);
+    } else {
       const model = modelAfter(this.sources.get(key), record);
       const prompt = promptStateAfter(this.sources.get(key), record, kind);
-      this.remember(key, { target: placement.target, paneId: placement.paneId, pid: record.pid, pidStartTime: record.pidStartTime, record, model, prompt });
+      // `/clear` sends an end and then a start from the same process: the session it ended is the previous one.
+      const agentSession = sessionAfter(this.sources.get(key) ?? this.ended.get(key), record);
+      this.ended.delete(key);
+      this.remember(key, { target: placement.target, paneId: placement.paneId, pid: record.pid, pidStartTime: record.pidStartTime, record, model, prompt, agentSession });
     }
     this.log(
       [
@@ -375,7 +416,8 @@ export class EdgeRouter {
         const key = keyOf(placement.target.session, placement.paneId);
         // The saved model keeps the time its hook ran, so a log that named a model after it still wins.
         const model = saved.record.model === undefined ? undefined : { model: saved.record.model, at: saved.modelAt ?? saved.record.at };
-        if (!this.sources.has(key)) this.remember(key, { target: placement.target, paneId: placement.paneId, pid: saved.record.pid, pidStartTime: saved.record.pidStartTime, record: saved.record, model, prompt: promptStateOf(saved.prompt) });
+        const agentSession = saved.record.session === undefined ? undefined : { current: saved.record.session, previous: null };
+        if (!this.sources.has(key)) this.remember(key, { target: placement.target, paneId: placement.paneId, pid: saved.record.pid, pidStartTime: saved.record.pidStartTime, record: saved.record, model, prompt: promptStateOf(saved.prompt), agentSession });
       } else if (placement.reason === "no-pane" && this.now() < this.seedUntil) {
         waiting.push(saved);
       }
@@ -400,11 +442,30 @@ export class EdgeRouter {
     return this.sources.get(keyOf(session, paneId))?.prompt === "no-prompt-yet";
   }
 
+  /**
+   * The agent session the pane's live hook source names now, and the one the same process named before it;
+   * undefined with no live source, or one whose edges named none (an older emitter).
+   */
+  agentSessionOf(session: string, paneId: string): AgentSessionPair | undefined {
+    return this.sources.get(keyOf(session, paneId))?.agentSession;
+  }
+
   /** A pane's source is live, its pid changed, its start named another model, or its latch moved: saved when that is news. */
   private remember(key: string, source: HookSource): void {
     const known = this.sources.get(key);
     this.sources.set(key, source);
-    if (known === undefined || known.pid !== source.pid || known.pidStartTime !== source.pidStartTime || known.model?.model !== source.model?.model || known.prompt !== source.prompt) this.persist();
+    if (known === undefined || known.pid !== source.pid || known.pidStartTime !== source.pidStartTime || known.model?.model !== source.model?.model || known.prompt !== source.prompt || known.agentSession?.current !== source.agentSession?.current) this.persist();
+  }
+
+  /** Keep the agent session of a source an end edge closes, so the same process's next start names it as previous. */
+  private noteEnded(key: string): void {
+    const source = this.sources.get(key);
+    if (source === undefined || source.agentSession === undefined) return;
+    this.ended.set(key, { pid: source.pid, pidStartTime: source.pidStartTime, agentSession: source.agentSession });
+    if (this.ended.size > 256) {
+      const oldest = this.ended.keys().next();
+      if (oldest.done !== true) this.ended.delete(oldest.value);
+    }
   }
 
   private forget(key: string): void {
