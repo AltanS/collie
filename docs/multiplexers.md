@@ -16,7 +16,7 @@ Name the backend in `COLLIE_MUX`, point it at an endpoint, restart, and install 
 > on a single host. tuios (since 1.15.0) was tested on **tuios 0.8.4**. The Herdr core (since 1.25.0)
 > was tested on **hc 0.1.14**, a 0.x preview. Tern was probed by its
 > contributor on **tern 0.4.5**, a closed beta that the maintainers cannot run. Rex was probed by
-> its contributor on **rex 0.0.1795019727**, the Linux server of an invite-only beta.
+> its contributor on **Rex 0.0.1795019727**, the Linux server of an invite-only beta.
 > Herdr is the default and the primary supported backend. **Testers wanted:** open an issue on
 > [AltanS/collie](https://github.com/AltanS/collie/issues/new) titled `tmux: …`, `zellij: …`,
 > `tuios: …`, `tern: …` or `rex: …`, with your multiplexer, version, OS, and what you saw.
@@ -64,7 +64,7 @@ COLLIE_MUX_ENDPOINT_ZELLIJ=collie-zellij
 | `COLLIE_TERN_BIN` | `/home/you/.local/opt/tern/tern` | only if tern sits somewhere unusual |
 | `COLLIE_MUX_ENDPOINT_REX` | `unix:///run/user/1000/rex/server.sock` | a Rex server, as `rex -S` takes it: an address or a host label |
 | `COLLIE_MUX_ENDPOINT_REX` | empty | the server `rex` finds by itself |
-| `COLLIE_REX_BIN` | `/opt/rex/bin/rex` | only if rex sits somewhere unusual |
+| `COLLIE_REX_BIN` | `/opt/rex/bin/rex` | only if the `rex` binary sits somewhere unusual |
 | `COLLIE_TMUX_BIN` | `/usr/bin/tmux` | only if tmux sits somewhere unusual |
 | `COLLIE_ZELLIJ_BIN` | `/home/you/.local/bin/zellij` | only if zellij sits somewhere unusual |
 
@@ -175,14 +175,14 @@ Tern reports lifecycle events via `tern events`, enabling immediate topology cha
 
 Collie does not detect Tern on its own, as it does not detect tuios: name it with `COLLIE_MUX=tern`. Typed text longer than 128 KiB is refused, because it travels as one command-line argument.
 
-### rex notes
+### Rex notes
 
 Rex is Superlogical's terminal server: it keeps your sessions running when you close the app.
 Collie mirrors it as an experiment.
 
 > **Experimental.** Rex support is new, and Rex itself is in beta. The support may change, or be
 > withdrawn, in a patch release. It is off until you name it with `COLLIE_MUX=rex`, and a first run
-> never picks it on its own. Collie was tested on **rex 0.0.1795019727**, the Linux server.
+> never picks it on its own. Collie was tested on **Rex 0.0.1795019727**, the Linux server.
 
 Rex names an agent from the status the agent reports about itself:
 
