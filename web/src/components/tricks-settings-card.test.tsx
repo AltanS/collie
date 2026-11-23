@@ -280,7 +280,7 @@ describe("TricksSettingsCard: Uses agent tokens (2026-11-12)", () => {
     const chip = (id: string) => rowOf(id).querySelector('[data-slot="trick-about"] [data-slot="token-use"]');
     expect(chip("inbox")?.textContent).toBe("Uses agent tokens");
     expect(chip("notes")?.textContent).toBe("Uses agent tokens");
-    // A program trick whose last run listed Decisions but declares no reply, and a plain one: no chip.
+    // A program trick whose last run listed asks but declares no reply, and a plain one: no chip.
     expect(chip("tracker")).toBeNull();
     expect(chip("legs")).toBeNull();
     // The name, then the labels as one group that wraps under the name rather than cut it; the open link
@@ -548,13 +548,13 @@ describe("a trick entry that is broken", () => {
   });
 });
 
-// The Hill switched off (bridge/tricks/hill.ts): a trick that asks Decisions keeps running, and its row
+// The Hill switched off (bridge/tricks/hill.ts): a trick that asks asks keeps running, and its row
 // says once that they are not shown. The note takes the provenance's slot, never a trouble report's.
 describe("the Hill switched off", () => {
   const ASKS: WireTrickInfo = { ...LEGS, decides: true };
 
   it("slotLine: the note for a trick that is on and asks, only while the Hill is off", () => {
-    expect(slotLine(ASKS, NOW, true)).toEqual({ text: "The Hill is off: this trick's Decisions are not shown.", trouble: false });
+    expect(slotLine(ASKS, NOW, true)).toEqual({ text: "Asks is off: this trick's asks are not shown.", trouble: false });
     expect(slotLine(ASKS, NOW, false).text).toBe("Added by agent · 2 h ago");
     expect(slotLine(LEGS, NOW, true).text).toBe("Added by agent · 2 h ago");
     expect(slotLine({ ...ASKS, on: false, state: "off" }, NOW, true).text).toBe("Added by agent · 2 h ago");
@@ -593,7 +593,7 @@ describe("the Hill switched off", () => {
     const router = createMemoryRouter([{ id: ROOT_ROUTE_ID, path: "/", element: <TricksSettingsCard store={store} now={NOW} onOfficialList={NO_OFFICIAL} />, loader: () => ({ hillOff: true }) }], { initialEntries: ["/"] });
     render(<RouterProvider router={router} />);
     await screen.findByText("Browser leg");
-    expect(rowOf("legs").querySelector('[data-line="slot"]')).toHaveTextContent("The Hill is off: this trick's Decisions are not shown.");
+    expect(rowOf("legs").querySelector('[data-line="slot"]')).toHaveTextContent("Asks is off: this trick's asks are not shown.");
     expect(rowOf("tracker").querySelector('[data-line="slot"]')).not.toHaveTextContent("The Hill is off");
   });
 
@@ -603,7 +603,7 @@ describe("the Hill switched off", () => {
     const router = createMemoryRouter([{ id: ROOT_ROUTE_ID, path: "/", element: <TricksSettingsCard store={store} now={NOW} onOfficialList={NO_OFFICIAL} />, loader: () => ({ hillOff: true }) }], { initialEntries: ["/"] });
     render(<RouterProvider router={router} />);
     await screen.findByText("Browser leg");
-    expect(rowOf("legs").querySelector('[data-line="slot"]')).toHaveTextContent("The Hill is off: this trick's Decisions are not shown.");
+    expect(rowOf("legs").querySelector('[data-line="slot"]')).toHaveTextContent("Asks is off: this trick's asks are not shown.");
     expect(await within(rowOf("legs")).findByText("This trick reaches the network.")).toBeInTheDocument();
   });
 });

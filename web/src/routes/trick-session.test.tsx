@@ -142,7 +142,7 @@ function mount(path: string | { pathname: string; state: JsonObject } = TRICK_PA
           { index: true, element: <div>dashboard</div> },
           { path: "trick/:paneId", element: <TrickSessionRoute /> },
           { path: "pane/:paneId", element: <div>a pane</div> },
-          { path: "hill", element: <div>the hill</div> },
+          { path: "asks", element: <div>the hill</div> },
         ],
       },
     ],
@@ -281,7 +281,7 @@ describe("the Dashboard's bar on a trick's Session (amended 2026-11-10)", () => 
     const hill = bar().querySelector<HTMLElement>('[data-slot="tab-link"][data-link="hill"]')!;
     expect(hill).not.toHaveAttribute("aria-current");
     fireEvent.click(hill);
-    await waitFor(() => expect(where()).toBe("/hill"));
+    await waitFor(() => expect(where()).toBe("/asks"));
     expect(router.state.historyAction).toBe("REPLACE");
   });
 
@@ -305,13 +305,13 @@ describe("the Dashboard's bar on a trick's Session (amended 2026-11-10)", () => 
     expect(sessionRouter.state.historyAction).toBe("POP");
   });
 
-  it("the Hill item carries the host and session scope from state.from onto /hill", async () => {
+  it("the Hill item carries the host and session scope from state.from onto /asks", async () => {
     await serveTricks();
     const router = mount({ pathname: TRICK_PATH, state: { from: "/?h=peer&s=work" } }, home({ hill: true }), "/?h=peer&s=work");
     await screen.findByRole("heading", { name: "Browser leg" });
     const hill = bar().querySelector<HTMLElement>('[data-slot="tab-link"][data-link="hill"]')!;
     fireEvent.click(hill);
-    await waitFor(() => expect(`${router.state.location.pathname}${router.state.location.search}`).toBe("/hill?h=peer&s=work"));
+    await waitFor(() => expect(`${router.state.location.pathname}${router.state.location.search}`).toBe("/asks?h=peer&s=work"));
     expect(router.state.historyAction).toBe("REPLACE");
     expect(router.state.location.state).toEqual({ from: "/?h=peer&s=work" });
   });

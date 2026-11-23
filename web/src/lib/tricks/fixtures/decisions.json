@@ -11,7 +11,7 @@
         }
       }
     ],
-    "decisions": [
+    "asks": [
       {
         "key": "case-24",
         "title": "Leg red: case 24. Rerun it?",
@@ -33,7 +33,6 @@
           "intent": "rerun",
           "why": "The log shows a timeout, not a code change."
         },
-        "priority": "today",
         "about": "lodge:w6X:3",
         "replyTo": "lodge:w6X:3",
         "media": [
@@ -64,7 +63,6 @@
           }
         ],
         "recommends": null,
-        "priority": "now",
         "expiresAt": 1794200000000
       },
       {

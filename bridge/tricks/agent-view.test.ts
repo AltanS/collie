@@ -135,7 +135,7 @@ describe("run may be left out", () => {
 
 describe("reserved ids", () => {
   test("walky-talky, hill, collie and view are refused; morph is a trick's name", () => {
-    expect(RESERVED_TRICK_IDS).toEqual(["walky-talky", "hill", "collie", "view"]);
+    expect(RESERVED_TRICK_IDS).toEqual(["walky-talky", "asks", "hill", "collie", "view"]);
     for (const id of RESERVED_TRICK_IDS) {
       const read = parseManifest({ id, name: "X", run: "./p.sh", places: ["belt"] });
       expect(read.manifest, id).toBeUndefined();

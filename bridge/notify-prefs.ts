@@ -34,9 +34,8 @@ export interface NotifyPrefs {
    *  ON, unlike `cache`: a rule is the opt-in, set per machine, so this switch only silences rules the
    *  operator already asked for. Not an agent status; the machine watch reads it directly. */
   machines: boolean;
-  /** Push when a Decision of priority `now` opens on the hill (`bridge/hill/push.ts`). Default ON: the
-   *  poster's `now` is the opt-in, and the hill caps how often it may ring. Not an agent status; the
-   *  hill reads it directly. */
+  /** No longer read for any decision: no ask and no card sends a notification (ADR 0179 addendum). The field stays,
+   *  still parsed and written back, so a notify-prefs file round-trips between this build and an older one. */
   decisions: boolean;
 }
 

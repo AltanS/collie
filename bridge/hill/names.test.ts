@@ -58,7 +58,7 @@ function rig(withNames = true): Rig {
     now: () => 1000,
     mintId: () => {
       n += 1;
-      return `dc_name${String(n).padStart(8, "0")}`;
+      return `ak_name${String(n).padStart(8, "0")}`;
     },
   };
   const sessionName = hillSessionName({ place, views: () => state.views, memberId: null, redact: state.redact });

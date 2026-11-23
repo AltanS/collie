@@ -62,13 +62,13 @@ function childEnv(deps: SkillFollowDeps) {
 
 /** Run one `skill sync --json` and say what it did in one line. Never throws. */
 export async function runSkillSync(deps: SkillFollowDeps, on: boolean): Promise<void> {
-  const why = `the Hill was switched ${on ? "on" : "off"}`;
+  const why = `Asks was switched ${on ? "on" : "off"}`;
   const argv = [...(deps.self ?? collieSelfCommand()), "skill", "sync", "--json"];
   let child: SkillSyncChild;
   try {
     child = (deps.spawn ?? bunSpawn)(argv, childEnv(deps));
   } catch (err) {
-    deps.log(`[hill] ${why}, and the WalkyTalky skill sync did not start: ${err instanceof Error ? err.message : String(err)}`);
+    deps.log(`[asks] ${why}, and the WalkyTalky skill sync did not start: ${err instanceof Error ? err.message : String(err)}`);
     return;
   }
   let timedOut = false;
@@ -79,16 +79,16 @@ export async function runSkillSync(deps: SkillFollowDeps, on: boolean): Promise<
   try {
     const [code, stdout, stderr] = await Promise.all([child.exited, child.stdout, child.stderr]);
     const result = parseSyncResult(stdout);
-    if (timedOut) return deps.log(`[hill] ${why}, and the WalkyTalky skill sync took longer than ${String((deps.timeoutMs ?? SKILL_FOLLOW_TIMEOUT_MS) / 1000)} s; run \`collie skill sync\``);
+    if (timedOut) return deps.log(`[asks] ${why}, and the WalkyTalky skill sync took longer than ${String((deps.timeoutMs ?? SKILL_FOLLOW_TIMEOUT_MS) / 1000)} s; run \`collie skill sync\``);
     if (code !== 0 || result === null) {
       const said = stderr.trim().split("\n").findLast((l) => l.trim() !== "") ?? (code !== 0 ? `it exited ${String(code)}` : "it printed no sync result");
-      return deps.log(`[hill] ${why}, and the WalkyTalky skill sync failed: ${said}; run \`collie skill sync\``);
+      return deps.log(`[asks] ${why}, and the WalkyTalky skill sync failed: ${said}; run \`collie skill sync\``);
     }
     const changed = result.changed.map((c) => `${c.action} ${c.harness}`);
     const refused = result.refused.map((r) => `refused ${r.harness}: ${r.reason}`);
-    deps.log(`[hill] ${why}; WalkyTalky skill sync: ${[...changed, ...refused].join(", ") || "nothing to change"}`);
+    deps.log(`[asks] ${why}; WalkyTalky skill sync: ${[...changed, ...refused].join(", ") || "nothing to change"}`);
   } catch (err) {
-    deps.log(`[hill] ${why}, and the WalkyTalky skill sync failed: ${err instanceof Error ? err.message : String(err)}`);
+    deps.log(`[asks] ${why}, and the WalkyTalky skill sync failed: ${err instanceof Error ? err.message : String(err)}`);
   } finally {
     clearTimeout(timer);
   }
@@ -115,7 +115,7 @@ export function bridgeSkillFollower(deps: SkillFollowDeps): SwitchFollower & { r
   };
   const follow = (on: boolean): void => {
     if (!skillSyncEnabled(deps.env.COLLIE_SKILL_SYNC)) {
-      deps.log(`[hill] the Hill was switched ${on ? "on" : "off"}; COLLIE_SKILL_SYNC is off, so the WalkyTalky skill stays as it is (run \`collie skill sync\`)`);
+      deps.log(`[asks] Asks was switched ${on ? "on" : "off"}; COLLIE_SKILL_SYNC is off, so the WalkyTalky skill stays as it is (run \`collie skill sync\`)`);
       return;
     }
     if (running !== null) {

@@ -196,7 +196,7 @@ test("the Hill is an icon button with its count in the header's right cluster", 
   await expect(hill).toHaveAccessibleName(new RegExp(`^${en["hill.title"]}`, "u"));
   await expect(hill).toContainText("3");
   await hill.click();
-  await expect(page).toHaveURL(/\/hill/u);
+  await expect(page).toHaveURL(/\/asks/u);
 });
 
 test("two trick items go last in the views control, each with its glyph and its name", async ({ page }) => {

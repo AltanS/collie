@@ -10,7 +10,7 @@ let seq = 0;
 /** A whole open decision, the fields a case leaves out filled in. Each call gets its own id. */
 export function hillDecision(over: Partial<HillDecision> = {}): HillDecision {
   seq += 1;
-  const id = `dc_test${String(seq).padStart(7, "0")}`;
+  const id = `ak_test${String(seq).padStart(7, "0")}`;
   return {
     v: 1,
     id,

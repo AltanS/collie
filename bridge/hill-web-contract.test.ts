@@ -52,7 +52,7 @@ function rig(receipts: HillReceiptSurface = memoryHillReceipts()): Rig {
     memberId: "desk-hc",
     machine: "desk",
     now: () => 1000,
-    mintId: () => `dc_test${String((n += 1)).padStart(8, "0")}`,
+    mintId: () => `ak_test${String((n += 1)).padStart(8, "0")}`,
   });
   return { hill, typed, bodies: [] };
 }

@@ -20,7 +20,7 @@ In the picture: 1 Dashboard tile, 2 Page, 3 Bottom bar item, 4 Status chip, 5 Be
 | `session` | Page | A page of the trick's own: a row on the Dashboard under Tricks, and a screen of its own. The code word is `session`. | A program |
 | `dashboard` | Dashboard tile | A round tile in the strip at the top of the Dashboard. The strip is hidden while no trick has a tile. | A program |
 | `status` | Status chip | One chip in the status line above the Belt, at the left end of the row; the model and the usage stay at the right end. | A program |
-| `tabbar` | Bottom bar item | An item in the Dashboard's bottom bar, after the Hill. On a large screen there is no bar: the item stands after the views, in the control of the Dashboard's header. | A program |
+| `tabbar` | Bottom bar item | An item in the Dashboard's bottom bar, after Asks. On a large screen there is no bar: the item stands after the views, in the control of the Dashboard's header. | A program |
 | `menu` | Session settings rows | Rows in a session's settings (the sheet of the session's ⋮ button), in a group of the trick's own after Collie's rows and Close, under the heading "From the trick", then the trick's name. Agent sessions only. Adds rows to a session's settings. | A program |
 | `float` | Floating picture | A small moving picture over the app, on the Dashboard and in a session's Chat and Terminal, in the free area clear of the header, the strips, the Belt and the composer. It can draw a small moving picture over the app. It never covers a question and never blocks a tap. | A program |
 | `agent-view` | Agent view | A view of one agent session, beside Terminal and Chat. The session's own agent draws it, and the person switches it on per session. | A session's agent |
@@ -238,9 +238,9 @@ A program prints:
 
 ### `tabbar`
 
-![The Dashboard, with a trick's item at the end of the bottom bar, after the Hill.](images/tricks/place-tabbar.png)
+![The Dashboard, with a trick's item at the end of the bottom bar, after Asks.](images/tricks/place-tabbar.png)
 
-**Where.** An item in the Dashboard's bottom bar, after the Hill. On a large screen there is no bar: the item stands after the views, in the control of the Dashboard's header.
+**Where.** An item in the Dashboard's bottom bar, after Asks. On a large screen there is no bar: the item stands after the views, in the control of the Dashboard's header.
 
 **Shows.** One item: an icon over a short name, with a `badge` and a `tone`. It takes no view.
 
@@ -469,9 +469,9 @@ places = ["float", "session"]
 
 **Where.** A view of one agent session, beside Terminal and Chat. The session's own agent draws it, and the person switches it on per session.
 
-**Shows.** One screen: a list of nodes in the Parts table's kinds (held tighter, see Parts), up to four pictures, and one decision block with a question and up to five options.
+**Shows.** One screen: a list of nodes in the Parts table's kinds (held tighter, see Parts), up to four pictures, and one choice block with a question and up to five options.
 
-**A tap.** A tap on a button, or a pick in the decision block, sends a message in the person's name to that one session. It carries the label only: a button holds no hidden value. Collie marks the pick on the screen afterwards. The agent cannot: a button's `pressed` and a choice's `picked` are refused.
+**A tap.** A tap on a button, or a pick in the choice block, sends a message in the person's name to that one session. It carries the label only: a button holds no hidden value. Collie marks the pick on the screen afterwards. The agent cannot: a button's `pressed` and a choice's `picked` are refused.
 
 | Limit | Value |
 | --- | --- |
@@ -482,11 +482,11 @@ places = ["float", "session"]
 | A group's label | one line, at most 40 characters |
 | The view, as compact JSON | at most 16 KiB, and the view limits of a part |
 | Pictures | at most 4 on a screen, 2 MiB each, 8 MiB together, caption at most 80 characters |
-| Decision block | a question of at most 120 characters, 1 to 5 options |
+| Choice block | a question of at most 120 characters, 1 to 5 options |
 | A pending block's label | at most 40 characters |
 | Writes by the agent | 120 a minute for one trick and session |
 | Sends from the view | 20 a minute for one session, one in flight at a time |
-| Marks of a pick | Collie's, never the agent's. A redraw keeps a mark while a block of the same id holds a button at the same steps, and the decision block's while it asks the same question with the same options |
+| Marks of a pick | Collie's, never the agent's. A redraw keeps a mark while a block of the same id holds a button at the same steps, and the choice block's while it asks the same question with the same options |
 | Links | a web address only. A session `href` is refused. The phone shows the host after each link, whole |
 | Collie's own words | no text of the agent's may say "From Collie", "Drawn by this session's agent", "Drawn in an earlier conversation", "Sent to this session", "A question waits in this session", "Your typing answers the question", "The screen changed", "The buttons wait", "The agent is working", "Tap again to send", "Earlier screen", "The agent answered in text". A text is read as whole words, in any case, with look-alike letters and hidden characters folded. Collie's bare name passes |
 | The rules file | see Limits: the rules file |
@@ -527,45 +527,43 @@ The agent passes `show` this file:
 ]
 ```
 
-## The Hill
+## Asks
 
-A page of Decisions: questions that a program or an agent asks the person, each answered with one tap. It ships with Collie as an experiment, off until the person switches it on in Settings → Tricks. A trick does not list it in `places`.
+A page of asks: questions that a program or an agent asks the person, each answered with one tap. It ships with Collie as an experiment, off until the person switches it on in Settings → Tricks. A trick does not list it in `places`.
 
-**From a program.** A program lists Decisions in the `decisions` key of its output (the helper's `t.decide`). The list is declarative: after each run that succeeded, Collie makes the Hill agree with it, as [The list is the truth](#the-list-is-the-truth) says below. A document lists at most 20.
+**From a program.** A program lists asks in the `asks` key of its output (the helper's `t.ask`). The list is declarative: after each run that succeeded, Collie makes Asks agree with it, as [The list is the truth](#the-list-is-the-truth) says below. A document lists at most 20.
 
-**From an agent.** An agent posts one with `collie hill post` and reads the answer with `collie hill status <id>`. The answer also reaches the agent as a WalkyTalky message.
+**From an agent.** An agent sends one with `collie walky ask` and reads the answer with `collie walky status <id>`. The answer also reaches the agent as a WalkyTalky message.
 
-A Decision a program lists has these keys:
+An ask a program lists has these keys:
 
 | Key | Type | Needed | Limit | What it is |
 | --- | --- | --- | --- | --- |
-| `key` | text | yes | 1 to 64 of `a-z`, `0-9` and `-`, unique in the document | The trick's own name for the Decision. The answer comes back with it. |
+| `key` | text | yes | 1 to 64 of `a-z`, `0-9` and `-`, unique in the document | The trick's own name for the ask. The answer comes back with it. |
 | `title` | text | yes | at most 120 characters | The question, as a sentence the options answer. |
 | `summary` | text | yes | at most 280 characters | What the recommended option does, and the one fact that decides it. |
 | `body` | text | no | at most 4000 characters | Longer text, shown behind More. |
 | `options` | list | no | at most 5; each `intent`, `label` (at most 40), and optionally `detail` (at most 120) and `confirm` (at most 24) | The choices. A tap on one sends its `intent` back. |
 | `recommends` | object or null | no | `{ intent, why }`, `why` at most 200 characters | The trick's pick, one of the options. Shown as Recommended, never pre-selected. |
-| `priority` | word | no | one of `now`, `today`, `later`. Default `today` | A request, not a fact. Only `now` sends a notification, and one sender holds at most 3 open `now` Decisions. |
 | `text` | word | no | one of `none`, `optional`, `required`. Default `optional` | Whether the person may, must, or may not add words to the answer. `none` needs at least one option. |
 | `about` | session id | no | an `id` from the facts' sessions, `memberId:paneId` | The session the card is about. The card opens its Chat. |
-| `replyTo` | session id | no | an `id` from the facts' sessions. Only for a trick whose `trick.toml` says `decides = "reply"` | The session that gets the person's words, as the person's own WalkyTalky message. Without `decides = "reply"` the Decision is refused. |
+| `replyTo` | session id | no | an `id` from the facts' sessions. Only for a trick whose `trick.toml` says `asks = "reply"` | The session that gets the person's words, as the person's own WalkyTalky message. Without `asks = "reply"` the ask is refused. |
 | `media` | list | no | at most 4; each `file` (a PNG, JPEG or WebP in the trick's folder, 2 MiB at most) and optionally `caption` (at most 80 characters) | Pictures on the card. |
 | `links` | list | no | at most 5; each `label` (at most 40) and `href` (an https or http address, at most 500 characters) | Web pages that give more. |
-| `expiresAt` | instant | no | epoch milliseconds. Left out, 14 days; never more than 30 days | When the Decision closes by itself, as expired. |
-| `view` | list of nodes | no | see Parts: a Decision's view | A small display-only view under the summary: facts to read, never a control. |
+| `expiresAt` | instant | no | epoch milliseconds. Left out, 14 days; never more than 30 days | When the ask closes by itself, as expired. |
+| `view` | list of nodes | no | see Parts: an ask's view | A small display-only view under the summary: facts to read, never a control. |
 
 | Limit | Value |
 | --- | --- |
-| Open Decisions per sender | 20 |
-| Open `now` Decisions per sender | 3. A further one shows as `today` |
-| Closed Decisions served | 20, newest first |
+| Open asks per sender | 20 |
+| Closed asks served | 20, newest first |
 | The person's words in an answer | at most 4000 characters |
 | Expiry | 14 days when left out, at most 30 |
 | Answers waiting for one trick | 32. One more is refused as busy |
 
-**The answer.** When the person answers, the program runs once with a `tap` trigger. Its `node` is `hill/<key>`. Its `intent` is the chosen option's, `answer` for words alone, or `dismiss`. Its `value` is `{ "text": ... }`, the person's words or `null`. Its `seen` is the hash of the version the person saw, so the trick can tell an answer to old words from one to new.
+**The answer.** When the person answers, the program runs once with a `tap` trigger. Its `node` is `asks/<key>`. Its `intent` is the chosen option's, `answer` for words alone, or `dismiss`. Its `value` is `{ "text": ... }`, the person's words or `null`. Its `seen` is the hash of the version the person saw, so the trick can tell an answer to old words from one to new.
 
-A program lists this Decision:
+A program lists this ask:
 
 ```json
 {
@@ -595,7 +593,7 @@ The answer comes back as this trigger:
 {
   "kind": "tap",
   "rid": "0b9e8d7c-3a41-4c52-9d5e-1f2a3b4c5d6e",
-  "node": "hill/case-24",
+  "node": "asks/case-24",
   "intent": "rerun",
   "value": {
     "text": "Rerun it, then tell me."
@@ -607,29 +605,29 @@ The answer comes back as this trigger:
 From a terminal:
 
 ```sh
-collie hill post --title "Rerun the failed check?" --summary "Check 24 failed on a timeout." --option rerun="Rerun it" --option skip="Skip it" --recommend rerun --why "It was a timeout."
+collie walky ask "Rerun the failed check?" --fact "Check 24 failed on a timeout." --option rerun="Rerun it" --option skip="Skip it" --recommend rerun --why "It was a timeout."
 ```
 
 ### The list is the truth
 
-After each run that succeeded, Collie makes the Hill agree with the list of `decisions`, key by key.
+After each run that succeeded, Collie makes Asks agree with the list of `asks`, key by key.
 
 | When | Collie does |
 | --- | --- |
 | A new `key` | Posts once. A second run, or a restart, posts nothing twice. |
-| A listed `key` with changed content | Posts the new version, which replaces the open one. Content is the title, summary, body, options, recommendation, text mode, links, priority, `about`, `replyTo`, the view, and each picture's bytes and caption. When the old card is closed, the new version posts as a fresh card. |
+| A listed `key` with changed content | Posts the new version, which replaces the open one. Content is the title, summary, body, options, recommendation, text mode, links, `about`, `replyTo`, the view, and each picture's bytes and caption. When the old card is closed, the new version posts as a fresh card. |
 | A `key` the list no longer holds | The card is withdrawn, "by the trick". |
 | A `key` the person answered or dismissed | Stays closed while its content is unchanged. To ask again, change the content, or drop the key for one run and list it again. |
-| A `key` that closed without the person: `undeliverable`, `expired` or `withdrawn`, a withdrawal by anyone but the trick | Posts again on a later run that still lists it, at most once every 10 minutes for that key. A new post of this kind never sends a notification. |
-| A document with no `decisions` key | Changes nothing. |
-| `decisions` is `[]` | Withdraws every open card of the trick. |
-| A Decision the parser or the Hill refuses, or that names a session that is not there | Changes nothing for its key: the version on the Hill stays. It shows as a refusal. |
-| A Decision with `replyTo` from a trick whose `trick.toml` does not say `decides = "reply"` | Refused with "This trick did not say that its Decisions reply to a session." An open card of its key is withdrawn, so no answer reaches a session. |
+| A `key` that closed without the person: `undeliverable`, `expired` or `withdrawn`, a withdrawal by anyone but the trick | Posts again on a later run that still lists it, at most once every 10 minutes for that key. |
+| A document with no `asks` key | Changes nothing. |
+| `asks` is `[]` | Withdraws every open card of the trick. |
+| An ask the parser or Asks refuses, or that names a session that is not there | Changes nothing for its key: the version in Asks stays. It shows as a refusal. |
+| An ask with `replyTo` from a trick whose `trick.toml` does not say `asks = "reply"` | Refused with "This trick did not say that its asks reply to a session." An open card of its key is withdrawn, so no answer reaches a session. |
 | A failed or timed-out run | Changes nothing. |
 | The trick switched off or removed | Every open card of the trick is withdrawn at once, "the trick is off". |
-| The Hill switched off | No post, replace or withdraw happens, and the trick still runs. Its row says its Decisions are not shown. |
+| Asks switched off | No post, replace or withdraw happens, and the trick still runs. Its row says its asks are not shown. |
 
-So list every Decision you still want on every run, and keep the words stable. Words that change on each run, such as an age in minutes, post a new version every time and ask again.
+So list every ask you still want on every run, and keep the words stable. Words that change on each run, such as an age in minutes, post a new version every time and ask again.
 
 ### Wording a card
 
@@ -648,10 +646,10 @@ A person opens the card cold, between other things, so the words carry the decis
 A part, in this page, is one node of a view: the building block a view is made of (the schema calls it a node kind). A node is `{ "kind": ..., "text"?: ..., "attrs"?: ..., "kids"?: ... }`, and every attribute value is text.
 
 - A program's view, on its Page (a `session` part): every kind.
-- A Decision's view, under its summary: display only. It takes `group`, `list`, `row`, `bar`, `chip`, `para`, `line`, `run`, `code`, `link`, `meter`, `spacer`, `number`, `image`, `compare`, `table`, `col`, `cell`, `diff` or `spark`. At most 8 KiB, 100 nodes and 4 levels.
+- An ask's view, under its summary: display only. It takes `group`, `list`, `row`, `bar`, `chip`, `para`, `line`, `run`, `code`, `link`, `meter`, `spacer`, `number`, `image`, `compare`, `table`, `col`, `cell`, `diff` or `spark`. At most 8 KiB, 100 nodes and 4 levels.
 - An agent view: every kind, read strictly. A kind or an attribute that a program's part would only leave out is refused.
 
-| Part | What it is | Sits | In a Decision's view |
+| Part | What it is | Sits | In an ask's view |
 | --- | --- | --- | --- |
 | `card` | A block that groups what belongs together. Its `tone` colours its edge. | the top of a view | no |
 | `group` | A titled set of rows and other nodes. The person can fold it. | the top of a view, in a card, in a group, in a list | yes |
@@ -665,7 +663,7 @@ A part, in this page, is one node of a view: the building block a view is made o
 | `run` | A piece of text inside a `para` or a `line`, with its own style, link or live time. | in a para, in a line | yes |
 | `code` | A block of code. Its kids are `line` nodes. It scrolls on its own past `max` lines. | the top of a view | yes |
 | `link` | A link that opens a web page, or one agent session of the crew. | in a group, in a bar, in a para, in a line | yes |
-| `image` | A picture. In a program's part it is a file of the trick's `media/` folder. In a Decision's view or an agent view it names one of the pictures that came with it, by `ref`. | the top of a view, in a card, in a group, in a compare | yes |
+| `image` | A picture. In a program's part it is a file of the trick's `media/` folder. In an ask's view or an agent view it names one of the pictures that came with it, by `ref`. | the top of a view, in a card, in a group, in a compare | yes |
 | `meter` | An amount, or the progress of a task. With `role` `progress` and no `value` it is indeterminate. | the top of a view, in a card, in a group | yes |
 | `spacer` | Space between nodes. With a `label` it is a divider with words. | the top of a view, in a card, in a group | yes |
 | `number` | A big figure with a label under it. | the top of a view, in a card, in a group | yes |
@@ -784,7 +782,7 @@ One line: a title, an optional end word, and optionally a second line, chips and
 
 **In an agent view.** An `href` is a web address only: a session is refused.
 
-**In a Decision's view.** A row opens a web page at most. It takes no button.
+**In an ask's view.** A row opens a web page at most. It takes no button.
 
 ```json
 {
@@ -1047,7 +1045,7 @@ A link that opens a web page, or one agent session of the crew.
 
 **In an agent view.** Text that reads as a web address must be that address, in any script. The `href` is a web address only: a session is refused. The phone shows the host after the link.
 
-**In a Decision's view.** A link opens a web page only.
+**In an ask's view.** A link opens a web page only.
 
 ```json
 {
@@ -1069,7 +1067,7 @@ A link that opens a web page, or one agent session of the crew.
 
 ### `image`
 
-A picture. In a program's part it is a file of the trick's `media/` folder. In a Decision's view or an agent view it names one of the pictures that came with it, by `ref`.
+A picture. In a program's part it is a file of the trick's `media/` folder. In an ask's view or an agent view it names one of the pictures that came with it, by `ref`.
 
 **Sits.** the top of a view, in a card, in a group, in a compare.
 
@@ -1079,14 +1077,14 @@ A picture. In a program's part it is a file of the trick's `media/` folder. In a
 | `alt` | text | in a program's part | at most 120 characters, may be empty | What the picture shows, in words. |
 | `w` | whole number | in a program's part | 1 to 4096, as text | The picture's width in pixels. It reserves the box. |
 | `h` | whole number | in a program's part | 1 to 4096, as text | The picture's height in pixels. It reserves the box. |
-| `ref` | whole number | in a Decision's view and an agent view | 0 to 3, as text | The place of one of the Decision's or the screen's own pictures, counted from 0. Used in a Decision's view and an agent view. |
+| `ref` | whole number | in an ask's view and an agent view | 0 to 3, as text | The place of one of the ask's or the screen's own pictures, counted from 0. Used in an ask's view and an agent view. |
 | `caption` | text | no | at most 80 characters | A line of words under the picture. In a `compare` it labels the frame. |
 | `fit` | word | no | one of `contain`, `cover` | `contain` shows the whole picture. `cover` fills the frame and cuts the edges. |
 | `focus` | numbers | no | `"x y"` or `"x y zoom"`: x and y from 0 to 100 (percent), zoom from 1 to 8 | The point of the picture to keep in the middle of its frame, and how far to zoom in on it. |
 
 **In an agent view.** The agent adds pictures with `--image` (at most 4) and names each by `ref`.
 
-**In a Decision's view.** Names one of the Decision's own pictures by `ref`.
+**In an ask's view.** Names one of the ask's own pictures by `ref`.
 
 ```json
 {
@@ -1180,7 +1178,7 @@ Two images side by side at one height, as before and after.
 
 **In an agent view.** Two images named by `ref`.
 
-**In a Decision's view.** Two images named by `ref`.
+**In an ask's view.** Two images named by `ref`.
 
 ```json
 {
@@ -1358,7 +1356,7 @@ A trend as a small line with no axes. The last point is marked.
 | clock | `ago`, `elapsed`, `left`, `time` |
 | style | `bold`, `dim`, `italic`, `underline`, `inverse`, `strike`, `box`, `fg-<colour>`, `bg-<colour>` and the syntax inks `syn-keyword`, `syn-string`, `syn-comment`, `syn-number`, `syn-type`, `syn-func`, `syn-const`, `syn-punct`. The colours are `black`, `red`, `green`, `yellow`, `blue`, `magenta`, `cyan`, `white`, `bright-black`, `bright-red`, `bright-green`, `bright-yellow`, `bright-blue`, `bright-magenta`, `bright-cyan`, `bright-white` |
 | button intent | 1 to 48 of `a-z`, `0-9`, `.`, `_` and `-`, starting with a letter or a digit |
-| Decision option intent | 1 to 32 of `a-z`, `0-9` and `-`, starting with a letter, never `answer`, `dismiss`, `more-context` or `own` |
+| Ask option intent | 1 to 32 of `a-z`, `0-9` and `-`, starting with a letter, never `answer`, `dismiss`, `more-context` or `own` |
 
 ## Manifest keys
 
@@ -1366,7 +1364,7 @@ These are all the keys of `trick.toml`. At the same contract, any other key is r
 
 | Key | Type | Needed | Limit | Contract | What it is |
 | --- | --- | --- | --- | --- | --- |
-| `id` | text | yes | 1 to 32 of `a-z`, `0-9` and `-`, starting with a letter or a digit. It equals the folder's name. Not `walky-talky`, `hill`, `collie`, `view` | 1 | The trick's id, which is also the name of its folder. |
+| `id` | text | yes | 1 to 32 of `a-z`, `0-9` and `-`, starting with a letter or a digit. It equals the folder's name. Not `walky-talky`, `asks`, `hill`, `collie`, `view` | 1 | The trick's id, which is also the name of its folder. |
 | `name` | text | yes | at most 40 characters | 1 | The name a person reads on the row. |
 | `run` | text | yes, unless the trick is only an agent view | at most 1024 characters | 1 | What Collie runs: a TypeScript file in the folder ("program.ts"), or a shell command line. An agent view alone has none. |
 | `every` | duration | no | 5s to 24h, one whole number and `s`, `m` or `h`, such as `30s` or `5m` | 1 | How often it runs on its timer. Left out, it runs at start and on taps only. |
@@ -1382,7 +1380,7 @@ These are all the keys of `trick.toml`. At the same contract, any other key is r
 | `about` | text | no | at most 1200 characters, plain text, a blank line splits paragraphs | 1 | The text of the trick's details page. |
 | `version` | text | no | 1 to 24 characters: letters, digits, `.`, `+` and `-`, such as `1.2.0` | 1 | The trick's own version. The details page shows it. Collie never compares it and reads no tag. |
 | `rules` | file name | yes, with `agent-view`; refused without it | a file in the trick's folder of at most 64 characters ending in `.md`, such as `rules.md` | 2 | The instructions the agent of a session reads. The person reads them whole before they switch the trick on. |
-| `decides` | word | no | `reply`. Refused on a trick that is only an agent view | 1 | Whether its Decisions answer into a session. `reply` lets a Decision name `replyTo`, and the person's answer is typed into that session as their own message. Without it, a Decision with `replyTo` is refused. It is a right: a version that adds it asks again. |
+| `asks` | word | no | `reply`. Refused on a trick that is only an agent view | 1 | Whether its asks answer into a session. `reply` lets an ask name `replyTo`, and the person's answer is typed into that session as their own message. Without it, an ask with `replyTo` is refused. It is a right: a version that adds it asks again. |
 | `drafts` | word | no | `session`. Refused on a trick that is only an agent view | 1 | Whether its buttons may put text into a reply box. `session` lets a button set `does` to `draft`: a tap puts its `value` into the reply box of the session the page is open for, only when that box is empty, and never sends. Without it, a part with such a button is refused. The card says: "Its buttons can put text into the reply box of the session you are in. You read it and send it yourself." It is a right: a version that adds it asks again. |
 | `field` | list of tables | no | at most 12 `[[field]]` tables. Each has `key` (spelled like a trick id, each once), `kind` (`text`, `choice`, `switch` or `number`), `label` (at most 40 characters) and may have `hint` (at most 120), `default` and `required`. A `choice` lists 2 to 8 `options` of at most 40 characters; a `number` names whole `min` and `max` within 999999999 either way; a `text` value is one line of at most 200 characters; a `switch` is never `required` | 3 | Settings the person keeps for the trick, set on its details page on the phone. The program reads them in its facts as `values`. A value is the person's data and untrusted for the program: show it, never run it. A setting is never a secret: a key comes through `env`. A new or changed field is a new version and asks again; a changed value does not ask, and runs the trick once. |
 | `access` | word | no | `none`, `see` or `read`. Default `none` | 3 | How much of Collie's local API the trick reads through `t.api`. `see` reads lists and states, `read` adds the text of a screen. A right: a version that raises it asks again. See [Reading Collie through the local API](#reading-collie-through-the-local-api). Experimental. |
@@ -1424,7 +1422,7 @@ A session in `sessions` has these fields:
 
 | Field | Present | What it holds |
 | --- | --- | --- |
-| `id` | always | The scope key `<memberId>:<paneId>`. Pass it back in a Decision's `about` and `replyTo`, or as the `href` of a `link` or a `row`. |
+| `id` | always | The scope key `<memberId>:<paneId>`. Pass it back in an ask's `about` and `replyTo`, or as the `href` of a `link` or a `row`. |
 | `memberId` | always | The bridge the session runs on. Read it, and do not parse `id`. |
 | `sessionId` | always | An opaque id. Never parse it: it can change. |
 | `paneId` | always | The multiplexer pane the session is in now. |
@@ -1445,7 +1443,7 @@ The `trigger` tells why the run happened:
 | --- | --- | --- |
 | `start` | The first run after the trick loads, is switched on, a new version is approved or its `config.toml` changes. | none |
 | `timer` | Every `every` after the last run, while a phone has looked in the last 5 minutes. A trick with no `every` gets none. | none |
-| `tap` | A person tapped a control of the trick, or answered one of its Decisions. | `rid`, `node`, `intent`, `value`, `from`, `seen` |
+| `tap` | A person tapped a control of the trick, or answered one of its asks. | `rid`, `node`, `intent`, `value`, `from`, `seen` |
 | `watch` | A file of the manifest's `watch` changed. `path` is the path as the manifest wrote it, and `count` is how many files changed in the same burst. | `path`, `count` |
 | `event` | An event of the manifest's `on` reached the trick. `session` is the `id` of the newest event's session, and `count` is how many events were folded into this run. | `event`, `session`, `count` |
 
@@ -1453,7 +1451,7 @@ A tap on a control of the trick's own part has `node` set to the part's id (`bel
 
 A tap on a row in a session's settings (contract 2) always has `from`: the session whose sheet it was. For a bound part, a belt mark or a menu part with `sessions`, it is one of the part's sessions, at the pane it was bound to; Collie refuses the rest before the program runs.
 
-An answer to a Decision is a tap too: its `node` is `hill/<key>`, and its `seen` is the hash of the version the person saw. See [The Hill](#the-hill).
+An answer to an ask is a tap too: its `node` is `asks/<key>`, and its `seen` is the hash of the version the person saw. See [Asks](#asks).
 
 `rid` is a UUID. A retried tap has the same `rid`, and Collie runs nothing twice for one `rid`: it answers with the first receipt. A program that records an answer keys the record on `rid`. The same `rid` with a different tap is refused.
 
@@ -1474,7 +1472,7 @@ Collie checks a tap before the program runs. It refuses one that names a part or
 The program prints one JSON document on stdout and exits 0:
 
 ```json
-{ "v": 1, "parts": [], "decisions": [], "asOf": "2026-11-08T09:41:00Z", "fresh": "90s" }
+{ "v": 1, "parts": [], "asks": [], "asOf": "2026-11-08T09:41:00Z", "fresh": "90s" }
 ```
 
 | Key | Needed | What it is |
@@ -1483,23 +1481,23 @@ The program prints one JSON document on stdout and exits 0:
 | `parts` | yes | The parts, at most 24, each at most 16 KiB. `[]` is allowed. See [Places](#places). |
 | `asOf` | no | When the data was true, as an ISO 8601 time with a zone, such as `2026-11-08T09:41:00Z`. Give it when the data is older than the run. |
 | `fresh` | no | How long the parts stay fresh: 5s to 24h, one whole number and `s`, `m` or `h`, such as `90s`. Left out, 3 times `every`, at least 1 minute, or 10 minutes for a trick with no timer, and never more than 24h. Past it, the phone draws every tone as unknown. |
-| `decisions` | no | The Decisions to ask, at most 20. Left out, the open Decisions stay as they are. `[]` withdraws them all. See [The Hill](#the-hill). |
+| `asks` | no | The asks to send, at most 20. Left out, the open asks stay as they are. `[]` withdraws them all. See [Asks](#asks). |
 
-There is no `draft` and no `open` key in the document: Collie ignores each with a note. What a trick wants to show is a `link`. What it wants to tell the person is a Decision.
+There is no `draft` and no `open` key in the document: Collie ignores each with a note. What a trick wants to show is a `link`. What it wants to tell the person is an ask.
 
 Collie never sends a trick's text into a session on its own. Text reaches a session in three ways, and each one waits for the person's own tap:
 
 | Way | What happens | What the trick needs |
 | --- | --- | --- |
 | A button with `does` set to `draft` | A tap puts the button's `value` into the reply box of the session the trick's page is open for, and opens that session. It fills only an empty box: a box with words is left as it is. Collie never sends it: the person reads it and taps Send. | `drafts = "session"` in `trick.toml` |
-| A Decision with `replyTo` | The person's answer is typed into that session as their own message. | `decides = "reply"` in `trick.toml` |
+| An ask with `replyTo` | The person's answer is typed into that session as their own message. | `asks = "reply"` in `trick.toml` |
 | A button in an agent view | A tap sends the button's label to the session the view belongs to. | the place `agent-view` and its `rules` |
 
 Apart from a draft, which opens the session it filled, a tap never moves the phone. The trick learns nothing back: not whether the person sent the text, changed it or cleared it.
 
 ### Strict at write, tolerant at read
 
-Collie checks strictly what a person or an agent writes: `trick.toml`, `collie hill post` and a trick's Decisions. An unknown key, kind or attribute there is refused. It reads a program's output tolerantly, so a trick written for a newer Collie runs on an older one, which leaves out only what it does not know. From contract 2 a part is read closed: an unknown key inside it leaves that part out, since it may carry a meaning this Collie cannot keep. The document's own keys stay open.
+Collie checks strictly what a person or an agent writes: `trick.toml`, `collie walky ask` and a trick's asks. An unknown key, kind or attribute there is refused. It reads a program's output tolerantly, so a trick written for a newer Collie runs on an older one, which leaves out only what it does not know. From contract 2 a part is read closed: an unknown key inside it leaves that part out, since it may carry a meaning this Collie cannot keep. The document's own keys stay open.
 
 | The program prints | Collie does |
 | --- | --- |
@@ -1507,10 +1505,10 @@ Collie checks strictly what a person or an agent writes: `trick.toml`, `collie h
 | A part in a place this Collie does not know | Left out whole, with a `dropped` note. The other parts draw. |
 | A key or an attribute this Collie does not know, inside a part, at contract 1 | Ignored, with an `ignored` note. A node with only such attributes draws as if it had none. |
 | A key or an attribute this Collie does not know, at any depth of a part, at contract 2 or newer | That part is refused alone, with an `unknown-key` refusal that names the key and ends: "A contract 2 trick uses only the keys this Collie knows, so the part is left out; the other parts draw." Collie keeps no last good version of it. |
-| A key this Collie does not know at the top of the document, beside `v`, `parts`, `asOf`, `fresh` and `decisions` | Ignored, with an `ignored` note, at every contract. Every part draws. A key that changes how a part draws or what a tap does goes in the part, never at the top. |
+| A key this Collie does not know at the top of the document, beside `v`, `parts`, `asOf`, `fresh` and `asks` | Ignored, with an `ignored` note, at every contract. Every part draws. A key that changes how a part draws or what a tap does goes in the part, never at the top. |
 | A bad value of a known field | That part is refused alone, and the other parts draw. The last good version of the part stays on the phone, marked old. |
 | A button with `does` set to `draft` in a trick whose `trick.toml` does not say `drafts = "session"` | That part is refused alone with "This trick did not say that its buttons put text into a reply box. Add drafts = "session" to trick.toml." The other parts draw. |
-| A bad Decision | That Decision is refused alone. Its open card stays as it is. |
+| A bad ask | That ask is refused alone. Its open card stays as it is. |
 | A bad `asOf` or `fresh` | Refused alone. The parts still draw. |
 | A document that is too big, not JSON, not an object, with no usable `v`, or with `parts` that is not a list | The whole document is refused. The run counts as failed, and the last good parts stay, marked old. |
 
@@ -1520,15 +1518,15 @@ Collie checks strictly what a person or an agent writes: `trick.toml`, `collie h
 
 | Call | What it does |
 | --- | --- |
-| `t.facts`, `t.config`, `t.tap` | The facts, `config.toml` parsed (`{}` when there is none), and the tap that started the run or `null`. A tap has `rid`, `node`, `intent`, `value`, `decision` (the key of the Decision it answers, or `null`), `text`, `from` and `seen`. |
+| `t.facts`, `t.config`, `t.tap` | The facts, `config.toml` parsed (`{}` when there is none), and the tap that started the run or `null`. A tap has `rid`, `node`, `intent`, `value`, `ask` (the key of the ask it answers, or `null`), `text`, `from` and `seen`. |
 | `t.status({ text, icon?, tone? })` | The chip in the status line. `text` is at most 12 characters. |
 | `t.belt({ label, icon?, tone?, badge?, intent?, sessions?, id? })` | The mark at the end of the Belt. With `sessions` (contract 2) it shows only in those sessions; a bound mark without an `id` is numbered `belt-1`, `belt-2`. |
 | `t.menu(rows, { sessions?, id? })` | Rows in a session's settings (contract 2): buttons `{ kind: "button", id, label, intent, icon?, confirm? }` and switches `{ kind: "switch", id, label, intent, on, icon? }`. The phone shows a switch's `on` from your next document, never a guess. |
 | `t.dashboard(item)`, `t.tabbar(item)` | The Dashboard tile and the bottom bar item: `{ label, icon?, badge?, tone? }`. |
 | `t.session({ id?, name?, icon?, tone?, subtitle?, badge?, progress?, actions?, view })` | The trick's own Page. Keep the default id `main`. |
 | `v.card`, `v.list`, `v.row`, and one builder for each other kind in Parts | Build a view. `v.table` makes the `col` and `cell` kids, so those two have no builder. `v.checks`, `v.stat` and `v.beforeAfter` put kinds together. |
-| `t.decide({ key, title, summary, options, ... })` | Ask the person on the Hill. |
-| `t.keepDecisions()` | Leave the `decisions` key out, so the open Decisions stay. It wins over `t.decide`. |
+| `t.ask({ key, title, summary, options, ... })` | Ask the person in Asks. |
+| `t.keepAsks()` | Leave the `asks` key out, so the open asks stay. It wins over `t.ask`. |
 | `t.state.get(name, fallback)`, `t.state.set(name, value)` | JSON files in the state folder. A name may hold folders, such as `cache/ci`: plain names, none starting with a dot. |
 | `t.log(name)` | An append-only JSON-lines file in the state folder, with `.append`, `.all`, `.last(n)`, `.has(rid)` and `.once(rid, entry)`. `.once` writes once for one `rid` and answers `false` when it is there already. |
 | `t.cached(name, ttlMs, loader)` | A read kept with its time. A loader that throws serves the old value, marked stale. |
@@ -1540,9 +1538,9 @@ Collie checks strictly what a person or an agent writes: `trick.toml`, `collie h
 | `t.api(operation, args?)` | Reads through Collie's local API (experimental): `await t.api("machines")`. It answers the socket's line, `{ ok: true, ... }`, or `{ ok: false, error: { code, message } }`, and never throws, so a program shows `error.message`. It refuses before it dials when the trick declares no `access`, when the local API is off, or when the operation needs `read` and the trick declares `see`. Each call names this run's token, and Collie checks the level again. A call takes at most 3 seconds. See [Reading Collie through the local API](#reading-collie-through-the-local-api). |
 | `t.inputs(session)` | The input files of a session (contract 2): a text file as `text`, a picture as `data`. A copy that is gone or changed since the facts were written is left out. It answers `[]` when there are none, and `session.inputs?.state` says why. Never run what it returns. |
 
-A run that calls neither `t.decide` nor `t.keepDecisions` prints `"decisions": []`, so it withdraws the open ones.
+A run that calls neither `t.ask` nor `t.keepAsks` prints `"asks": []`, so it withdraws the open ones.
 
-A thrown error prints one warning card on the trick's Page and exits 0, when the trick has a Page. The document has no `decisions` key, so the open Decisions stay. A trick with no Page exits 1, so the failure rules apply.
+A thrown error prints one warning card on the trick's Page and exits 0, when the trick has a Page. The document has no `asks` key, so the open asks stay. A trick with no Page exits 1, so the failure rules apply.
 
 Stop your timers before the end. The run ends a second after its document is written, and a timer that still prints to stdout in that second spoils the document, so the run fails.
 
@@ -1614,9 +1612,9 @@ The rules of an event run:
 | One at a time | A trick runs once at a time and has at most one run waiting. Events that arrive meanwhile fold into that run. Its `trigger` names the newest event, and `count` is how many were folded. |
 | Lost events | When Collie's queue overflows, it adds the events it lost to `count`, because it cannot know their types. |
 | The same road as the timer | A run has the same limits of time and size, the same slots and the same backoff. No run starts for a trick that has not had its start run, that is stopped, or that is backing off after a failure, or on a machine that does not schedule tricks. Collie drops such a request. It never keeps one. A run that already waited when a backoff began keeps waiting, and runs with the next request or after the next tap. |
-| No phone needed | An event run or a file run happens also when no phone is open, so a trick can ask a Decision while you are away. Only the timer waits for a phone: it runs only while a phone has looked in the last 5 minutes. |
-| Spacing | Two runs of one trick that an event or a file started begin at least 10 s apart. A request inside that time is the one waiting run, or folds into it, and starts when the time ends. A tap, an answer to a Decision and a timer run neither wait for it nor count toward it. |
-| Taps first | A tap, or an answer to a Decision, goes before a waiting run of an event or a file. |
+| No phone needed | An event run or a file run happens also when no phone is open, so a trick can send an ask while you are away. Only the timer waits for a phone: it runs only while a phone has looked in the last 5 minutes. |
+| Spacing | Two runs of one trick that an event or a file started begin at least 10 s apart. A request inside that time is the one waiting run, or folds into it, and starts when the time ends. A tap, an answer to an ask and a timer run neither wait for it nor count toward it. |
+| Taps first | A tap, or an answer to an ask, goes before a waiting run of an event or a file. |
 
 The rules of a watched file:
 
@@ -1635,7 +1633,7 @@ The rules of a watched file:
 
 ### Reading Collie through the local API
 
-A trick reads live facts of Collie (its machines, its sessions, your usage, the Hill) through Collie's local API, with no list of surfaces in its manifest. Your yes to the trick is the grant. The manifest says how much with `access`, which needs `contract = 3`, and the program calls `t.api`. Each run gets its own token in its facts, and the local API answers only a connection that names a live one, at the level the trick declares.
+A trick reads live facts of Collie (its machines, its sessions, your usage, Asks) through Collie's local API, with no list of surfaces in its manifest. Your yes to the trick is the grant. The manifest says how much with `access`, which needs `contract = 3`, and the program calls `t.api`. Each run gets its own token in its facts, and the local API answers only a connection that names a live one, at the level the trick declares.
 
 ```toml
 contract = 3
@@ -1650,7 +1648,7 @@ if (!machines.ok) throw new Error(machines.error.message);
 | `access` | What the trick gets | Operations |
 | --- | --- | --- |
 | `none` | The default, also when `access` is left out. No `api` in the facts, and `t.api` answers an error. | none |
-| `see` | Lists and states: your machines, your sessions and their states, your usage and the Hill. Never the text of a screen. One field is text an agent wrote: the title of each card in `hill.list`. | `hello`, `sessions`, `brief`, `accounts`, `hill.list`, `events`, `machines` |
+| `see` | Lists and states: your machines, your sessions and their states, your usage and Asks. Never the text of a screen. One field is text an agent wrote: the title of each card in `asks.list`. | `hello`, `sessions`, `brief`, `accounts`, `asks.list`, `events`, `machines` |
 | `read` | Everything in `see`, and the text of a session's screen, masked as the phone's own read is. | all of `see`, and `read` |
 
 > **Experimental.** `access` and `t.api` are new, and their words may still change.
@@ -1696,7 +1694,7 @@ Tricks do not run on a Windows machine yet. [Collie on Windows](windows.md) says
 | --- | --- |
 | The document | at most 64 KiB |
 | Parts | at most 24, each at most 16 KiB |
-| Decisions | at most 20 |
+| Asks | at most 20 |
 | A view | 1 to 24 nodes at the top, 6 levels, 300 nodes in all |
 | Kids of a card, group or row | at most 24 |
 | Kids of a list | at most 50 |
@@ -1803,7 +1801,7 @@ Every verb of `collie trick`.
 | `helper` | `collie trick helper <id\|folder>` | Rewrites a trick's `trick.ts` with the helper this Collie carries. |
 | `skill` | `collie trick skill [<id>]` | Prints what a trick that is on asks of an agent. With no id, prints how to write a trick. |
 | `guide` | `collie trick guide [--json]` | Prints how to write a trick and hand it to the person, as plain text for an agent. |
-| `propose` | `collie trick propose <folder> [--request-id <uuid>] [--json]` | Hands a trick folder to the person as a card of Collie's own on the lead: in the proposing session on the phone and in Settings, Tricks, and on the Hill while it is on. Nothing runs before their yes. It brings the code and the pictures of `media/` and `captures/`; `config.toml` stays behind. |
+| `propose` | `collie trick propose <folder> [--request-id <uuid>] [--json]` | Hands a trick folder to the person as a card of Collie's own on the lead: in the proposing session on the phone and in Settings, Tricks, and on Asks while it is on. Nothing runs before their yes. It brings the code and the pictures of `media/` and `captures/`; `config.toml` stays behind. |
 | `view` | `collie trick view <trick> <verb> [args]` | Runs one verb of an agent view, from the agent's pane. The verbs are the `trick view` commands below. |
 
 | Verb | Flag | What it does |
@@ -1815,7 +1813,7 @@ Every verb of `collie trick`.
 | `check` | `--run` | Run the program once, as the bridge would. |
 | `check` | `--json` | Print one JSON document instead of text. |
 | `dev` | `--tap` | Run it as a tap with this intent. |
-| `dev` | `--text` | The person's words for a Decision answer, with `--tap`. |
+| `dev` | `--text` | The person's words for an ask's answer, with `--tap`. |
 | `dev` | `--node` | The node the tap names. Default `main`. |
 | `dev` | `--rid` | The tap's request id, a UUID, with `--tap`. |
 | `dev` | `--facts` | Run on the facts in this file instead of the fixture's. |
@@ -1856,7 +1854,7 @@ The verbs an agent runs to draw an agent view, as `collie trick view <trick> <ve
 | `set` | `collie trick view <trick> set [--session <address>] <id> <file.json \| -> [--after <id> \| --first] [--image <path>[=<caption>]]... [--json]` | Puts one block on the screen. A block with that id is replaced where it stands. |
 | `pending` | `collie trick view <trick> pending [--session <address>] <id> "<label>" [--after <id> \| --first] [--json]` | Puts a placeholder block for one still in work. |
 | `remove` | `collie trick view <trick> remove [--session <address>] <id> [--json]` | Removes one block. |
-| `choice` | `collie trick view <trick> choice [--session <address>] <file.json \| -> \| --clear [--json]` | Sets or drops the decision block alone. It takes no `picked`: Collie marks the pick. |
+| `choice` | `collie trick view <trick> choice [--session <address>] <file.json \| -> \| --clear [--json]` | Sets or drops the choice block alone. It takes no `picked`: Collie marks the pick. |
 | `keep` | `collie trick view <trick> keep [--session <address>] <id>... \| --all [--json]` | Says these blocks still hold for the new request. |
 | `clear` | `collie trick view <trick> clear [--session <address>] [--json]` | Takes the whole screen away. The switch stays. |
 | `status` | `collie trick view <trick> status [--session <address>] [--json]` | Shows the session, the switch, the screen and the tail line. |
@@ -1883,7 +1881,7 @@ The verbs an agent runs to draw an agent view, as `collie trick view <trick> <ve
 | `remove` | `--session` | The session's address. |
 | `remove` | `--json` | Print one JSON document instead of text. |
 | `choice` | `--session` | The session's address. |
-| `choice` | `--clear` | Drop the decision block. |
+| `choice` | `--clear` | Drop the choice block. |
 | `choice` | `--json` | Print one JSON document instead of text. |
 | `keep` | `--session` | The session's address. |
 | `keep` | `--all` | Keep every block. |
@@ -1894,44 +1892,52 @@ The verbs an agent runs to draw an agent view, as `collie trick view <trick> <ve
 | `status` | `--json` | Print one JSON document instead of text. |
 | `help` | `--session` | The session's address. |
 
-### `collie hill`
+### `collie walky ask`
 
-The verbs an agent or a person runs to post and read Decisions.
+The verbs an agent runs to send an ask and read it: `ask`, `asks`, `status` and `cancel` of `collie walky`. The other verbs of `collie walky` send messages.
 
 | Verb | Usage | What it does |
 | --- | --- | --- |
-| `post` | `collie hill post --title "<question>" --summary "<plain words>" --option <intent>="<label>" ... --recommend <intent> --why "<reason>" [flags] [-- "<body>"]` | Puts one Decision on the Hill. `collie hill post --help` prints every flag and the rules. |
-| `status` | `collie hill status <dc_id> [--json]` | Reads a Decision's state and its answer. |
-| `withdraw` | `collie hill withdraw <dc_id> [--json]` | Withdraws a Decision that is open. |
-| `list` | `collie hill list [--json]` | Lists the sender's own Decisions, open first. |
-| `clear` | `collie hill clear [--json]` | Removes every closed Decision from the Hill. Open ones stay. |
-| `state` | `collie hill state [here\|quiet\|away] [--json]` | Reads the crew state. With a word, the person sets it. |
-| `on` | `collie hill on` | Switches the Hill on for this Collie. |
-| `off` | `collie hill off` | Switches the Hill off: every post is refused and the open Decisions stay. |
+| `ask` | `collie walky ask "<question>" --option <id>=<label> ... [flags]` | Sends one open question to the person, who reads it later without your session. `collie walky ask --help` prints every flag and the rules. |
+| `asks` | `collie walky asks [--json]` | Lists this session's open asks, oldest first. |
+| `status` | `collie walky status <ak_id> [--json]` | Reads an ask's state and its answer. The same verb reads a message's receipt when it gets a `wt_` id. |
+| `cancel` | `collie walky cancel <ak_id>... [--answered \| --because "<reason>"] [--json]` | Closes 1 to 5 asks that are open, with one flag for all. The same verb cancels a held message when it gets a `wt_` id. |
 
 | Verb | Flag | What it does |
 | --- | --- | --- |
-| `post` | `--title` | The question. |
-| `post` | `--summary` | The summary, in plain words. |
-| `post` | `--option` | One option, as `intent=label`. Repeat it. |
-| `post` | `--recommend` | The intent of the recommended option. |
-| `post` | `--why` | The reason for the recommendation. |
-| `post` | `--confirm` | A second label for an option, as `intent=word`. |
-| `post` | `--detail` | A line of detail for an option, as `intent=line`. |
-| `post` | `--priority` | `now`, `today` or `later`. |
-| `post` | `--text` | `none`, `optional` or `required`. |
-| `post` | `--link` | A web page, as `"label=https://..."`. |
-| `post` | `--about` | The session the card is about: `here` or an address. |
-| `post` | `--reply-to` | The session that gets the person's words. |
-| `post` | `--supersedes` | The id of an open Decision that this one replaces. |
-| `post` | `--expires` | When it closes by itself, such as `2h` or `3d`. |
-| `post` | `--request-id` | Post again with the same id and it posts once. |
-| `post` | `--image` | A picture, with an optional caption. Repeat it. |
-| `post` | `--view` | A JSON file with a small view under the summary. |
-| `post` | `--json` | Print one JSON document instead of text. |
+| `ask` | `--option` | One option, as `id=label`. Give 2 to 5, or use `--words`. |
+| `ask` | `--words` | The answer is the person's own words, with no options. |
+| `ask` | `--fact` | What decides it, in plain words. |
+| `ask` | `--does` | What an option does, as `id=text`. Repeat it. |
+| `ask` | `--cost` | What an option costs, as `id=text`. Repeat it. |
+| `ask` | `--recommend` | The id of the recommended option. |
+| `ask` | `--why` | The reason for the recommendation. Given with `--recommend`. |
+| `ask` | `--body` | The background, as a Markdown file. Or give text after `--`. |
+| `ask` | `--file` | A file the ask points to, as `path`, `path#heading` or `path:line`. Repeat it. |
+| `ask` | `--image` | A picture, with an optional caption. Repeat it. |
+| `ask` | `--replaces` | The id of an open ask that this one replaces. |
+| `ask` | `--request-id` | Send again with the same id and it is sent once. |
+| `ask` | `--dry-run` | Print the card and send nothing. |
+| `ask` | `--json` | Print one JSON document instead of text. |
+| `asks` | `--json` | Print one JSON document instead of text. |
 | `status` | `--json` | Print one JSON document instead of text. |
-| `withdraw` | `--json` | Print one JSON document instead of text. |
-| `list` | `--json` | Print one JSON document instead of text. |
+| `cancel` | `--answered` | The person answered it in the session. |
+| `cancel` | `--because` | The reason it is closed. Not with `--answered`. |
+| `cancel` | `--json` | Print one JSON document instead of text. |
+
+### `collie asks`
+
+The verbs a person runs for Asks: clear the closed asks, read or set the crew state, and switch Asks on or off.
+
+| Verb | Usage | What it does |
+| --- | --- | --- |
+| `clear` | `collie asks clear [--spoken] [--json]` | Removes every closed ask from Asks. Open ones stay. |
+| `state` | `collie asks state [here\|quiet\|away] [--json]` | Reads the crew state. With a word, the person sets it. |
+| `on` | `collie asks on` | Switches Asks on for this Collie. |
+| `off` | `collie asks off` | Switches Asks off: agents and tricks cannot ask, and the open asks stay. |
+
+| Verb | Flag | What it does |
+| --- | --- | --- |
 | `clear` | `--spoken` | Withdraw and clear the open cards the person answered in the session. Not from an agent's pane. |
 | `clear` | `--json` | Print one JSON document instead of text. |
 | `state` | `--json` | Print one JSON document instead of text. |

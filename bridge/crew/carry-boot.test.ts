@@ -29,7 +29,7 @@ async function deputyWithCopies() {
   await carryAll(lead, tricks, { crewId: "crew-1" });
   const hill = new StandbyHillStore(deputy.stateDir);
   // SAFETY: a JSON round trip.
-  const record = JSON.parse(JSON.stringify(decision("dc_carried00001"))) as JsonValue;
+  const record = JSON.parse(JSON.stringify(decision("ak_carried00001"))) as JsonValue;
   const list = parseHillList({ seq: 1, on: true, decisions: [record], closed: [], tricks: {} });
   if (list === null) throw new Error("bad list");
   await hill.applyList({ from: "desk", crewId: "crew-1", list });
@@ -57,7 +57,7 @@ describe("what the page showed is what the tap takes (§25)", () => {
     const { tricks, hill } = await deputyWithCopies();
     const first = carriedSeen(tricks, hill);
     expect(carriedSeen(tricks, hill)).toBe(first);
-    const list = parseHillList({ seq: 2, on: true, decisions: [], closed: ["dc_carried00001"], tricks: {} });
+    const list = parseHillList({ seq: 2, on: true, decisions: [], closed: ["ak_carried00001"], tricks: {} });
     if (list === null) throw new Error("bad list");
     await hill.applyList({ from: "desk", crewId: "crew-1", list });
     expect(carriedSeen(tricks, hill)).not.toBe(first);
@@ -69,7 +69,7 @@ describe("what the page showed is what the tap takes (§25)", () => {
     const ctx = { from: "desk", crewId: "crew-1" };
     const before = carriedSeen(tricks, hill);
     // The lead's list starts its write, and the tap asks for the hold while it runs.
-    const inFlight = hillCarryRoutes(hill).handle(CREW_HILL_COPY_PATH, ctx, { seq: 7, on: true, decisions: [], closed: ["dc_carried00001"], tricks: {} });
+    const inFlight = hillCarryRoutes(hill).handle(CREW_HILL_COPY_PATH, ctx, { seq: 7, on: true, decisions: [], closed: ["ak_carried00001"], tricks: {} });
     // Its turn starts (a few microtasks), and it is writing to the disk when the hold is asked.
     for (let i = 0; i < 3; i += 1) await Promise.resolve();
     const release = await holdCopies([tricks, hill]);
@@ -93,7 +93,7 @@ describe("what the page showed is what the tap takes (§25)", () => {
     kept?.();
     expect(tricks.held()).toBe(false);
     // A list lands between the door's check and the hold.
-    const list = parseHillList({ seq: 3, on: true, decisions: [], closed: ["dc_carried00001"], tricks: {} });
+    const list = parseHillList({ seq: 3, on: true, decisions: [], closed: ["ak_carried00001"], tricks: {} });
     if (list === null) throw new Error("bad list");
     await hill.applyList({ from: "desk", crewId: "crew-1", list });
     expect(await holdForTap([tricks, hill], shown, mark)).toBeNull();
@@ -137,7 +137,7 @@ describe("the boot after the tap adopts both copies (§25)", () => {
     const result = await b.run();
     expect(result?.tricks.started.map((t) => t.id)).toEqual(["legs"]);
     expect(result?.hill).toEqual({ open: 1, closed: 0, dropped: 0 });
-    expect(new HillStore(hillDir(c.deputy.stateDir)).get("dc_carried00001")?.state).toBe("open");
+    expect(new HillStore(hillDir(c.deputy.stateDir)).get("ak_carried00001")?.state).toBe("open");
     expect(b.lines.map((l) => [l.action, l.detail?.by])).toEqual([
       ["tricks.carried", "takeover"],
       ["hill.carried", "takeover"],

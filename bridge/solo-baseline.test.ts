@@ -387,6 +387,11 @@ function sourceFiles(dir: string): string[] {
 /** Every `<stateDir>/…` entry a module names, however the state dir and the name reached it. */
 function stateDirEntriesNamedBy(files: string[]): string[] {
   const named = new Set<string>();
+  // A name may be a `const` another module of the bridge exports (ADR 0179: `OLD_HILL_DIR` in hill/store.ts).
+  const shared = new Map<string, string>();
+  for (const f of sourceFiles(import.meta.dir)) {
+    for (const m of readFileSync(f, "utf8").matchAll(/^export const ([A-Z][A-Z0-9_]*) = "([^"]+)";$/gm)) shared.set(m[1]!, m[2]!);
+  }
   for (const f of files) {
     const src = readFileSync(f, "utf8");
     // Broader than the original `cfg.stateDir` + string-literal scan, in two directions, because a
@@ -397,7 +402,7 @@ function stateDirEntriesNamedBy(files: string[]): string[] {
       [...src.matchAll(/^(?:export )?const ([A-Z][A-Z0-9_]*) = "([^"]+)";$/gm)].map((m) => [m[1]!, m[2]!]),
     );
     for (const m of src.matchAll(/join\([^)]*stateDir,\s*(?:"([^"]+)"|([A-Za-z_][A-Za-z0-9_]*))\)/g)) {
-      const literal = m[1] ?? (m[2] === undefined ? undefined : constants.get(m[2]));
+      const literal = m[1] ?? (m[2] === undefined ? undefined : constants.get(m[2]) ?? shared.get(m[2]));
       if (literal !== undefined) named.add(literal);
       else if (m[2] !== undefined) {
         throw new Error(`${f}: <stateDir>/${m[2]} — the scan cannot resolve that name, so it cannot guard it`);

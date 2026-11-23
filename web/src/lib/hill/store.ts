@@ -322,7 +322,7 @@ export function clearClosedLocally(): () => void {
   };
 }
 
-/** The open decisions, most urgent first (`sortOpenDecisions`). The same array until the list changes. */
+/** The open decisions, fresh ones first, then oldest first (`sortOpenDecisions`). The same array until the list changes. */
 export function useHillOpen(): readonly HillDecision[] {
   return useSyncExternalStore(
     subscribe,

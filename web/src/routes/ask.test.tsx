@@ -27,11 +27,11 @@ function home(): HomeData {
 }
 
 const ONE = askDecision({
-  id: "dc_one", title: "Keep the old answer route?", summary: "The phone sends all answers at once now.", address: askAddress("w1:p1"), at: NOW - 14 * 3_600_000, mark: "fresh",
+  id: "ak_one", title: "Keep the old answer route?", summary: "The phone sends all answers at once now.", address: askAddress("w1:p1"), at: NOW - 14 * 3_600_000, mark: "fresh",
   recommend: "keep", why: "A phone that did not reload would lose an answer.", body: "One two three four five.", files: [{ path: "docs/plan.md", heading: "Plan" }, { path: "src/route.ts", line: 40 }], root: "w1:p1",
 });
-const TWO = askDecision({ id: "dc_two", title: "Drop the flag?", address: askAddress("w1:p1"), at: NOW - 3_600_000 });
-const THREE = askDecision({ id: "dc_three", title: "Words please?", address: askAddress("w1:p1"), at: NOW - 1_000, words: true });
+const TWO = askDecision({ id: "ak_two", title: "Drop the flag?", address: askAddress("w1:p1"), at: NOW - 3_600_000 });
+const THREE = askDecision({ id: "ak_three", title: "Words please?", address: askAddress("w1:p1"), at: NOW - 1_000, words: true });
 
 function Probe() {
   const drafts = useAskDrafts();
@@ -47,7 +47,7 @@ async function hillHolds(open: ReturnType<typeof askDecision>[], closed: ReturnT
 }
 
 function renderAsk(path: string) {
-  const entries: InitialEntry[] = ["/", { pathname: "/hill", state: { from: "/" } }, { pathname: path, state: { from: "/hill" } }];
+  const entries: InitialEntry[] = ["/", { pathname: "/asks", state: { from: "/" } }, { pathname: path, state: { from: "/asks" } }];
   const router = createMemoryRouter(
     [
       {
@@ -62,9 +62,9 @@ function renderAsk(path: string) {
         ),
         children: [
           { index: true, element: <div data-testid="home" /> },
-          { path: "hill", element: <div data-testid="board" /> },
-          { path: "hill/ask/:id", element: <AskRoute /> },
-          { path: "hill/ask/:id/context", element: <AskContextRoute /> },
+          { path: "asks", element: <div data-testid="board" /> },
+          { path: "asks/ask/:id", element: <AskRoute /> },
+          { path: "asks/ask/:id/context", element: <AskContextRoute /> },
           { path: "files/*", element: <div data-testid="files" /> },
           { path: "pane/:paneId/*", element: <div data-testid="pane" /> },
         ],
@@ -92,7 +92,7 @@ const here = (router: ReturnType<typeof renderAsk>) => router.state.location.pat
 describe("the ask screen", () => {
   it("draws the header, the question, the situation, the context row, the suggestion, the hint, the cards and Your own answer last", async () => {
     await hillHolds([ONE, TWO]);
-    renderAsk("/hill/ask/dc_one");
+    renderAsk("/asks/ask/ak_one");
     expect(await screen.findByRole("heading", { name: "collie lead" })).toBeInTheDocument();
     expect(document.querySelector('[data-slot="ask-header-line"]')).toHaveTextContent(/^asked 14 h ago · warm, (37|38) min left$/u);
     expect(document.querySelector('[data-slot="ask-place"]')).toHaveTextContent("ask 1 of 2");
@@ -113,7 +113,7 @@ describe("the ask screen", () => {
 
   it("leaves out the situation, the context row and the suggestion when the agent sent none", async () => {
     await hillHolds([TWO]);
-    renderAsk("/hill/ask/dc_two");
+    renderAsk("/asks/ask/ak_two");
     await screen.findByRole("heading", { name: "Drop the flag?" });
     expect(document.querySelector('[data-slot="ask-situation"]')).toBeNull();
     expect(document.querySelector('[data-slot="ask-context-row"]')).toBeNull();
@@ -121,8 +121,8 @@ describe("the ask screen", () => {
   });
 
   it("says each mark in its own words", async () => {
-    await hillHolds([askDecision({ id: "dc_u", title: "Stale?", address: askAddress("w1:p1"), mark: "unchecked" })]);
-    renderAsk("/hill/ask/dc_u");
+    await hillHolds([askDecision({ id: "ak_u", title: "Stale?", address: askAddress("w1:p1"), mark: "unchecked" })]);
+    renderAsk("/asks/ask/ak_u");
     await screen.findByRole("heading", { name: "Stale?" });
     expect(document.querySelector('[data-slot="ask-mark"]')).toHaveTextContent("You wrote in this session since. Not checked.");
   });
@@ -136,25 +136,25 @@ describe("the ask screen", () => {
       }),
     );
     await hillHolds([ONE, TWO]);
-    const router = renderAsk("/hill/ask/dc_one");
+    const router = renderAsk("/asks/ask/ak_one");
     await userEvent.click(await screen.findByRole("button", { name: /Drop the old route/u }));
     const dialog = await screen.findByRole("dialog");
     await userEvent.click(within(dialog).getByRole("button", { name: /Add a note/u }));
     await userEvent.type(within(dialog).getByRole("textbox"), "after the next minor");
     await userEvent.click(within(dialog).getByRole("button", { name: "Confirm" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-    expect(screen.getByTestId("drafts")).toHaveTextContent("dc_one");
+    expect(screen.getByTestId("drafts")).toHaveTextContent("ak_one");
     const card = document.querySelector('[data-slot="ask-card"][data-intent="drop"]')!;
     expect(card).toHaveAttribute("data-state", "answered");
     expect(card.querySelector('[data-slot="ask-card-foot"]')).toHaveTextContent("Note: after the next minor");
     expect(document.querySelector('[data-slot="ask-send-line"]')).toHaveTextContent("1 of 2 answered·Send 1");
-    expect(here(router)).toBe("/hill/ask/dc_one");
+    expect(here(router)).toBe("/asks/ask/ak_one");
     expect(posted).toBe(0);
   });
 
   it("opens Your own answer with a required field", async () => {
     await hillHolds([TWO]);
-    renderAsk("/hill/ask/dc_two");
+    renderAsk("/asks/ask/ak_two");
     await userEvent.click(await screen.findByRole("button", { name: /Your own answer/u }));
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByRole("button", { name: "Confirm" })).toBeDisabled();
@@ -162,7 +162,7 @@ describe("the ask screen", () => {
 
   it("takes a words ask in one card", async () => {
     await hillHolds([THREE]);
-    renderAsk("/hill/ask/dc_three");
+    renderAsk("/asks/ask/ak_three");
     await screen.findByRole("heading", { name: "Words please?" });
     expect(document.querySelectorAll('[data-slot="ask-card"]')).toHaveLength(1);
     expect(screen.getByRole("button", { name: "Ask back" })).toBeDisabled();
@@ -172,39 +172,39 @@ describe("the ask screen", () => {
 
   it("walks the deck with Previous and Next and REPLACES the history entry", async () => {
     await hillHolds([ONE, TWO]);
-    const router = renderAsk("/hill/ask/dc_one");
+    const router = renderAsk("/asks/ask/ak_one");
     const previous = await screen.findByRole("button", { name: /Previous/u });
     const next = screen.getByRole("button", { name: /Next/u });
     expect(previous).toBeDisabled();
     const length = window.history.length;
     await userEvent.click(next);
-    expect(here(router)).toBe("/hill/ask/dc_two");
+    expect(here(router)).toBe("/asks/ask/ak_two");
     expect(await screen.findByRole("button", { name: /Next/u })).toBeDisabled();
     expect(screen.getByRole("button", { name: /Previous/u })).toBeEnabled();
     await act(() => router.navigate(-1));
-    expect(here(router)).toBe("/hill");
+    expect(here(router)).toBe("/asks");
     expect(window.history.length).toBe(length);
   });
 
   it("moves with the keys, picks with a digit, and leaves the keys alone while a field has the focus", async () => {
     await hillHolds([ONE, TWO]);
-    const router = renderAsk("/hill/ask/dc_one");
+    const router = renderAsk("/asks/ask/ak_one");
     await screen.findByRole("heading", { name: "Keep the old answer route?" });
     await userEvent.keyboard("j");
-    expect(here(router)).toBe("/hill/ask/dc_two");
+    expect(here(router)).toBe("/asks/ask/ak_two");
     await userEvent.keyboard("k");
-    expect(here(router)).toBe("/hill/ask/dc_one");
+    expect(here(router)).toBe("/asks/ask/ak_one");
     await userEvent.keyboard("2");
     const dialog = await screen.findByRole("dialog");
     expect(dialog).toHaveTextContent("Drop the old route");
     const field = within(dialog).getByRole("textbox", { name: /Note for the agent/u });
     await userEvent.type(field, "jk");
     expect(field).toHaveValue("jk");
-    expect(here(router)).toBe("/hill/ask/dc_one");
+    expect(here(router)).toBe("/asks/ask/ak_one");
     await userEvent.click(within(dialog).getByRole("button", { name: "Confirm" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     await userEvent.keyboard("{Escape}");
-    expect(here(router)).toBe("/hill");
+    expect(here(router)).toBe("/asks");
   });
 
   it("sends the marked answers of the session in one request and clears the drafts", async () => {
@@ -213,28 +213,28 @@ describe("the ask screen", () => {
       http.post(/\/api\/hill\/answers$/, async ({ request }) => {
         const sent = parseJsonObject(await request.text()) ?? {};
         bodies.push(sent);
-        return HttpResponse.json({ rid: asJsonString(sent.rid) ?? "", items: [{ id: "dc_one", code: "ok", reason: null, state: "answered" }], delivery: "typed", at: NOW });
+        return HttpResponse.json({ rid: asJsonString(sent.rid) ?? "", items: [{ id: "ak_one", code: "ok", reason: null, state: "answered" }], delivery: "typed", at: NOW });
       }),
     );
     await hillHolds([ONE, TWO]);
-    renderAsk("/hill/ask/dc_one");
+    renderAsk("/asks/ask/ak_one");
     await userEvent.click(await screen.findByRole("button", { name: /Keep both routes/u }));
     await userEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Confirm" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     await userEvent.click(screen.getByRole("button", { name: "Review and send" }));
     const sheet = await screen.findByRole("dialog", { name: "Send to collie lead" });
-    expect(within(sheet).getByText(/dc_two "Drop the flag\?": no answer yet, it stays open\./u)).toBeInTheDocument();
+    expect(within(sheet).getByText(/ak_two "Drop the flag\?": no answer yet, it stays open\./u)).toBeInTheDocument();
     server.use(http.get("/api/hill", () => HttpResponse.json({ v: 1, rev: 2, open: [TWO], closed: [] })));
     await userEvent.click(within(sheet).getByRole("button", { name: "Send 1" }));
     await waitFor(() => expect(bodies).toHaveLength(1));
-    expect(bodies[0]).toMatchObject({ answers: [{ id: "dc_one", intent: "keep" }] });
+    expect(bodies[0]).toMatchObject({ answers: [{ id: "ak_one", intent: "keep" }] });
     await waitFor(() => expect(screen.getByTestId("drafts")).toHaveTextContent(/^$/u));
   });
 
   it("keeps the marks and says so in plain words when the bridge refuses the whole Send", async () => {
     server.use(http.post(/\/api\/hill\/answers$/, () => HttpResponse.json({ code: "not_answering", error: "away", machine: "workshop" }, { status: 409 })));
     await hillHolds([TWO]);
-    renderAsk("/hill/ask/dc_two");
+    renderAsk("/asks/ask/ak_two");
     await userEvent.click(await screen.findByRole("button", { name: /Decide next week/u }));
     await userEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Confirm" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
@@ -242,7 +242,7 @@ describe("the ask screen", () => {
     const sheet = await screen.findByRole("dialog", { name: "Send to collie lead" });
     await userEvent.click(within(sheet).getByRole("button", { name: "Send 1" }));
     expect(await within(sheet).findByRole("alert")).toHaveTextContent("workshop is not answering. Nothing was sent.");
-    expect(screen.getByTestId("drafts")).toHaveTextContent("dc_two");
+    expect(screen.getByTestId("drafts")).toHaveTextContent("ak_two");
   });
 
   it("sends once for two quick taps", async () => {
@@ -251,11 +251,11 @@ describe("the ask screen", () => {
       http.post(/\/api\/hill\/answers$/, async () => {
         posted += 1;
         await new Promise((resolve) => setTimeout(resolve, 30));
-        return HttpResponse.json({ rid: "x", items: [{ id: "dc_two", code: "ok", reason: null, state: "answered" }], delivery: "typed", at: NOW });
+        return HttpResponse.json({ rid: "x", items: [{ id: "ak_two", code: "ok", reason: null, state: "answered" }], delivery: "typed", at: NOW });
       }),
     );
     await hillHolds([TWO]);
-    renderAsk("/hill/ask/dc_two");
+    renderAsk("/asks/ask/ak_two");
     await userEvent.click(await screen.findByRole("button", { name: /Decide next week/u }));
     await userEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Confirm" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
@@ -269,43 +269,43 @@ describe("the ask screen", () => {
   });
 
   it("says what happened on an ask that is closed or not on the board, with the way back", async () => {
-    await hillHolds([TWO], [askDecision({ id: "dc_gone", title: "Old question?", address: askAddress("w1:p1"), state: "withdrawn", closedReason: "conversation cleared" })]);
-    const router = renderAsk("/hill/ask/dc_gone");
+    await hillHolds([TWO], [askDecision({ id: "ak_gone", title: "Old question?", address: askAddress("w1:p1"), state: "withdrawn", closedReason: "conversation cleared" })]);
+    const router = renderAsk("/asks/ask/ak_gone");
     expect(await screen.findByText("The conversation was cleared. This ask is closed.")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Old question?" })).toBeInTheDocument();
     await userEvent.click(screen.getAllByRole("button", { name: "Back to the board" })[0]!);
-    expect(here(router)).toBe("/hill");
+    expect(here(router)).toBe("/asks");
   });
 
   it("says an unknown id is not on the board", async () => {
     await hillHolds([TWO]);
-    renderAsk("/hill/ask/dc_nope");
+    renderAsk("/asks/ask/ak_nope");
     expect(await screen.findByText("This ask is not on the board.")).toBeInTheDocument();
   });
 
   it("goes up to the board with the header arrow", async () => {
     await hillHolds([TWO]);
-    const router = renderAsk("/hill/ask/dc_two");
+    const router = renderAsk("/asks/ask/ak_two");
     await userEvent.click(await screen.findByRole("button", { name: "Back to the board" }));
-    expect(here(router)).toBe("/hill");
+    expect(here(router)).toBe("/asks");
   });
 });
 
 describe("the context page", () => {
   it("opens one level below the ask and goes back up to it", async () => {
     await hillHolds([ONE]);
-    const router = renderAsk("/hill/ask/dc_one");
+    const router = renderAsk("/asks/ask/ak_one");
     await userEvent.click(await screen.findByRole("button", { name: /Context/u }));
-    expect(here(router)).toBe("/hill/ask/dc_one/context");
+    expect(here(router)).toBe("/asks/ask/ak_one/context");
     expect(await screen.findByRole("heading", { name: "Context for this ask" })).toBeInTheDocument();
     expect(screen.getByText("One two three four five.")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Back to the answers" }));
-    expect(here(router)).toBe("/hill/ask/dc_one");
+    expect(here(router)).toBe("/asks/ask/ak_one");
   });
 
   it("lists the linked files and opens one in the Files preview", async () => {
     await hillHolds([ONE]);
-    const router = renderAsk("/hill/ask/dc_one/context");
+    const router = renderAsk("/asks/ask/ak_one/context");
     expect(await screen.findByText("docs/plan.md")).toBeInTheDocument();
     expect(screen.getByText("#Plan")).toBeInTheDocument();
     expect(screen.getByText("line 40")).toBeInTheDocument();

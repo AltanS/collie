@@ -5,7 +5,6 @@ import { ActionRow } from "@/components/action-sheet-rows";
 import { BrandMark } from "@/components/brand-mark";
 import { useCrew } from "@/components/crew-provider";
 import { DecisionCard, KeptWords } from "@/components/decision-card";
-import { HillPriorityGlyph, PRIORITY_WORD_INK } from "@/components/hill-priority";
 import { Icon } from "@/components/icons/icon";
 import type { IconKey } from "@/components/icons/keys";
 import { SectionHeader } from "@/components/section-header";
@@ -18,22 +17,20 @@ import { BottomSheet } from "@/components/ui/sheet";
 import { useArm, useDisarmOn } from "@/hooks/use-arm";
 import { useHillAnswer } from "@/hooks/use-hill-answer";
 import { useLocale } from "@/hooks/use-locale";
-import { HILL_PRIORITIES, type HillDecision, type HillState } from "@/lib/hill/wire";
-import { answeredInSession, answerLine, closedWord, priorityWord } from "@/lib/hill/words";
+import type { HillDecision, HillState } from "@/lib/hill/wire";
+import { answeredInSession, answerLine, closedWord } from "@/lib/hill/words";
 import { hillDraft, noteHillDraft } from "@/lib/hill/store";
 import { hostSlot } from "@/lib/hosts";
 import { t, tn } from "@/lib/i18n";
 import { useTricksState } from "@/lib/tricks/store";
 import { cn } from "@/lib/utils";
 
-// THE HILL (M96): the open Decisions agents and tricks posted, as cards, grouped by priority (Now,
-// Today, Later), and under them a fold "Answered" with the closed ones the bridge serves. One view, its
-// own route (`/hill`), reached from the Hill item, the fixed fourth item of the Dashboard's bottom bar. "Hill" is the view's
-// name, the same in every language. The look is calm, by priority (the owner's pick, C1, 2026-11-09).
+// THE HILL (M96): the open asks and cards, and under them a fold "Answered" with the closed ones the bridge serves. No card has
+// a priority (ADR 0179 addendum), so the cards that are not asks stand in one list under "Other cards", oldest first. One view,
+// its own route (`/asks`), reached from the Asks item, the fixed fourth item of the Dashboard's bottom bar. The look is calm (the owner's pick, C1, 2026-11-09).
 //
 // NOTHING ARRIVES OR LEAVES WITH A JUMP (2026-11-10). A card that leaves the open list collapses where it
-// stood and the cards below glide up (`PresenceList`, ui/presence.tsx), taking its 12px gap with it; a
-// priority group whose last card it was leaves with it as one motion, its 28px gap with it; the closed
+// stood and the cards below glide up (`PresenceList`, ui/presence.tsx), taking its 12px gap with it; the closed
 // row arrives at the top of Answered by growing from nothing; the clear hill and the open cards trade
 // places in one band (`CollapseSwap`); and Answered itself is an item of the column's presence list, so
 // it grows in the first time there is something under it and, when the last closed row leaves (a Clear
@@ -45,13 +42,13 @@ import { cn } from "@/lib/utils";
 
 /**
  * The header: back to the Dashboard, the Hill's mountain mark, the title, and one line under it that
- * is always there ("3 open · 1 now", or "All clear"), so a count arriving or leaving moves nothing.
+ * is always there ("3 open", or "All clear"), so a count arriving or leaving moves nothing.
  * `held` is the first list still on its way (routes/hill.tsx): the line keeps its place and says
  * nothing, because "All clear" would be a claim about a hill nobody has read yet.
  */
-export function HillHeader({ count, nowCount, onBack, off = false, held = false }: { count: number; nowCount: number; onBack: () => void; off?: boolean; held?: boolean }) {
+export function HillHeader({ count, onBack, off = false, held = false }: { count: number; onBack: () => void; off?: boolean; held?: boolean }) {
   useLocale();
-  const line = off ? t("hill.off.line") : held ? "\u00a0" : count === 0 ? t("hill.clear") : nowCount > 0 ? `${tn("hill.open", count)} · ${t("hill.now", { count: nowCount })}` : tn("hill.open", count);
+  const line = off ? t("hill.off.line") : held ? "\u00a0" : count === 0 ? t("hill.clear") : tn("hill.open", count);
   return (
     <RouteHeader
       width="column"
@@ -67,18 +64,8 @@ export function HillHeader({ count, nowCount, onBack, off = false, held = false 
           >
             <Icon name="back" className="size-5" />
           </Button>
-          {/* The mark is a disc because it is as wide as it is tall (DESIGN.md §3). While a `now` Decision is
-              open its ring and its mountain take the warm accent, as C1 draws them (DESIGN.md §4, "The
-              Hill's warm accent"); the count line says it in words. */}
-          <span
-            aria-hidden
-            data-slot="hill-mark"
-            data-now={nowCount > 0 ? "" : undefined}
-            className={cn(
-              "flex size-9 shrink-0 items-center justify-center rounded-full border bg-card",
-              nowCount > 0 ? "border-status-working/60 text-status-working" : "border-border text-foreground",
-            )}
-          >
+          {/* The mark is a disc because it is as wide as it is tall (DESIGN.md §3). */}
+          <span aria-hidden data-slot="hill-mark" className="flex size-9 shrink-0 items-center justify-center rounded-full border border-border bg-card text-foreground">
             <Icon name="hill" className="size-5" />
           </span>
           <div className="ml-1 flex min-w-0 flex-col">
@@ -319,29 +306,10 @@ export function HillOff({ canWrite, busy, onTurnOn }: { canWrite: boolean; busy:
 }
 
 /**
- * One priority's cards under its heading: the three peaks, the word, how many, at C1's 13px. The empty
- * peaks are filled with the card colour, as C1 draws them.
- */
-function PriorityGroup({ priority, decisions, renderCard }: { priority: HillDecision["priority"]; decisions: readonly HillDecision[]; renderCard: (decision: HillDecision) => ReactNode }) {
-  const headingId = useId();
-  return (
-    <section data-slot="hill-group" data-priority={priority} aria-labelledby={headingId} className="flex flex-col gap-3">
-      <h2 id={headingId} className="flex items-center gap-2 text-[13px] font-semibold">
-        <HillPriorityGlyph priority={priority} surface="card" decorative />
-        <span className={PRIORITY_WORD_INK[priority]}>{priorityWord(priority)}</span>
-        <span className="tabular-nums text-muted-foreground">{decisions.length}</span>
-      </h2>
-      {/* The cards come and go with an eased collapse; 12 is the section's own gap-3. */}
-      <PresenceList gap={12}>{decisions.map((decision) => renderCard(decision))}</PresenceList>
-    </section>
-  );
-}
-
-/**
- * The view's body: the cards by priority, or the empty hill, then the Answered fold. `renderCard`
+ * The view's body: the other cards, or the empty hill, then the Answered fold. `renderCard`
  * draws one open decision; `kept` holds the words of answers that did not reach their target, per
  * decision. `closedTotal` is how many closed ones the bridge holds (at least `closed.length`), what Clear
- * says it removes; `clear` absent draws no button (a view that cannot write). `open` comes sorted (most urgent first, then oldest), and each group keeps that order.
+ * says it removes; `clear` absent draws no button (a view that cannot write). `open` holds the cards that are not asks; they stand oldest first, whatever order they come in.
  * With nothing open the fold starts open, because then it is all the hill has to show.
  */
 export function HillView({
@@ -405,13 +373,8 @@ export function HillView({
                   {t("asks.board.others")}
                 </h2>
               )}
-              {/* 28 is this column's own gap-7: a group that leaves takes it along. */}
-              <PresenceList gap={28}>
-                {HILL_PRIORITIES.flatMap((priority) => {
-                  const group = open.filter((d) => d.priority === priority);
-                  return group.length === 0 ? [] : [<PriorityGroup key={priority} priority={priority} decisions={group} renderCard={renderCard} />];
-                })}
-              </PresenceList>
+              {/* The cards come and go with an eased collapse; 12 is this column's own gap-3. Oldest first. */}
+              <PresenceList gap={12}>{open.toSorted((a, b) => a.at - b.at).map((decision) => renderCard(decision))}</PresenceList>
             </div>
           </Collapse>
         </div>

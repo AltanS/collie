@@ -139,8 +139,8 @@ export function pushOptions(decision: Extract<PushDecision, { kind: "show" }>, a
  */
 export const HOST_TAG_SEP = "@";
 
-/** A Decision id as the bridge mints it (`HILL_ID_RE` in lib/hill/wire.ts, restated so the worker stays small). */
-const HILL_DECISION_ID = /^dc_[a-z0-9]{12}$/;
+/** An ask id as the bridge mints it (`HILL_ID_RE` in lib/hill/wire.ts, restated so the worker stays small). */
+const HILL_DECISION_ID = /^ak_[a-z0-9]{12}$/;
 
 /**
  * Qualify a notification slot with the host that owns it. `host === undefined` (solo, or the lead's
@@ -253,9 +253,10 @@ export function notificationPath(data: NotifData = {}): string {
   // names where a pane lives, and a machine alert has no pane. A push without a machine has nowhere
   // better to go than Machines itself. The paths are nav.ts's own (kept in machine-paths.ts for the worker), unscoped: the page is the lead's.
   if (data.target === "machine") return data.machine ? machinePath(data.machine) : machinesPath();
-  // A `now` Decision (bridge/hill/push.ts) opens the Hill at its card, named by the hash the route scrolls
-  // to (routes/hill.tsx). The Hill is the lead's, so unscoped. An id of any other shape opens the Hill.
-  if (data.target === "hill") return data.decision !== undefined && HILL_DECISION_ID.test(data.decision) ? `/hill#${data.decision}` : "/hill";
+  // A `now` ask (bridge/hill/push.ts) opens Asks at its card, named by the hash the route scrolls to
+  // (routes/hill.tsx). Asks is the lead's, so unscoped. An id of any other shape opens the board. The
+  // payload's `target: "hill"` is the bridge's own wire and stays (ADR 0179); the address is `/asks`.
+  if (data.target === "hill") return data.decision !== undefined && HILL_DECISION_ID.test(data.decision) ? `/asks#${data.decision}` : "/asks";
   const base = data.paneId && data.paneId !== "test" ? `/pane/${encodeURIComponent(data.paneId)}` : "/";
   return `${base}${scopeSearch({ host: data.host, session: data.session })}`;
 }

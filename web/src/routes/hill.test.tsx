@@ -70,7 +70,7 @@ function home(over: Partial<HomeData> = {}): HomeData {
  * The Hill under the root route, as the app mounts it. By default the history is the one the bar's own
  * Hill item leaves: the Dashboard, then the Hill pushed down from it with `from` naming the Dashboard.
  */
-function renderHill(entries: InitialEntry[] = ["/", { pathname: "/hill", state: { from: "/" } }], data: HomeData = home()) {
+function renderHill(entries: InitialEntry[] = ["/", { pathname: "/asks", state: { from: "/" } }], data: HomeData = home()) {
   const router = createMemoryRouter(
     [
       {
@@ -80,7 +80,7 @@ function renderHill(entries: InitialEntry[] = ["/", { pathname: "/hill", state: 
         element: withHeaderHost(<Outlet />),
         children: [
           { index: true, element: <div data-testid="home" /> },
-          { path: "hill", element: <HillRoute /> },
+          { path: "asks", element: <HillRoute /> },
           { path: "trick/:paneId", element: <div data-testid="trick" /> },
         ],
       },
@@ -122,11 +122,12 @@ afterEach(async () => {
 });
 
 describe("the hill route", () => {
-  it("shows the title and how many are open, and how many of them are Now", async () => {
+  it("shows the title and how many are open, with nothing about priority", async () => {
     await hillHolds([hillDecision({ priority: "now" }), hillDecision(), hillDecision()]);
     renderHill();
     expect(await screen.findByRole("heading", { name: "Asks" })).toBeInTheDocument();
-    expect(document.querySelector('[data-slot="hill-count"]')).toHaveTextContent("3 open · 1 now");
+    expect(document.querySelector('[data-slot="hill-count"]')).toHaveTextContent("3 open");
+    expect(document.querySelector('[data-slot="hill-count"]')).not.toHaveTextContent("now");
     expect(document.querySelectorAll('[data-slot="decision-card"]')).toHaveLength(3);
   });
 
@@ -172,14 +173,14 @@ describe("the hill route", () => {
     await hillHolds([hillDecision(), hillDecision(), target]);
     const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
     scrolled.mockClear();
-    renderHill(["/", { pathname: "/hill", hash: `#${target.id}`, state: { from: "/" } }]);
+    renderHill(["/", { pathname: "/asks", hash: `#${target.id}`, state: { from: "/" } }]);
     await waitFor(() => expect(scrolled).toHaveBeenCalledTimes(1));
     const card = scrolled.mock.contexts[0];
     if (!(card instanceof HTMLElement)) throw new Error("scrollIntoView ran on no element");
     expect(card.dataset.slot).toBe("decision-card");
     expect(card.dataset.id).toBe(target.id);
     scrolled.mockClear();
-    renderHill(["/", { pathname: "/hill", hash: "#dc_zzzzzzzzzzzz", state: { from: "/" } }]);
+    renderHill(["/", { pathname: "/asks", hash: "#ak_zzzzzzzzzzzz", state: { from: "/" } }]);
     await screen.findAllByRole("heading", { name: "Asks" });
     expect(scrolled).not.toHaveBeenCalled();
     scrolled.mockRestore();
@@ -218,7 +219,7 @@ describe("the hill route on a cold open (calm load, row 4)", () => {
     return { seen, stop: () => observer.disconnect() };
   }
 
-  it("never draws the clear hill while Decisions wait: the bar's box is held, then bar and cards land together", async () => {
+  it("never draws the clear hill while asks wait: the bar's box is held, then bar and cards land together", async () => {
     const release = heldList([hillDecision({ priority: "now" }), hillDecision()], [hillDecision({ state: "expired" })]);
     await act(async () => syncHill(1));
     const watch = watchForClear();
@@ -241,8 +242,8 @@ describe("the hill route on a cold open (calm load, row 4)", () => {
     // The neighbours did not move: the bar is still first in the scroller, the cards follow it, the hold is gone.
     expect(scroller.firstElementChild).toHaveAttribute("data-slot", "hill-crew-state");
     expect(document.querySelector('[data-slot="hill-crew-state-hold"]')).toBeNull();
-    expect(document.querySelector('[data-slot="hill-count"]')).toHaveTextContent("2 open · 1 now");
-    // The fold is chosen from the real list: closed while Decisions are open.
+    expect(document.querySelector('[data-slot="hill-count"]')).toHaveTextContent("2 open");
+    // The fold is chosen from the real list: closed while asks are open.
     expect(document.querySelector('[data-slot="hill-answered"] button[aria-expanded]')).toHaveAttribute("aria-expanded", "false");
     expect(watch.seen()).toEqual([]);
     watch.stop();
@@ -298,7 +299,9 @@ describe("the Dashboard's bar on the hill route (amended 2026-11-10)", () => {
     expect(hillItem()).toHaveAttribute("aria-current", "page");
     expect(hillItem().className).toMatch(/\bborder-foreground\b/u);
     expect(hillItem().querySelector('[data-slot="tab-badge"]')).toHaveTextContent("2");
-    expect(hillItem().querySelector('[data-icon="hill-now"]')).not.toBeNull();
+    // A card sent as `now` by an older member does not change the mountain: no ask has a priority (ADR 0179 addendum).
+    expect(hillItem().querySelector('[data-icon="hill"]')).not.toBeNull();
+    expect(hillItem().querySelector('[data-icon="hill-now"]')).toBeNull();
   });
 
   it("draws the bar on the clear hill too, with the Hill item current and no count", async () => {
@@ -334,7 +337,7 @@ describe("the Dashboard's bar on the hill route (amended 2026-11-10)", () => {
     const router = renderHill();
     await screen.findByRole("heading", { name: "Asks" });
     await userEvent.click(hillItem());
-    expect(router.state.location.pathname).toBe("/hill");
+    expect(router.state.location.pathname).toBe("/asks");
     expect(router.state.historyAction).toBe("POP");
   });
 
@@ -349,11 +352,11 @@ describe("the Dashboard's bar on the hill route (amended 2026-11-10)", () => {
     await act(() => router.navigate(-1));
     expect(router.state.location.pathname).toBe("/");
     await act(() => router.navigate(1));
-    expect(router.state.location.pathname).toBe("/hill");
+    expect(router.state.location.pathname).toBe("/asks");
   });
 
   it("a tab on a Hill opened cold replaces it with the Dashboard: nothing is stacked behind", async () => {
-    const router = renderHill(["/hill"]);
+    const router = renderHill(["/asks"]);
     await screen.findByRole("heading", { name: "Asks" });
     await userEvent.click(within(bar()).getByRole("button", { name: "Dashboard" }));
     await waitFor(() => expect(router.state.location.pathname).toBe("/"));
@@ -376,9 +379,9 @@ describe("the Dashboard's bar on the hill route (amended 2026-11-10)", () => {
     expect(router.state.location.state).toEqual({ from: "/" });
   });
 
-  it("from /hill?h=peer, opening a trick Session sideways keeps /?h=peer in state.from", async () => {
+  it("from /asks?h=peer, opening a trick Session sideways keeps /?h=peer in state.from", async () => {
     await seedTabbar(["legs"]);
-    const router = renderHill(["/?h=peer", { pathname: "/hill", search: "?h=peer", state: { from: "/?h=peer" } }]);
+    const router = renderHill(["/?h=peer", { pathname: "/asks", search: "?h=peer", state: { from: "/?h=peer" } }]);
     await screen.findByRole("heading", { name: "Asks" });
     const legs = bar().querySelector<HTMLElement>('[data-slot="tab-extra"][data-trick="legs"]')!;
     await userEvent.click(legs);
@@ -403,8 +406,8 @@ describe("the hill route with the Hill switched off", () => {
     renderHill(undefined, home({ hill: false, hillOff: true }));
     await screen.findByRole("heading", { name: "Asks" });
     expect(document.querySelector('[data-slot="hill-count"]')).toHaveTextContent("Off");
-    expect(document.querySelector('[data-slot="hill-off"]')).toHaveTextContent("Asks are off.");
-    expect(document.querySelector('[data-slot="hill-off"]')).toHaveTextContent("Agents and tricks cannot ask you here. Open Decisions come back when you switch it on.");
+    expect(document.querySelector('[data-slot="hill-off"]')).toHaveTextContent("Asks is off.");
+    expect(document.querySelector('[data-slot="hill-off"]')).toHaveTextContent("Agents and tricks cannot ask you here. Open asks come back when you switch it on.");
     expect(document.querySelector('[data-slot="hill-empty"]')).toBeNull();
     expect(offBar()?.querySelector('[data-slot="tab-link"]')).toBeNull();
   });
@@ -425,10 +428,10 @@ describe("the hill route with the Hill switched off", () => {
           path: "/",
           loader: () => data,
           element: withHeaderHost(<Outlet />),
-          children: [{ path: "hill", element: <HillRoute /> }],
+          children: [{ path: "asks", element: <HillRoute /> }],
         },
       ],
-      { initialEntries: ["/hill"] },
+      { initialEntries: ["/asks"] },
     );
     render(<RouterProvider router={router} />);
     const button = await screen.findByRole("button", { name: "Switch Asks on" });
@@ -541,7 +544,7 @@ describe("clearing the closed entries", () => {
     expect(document.querySelector('[data-slot="hill-answered"]')).toBeNull();
   });
 
-  it("with open Decisions, the open cards stay and only the Answered group goes", async () => {
+  it("with open asks, the open cards stay and only the Answered group goes", async () => {
     server.use(http.post("/api/hill/clear", () => HttpResponse.json({ cleared: 1, skipped: [] })));
     await hillHoldsClosed([hillDecision(), hillDecision()], [closedRow("answered", 3)]);
     renderHill();

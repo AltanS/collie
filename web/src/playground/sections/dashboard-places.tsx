@@ -241,10 +241,9 @@ function PlacesScreen({ c, store }: { c: PlaceCase; store: TricksStore }) {
 function HillRouteScreen({ c, store }: { c: PlaceCase; store: TricksStore }) {
   const tabbarParts = useTrickParts("tabbar", undefined, store);
   const open = useMemo(() => sortOpenDecisions([...(c.open ?? [])]), [c]);
-  const nowCount = open.filter((d) => d.priority === "now").length;
   return (
     <AppHeaderHost bridge="connected" error={false}>
-      <HillHeader count={open.length} nowCount={nowCount} onBack={noop} />
+      <HillHeader count={open.length} onBack={noop} />
       <div data-pg-scroll className={cn("relative flex min-h-0 flex-1 flex-col overflow-y-auto px-4 pt-4", footAir(true, "pb-4"))}>
         <HillView
           open={open}
@@ -261,7 +260,6 @@ function HillRouteScreen({ c, store }: { c: PlaceCase; store: TricksStore }) {
         blockedCount={countBlocked(herd)}
         readyUnseen={false}
         hill={c.hill}
-        hillNow={nowCount > 0}
         onOpenHill={noop}
         hillCurrent
         tabbarParts={tabbarParts}
@@ -288,7 +286,6 @@ function TrickRouteScreen({ c, store }: { c: PlaceCase; store: TricksStore }) {
         blockedCount={countBlocked(herd)}
         readyUnseen={false}
         hill={c.hill}
-        hillNow
         onOpenHill={noop}
         currentTrick={LEGS_REF}
         tabbarParts={tabbarParts}

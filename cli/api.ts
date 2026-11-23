@@ -84,6 +84,11 @@ export function cmdApi(deps: ApiDeps, argv: readonly string[]): number {
   const operations = deps.operations ?? declaredOperations();
   const first = argv[0];
   if (first === undefined || first === "--help" || first === "-h") return cmdApiHelp(deps);
+  // Renamed with the clean slate (ADR 0179): one line, no alias.
+  if (first === "hill.list") {
+    deps.io.err("error: hill.list is now asks.list");
+    return EXIT.USAGE;
+  }
   if (!operations.some((one) => one.name === first)) {
     deps.io.err(`error: unknown operation \`${first}\``);
     deps.io.err(`usage: collie api {${operations.map((one) => one.name).join("|")}} [flags] [--json]`);

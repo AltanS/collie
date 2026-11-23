@@ -4,7 +4,6 @@ import { AgentIcon } from "@/components/agent-icon";
 import { BrandMark } from "@/components/brand-mark";
 import { DecisionGroupPager, DecisionWholeView, GroupCount } from "@/components/decision-group";
 import { DecisionView } from "@/components/decision-view";
-import { HillPriorityMark } from "@/components/hill-priority";
 import { HillImageStrip, hillMediaSource, type HillMediaSource } from "@/components/hill-media";
 import { HoldToApprove, holdLabel } from "@/components/hold-to-approve";
 import { Icon } from "@/components/icons/icon";
@@ -40,8 +39,8 @@ import { cn } from "@/lib/utils";
 // A DECISION, AS A CARD ON THE HILL (M96).
 //
 // An agent, or a trick, posted a question with its options, and the person answers it here. The look
-// is calm and typographic (the owner's pick, B1, 2026-11-09). Top to bottom: the first line (the
-// priority as three peaks and a word, who asked with their mark, the machine, how old it is), the title
+// is calm and typographic (the owner's pick, B1, 2026-11-09). Top to bottom: the first line (who asked with
+// their mark, the machine, how old it is), the title
 // in a reading size, the summary, the images as one sideways row, the poster's view of the facts in a
 // quiet frame (decision-view.tsx), the recommendation as a quote between
 // two rules, a row of two quiet taps ("More" for the body and the links, "Add a note" for an optional
@@ -51,7 +50,7 @@ import { cn } from "@/lib/utils";
 // ── IT WEARS THE APP'S OWN PIECES ──────────────────────────────────────────────────────────────────
 // The card is `ui/card.tsx`; its options are the `OptionButton` rows a program's ask and a permission
 // card answer with, so a question from an agent reads the same wherever it is asked; More and Add a
-// note are `ui/fold-toggle.tsx`; the images `ui/image-strip.tsx`; the priority `ui/peak-glyph.tsx`;
+// note are `ui/fold-toggle.tsx`; the images `ui/image-strip.tsx`;
 // what happened after a tap is a `Notice` box in the card (DESIGN.md §11, a contextual notice); the
 // body is Chat's own Markdown, with its link rules. Every string the poster wrote is `font-content`,
 // never the app's face (DESIGN.md §5). The numbers on the options are display only: no key sends one.
@@ -171,7 +170,7 @@ function SenderMark({ decision, trickIcon }: { decision: HillDecision; trickIcon
 }
 
 /**
- * The first line: priority, a bar, who asked, the word trick with its plug for a trick, the machine with
+ * The first line: who asked, the word trick with its plug for a trick, the machine with
  * its glyph in the machine's tint, the age. Every piece sits 8px from the next (B1's `gap-2`).
  */
 function MetaLine({ decision, hostSlot, trickIcon }: { decision: HillDecision; hostSlot: number | null; trickIcon: string | undefined }) {
@@ -179,11 +178,6 @@ function MetaLine({ decision, hostSlot, trickIcon }: { decision: HillDecision; h
   const hostInk = hostSlot === null ? "text-muted-foreground" : (HOST_TEXT_CLASSES[hostSlot] ?? "text-muted-foreground");
   return (
     <div data-slot="decision-meta" className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
-      <HillPriorityMark priority={decision.priority} />
-      {/* B1's divider is the bar character in the border ink, as tall as the line's own type. */}
-      <span aria-hidden className="text-border">
-        |
-      </span>
       <SenderMark decision={decision} trickIcon={trickIcon} />
       <span className="min-w-0 truncate text-foreground">{isTrickApproval(decision) ? t("hill.collieTricks") : from.label}</span>
       {from.kind === "trick" && (

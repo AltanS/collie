@@ -10,7 +10,7 @@ import { hillDir } from "./store.ts";
 //
 // The launch receipts' pattern (ADR 0091, `launch-receipts.ts`) over `ReceiptFileStore`: the phone
 // mints a UUID per tap (`rid`), and the bridge keeps the receipt it wrote under it in
-// `<stateDir>/hill/receipts.json`. A request that names a known `rid` with the same payload gets the
+// `<stateDir>/asks/receipts.json`. A request that names a known `rid` with the same payload gets the
 // stored receipt back and runs nothing; with another payload it is refused (409), as the worktree and
 // launch routes refuse a reused id. The digest is over `[node, intent, text]`, so the receipt keeps no
 // word the person typed.

@@ -1,7 +1,7 @@
 // The images of the hill (M96): a file an agent names on its own machine, read by the bridge, kept
 // under the bridge's own name, and served back to the phone.
 //
-//   <stateDir>/hill/media/<decision id>/<media id>      folder 0700, file 0600
+//   <stateDir>/asks/media/<decision id>/<media id>      folder 0700, file 0600
 //
 // WHY THE BRIDGE READS THE FILE. The walky socket's request line is capped at 64 KiB, so the bytes of
 // a screenshot cannot ride in the post. The CLI sends an absolute path instead, and the bridge, which
@@ -39,7 +39,7 @@
 // root in text is below it on disk: `../` out of the folder fails check 1, and a symlink in the
 // folder that points out fails check 2 or 3.
 //
-// THE NAME ON DISK IS NEVER THE POSTER'S. A decision's folder is its id (`dc_` and 12 characters) and
+// THE NAME ON DISK IS NEVER THE POSTER'S. A decision's folder is its id (`ak_` and 12 characters) and
 // a file is its media id (`im_` and 16 characters), both minted by the bridge and checked against
 // their patterns before any path is built, on the way in and on the way out.
 //
@@ -381,7 +381,7 @@ export class HillMediaStore {
       }
       return true;
     } catch (err) {
-      this.warn(`[hill] could not keep the images of ${decisionId}: ${err instanceof Error ? err.message : String(err)}`);
+      this.warn(`[asks] could not keep the images of ${decisionId}: ${err instanceof Error ? err.message : String(err)}`);
       this.remove(decisionId);
       return false;
     }
@@ -418,7 +418,7 @@ export class HillMediaStore {
     try {
       rmSync(join(this.root, decisionId), { recursive: true, force: true });
     } catch (err) {
-      this.warn(`[hill] could not remove the images of ${decisionId}: ${err instanceof Error ? err.message : String(err)}`);
+      this.warn(`[asks] could not remove the images of ${decisionId}: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
@@ -437,7 +437,7 @@ export class HillMediaStore {
         rmSync(join(this.root, name), { recursive: true, force: true });
         removed += 1;
       } catch (err) {
-        this.warn(`[hill] could not remove ${name} from the media folder: ${err instanceof Error ? err.message : String(err)}`);
+        this.warn(`[asks] could not remove ${name} from the media folder: ${err instanceof Error ? err.message : String(err)}`);
       }
     }
     return removed;

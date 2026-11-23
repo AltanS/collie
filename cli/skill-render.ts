@@ -4,27 +4,28 @@
 // function, so its agents read what a real install of the same switch reads and no second copy of the
 // cutting logic exists.
 
-/** A Hill part that fills whole lines: the marker lines go in both states, the lines between only when off. */
-const HILL_LINES = /^\{\{HILL\}\}\n([\s\S]*?)^\{\{\/HILL\}\}\n/gmu;
-/** A Hill part inside one line (the description's words). */
-const HILL_WORDS = /\{\{HILL\}\}([\s\S]*?)\{\{\/HILL\}\}/gu;
+/** An Asks part that fills whole lines: the marker lines go in both states, the lines between only when off. */
+const HILL_LINES = /^\{\{ASKS\}\}\n([\s\S]*?)^\{\{\/ASKS\}\}\n/gmu;
+/** An Asks part inside one line (the description's words). */
+const HILL_WORDS = /\{\{ASKS\}\}([\s\S]*?)\{\{\/ASKS\}\}/gu;
 
 /**
- * The template's Hill parts kept (on) or cut (off). With the Hill on the text is byte for byte the text of
- * before the markers; with it off no Hill word is left, in the description or the body (M96 spec 12).
+ * The template's Asks parts (`{{ASKS}}` ... `{{/ASKS}}`, `{{HILL}}` before ADR 0179) kept (on) or cut (off). With
+ * Asks on the text is byte for byte the text of before the markers; with it off no Asks word is left, in the
+ * description or the body (M96 spec 12).
  */
 export function withHill(template: string, hillOn: boolean): string {
   return template.replace(HILL_LINES, hillOn ? "$1" : "").replace(HILL_WORDS, hillOn ? "$1" : "");
 }
 
-/** What a render fills in: the command's path, the build's version and the Hill switch. */
+/** What a render fills in: the command's path, the build's version and the switch of Asks. */
 export interface SkillRenderInput {
   readonly binary: string;
   readonly version: string;
   readonly hillOn: boolean;
 }
 
-/** A template (LF line ends) with its Hill parts kept or cut and `{{COLLIE_BIN}}` and `{{COLLIE_VERSION}}` resolved. */
+/** A template (LF line ends) with its Asks parts kept or cut and `{{COLLIE_BIN}}` and `{{COLLIE_VERSION}}` resolved. */
 export function renderSkillTemplate(template: string, input: SkillRenderInput): string {
   return withHill(template, input.hillOn)
     .replaceAll("{{COLLIE_BIN}}", input.binary)

@@ -73,7 +73,7 @@ const SCENE_LABEL = {
   page: "A trick's Page",
   session: "An agent session",
   "agent-view": "An agent view",
-  hill: "The Hill",
+  hill: "Asks",
 } as const satisfies Record<SceneId, string>;
 
 const NONE: readonly Target[] = [];
@@ -215,7 +215,7 @@ const WALK: readonly Step[] = [
   { title: "You glance at the tile.", line: "Release Gates shows 5 of 7 checks green, at the top of the Dashboard.", scene: "dashboard", targets: [{ find: byText("Gates") }] },
   { title: "You open its Page.", line: "The tile opens the Page: every check, and a button that reruns the red one.", scene: "page", targets: [{ find: WHOLE }] },
   { title: "You see its mark in a session.", line: "While you read an agent, the chip says e2e red, and the mark on the Belt reruns it.", scene: "session", targets: [target("status"), target("belt")] },
-  { title: "It asks you on the Hill.", line: "Before the tag, it asks one question. Your tap is the answer.", scene: "hill", targets: [target("hill")] },
+  { title: "It asks you in Asks.", line: "Before the tag, it asks one question. Your tap is the answer.", scene: "hill", targets: [target("hill")] },
 ];
 
 function WalkScreen({ step, n }: { step: Step; n: number }): ReactNode {

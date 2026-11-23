@@ -85,7 +85,7 @@ tool's name. The second sends it. Collie does not offer it when the question nam
 When Collie had to cut or clean the durable agent's words, the card says "Text shortened" and offers no
 "Always allow", because you were not shown the whole text.
 
-A card of a kind this Collie does not know shows its words and says "This ask cannot be answered
+A card of a kind this Collie does not know shows its words and says "This question card cannot be answered
 from the phone." A conversation draws its first 5 questions as cards, and a "Show N more" row opens
 the rest.
 
@@ -100,7 +100,7 @@ Every tap carries one request id, and only a tap sends an answer.
 | The question timed out first | "Timed out before an answer." | Nothing. The chat keeps a line for it |
 | Another answer came first | "Already answered. This card goes away on the next update." | Nothing |
 | The question was not open, and the durable agent did not say why | "Not taken. The question may show again in a moment." | Wait. A durable agent that restarted asks again |
-| The question changed under you | "This ask changed. Read it again, then tap an answer." | Read the new form and tap again |
+| The question changed under you | "This question card changed. Read it again, then tap an answer." | Read the new form and tap again |
 | The answer may not have arrived | "Not sure the answer arrived. Try again sends it once more." | Tap Try again. It sends the same request id, so the durable agent is told once |
 | A retry found the question closed or changed | "May already be applied. Check the chat." | Check the chat |
 | Collie refused the answer | Collie's reason, else "The answer was refused." | Read the reason |
@@ -216,7 +216,7 @@ A question can push to your phone, within caps for each durable agent.
 | --- | --- | --- |
 | One pane | 3 pushes a minute | The question shows on the phone and sends no push |
 | One durable agent on one machine | 10 pushes a minute | The same |
-| One durable agent on one machine | 30 pushes an hour | One push, "A durable agent on {host} is raising many asks", then no push from that durable agent for an hour |
+| One durable agent on one machine | 30 pushes an hour | One push, "A durable agent on {host} is raising many question cards", then no push from that durable agent for an hour |
 
 The push says "Permission needed in" and the pane's name. A durable agent may add its own title, at most
 60 characters, and a line, at most 120. Collie pushes a question once per machine, durable agent and tool

@@ -77,7 +77,7 @@ async function realRig() {
     memberId: MACHINE,
     machine: "workshop",
     now: () => 1000,
-    mintId: () => "dc_world00000001",
+    mintId: () => "ak_world00000001",
   });
   const sender: HillAgentSender = { kind: "agent", address: `local/w1:p1#${token}`, memberId: MACHINE, harness: "claude", label: "lodge", host: "workshop" };
   const posted = hill.post(sender, { requestId: "00000000-0000-4000-8000-000000000001", title: "Deploy window", summary: "a card", options: [{ intent: "go", label: "Go" }] });
@@ -87,7 +87,7 @@ async function realRig() {
   const realList = hill.list.bind(hill);
   Object.assign(hill, hillSpies, {
     list: () => {
-      reads.push("hill.list");
+      reads.push("asks.list");
       return realList();
     },
   });
@@ -145,7 +145,7 @@ describe("buildApiWorld over a real HillService and a real WalkyInstances", () =
     const rate = r.watch.sampleEveryMs();
     const table = apiTable(buildApiWorld(r.deps));
     const session = idOf(MACHINE, "w1:p1", r.token);
-    const args = { hello: { token: "A".repeat(43) }, sessions: {}, brief: { session }, read: { session, lines: 10 }, accounts: {}, "hill.list": {}, machines: {}, events: { after: "-", wait: 0 } } satisfies Record<OperationName, JsonObject>;
+    const args = { hello: { token: "A".repeat(43) }, sessions: {}, brief: { session }, read: { session, lines: 10 }, accounts: {}, "asks.list": {}, machines: {}, events: { after: "-", wait: 0 } } satisfies Record<OperationName, JsonObject>;
     const answers: JsonObject[] = [];
     for (const name of OPERATION_NAMES) {
       const result = await table.get(name)!.run(args[name], ctx());
@@ -154,7 +154,7 @@ describe("buildApiWorld over a real HillService and a real WalkyInstances", () =
     }
     expect(r.writes).toEqual([]);
     // Not vacuous: the real services were read, and their answers came through.
-    expect(r.reads).toContain("hill.list");
+    expect(r.reads).toContain("asks.list");
     expect(r.reads).toContain("instances.peek");
     expect(r.reads).toContain("watch.census");
     expect(r.reads).toContain("crewStatus");

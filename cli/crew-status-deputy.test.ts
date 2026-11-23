@@ -297,10 +297,10 @@ describe("the lead's line about its deputy's copy of the tricks (CREW_PROTOCOL Â
 
   test("the open questions on the Hill ride the same line, and stand alone when the lead runs no trick", () => {
     const withQuestions = (tricks: number, questions: number) => marker({ mode: "lead", deputyTricks: { member: "nas", state: "current", tricks, at: T0, questions } });
-    expect(deputyTricksLines(withQuestions(2, 3), T0)[0]?.text).toBe('  deputy "nas" holds a copy of the 2 tricks this lead runs and 3 open questions on the Hill; a takeover there starts them again');
-    expect(deputyTricksLines(withQuestions(0, 1), T0)[0]?.text).toBe('  deputy "nas" holds a copy of the 1 open question on this lead\'s Hill; a takeover there brings them along');
-    expect(promoteTricksLines(withQuestions(1, 2), "nas")[0]?.text).toBe('  "nas" holds a copy of the 1 trick this lead runs and 2 open questions on the Hill; `collie promote` there starts them again.');
-    expect(promoteTricksLines(withQuestions(0, 2), "nas")[0]?.text).toBe('  "nas" holds a copy of the 2 open questions on this lead\'s Hill; `collie promote` there brings them along.');
+    expect(deputyTricksLines(withQuestions(2, 3), T0)[0]?.text).toBe('  deputy "nas" holds a copy of the 2 tricks this lead runs and 3 open asks; a takeover there starts them again');
+    expect(deputyTricksLines(withQuestions(0, 1), T0)[0]?.text).toBe('  deputy "nas" holds a copy of the 1 open ask of this lead; a takeover there brings them along');
+    expect(promoteTricksLines(withQuestions(1, 2), "nas")[0]?.text).toBe('  "nas" holds a copy of the 1 trick this lead runs and 2 open asks; `collie promote` there starts them again.');
+    expect(promoteTricksLines(withQuestions(0, 2), "nas")[0]?.text).toBe('  "nas" holds a copy of the 2 open asks of this lead; `collie promote` there brings them along.');
     expect(promoteTricksLines(withQuestions(0, 2), "attic")).toEqual([]);
   });
 });

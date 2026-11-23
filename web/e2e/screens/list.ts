@@ -88,11 +88,11 @@ export const SCREENS: readonly Screen[] = [
   { id: "trick-session", route: "trick/:paneId", path: "/trick/trick%3Alodge%3Aci%3Arun", title: "A trick's own session", wide: "column", setup: "tricks" },
 
   // ── The Hill ─────────────────────────────────────────────────────────────
-  { id: "hill", route: "hill", path: "/hill", title: "Asks, the board", wide: "column", setup: "rich" },
-  { id: "ask", route: "hill/ask/:id", path: "/hill/ask/ak_screens00001", title: "Asks, one ask", wide: "same", note: "one centred column on purpose in Asks build 2: no master-detail yet, the keys work on a large screen", setup: "askScreen" },
+  { id: "hill", route: "asks", path: "/asks", title: "Asks, the board", wide: "column", setup: "rich" },
+  { id: "ask", route: "asks/ask/:id", path: "/asks/ask/ak_screens00001", title: "Asks, one ask", wide: "same", note: "one centred column on purpose in Asks build 2: no master-detail yet, the keys work on a large screen", setup: "askScreen" },
   // The context page follows the card entry, not the ask: with no ask held, both of them draw the closed screen, and the offline case needs each screen to differ from the one before.
-  { id: "trick-card", route: "trick-card/:decisionId", path: "/trick-card/dc_screens0001", title: "A card of Collie's own", wide: "column", setup: "hillCard" },
-  { id: "ask-context", route: "hill/ask/:id/context", path: "/hill/ask/ak_screens00001/context", title: "Asks, context of an ask", wide: "same", note: "one centred column on purpose in Asks build 2: a reading page, no second pane yet", setup: "askScreen" },
+  { id: "trick-card", route: "trick-card/:decisionId", path: "/trick-card/ak_screens0001", title: "A card of Collie's own", wide: "column", setup: "hillCard" },
+  { id: "ask-context", route: "asks/ask/:id/context", path: "/asks/ask/ak_screens00001/context", title: "Asks, context of an ask", wide: "same", note: "one centred column on purpose in Asks build 2: a reading page, no second pane yet", setup: "askScreen" },
 
   // ── New ──────────────────────────────────────────────────────────────────
   { id: "new", route: "new", path: "/new", title: "New over the Dashboard", wide: "designed", setup: "newOver", note: "on a large screen `/new` is the Dashboard with New as a dialog over it (ADR 0173); the phone keeps the page", waive: { "targets@390": PHONE_TARGETS } },
@@ -121,7 +121,7 @@ export const SCREENS: readonly Screen[] = [
   { id: "settings-account-login", route: "settings/accounts/:id/login", path: "/settings/accounts/acct-work/login", title: "Settings, change a profile's login", wide: "designed", setup: "accounts" },
   { id: "settings-tricks", route: "settings/tricks", path: "/settings/tricks", title: "Settings, Tricks", wide: "designed", setup: "tricks", waive: { "targets@390": PHONE_TARGETS } },
   { id: "settings-trick", route: "settings/tricks/:key", path: "/settings/tricks/lodge%3Akettle", title: "Settings, one trick's details", wide: "designed", setup: "tricks", waive: { "targets@390": PHONE_TARGETS } },
-  { id: "settings-hill", route: "settings/tricks/:key", path: "/settings/tricks/hill", title: "Settings, the Hill's details", wide: "designed", setup: "tricks", waive: { "targets@390": PHONE_TARGETS } },
+  { id: "settings-hill", route: "settings/tricks/:key", path: "/settings/tricks/asks", title: "Settings, the Asks details", wide: "designed", setup: "tricks", waive: { "targets@390": PHONE_TARGETS } },
   { id: "settings-trick-remove", route: "settings/tricks/:key", path: "/settings/tricks/lodge%3Akettle", title: "A trick that is off, Remove", wide: "designed", state: "trick off, Remove section in view", setup: "trickRemove", waive: { "targets@390": PHONE_TARGETS } },
   { id: "settings-trick-remove-confirm", route: "settings/tricks/:key", path: "/settings/tricks/lodge%3Akettle", title: "The Remove confirm open", wide: "designed", state: "Remove confirm open", setup: "trickRemoveConfirm" },
   { id: "settings-devices", route: "settings/devices", path: "/settings/devices", title: "Settings, Devices and machines", wide: "designed" },
@@ -146,6 +146,7 @@ export const SCREENS: readonly Screen[] = [
  */
 export const NOT_A_SCREEN = {
   "slot/:slot": "a permanent address that replaces itself with that browser tab's last pane (lib/slots.ts); it draws nothing of its own",
+  "hill/*": "a redirect to asks, the one alias of ADR 0179: an old bookmark or notification replaces itself with the board",
   pack: "a redirect to crew (the path was renamed in 1.7.0)",
   // The Settings pages before ADR 0170 (2026-11-21): each opens the page that holds most of what it held, with the query
   // and the fragment (routes/settings-redirect.tsx `OldSettingsRedirect`); `e2e/settings-redirects.spec.ts` opens each.

@@ -485,7 +485,7 @@ export class TrickProposals {
     if (!posted.ok) {
       await rm(dir, { recursive: true, force: true });
       if (posted.code === "bad_supersedes") return refused("answering", "Your person is answering your last proposal of this trick right now. Try again in a moment.");
-      return refused("failed", `The Hill did not take the card, so nothing was proposed: ${posted.error}`);
+      return refused("failed", `Asks did not take the card, so nothing was proposed: ${posted.error}`);
     }
     if (old !== null) {
       state.open = state.open.filter((row) => row !== old);

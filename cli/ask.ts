@@ -13,6 +13,7 @@ import { readDecision } from "../bridge/hill/parse.ts";
 import { isBareLabel } from "../bridge/hill/ask-rules.ts";
 import { isRequestId } from "../bridge/worktree-receipts.ts";
 import {
+  ASK_PRIORITY_FIXED,
   HILL_ASK_BECAUSE_MAX,
   HILL_ASK_BODY_MAX,
   HILL_ASK_CANCEL_MAX,
@@ -27,6 +28,7 @@ import {
   HILL_ASK_OPTIONS_MIN,
   HILL_ASK_QUESTION_MAX,
   HILL_ASK_WHY_MAX,
+  HILL_ASK_ID_RE,
   HILL_ID_RE,
   HILL_MEDIA_MAX,
   HILL_MORE_CONTEXT,
@@ -277,7 +279,8 @@ export function parseAskArgs(args: readonly string[]): AskArgs | Refusal {
     images.push(image);
   }
   const replaces = one("--replaces");
-  if (replaces !== null && !HILL_ID_RE.test(replaces)) return { error: `--replaces "${replaces}" is not an ask id. An ask id is ak_ and 12 characters.` };
+  if (replaces !== null && HILL_ID_RE.test(replaces) && !HILL_ASK_ID_RE.test(replaces)) return { error: oldIdLine(replaces) };
+  if (replaces !== null && !HILL_ASK_ID_RE.test(replaces)) return { error: `--replaces "${replaces}" is not an ask id. An ask id is ak_ and 12 characters.` };
   const requestId = one("--request-id");
   if (requestId !== null && !isRequestId(requestId)) return { error: "--request-id is a UUID, for example 1b4e28ba-2fa1-4d3b-a3f5-ef19b5a7633b." };
   const options: AskOptionArg[] = [];
@@ -426,7 +429,7 @@ function askLine(parsed: AskArgs, requestId: string, body: string, files: readon
     text: parsed.words ? "required" : "optional",
     recommends: parsed.recommends === null ? null : { intent: parsed.recommends.intent, why: parsed.recommends.why },
     links: [],
-    priority: "today",
+    priority: ASK_PRIORITY_FIXED,
     about: null,
     replyTo: null,
     supersedes: parsed.replaces,
@@ -500,7 +503,7 @@ export async function cmdWalkyAsk(deps: HillDeps, args: readonly string[]): Prom
   const crewState = answer.body.crewState;
   const crew = isHillCrewState(crewState) && crewState !== "here" ? crewState : null;
   if (parsed.json) {
-    deps.io.out(JSON.stringify(crew === null ? { decision } : { decision, crewState: crew }));
+    deps.io.out(JSON.stringify(crew === null ? { ask: decision } : { ask: decision, crewState: crew }));
     return EXIT.OK;
   }
   deps.io.out(decision.id);
@@ -521,7 +524,7 @@ export async function cmdWalkyAsks(deps: HillDeps, args: readonly string[]): Pro
   if (!answer.ok) return failed(deps, answer);
   const asks = decisionsOf(answer.body.decisions).filter((decision) => decision.ask !== undefined && decision.state === "open");
   if (json) {
-    deps.io.out(JSON.stringify({ decisions: asks }));
+    deps.io.out(JSON.stringify({ asks }));
     return EXIT.OK;
   }
   if (asks.length === 0) {
@@ -532,7 +535,10 @@ export async function cmdWalkyAsks(deps: HillDeps, args: readonly string[]): Pro
   return EXIT.OK;
 }
 
-/** Whether `status` or `cancel` names an ask (or a Decision) rather than a message: its id's prefix, `ak_` or `dc_`. */
+/**
+ * Whether `status` or `cancel` names an ask rather than a message: its id's prefix, `ak_`, or the old `dc_` of
+ * a card from before ADR 0179, which the ask verbs then refuse with {@link oldIdLine}.
+ */
 export function namesAnAsk(args: readonly string[]): boolean {
   const id = args.find((arg) => !arg.startsWith("-"));
   return id !== undefined && HILL_ID_RE.test(id);
@@ -559,18 +565,26 @@ function cancelArgs(args: readonly string[]): { readonly ids: readonly string[];
   }
   const unique = [...new Set(ids)];
   if (unique.length === 0 || unique.length > HILL_ASK_CANCEL_MAX) return { error: `walky cancel takes 1 to ${String(HILL_ASK_CANCEL_MAX)} ask ids (ak_ and 12 characters).` };
-  const bad = unique.find((id) => !HILL_ID_RE.test(id));
+  const old = unique.find((id) => HILL_ID_RE.test(id) && !HILL_ASK_ID_RE.test(id));
+  if (old !== undefined) return { error: oldIdLine(old) };
+  const bad = unique.find((id) => !HILL_ASK_ID_RE.test(id));
   if (bad !== undefined) return { error: `"${shown(bad)}" is not an ask id. An ask id is ak_ and 12 characters.` };
   if (answered && because !== null) return { error: "--answered and --because do not go together: an ask answered in the session needs no reason." };
   if (because !== null && (because === "" || chars(because) > HILL_ASK_BECAUSE_MAX)) return { error: `--because is 1 to ${String(HILL_ASK_BECAUSE_MAX)} characters.` };
   return { ids: unique, answered, because, json };
 }
 
-/** `walky status <ak_ or dc_ id>`: the ask's state, and the answer when there is one. */
+/** The line an old `dc_` id gets (ADR 0179): ids are `ak_` for every ask now, and the old cards stayed behind. */
+export function oldIdLine(id: string): string {
+  return `${shown(id)} is an old id: that ask is gone. An ask id is ak_ and 12 characters.`;
+}
+
+/** `walky status <ak_ id>`: the ask's state, and the answer when there is one. */
 export async function cmdAskStatus(deps: HillDeps, args: readonly string[]): Promise<number> {
   const json = args.includes("--json");
   const rest = args.filter((arg) => arg !== "--json");
-  if (rest.length !== 1 || !HILL_ID_RE.test(rest[0]!)) return usage(deps, "walky status takes exactly one id: an ask (ak_) or a message (wt_).");
+  if (rest.length === 1 && HILL_ID_RE.test(rest[0]!) && !HILL_ASK_ID_RE.test(rest[0]!)) return usage(deps, oldIdLine(rest[0]!));
+  if (rest.length !== 1 || !HILL_ASK_ID_RE.test(rest[0]!)) return usage(deps, "walky status takes exactly one id: an ask (ak_) or a message (wt_).");
   if (windows(deps)) return EXIT.STATE;
   return printOne(deps, await request(deps, { op: "ask.status", id: rest[0]! }), json);
 }
@@ -597,15 +611,15 @@ export async function cmdAskCancel(deps: HillDeps, args: readonly string[]): Pro
   if (!answer.ok) return failed(deps, answer);
   if (parsed.ids.length === 1) {
     const decision = readDecision(answer.body.decision, { collie: true });
-    if (decision === null) return failed(deps, { ok: false, error: "the bridge answered without a decision", code: null, exit: EXIT.FAIL });
-    if (parsed.json) deps.io.out(JSON.stringify({ decision }));
+    if (decision === null) return failed(deps, { ok: false, error: "the bridge answered without an ask", code: null, exit: EXIT.FAIL });
+    if (parsed.json) deps.io.out(JSON.stringify({ ask: decision }));
     else for (const out of cancelBlock(decision)) deps.io.out(out);
     return EXIT.OK;
   }
   const results = cancelResultsOf(answer.body.results, parsed.ids);
   if (results === null) return failed(deps, { ok: false, error: "the bridge answered without a result per id", code: null, exit: EXIT.FAIL });
   if (parsed.json) {
-    deps.io.out(JSON.stringify({ results: results.map((result) => (result.decision === null ? { id: result.id, error: result.error } : { id: result.id, decision: result.decision })) }));
+    deps.io.out(JSON.stringify({ results: results.map((result) => (result.decision === null ? { id: result.id, error: result.error } : { id: result.id, ask: result.decision })) }));
   } else {
     for (const result of results) {
       if (result.decision !== null) for (const out of cancelBlock(result.decision)) deps.io.out(out);
@@ -643,8 +657,8 @@ function cancelResultsOf(value: JsonValue | undefined, ids: readonly string[]): 
 function printOne(deps: HillDeps, answer: HillAnswer, json: boolean): number {
   if (!answer.ok) return failed(deps, answer);
   const decision = readDecision(answer.body.decision, { collie: true });
-  if (decision === null) return failed(deps, { ok: false, error: "the bridge answered without a decision", code: null, exit: EXIT.FAIL });
-  if (json) deps.io.out(JSON.stringify({ decision }));
+  if (decision === null) return failed(deps, { ok: false, error: "the bridge answered without an ask", code: null, exit: EXIT.FAIL });
+  if (json) deps.io.out(JSON.stringify({ ask: decision }));
   else for (const line of statusLines(decision)) deps.io.out(line);
   return EXIT.OK;
 }

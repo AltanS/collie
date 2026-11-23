@@ -3790,18 +3790,6 @@ export function startServer(opts: {
         }
         return hillSwitchRoute(hill, req.method === "POST" ? { body } : null, { device: whois(req).device, acceptEncoding: req.headers.get("accept-encoding") });
       }
-      // The test Decision ("Send a test Decision" on the Hill's page): the phone asks Collie to post one
-      // Decision of its own, marked Now, so the person sees a card arrive and gets the notification. Only a
-      // paired device with the write right passes `browserGate("write")`, the same gate as the Hill's switch.
-      // No agent, trick or crew member can reach it: an agent's `collie hill post` and a trick's post go over
-      // the walky socket and the trick runner, which never make a card of Collie's own, and this route holds
-      // no token they have. The body is empty, and nothing from the request enters the card.
-      if (pathname === "/api/hill/test" && req.method === "POST") {
-        const denied = browserGate("write");
-        if (denied) return denied;
-        if (host.kind === "member") return text(HILL_LOCAL_TEXT, 400);
-        return hillTestRoute(hill, await req.text().catch(() => "\u0000"), { device: whois(req).device, acceptEncoding: req.headers.get("accept-encoding") });
-      }
       // The crew state (1.29.0): read by any paired device, set with the write right, as the switch is,
       // because every agent of the crew reads it. The value also rides on `GET /api/hill` as `crewState`.
       if (pathname === "/api/hill/state" && (req.method === "GET" || req.method === "POST")) {
@@ -10783,7 +10771,7 @@ export function tricksFeatureRoute(
 }
 
 /** What the answer route says while the Hill is switched off: nothing was typed, and the decision stays open. */
-export const HILL_SWITCHED_OFF_TEXT = "the Hill is off on this Collie, so nothing was sent";
+export const HILL_SWITCHED_OFF_TEXT = "Asks is off on this Collie, so nothing was sent";
 
 /**
  * `GET` and `POST /api/hill/switch`: the Hill's switch. `GET` (`write` null) answers `{ on }`. `POST`
@@ -10801,27 +10789,8 @@ export function hillSwitchRoute(
   const on = asJsonBoolean(doc?.on);
   if (doc === undefined || on === undefined || Object.keys(doc).length !== 1) return text("bad request: the body is { \"on\": true } or { \"on\": false }", 400);
   const now = hill.switchTo(on, context.device);
-  if (now === null) return text("the Hill's switch could not be saved on this machine; nothing changed", 503);
+  if (now === null) return text("the switch of Asks could not be saved on this machine; nothing changed", 503);
   return json({ on: now }, context.acceptEncoding);
-}
-
-/**
- * `POST /api/hill/test`: the test Decision. The body is empty, or `{}`; any other body is 400 and nothing is
- * scheduled. 409 `{ code, error }` with the Hill off (`hill_off`) or on a machine that is not the lead
- * (`not_on_lead`). Else 200 `{ inSeconds, rings }`: the seconds until the card is posted, and `rings`, the first
- * reason no notification would be sent for it now (push.ts `HillRingBlock`) or null.
- */
-export function hillTestRoute(
-  hill: Pick<HillService, "requestTest"> | undefined,
-  raw: string,
-  context: { readonly device: string | null; readonly acceptEncoding: string | null },
-): Response {
-  if (hill === undefined) return text(HILL_OFF_TEXT, 404);
-  const empty = raw.trim() === "" || Object.keys(parseJsonObject(raw) ?? { x: 1 }).length === 0;
-  if (!empty) return text("bad request: the body is empty", 400);
-  const answer = hill.requestTest(context.device);
-  if (!answer.ok) return json({ code: answer.code, error: answer.error }, context.acceptEncoding, 409);
-  return json({ inSeconds: answer.inSeconds, rings: answer.rings }, context.acceptEncoding);
 }
 
 /**
@@ -10943,7 +10912,7 @@ export async function hillAnswersRoute(
 }
 
 /** What the clear route says when the write failed: nothing was removed. */
-export const HILL_CLEAR_UNSAVED_TEXT = "the Hill could not be saved on this machine; nothing was cleared";
+export const HILL_CLEAR_UNSAVED_TEXT = "Asks could not be saved on this machine; nothing was cleared";
 /** The most ids one clear names. */
 export const HILL_CLEAR_IDS_MAX = 200;
 
@@ -10966,7 +10935,7 @@ export function hillSpokenClearRoute(
   return json({ cleared: answer.cleared }, context.acceptEncoding);
 }
 
-const HILL_CLEAR_BAD_BODY = 'bad request: the body is {} or { "ids": ["dc_..."] }';
+const HILL_CLEAR_BAD_BODY = 'bad request: the body is {} or { "ids": ["ak_..."] }';
 
 /** A Clear's body: `{}` (null, every one) or `{ "ids": [...] }`; undefined for any other shape. */
 function readClearIds(body: JsonValue | undefined): string[] | null | undefined {
@@ -10986,7 +10955,7 @@ function readClearIds(body: JsonValue | undefined): string[] | null | undefined 
 
 /**
  * `POST /api/hill/clear`: remove closed decisions. The body is `{}` (every closed decision) or
- * `{ "ids": ["dc_..."] }` (those, when closed). 200 `{ cleared, skipped }`: `cleared` is how many went,
+ * `{ "ids": ["ak_..."] }` (those, when closed). 200 `{ cleared, skipped }`: `cleared` is how many went,
  * `skipped` the ids left alone, `open` for an open decision and `missing` for one this bridge does not
  * hold. 400 for another body, 503 when the write failed. Works with the Hill off.
  */

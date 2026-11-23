@@ -81,7 +81,7 @@ function renderHome(data: HomeData, initialPath?: string) {
       { path: "/pane/:paneId", element: <div data-testid="pane" /> },
       { path: "/space/:spaceId/changes", element: <div data-testid="space-changes" /> },
       { path: "/crew", element: <div data-testid="crew" /> },
-      { path: "/hill", element: <div data-testid="hill" /> },
+      { path: "/asks", element: <div data-testid="hill" /> },
     ],
     { initialEntries: [initialPath ?? (data.scope.host ? `/?h=${data.scope.host}` : "/")] },
   );
@@ -1230,11 +1230,11 @@ describe("the Hill in the Dashboard's bar (M96)", () => {
     await settled();
     const item = hillItem()!;
     expect(item.querySelector('[data-slot="tab-badge"]')).toHaveTextContent("3");
-    expect(item).toHaveAccessibleName("Asks, 3 Decisions wait on you");
-    // One of them is `now`: the mountain wears its snow cap in the warm accent (A5).
-    expect(item.querySelector('[data-icon="hill-now"]')?.getAttribute("class")).toContain("text-status-working");
+    expect(item).toHaveAccessibleName("Asks, 3 asks wait on you");
+    // The mountain is the same for every count: no ask has a priority (ADR 0179 addendum).
+    expect(item.querySelector('[data-icon="hill"]')).not.toBeNull();
     await userEvent.click(item);
-    await waitFor(() => expect(url(router)).toBe("/hill"));
+    await waitFor(() => expect(url(router)).toBe("/asks"));
   });
 });
 

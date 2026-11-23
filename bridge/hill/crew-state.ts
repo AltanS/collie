@@ -7,7 +7,7 @@ import { headerField } from "../walky/types.ts";
 import { hillDir } from "./store.ts";
 
 // THE CREW STATE (1.29.0). The person tells the agents of the crew how fast an answer can come: `here`
-// (as always), `quiet` or `away`. One value per lead, in `<stateDir>/hill/state.json`, mode 0600:
+// (as always), `quiet` or `away`. One value per lead, in `<stateDir>/asks/state.json`, mode 0600:
 //
 //   { "v": 1, "state": "away", "at": 1762873260000, "by": "Pixel 9" }
 //
@@ -15,8 +15,7 @@ import { hillDir } from "./store.ts";
 // the button reads done on every phone and is never offered twice for one change.
 //
 // No file, or a file that does not read, is `here`, the default: the state changes no rule, so the
-// default is the safe reading. What it changes, all on the lead: with `quiet` or `away` no Decision pushes
-// (hill/service.ts `pushPlan`); a typed answer and a post result end with `Crew state: away.`. The bridge
+// default is the safe reading. What it changes, all on the lead: a typed answer and a post result end with `Crew state: away.`. The bridge
 // NEVER refuses a post because of it. Carried to the deputy with the Hill copy, as the Hill's switch is.
 //
 // TWO WRITERS, ONE VALUE, as switch.ts: the phone writes through the bridge (`POST /api/hill/state`), the
@@ -101,7 +100,7 @@ export class HillCrewStateFile {
 
   constructor(
     private readonly stateDir: string,
-    private readonly warn: (line: string) => void = (line) => console.warn(`[hill] ${line}`),
+    private readonly warn: (line: string) => void = (line) => console.warn(`[asks] ${line}`),
     private readonly now: () => number = Date.now,
   ) {}
 

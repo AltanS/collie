@@ -82,7 +82,7 @@ counters live in memory and reset when the bridge restarts.
 ### An agent does not pair a device
 
 `collie pair` refuses in a pane where an agent works. A paired device can read and drive every
-session, approve a trick and answer a Decision. An agent that pairs one for itself skips every tap
+session, approve a trick and answer an ask. An agent that pairs one for itself skips every tap
 Collie asks of you. So the command asks the running bridge whether its pane runs an agent, a check
 like the one `collie trick on` makes, and refuses there. `collie pair --json` refuses too. Run it in a
 shell pane or a terminal of your own. With no bridge running, or a bridge that does not know the
@@ -387,7 +387,7 @@ warranty.
 
 ## What a program running as you can still do
 
-A person's tap guards pairing, a trick's switch and a Decision's answer. A program that runs under
+A person's tap guards pairing, a trick's switch and an ask's answer. A program that runs under
 your own user account can still get a write credential, or skip the tap. The list below states
 facts. It is not a list of fixes. The state folder is `~/.local/state/collie` unless
 `COLLIE_STATE_DIR` moves it, and the config folder holds the instance's `.env`.
@@ -407,11 +407,11 @@ facts. It is not a list of fixes. The state folder is `~/.local/state/collie` un
 | `.collie-origin.json` in a trick folder | It is outside the code hash. A program that edits it changes where Settings says the trick came from. |
 | `.env` and `config.toml` in the config folder | A program can loosen a setting, such as `COLLIE_ALLOW_ANY_HOST=1` or `free_text = true` for the launchers a phone adds, then restart the user service. |
 | `standby-devices.json` on a crew deputy | A program on the deputy can add the hash of its own token. While the standby door is armed, that token can confirm a takeover, and the takeover adds it to the deputy's own paired devices. |
-| `hill/decisions.json` in the state folder | A program can rewrite an open Decision: its words, its options, or the code on a group of cards. The digest that ties a group's cards together is a plain hash, not a key, so it can write a matching digest too. A paired device's token can answer any open card, a trick proposal included. |
-| `tricks/.collie-proposed/` in the config folder, and `tricks/proposals.json` in the state folder | A program can swap a stored proposal's files. The tap installs only bytes whose hash is the card's, so a swap alone installs nothing. A program that also rewrites the card in `hill/decisions.json` shows you other code, and your yes installs it. |
-| `collie hill state quiet\|away` and `collie hill clear --spoken` from a pane | The check that refuses them in an agent's pane reads the pane's own markers (`person_only`). It is a speed bump, not a guard: an agent that runs them without its markers sets the crew state to quiet or away, and that stops every Hill push. The Hill then shows "Set from a terminal at" and the time, without a push. |
+| `asks/asks.json` in the state folder | A program can rewrite an open ask: its words, its options, or the code on a group of cards. The digest that ties a group's cards together is a plain hash, not a key, so it can write a matching digest too. A paired device's token can answer any open card, a trick proposal included. |
+| `tricks/.collie-proposed/` in the config folder, and `tricks/proposals.json` in the state folder | A program can swap a stored proposal's files. The tap installs only bytes whose hash is the card's, so a swap alone installs nothing. A program that also rewrites the card in `asks/asks.json` shows you other code, and your yes installs it. |
+| `collie asks state quiet\|away` and `collie asks clear --spoken` from a pane | The check that refuses them in an agent's pane reads the pane's own markers (`person_only`). It is a speed bump, not a guard: an agent that runs them without its markers sets the crew state to quiet or away, so every agent reads the line "Crew state: away." on the result of its ask, and `--spoken` clears the cards you answered in the session. Asks then shows "Set from a terminal at" and the time. |
 | `trick-views/views/*.json` in the state folder | One file per trick and session: the person's switch for an agent view, the screen the agent drew and the lines a tap typed. A program can switch a view on without a tap, or write a screen, whose buttons then send their words as the person's message to that agent. |
-| `hill/state.json` in the state folder | A program can write the crew state, with any name as the setter. Every crew member and its agents read the state, the setter's name (`by`) and how many sessions the last tell reached (`told`) with `collie hill state --json`. |
+| `asks/state.json` in the state folder | A program can write the crew state, with any name as the setter. Every crew member and its agents read the state, the setter's name (`by`) and how many sessions the last tell reached (`told`) with `collie asks state --json`. |
 | `crew-trust.json` in the state folder | It holds this machine's crew key and the crew secret. A program that reads it can speak to the crew as this machine. |
 | The multiplexer's socket | A program can type into any pane without Collie at all, a yes on an agent's permission prompt included. |
 | `audit.log` in the state folder | A program can change or delete lines. The log tells the truth only while nobody has changed it. |

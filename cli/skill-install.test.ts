@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { WALKY_TALKY_SKILL_TEMPLATE } from "./docs-embed.ts";
 import { collieVersion, type Environment } from "./context.ts";
 import { capture, context, fakeFiles, fakeLinkFs, HOME, posixKey, ROOT, STATE } from "./fakes.ts";
-import { HILL_RULES, HILL_WRITING, hillHelp, hillPostHelp } from "./hill.ts";
+import { HILL_WRITING } from "./hill-rules.ts";
 import { ASK_HELP } from "./ask.ts";
 import { EXIT } from "./io.ts";
 import {
@@ -110,13 +110,11 @@ describe("the rendered skill", () => {
     expect(out).not.toContain("walky keep");
     expect(out).toContain(`Rules and flags: ${bin} walky ask --help`);
     for (const line of ASK_HELP.filter((help) => /^\d\. /u.test(help))) expect(out).not.toContain(line);
-    // The rules and the writing guide are the help's, not the skill's: one place to read them.
-    for (const rule of HILL_RULES) expect(out).not.toContain(rule.replaceAll("collie hill", `${bin} hill`));
+    // The writing guide is the help's, not the skill's: one place to read it.
     for (const line of HILL_WRITING) expect(out).not.toContain(line);
-    for (const rule of HILL_RULES) {
-      expect(hillHelp()).toContain(rule);
-      expect(hillPostHelp()).toContain(rule);
-    }
+    // ADR 0179: no `collie hill` and no Hill word anywhere in the rendered template, on or off.
+    expect(out).not.toMatch(/\bhill\b/iu);
+    expect(out).not.toMatch(/\bDecisions?\b/u);
     expect(out).not.toContain("{{");
   });
 
@@ -125,7 +123,7 @@ describe("the rendered skill", () => {
     // 480 for the Hill's own section until Asks (2026-11-22); the spec's draft is longer, word for word.
     const bare = WALKY_TALKY_SKILL_TEMPLATE.replaceAll("{{COLLIE_BIN}}", "collie");
     const start = bare.indexOf("## Asks");
-    const section = bare.slice(start, bare.indexOf("{{/HILL}}"));
+    const section = bare.slice(start, bare.indexOf("{{/ASKS}}"));
     expect(start).toBeGreaterThan(0);
     expect(Buffer.byteLength(section)).toBeLessThanOrEqual(1000);
   });
@@ -831,9 +829,9 @@ describe("the Hill's words follow the switch (M96 spec 12)", () => {
     const on = rendered(deps({ files: HILL_ON }));
     const off = rendered(deps());
     expect(on).not.toContain("{{");
-    expect(description(on).endsWith("or when the operator mentions WalkyTalky. Also for hill Decisions and tricks.")).toBe(true);
+    expect(description(on).endsWith("or when the operator mentions WalkyTalky. Also for asks and tricks.")).toBe(true);
     const section = on.slice(on.indexOf("## Asks"), on.indexOf("## Tricks"));
-    expect(off).toBe(on.replace(section, "").replace(" Also for hill Decisions and tricks.", " Also for tricks."));
+    expect(off).toBe(on.replace(section, "").replace(" Also for asks and tricks.", " Also for tricks."));
   });
 
   test("status follows the switch: a file matching the current value is installed, the other value's text is stale", () => {

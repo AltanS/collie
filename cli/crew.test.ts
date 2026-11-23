@@ -8,7 +8,7 @@ import { StandbyTricksStore } from "../bridge/crew/standby-tricks.ts";
 import { parseHillList, StandbyHillStore } from "../bridge/crew/standby-hill.ts";
 import { decision } from "../bridge/hill/fixtures.ts";
 import { adoptAtBoot, readAdoptMarker } from "../bridge/crew/carry-boot.ts";
-import { hillDir, HillStore } from "../bridge/hill/store.ts";
+import { DECISIONS_FILE, hillDir, HillStore } from "../bridge/hill/store.ts";
 import { switchesPath } from "../bridge/tricks/paths.ts";
 import { parseSwitches } from "../bridge/tricks/switches.ts";
 
@@ -2959,7 +2959,7 @@ describe("the lead's tricks at a handover (CREW_PROTOCOL §25)", () => {
     await putOnTrick(lead, { id: "legs", name: "Leg day", auto: true });
     const deputy = await machine("deputy");
     await carryAll(lead, new StandbyTricksStore(deputy.stateDir));
-    const list = parseHillList({ seq: 1, on: true, decisions: [JSON.parse(JSON.stringify(decision("dc_carried00001")))], closed: [], tricks: {} });
+    const list = parseHillList({ seq: 1, on: true, decisions: [JSON.parse(JSON.stringify(decision("ak_carried00001")))], closed: [], tricks: {} });
     if (list === null) throw new Error("bad list");
     await new StandbyHillStore(deputy.stateDir).applyList({ from: "desk", crewId: CREW.crewId, list });
     const h = harness(peerStore(), [jsonReply({ demoted: "desk", roster: [] }, 200, "desk")], {
@@ -2969,7 +2969,7 @@ describe("the lead's tricks at a handover (CREW_PROTOCOL §25)", () => {
     expect(text(h.io)).toContain(`✓ "desk"'s 1 trick and 1 open question come along: this machine takes them up when it restarts as the lead`);
     // The bridge that runs now holds its own Hill in memory: this command writes neither file.
     expect(existsSync(switchesPath(deputy.stateDir))).toBe(false);
-    expect(existsSync(join(hillDir(deputy.stateDir), "decisions.json"))).toBe(false);
+    expect(existsSync(join(hillDir(deputy.stateDir), DECISIONS_FILE))).toBe(false);
     expect(await readAdoptMarker(deputy.stateDir)).toMatchObject({ lead: "desk", by: "handover" });
     // The restart is that boot: it adopts both, by handover.
     const lines: AuditEntry[] = [];
@@ -2978,7 +2978,7 @@ describe("the lead's tricks at a handover (CREW_PROTOCOL §25)", () => {
     await adoptAtBoot({ stateDir: deputy.stateDir, configDir: deputy.configDir, tricks, hill, leads: true, self: "laptop", machine: "laptop", now: () => T0, audit: (e) => void lines.push(e), log: () => {}, followSkill: null });
     const switches = parseSwitches(await readFile(switchesPath(deputy.stateDir), "utf8")).switches;
     expect(switches.on.get("legs")).toMatchObject({ by: "handover", from: "desk", auto: true });
-    expect(new HillStore(hillDir(deputy.stateDir)).get("dc_carried00001")?.state).toBe("open");
+    expect(new HillStore(hillDir(deputy.stateDir)).get("ak_carried00001")?.state).toBe("open");
     // What the promote brought is audited on this machine, by handover, as the tap's is by takeover.
     expect(lines.map((l) => [l.action, l.detail?.from, l.detail?.by])).toEqual([
       ["tricks.carried", "desk", "handover"],

@@ -55,16 +55,16 @@ function burstPolls(): number {
 describe("useHillAnswer", () => {
   it("posts the node, intent and text with a minted rid, and holds the receipt", async () => {
     answerWith(ok);
-    const { result } = renderHook(() => useHillAnswer("dc_k3m9x2p7q4"));
+    const { result } = renderHook(() => useHillAnswer("ak_k3m9x2p7q4"));
     await act(() => result.current.send("yes", "after the leg"));
-    expect(posted[0]).toMatchObject({ node: "hill/dc_k3m9x2p7q4", intent: "yes", value: { text: "after the leg" } });
+    expect(posted[0]).toMatchObject({ node: "hill/ak_k3m9x2p7q4", intent: "yes", value: { text: "after the leg" } });
     expect(asJsonString(posted[0]?.rid)).toMatch(/^[0-9a-f-]{36}$/);
     expect(result.current.state).toMatchObject({ phase: "answered", intent: "yes", receipt: { code: "ok" } });
   });
 
   it("reuses the rid when the same attempt is retried after a lost answer", async () => {
     answerWith(() => HttpResponse.error());
-    const { result } = renderHook(() => useHillAnswer("dc_a"));
+    const { result } = renderHook(() => useHillAnswer("ak_a"));
     await act(() => result.current.send("yes", null));
     expect(result.current.state).toEqual({ phase: "failed", intent: "yes", text: null });
     answerWith(ok);
@@ -76,7 +76,7 @@ describe("useHillAnswer", () => {
 
   it("mints a new rid for another intent, and once an answer arrived", async () => {
     answerWith(() => HttpResponse.error());
-    const { result } = renderHook(() => useHillAnswer("dc_b"));
+    const { result } = renderHook(() => useHillAnswer("ak_b"));
     await act(() => result.current.send("yes", null));
     await act(() => result.current.send("no", null));
     expect(posted[0]?.rid).not.toBe(posted[1]?.rid);
@@ -89,7 +89,7 @@ describe("useHillAnswer", () => {
 
   it("reads a 403 as a denied receipt and a 400 as rejected", async () => {
     server.use(http.post("/api/hill/answer", () => HttpResponse.json({ error: "no" }, { status: 403 })));
-    const { result } = renderHook(() => useHillAnswer("dc_c"));
+    const { result } = renderHook(() => useHillAnswer("ak_c"));
     await act(() => result.current.send("yes", null));
     expect(result.current.state).toMatchObject({ phase: "answered", receipt: { code: "denied" } });
     server.use(http.post("/api/hill/answer", () => HttpResponse.json({ reason: "not an option of this decision" }, { status: 400 })));
@@ -99,7 +99,7 @@ describe("useHillAnswer", () => {
 
   it("reads the bridge's plain-text 400 and 409 as rejected with its words, never as sent", async () => {
     server.use(http.post("/api/hill/answer", () => new HttpResponse("bad intent", { status: 400 })));
-    const { result } = renderHook(() => useHillAnswer("dc_e"));
+    const { result } = renderHook(() => useHillAnswer("ak_e"));
     await act(() => result.current.send("yes", null));
     expect(result.current.state).toMatchObject({ phase: "answered", receipt: { code: "rejected", reason: "bad intent", state: null, delivery: null } });
     server.use(http.post("/api/hill/answer", () => new HttpResponse("request-id-reused: this rid already answered with another choice", { status: 409 })));
@@ -117,7 +117,7 @@ describe("useHillAnswer", () => {
 
   it("reads a 503 as not sent: the card offers the same answer again with the same rid", async () => {
     answerWith(() => new HttpResponse("the answer could not be recorded on this machine, so nothing was sent", { status: 503 }));
-    const { result } = renderHook(() => useHillAnswer("dc_f"));
+    const { result } = renderHook(() => useHillAnswer("ak_f"));
     await act(() => result.current.send("yes", null));
     expect(result.current.state).toEqual({ phase: "failed", intent: "yes", text: null });
     answerWith(ok);
@@ -128,7 +128,7 @@ describe("useHillAnswer", () => {
 
   it("reads a 200 it cannot read as unknown, never as unsent", async () => {
     server.use(http.post("/api/hill/answer", () => HttpResponse.json({ hello: true })));
-    const { result } = renderHook(() => useHillAnswer("dc_d"));
+    const { result } = renderHook(() => useHillAnswer("ak_d"));
     await act(() => result.current.send("yes", null));
     expect(result.current.state).toMatchObject({ phase: "answered", receipt: { code: "unknown" } });
   });
@@ -147,7 +147,7 @@ describe("useHillAnswer", () => {
       await __settleHill();
     });
     answerWith(ok);
-    const { result } = renderHook(() => useHillAnswer("dc_a"));
+    const { result } = renderHook(() => useHillAnswer("ak_a"));
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
     try {
       await act(() => result.current.send("yes", null));
@@ -173,7 +173,7 @@ describe("useHillAnswer", () => {
       await __settleHill();
     });
     answerWith(() => HttpResponse.json({ reason: "not an option of this decision" }, { status: 400 }));
-    const { result } = renderHook(() => useHillAnswer("dc_a"));
+    const { result } = renderHook(() => useHillAnswer("ak_a"));
     await act(() => result.current.send("maybe", null));
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, HILL_LIST_READ_AFTER_MS + 20));
@@ -193,7 +193,7 @@ describe("useHillAnswer", () => {
 
   it("an answer to any other decision, and an answer the bridge refused, buy no burst", async () => {
     const card = collieCard("version", "legs");
-    const plain = hillDecision({ id: "dc_plain00001" });
+    const plain = hillDecision({ id: "ak_plain00001" });
     await holdOpen(card, plain);
     answerWith(ok);
     const other = renderHook(() => useHillAnswer(plain.id));

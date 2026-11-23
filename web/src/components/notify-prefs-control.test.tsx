@@ -148,19 +148,12 @@ describe("NotifyPrefsControl — the fourth switch and the panes it watches", ()
     await waitFor(() => expect(machines).not.toBeChecked());
   });
 
-  // A `now` Decision on the Hill rings the phone (bridge/hill/push.ts). Default on, its own switch.
-  test("the Decisions switch is on by default, sits above the cache switch, and POSTs {decisions: false}", async () => {
-    const user = userEvent.setup();
+  // No ask sends a notification (ADR 0179 addendum): the field `decisions` stays in the prefs, and has no switch.
+  test("there is no switch for an ask, and the stored decisions field is not drawn", async () => {
     render(<NotifyPrefsControl />);
-    const decisions = await screen.findByRole("switch", { name: /a decision marked now on the hill/i });
-    await waitFor(() => expect(decisions).toBeChecked());
-    const switches = screen.getAllByRole("switch");
-    expect(switches.indexOf(decisions)).toBe(switches.length - 2);
-
-    await user.click(decisions);
-
-    await waitFor(() => expect(lastPatch).toEqual({ decisions: false }));
-    await waitFor(() => expect(decisions).not.toBeChecked());
+    await screen.findByRole("switch", { name: /cache about to go cold/i });
+    expect(screen.queryByRole("switch", { name: /an ask marked now/i })).toBeNull();
+    expect(screen.getAllByRole("switch")).toHaveLength(6);
   });
 
   test("toggling the fourth switch POSTs {cache: true}", async () => {

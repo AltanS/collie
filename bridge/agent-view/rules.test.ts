@@ -555,7 +555,7 @@ describe("rule 6: no stale taps", () => {
         const walky = new WalkyService({ log, host, memberId: null, enabled: () => true, machine: "desk", keyPem: () => null });
         listenPersonTurns({ log, addressOf: (paneId, instance) => walky.addressOf(paneId, instance), note: (session) => r.service.notePersonTurn(session) });
         if (door === "walky") await walky.send({ id: "wt_aaaaaaaaaaa1", to: ONE, body: "please stop", replyTo: null }, { kind: "operator", label: "Pixel 9" });
-        if (door === "hill") expect(await walkySend(walky, { mintId: () => "wt_aaaaaaaaaaa2", sleep: async () => undefined })(ONE, "Answer to dc_k3m9x2p7q1ab: yes", "Pixel 9")).toBe("typed");
+        if (door === "hill") expect(await walkySend(walky, { mintId: () => "wt_aaaaaaaaaaa2", sleep: async () => undefined })(ONE, "Answer to ak_k3m9x2p7q1ab: yes", "Pixel 9")).toBe("typed");
         if (door === "agent") await walky.send({ id: "wt_aaaaaaaaaaa3", to: ONE, body: "done", replyTo: null }, { kind: "agent", pane: panes[1]! });
         expect(served(r).stale, door).toBe(door === "agent" ? undefined : true);
       } finally {

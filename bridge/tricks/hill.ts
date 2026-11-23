@@ -8,7 +8,7 @@ import { HILL_MEDIA_BYTES_MAX, HILL_STATES } from "../../web/src/lib/hill/wire.t
 import { HOST, isBelow } from "../host.ts";
 import { headerField } from "../walky/types.ts";
 import { asJsonNumber, asJsonObject, asJsonString, parseJsonObject } from "../../web/src/lib/json.ts";
-import { DEFAULT_DECISION_PRIORITY, DEFAULT_DECISION_TEXT, pointer, type Refusal, type TrickDecision } from "../../web/src/lib/tricks/schema.ts";
+import { DEFAULT_DECISION_TEXT, pointer, type Refusal, type TrickDecision } from "../../web/src/lib/tricks/schema.ts";
 import { BY_THE_TRICK, TRICK_OFF, type HillOneAnswer, type HillPostAnswer, type HillPostOptions, type HillTrickSender } from "../hill/service.ts";
 import { hillDir } from "../hill/store.ts";
 import type { JsonObject } from "../json.ts";
@@ -28,7 +28,7 @@ import { holdStat, statFactsOf, stillHolds, type StatHeld } from "../stat-held.t
 //     after the post, so a bridge that stops in between derives the same id again; it also keeps a
 //     content that comes back (A, then B, then A) from meeting its own first post.
 //   * the same key with changed content (anything the person sees: title, summary, body, options,
-//     recommends, text mode, links, priority, about, replyTo, the view, and each image's bytes and caption) posts
+//     recommends, text mode, links, about, replyTo, the view, and each image's bytes and caption) posts
 //     the new version with `supersedes` while the old one is open, and as a fresh decision once the old
 //     one closed.
 //   * a key the document no longer lists is withdrawn, "by the trick".
@@ -37,8 +37,7 @@ import { holdStat, statFactsOf, stillHolds, type StatHeld } from "../stat-held.t
 //     the generation, so the request id is new).
 //   * a key that closed without the person (`undeliverable`, `expired` or `withdrawn` by someone other
 //     than the trick) posts again on a later run that still lists it, at most once per
-//     {@link REASK_AFTER_MS} per key, counted from its last post. A re-ask never rings the phone again
-//     (hill/push.ts): it posts with `reask`.
+//     {@link REASK_AFTER_MS} per key, counted from its last post. A re-ask shows the card again.
 //   * a decision the parser refused, or that names no live session, or that the hill refused, changes
 //     nothing for its key: the version on the hill stays as it is. Each such one is a refusal.
 //   * a failed or timed-out run never reaches this module (service.ts): the last good decisions stay.
@@ -60,7 +59,7 @@ import { holdStat, statFactsOf, stillHolds, type StatHeld } from "../stat-held.t
 // row in Settings says its Decisions are not shown (the phone reads `decides` on the trick's entry
 // beside the snapshot's `hillOff`). The first run after the Hill is back on makes the hill agree again.
 //
-// THE MAP. `<stateDir>/hill/tricks.json` keeps, per trick, the generation and per key the decision id,
+// THE MAP. `<stateDir>/asks/tricks.json` keeps, per trick, the generation and per key the decision id,
 // the content hash and the state last seen:
 //   { "v": 1, "tricks": { "<trickId>": { "gen": 0, "keys": { "<key>": { "decisionId", "hash", "state", "seq", "at" } } } } }
 // Beside the hill's own files, not in the trick's state folder (that folder is its program's). Written
@@ -173,7 +172,7 @@ export function imageFileDigest(path: string, look: { now?: () => number; lstat?
     const oldest = fileDigests.keys().next().value;
     if (oldest !== undefined) fileDigests.delete(oldest);
   }
-  fileDigests.set(path, { held: holdStat(statFactsOf(st), readAt, { path, kind: "a Hill picture" }), digest });
+  fileDigests.set(path, { held: holdStat(statFactsOf(st), readAt, { path, kind: "a picture of an ask" }), digest });
   return digest;
 }
 
@@ -204,7 +203,6 @@ export function decisionContentHash(decision: TrickDecision, images: readonly De
     recommends: decision.recommends == null ? null : [decision.recommends.intent, decision.recommends.why],
     text: decision.text ?? DEFAULT_DECISION_TEXT,
     links: (decision.links ?? []).map((link) => [link.label, link.href]),
-    priority: decision.priority ?? DEFAULT_DECISION_PRIORITY,
     about: decision.about ?? null,
     replyTo: decision.replyTo ?? null,
   };
@@ -433,7 +431,7 @@ export class TrickHill {
       if (entry.state === "open") {
         const out = this.deps.hill.withdraw(this.sender(trick, key), entry.decisionId, BY_THE_TRICK);
         if (!out.ok && !out.missing) {
-          refusals.push({ code: "target", path: "/decisions", reason: `The decision "${key}" could not be withdrawn: ${out.error}.`, decision: key });
+          refusals.push({ code: "target", path: "/asks", reason: `The ask "${key}" could not be withdrawn: ${out.error}.`, decision: key });
           continue;
         }
       }
@@ -447,10 +445,10 @@ export class TrickHill {
     const root = run.decisions.some((decision) => (decision.media ?? []).length > 0) ? realFolder(trick.dir) : null;
     const listedSessions = run.sessions ?? NO_SESSIONS;
     run.decisions.forEach((decision, index) => {
-      const path = pointer("/decisions", index);
+      const path = pointer("/asks", index);
       const named = imageInputs(root, decision.media ?? []);
       if (!named.ok) {
-        refusals.push({ code: "target", path: pointer(path, "media"), reason: `${named.reason}, so the decision "${decision.key}" was not posted.`, decision: decision.key });
+        refusals.push({ code: "target", path: pointer(path, "media"), reason: `${named.reason}, so the ask "${decision.key}" was not posted.`, decision: decision.key });
         return;
       }
       const images = named.images;
@@ -475,7 +473,6 @@ export class TrickHill {
         text: decision.text ?? DEFAULT_DECISION_TEXT,
         recommends: decision.recommends ?? null,
         links: decision.links ?? [],
-        priority: decision.priority ?? DEFAULT_DECISION_PRIORITY,
         about,
         replyTo,
         supersedes: held?.state === "open" ? held.decisionId : null,
@@ -483,9 +480,7 @@ export class TrickHill {
       };
       if (images.length > 0) input.images = images;
       if (decision.view !== undefined) input.view = decision.view;
-      // Past the check above, an unchanged hash is a re-ask: it shows again, and does not push again.
-      const reask = held !== undefined && held.hash === hash;
-      const answer = this.deps.hill.postDecision(this.sender(trick, decision.key, images.length > 0 ? root : null), input, { reask });
+      const answer = this.deps.hill.postDecision(this.sender(trick, decision.key, images.length > 0 ? root : null), input, {});
       if (!answer.ok) {
         refusals.push(hillRefusal(answer, path, decision, images));
         return;
@@ -511,7 +506,7 @@ export class TrickHill {
     if (scopeKey === undefined) return null;
     const address = this.deps.addressOf(scopeKey, listed);
     if (address !== null) return address;
-    refusals.push({ code: "target", path: pointer(path, field), reason: `"${scopeKey}" names no live agent session in this run's facts, so the decision "${key}" was not posted.`, decision: key });
+    refusals.push({ code: "target", path: pointer(path, field), reason: `"${scopeKey}" names no live agent session in this run's facts, so the ask "${key}" was not posted.`, decision: key });
     return undefined;
   }
 

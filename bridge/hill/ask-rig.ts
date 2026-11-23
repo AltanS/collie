@@ -37,7 +37,6 @@ export interface AskRig {
   clock: number;
   live: Set<string>;
   sent: Array<{ to: string; body: string; by: string; subject: string | undefined }>;
-  pushed: number;
   delivery: HillSendResult | "throw";
 }
 
@@ -45,7 +44,7 @@ export function askRig(receipts: HillReceiptSurface = memoryHillReceipts(), over
   let n = 0;
   let a = 0;
   const store = new HillStore(null, () => state.clock);
-  const state: Omit<AskRig, "hill"> = { store, clock: 1000, live: new Set([ONE.address, TWO.address]), sent: [], pushed: 0, delivery: "typed" };
+  const state: Omit<AskRig, "hill"> = { store, clock: 1000, live: new Set([ONE.address, TWO.address]), sent: [], delivery: "typed" };
   const hill = new HillService({
     store,
     receipts,
@@ -60,9 +59,8 @@ export function askRig(receipts: HillReceiptSurface = memoryHillReceipts(), over
     memberId: "m_aaaaaaaaaa",
     machine: "desk",
     now: () => state.clock,
-    mintId: () => `dc_test${String((n += 1)).padStart(8, "0")}`,
+    mintId: () => `ak_test${String((n += 1)).padStart(8, "0")}`,
     mintAskId: () => `ak_test${String((a += 1)).padStart(8, "0")}`,
-    push: { check: () => "send", send: () => void (state.pushed += 1), clear: () => undefined },
     ...over(() => state.clock),
   });
   return Object.assign(state, { hill });

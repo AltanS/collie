@@ -295,7 +295,7 @@ describe("the card's page", () => {
   });
 
   it("leaves when the bridge serves no card list at all", async () => {
-    const router = renderApp(["/", { pathname: "/trick-card/dc_gone00000000", state: { from: "/" } }], { trickCards: false });
+    const router = renderApp(["/", { pathname: "/trick-card/ak_gone00000000", state: { from: "/" } }], { trickCards: false });
     await vi.waitFor(() => expect(router.state.location.pathname).toBe("/"));
   });
 });

@@ -45,3 +45,32 @@ describe("router: the pairing forward", () => {
     expect(window.location.pathname).toBe("/settings");
   });
 });
+
+// ADR 0179: the one alias. An old `/hill...` bookmark or notification replaces itself with `/asks`, the query kept.
+describe("router: the old /hill address", () => {
+  beforeEach(() => {
+    window.history.replaceState(null, "", "/");
+  });
+  afterEach(() => {
+    window.history.replaceState(null, "", "/");
+  });
+
+  it.each([
+    ["/hill", "/asks", ""],
+    ["/hill?h=badger", "/asks", "?h=badger"],
+    ["/hill/ask/ak_aaaaaaaaaaaa", "/asks", ""],
+    ["/hill/ask/dc_aaaaaaaaaaaa/context?h=badger", "/asks", "?h=badger"],
+  ])("sends %s to the board", async (from, pathname, search) => {
+    const router = await bootAt(from);
+    await waitFor(() => expect(router.state.location.pathname).toBe(pathname));
+    expect(router.state.location.search).toBe(search);
+    expect(window.location.pathname).toBe(pathname);
+  });
+
+  it("replaces the entry, so Back does not bounce", async () => {
+    const before = window.history.length;
+    const router = await bootAt("/hill");
+    await waitFor(() => expect(router.state.location.pathname).toBe("/asks"));
+    expect(window.history.length).toBe(before + 1);
+  });
+});

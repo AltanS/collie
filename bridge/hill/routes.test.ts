@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { connect } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -88,7 +88,7 @@ function rig(over: Partial<HillServiceDeps> = {}): Rig {
     now: () => 1000,
     mintId: () => {
       n += 1;
-      return `dc_e2e${String(n).padStart(9, "0")}`;
+      return `ak_e2e${String(n).padStart(9, "0")}`;
     },
     ...over,
   });
@@ -165,12 +165,12 @@ describe("POST /api/hill/clear", () => {
   test("ids: the named closed ones go; an open one and an unknown one come back skipped", async () => {
     const r = rig();
     const { open, answered } = await twoDecisions(r);
-    const res = hillClearRoute(r.hill, { ids: [answered, open, "dc_unknown00001"] }, ctx);
+    const res = hillClearRoute(r.hill, { ids: [answered, open, "ak_unknown00001"] }, ctx);
     expect(await res.json()).toEqual({
       cleared: 1,
       skipped: [
         { id: open, reason: "open" },
-        { id: "dc_unknown00001", reason: "missing" },
+        { id: "ak_unknown00001", reason: "missing" },
       ],
     });
     expect(r.hill.decision(open)?.state).toBe("open");
@@ -179,7 +179,7 @@ describe("POST /api/hill/clear", () => {
   test("a body of another shape is a 400 and clears nothing", async () => {
     const r = rig();
     const { answered } = await twoDecisions(r);
-    for (const body of [undefined, null, [], "all", { ids: "dc_aaaaaaaaaaa1" }, { ids: [1] }, { ids: ["not an id"] }, { all: true }, { ids: [], extra: 1 }, { ids: Array.from({ length: 201 }, () => answered) }]) {
+    for (const body of [undefined, null, [], "all", { ids: "ak_aaaaaaaaaaa1" }, { ids: [1] }, { ids: ["not an id"] }, { all: true }, { ids: [], extra: 1 }, { ids: Array.from({ length: 201 }, () => answered) }]) {
       expect(hillClearRoute(r.hill, body, ctx).status).toBe(400);
     }
     expect(r.hill.decision(answered)?.state).toBe("answered");
@@ -307,7 +307,7 @@ describe("POST /api/hill/answer", () => {
   });
 
   test("a bridge built without the hill answers 404", async () => {
-    expect((await hillAnswerRoute(undefined, answerBody("dc_aaaaaaaaaaa1", "yes", null), { device: null, acceptEncoding: null })).status).toBe(404);
+    expect((await hillAnswerRoute(undefined, answerBody("ak_aaaaaaaaaaa1", "yes", null), { device: null, acceptEncoding: null })).status).toBe(404);
   });
 });
 
@@ -337,6 +337,11 @@ describe("the routes' gates, pinned by source", () => {
     const walky = routeBody('if (pathname === "/api/walky" && req.method === "POST") {');
     expect(walky).toContain('browserGate("write")');
     expect(HILL_LOCAL_TEXT).toContain("this machine");
+  });
+
+  test("there is no test-card route: `/api/hill/test` is no route of the server, so it answers the unknown-route 404", () => {
+    expect(src).not.toContain("/api/hill/test");
+    expect(existsSync(join(import.meta.dir, "test-card.ts"))).toBe(false);
   });
 });
 
@@ -403,12 +408,12 @@ describe("end to end", () => {
 
     const markers = [{ namespace: "tmux", scope: "/tmp/tmux-1/default", pane: "%1" }];
     const answer = await overSocket(walkySocketPath(r.stateDir), { v: 1, op: "hill.post", markers, ...post, replyTo: "local/%2", text: "optional" });
-    expect(answer).toMatchObject({ ok: true, decision: { id: "dc_e2e000000001", from: { kind: "agent", address: "local/%1#aaaa" }, replyTo: "local/%2#bbbb" } });
+    expect(answer).toMatchObject({ ok: true, decision: { id: "ak_e2e000000001", from: { kind: "agent", address: "local/%1#aaaa" }, replyTo: "local/%2#bbbb" } });
 
     const list = await hillListRoute(r.hill, null, null).json();
-    expect(list).toMatchObject({ open: [{ id: "dc_e2e000000001", recommends: { intent: "yes" } }] });
+    expect(list).toMatchObject({ open: [{ id: "ak_e2e000000001", recommends: { intent: "yes" } }] });
 
-    const res = await hillAnswerRoute(r.hill, answerBody("dc_e2e000000001", "yes", "Not before the browser leg is green."), { device: "Pixel 9", acceptEncoding: null });
+    const res = await hillAnswerRoute(r.hill, answerBody("ak_e2e000000001", "yes", "Not before the browser leg is green."), { device: "Pixel 9", acceptEncoding: null });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ rid: RID, code: "ok", reason: null, state: "answered", delivery: "typed", trick: "none", at: 1000 });
 
@@ -416,11 +421,11 @@ describe("end to end", () => {
       {
         paneId: "%2",
         // The answer goes to another session than the poster's: no title, no label (the poster's words).
-        text: "[walky-talky wt_e2e0000001] from operator \"Pixel 9\"\nAnswer to dc_e2e000000001\nOption: yes\nNot before the browser leg is green.\nRead the decision with: collie hill status dc_e2e000000001",
+        text: "[walky-talky wt_e2e0000001] from operator \"Pixel 9\"\nAnswer to ak_e2e000000001\nOption: yes\nNot before the browser leg is green.\nRead the ask with: collie walky status ak_e2e000000001",
       },
     ]);
     expect(r.walky.status("wt_e2e0000001").message).toMatchObject({ kind: "operator", from: { label: "Pixel 9", address: null } });
-    const after = await overSocket(walkySocketPath(r.stateDir), { v: 1, op: "hill.status", markers, id: "dc_e2e000000001" });
+    const after = await overSocket(walkySocketPath(r.stateDir), { v: 1, op: "hill.status", markers, id: "ak_e2e000000001" });
     expect(after).toMatchObject({ ok: true, decision: { state: "answered", answer: { intent: "yes", by: "Pixel 9", delivery: "typed" } } });
   });
 });

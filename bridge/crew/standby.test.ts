@@ -242,12 +242,12 @@ describe("the page", () => {
   });
 
   test("ARMED with a copy of the lead's Hill: it counts the open questions that come along (§25)", () => {
-    expect(carriedLines({ tricks: ["Leg day"], questions: 3 })).toEqual(["<p>This also starts these tricks again: <code>Leg day</code>.</p>", "<p>3 open questions on the Hill come along.</p>"]);
-    expect(carriedLines({ tricks: [], questions: 1 })).toEqual(["<p>1 open question on the Hill comes along.</p>"]);
+    expect(carriedLines({ tricks: ["Leg day"], questions: 3 })).toEqual(["<p>This also starts these tricks again: <code>Leg day</code>.</p>", "<p>3 open asks come along.</p>"]);
+    expect(carriedLines({ tricks: [], questions: 1 })).toEqual(["<p>1 open ask comes along.</p>"]);
     expect(carriedLines({ tricks: [], questions: 0 })).toEqual([]);
     const page = standbyPage(facts(), { tricks: [], questions: 2 });
-    expect(page.indexOf("2 open questions on the Hill come along.")).toBeLessThan(page.indexOf(`<button id="go"`));
-    expect(standbyPage(facts({ silentForMs: 3000 }), { tricks: [], questions: 2 })).not.toContain("open questions");
+    expect(page.indexOf("2 open asks come along.")).toBeLessThan(page.indexOf(`<button id="go"`));
+    expect(standbyPage(facts({ silentForMs: 3000 }), { tricks: [], questions: 2 })).not.toContain("open asks");
   });
 
   test("a carried trick name is cleaned, boxed, escaped and capped; a long list ends in a count", () => {

@@ -3,11 +3,7 @@
 
 import { t } from "@/lib/i18n";
 
-import { HILL_ANSWERED_IN_SESSION, HILL_ASK_ANSWERED_HERE, HILL_ASK_CLEARED, RIGHTS_CLOSED, RIGHTS_CLOSED_KEYS, type HillDecision, type HillPriority, type HillReceipt, type HillState } from "./wire";
-
-export function priorityWord(priority: HillPriority): string {
-  return t(`hill.priority.${priority}`);
-}
+import { HILL_ANSWERED_IN_SESSION, HILL_ASK_ANSWERED_HERE, HILL_ASK_CLEARED, RIGHTS_CLOSED, RIGHTS_CLOSED_KEYS, type HillDecision, type HillReceipt, type HillState } from "./wire";
 
 /** A closed decision's state, in plain words. An open one has none to say. */
 export function stateWord(state: Exclude<HillState, "open">): string {
@@ -104,7 +100,8 @@ export function collieOkWords(from: HillDecision["from"], intent: string): strin
 function reasonWords(reason: string | null): string | null {
   if (reason === null || reason.trim() === "") return null;
   if (reason === "text is required") return t("hill.reason.textRequired");
-  if (reason === "not an option of this decision") return t("hill.reason.notAnOption");
+  // The bridge says "ask" since ADR 0179; a lead of an older release still says "decision" (a crew runs mixed versions).
+  if (reason === "not an option of this ask" || reason === "not an option of this decision") return t("hill.reason.notAnOption");
   return reason;
 }
 

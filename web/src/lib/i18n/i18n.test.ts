@@ -102,8 +102,8 @@ describe("plurals", () => {
       const fresh = await import("./index");
       fresh.setLocale("ru");
       await fresh.whenLocaleReady("ru");
-      expect(fresh.tn("home.tabs.hill", 1)).toBe("1 Decision waits on you");
-      expect(fresh.tn("home.tabs.hill", 3)).toBe("3 Decisions wait on you");
+      expect(fresh.tn("home.tabs.hill", 1)).toBe("1 ask waits on you");
+      expect(fresh.tn("home.tabs.hill", 3)).toBe("3 asks wait on you");
       // A set the bundle keeps still reads Russian, with Russian's rule.
       expect(fresh.tn("home.changes.files", 2)).toBe("2 файла");
     } finally {

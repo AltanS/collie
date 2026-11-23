@@ -44,7 +44,7 @@ const METADATA_KEYS: ReadonlySet<string> = new Set([
   // (`lead`, `member`, `bridge`, `hook`), and the outcome beside the reason, an enum as well.
   "by",
   "checked",
-  // The hill (M96): a decision id the bridge mints (`dc_` and 12 characters), never typed by a person.
+  // The hill (M96): a decision id the bridge mints (`ak_` and 12 characters), never typed by a person.
   "decisionId",
   // The hill's answer: what walky reported (`typed`, `held`, `unknown`, `none`), an enum the bridge writes.
   "delivery",
@@ -67,8 +67,8 @@ const METADATA_KEYS: ReadonlySet<string> = new Set([
   // The state dir name of the sibling instance a walky talky row came from (bridge/walky/siblings.ts):
   // `collie`, `collie-next`. The bridge reads it off the hook target registry, never a person's text.
   "recordedBy",
-  // The Hill's test Decision (bridge/hill/test-card.ts): why a notification would not be sent for it, an enum
-  // the bridge writes (`yes` or a `HillRingBlock` code), never a person's text.
+  // The old `hill.test` line (the test ask is gone, ADR 0179 addendum; the line stays readable): why a notification
+  // would not be sent for it, an enum the bridge wrote (`yes` or a ring-block code), never a person's text.
   "rings",
   // A worktree create's id (ADR 0089): a UUID the phone mints, never typed by a person.
   "requestId",

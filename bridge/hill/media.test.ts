@@ -186,34 +186,34 @@ describe("the media folder", () => {
     if (HOST.platform === "win32") ensureOwnerOnlyDir(state, HOST, { root: privateRoot("state"), repair: true });
     const media = new HillMediaStore(hillDir(state), []);
     const id = "im_aaaaaaaaaaaaaaaa";
-    expect(media.save("dc_abcdefabcdef", [{ id, bytes: png() }])).toBe(true);
+    expect(media.save("ak_abcdefabcdef", [{ id, bytes: png() }])).toBe(true);
     const root = join(hillDir(state), MEDIA_DIR);
-    for (const [path, mode] of [[root, 0o700], [join(root, "dc_abcdefabcdef"), 0o700], [join(root, "dc_abcdefabcdef", id), 0o600]] as const) {
+    for (const [path, mode] of [[root, 0o700], [join(root, "ak_abcdefabcdef"), 0o700], [join(root, "ak_abcdefabcdef", id), 0o600]] as const) {
       if (HOST.platform !== "win32") expect(statSync(path).mode & 0o777).toBe(mode);
       else expect(isOwnerOnly(path, HOST)).toEqual({ state: "private" });
     }
-    expect(media.bytesOf("dc_abcdefabcdef", { id, mime: "image/png", bytes: png().length })).toEqual(png());
+    expect(media.bytesOf("ak_abcdefabcdef", { id, mime: "image/png", bytes: png().length })).toEqual(png());
     // A recorded size or type that does not match the file serves nothing.
-    expect(media.bytesOf("dc_abcdefabcdef", { id, mime: "image/png", bytes: 3 })).toBeNull();
-    expect(media.bytesOf("dc_abcdefabcdef", { id, mime: "image/jpeg", bytes: png().length })).toBeNull();
+    expect(media.bytesOf("ak_abcdefabcdef", { id, mime: "image/png", bytes: 3 })).toBeNull();
+    expect(media.bytesOf("ak_abcdefabcdef", { id, mime: "image/jpeg", bytes: png().length })).toBeNull();
     // Ids off their pattern never build a path.
     expect(media.save("../x", [{ id, bytes: png() }])).toBe(false);
-    expect(media.save("dc_abcdefabcdef", [{ id: "../../a", bytes: png() }])).toBe(false);
+    expect(media.save("ak_abcdefabcdef", [{ id: "../../a", bytes: png() }])).toBe(false);
     expect(media.bytesOf("..", { id, mime: "image/png", bytes: png().length })).toBeNull();
-    expect(media.bytesOf("dc_abcdefabcdef", { id: "../dc_abcdefabcdef", mime: "image/png", bytes: png().length })).toBeNull();
-    media.remove("dc_abcdefabcdef");
-    expect(existsSync(join(root, "dc_abcdefabcdef"))).toBe(false);
+    expect(media.bytesOf("ak_abcdefabcdef", { id: "../ak_abcdefabcdef", mime: "image/png", bytes: png().length })).toBeNull();
+    media.remove("ak_abcdefabcdef");
+    expect(existsSync(join(root, "ak_abcdefabcdef"))).toBe(false);
   });
 
   test("prune removes every folder whose decision is not held", () => {
     const state = folder("hill-state-");
     const media = new HillMediaStore(hillDir(state), []);
     expect(media.prune(new Set())).toBe(0);
-    media.save("dc_aaaaaaaaaaaa", [{ id: mintMediaId(), bytes: png() }]);
-    media.save("dc_bbbbbbbbbbbb", [{ id: mintMediaId(), bytes: png() }]);
+    media.save("ak_aaaaaaaaaaaa", [{ id: mintMediaId(), bytes: png() }]);
+    media.save("ak_bbbbbbbbbbbb", [{ id: mintMediaId(), bytes: png() }]);
     mkdirSync(join(hillDir(state), MEDIA_DIR, "stray"));
-    expect(media.prune(new Set(["dc_aaaaaaaaaaaa"]))).toBe(2);
-    expect(readdirSync(join(hillDir(state), MEDIA_DIR))).toEqual(["dc_aaaaaaaaaaaa"]);
+    expect(media.prune(new Set(["ak_aaaaaaaaaaaa"]))).toBe(2);
+    expect(readdirSync(join(hillDir(state), MEDIA_DIR))).toEqual(["ak_aaaaaaaaaaaa"]);
   });
 
   test("a media id is im_ and 16 characters of [a-z0-9], every letter equally likely", () => {
@@ -261,7 +261,7 @@ function rig(opts: { media?: boolean; failPut?: boolean } = {}): Rig {
     now: () => time.now,
     mintId: () => {
       n += 1;
-      return `dc_test${String(n).padStart(8, "0")}`;
+      return `ak_test${String(n).padStart(8, "0")}`;
     },
     mintMediaId: () => {
       m += 1;
@@ -299,7 +299,7 @@ describe("a post with images", () => {
     expect(r.audit).toEqual([{ action: "hill.post", detail: { decisionId: answer.decision.id, options: 1, images: 2, imageBytes: png().length + jpeg().length } }]);
     expect(JSON.stringify(r.audit)).not.toContain(r.work);
     // The decisions file reads back with its media.
-    const stored = parseJsonObject(readFileSync(join(hillDir(r.state), "decisions.json"), "utf8"));
+    const stored = parseJsonObject(readFileSync(join(hillDir(r.state), DECISIONS_FILE), "utf8"));
     const rows = stored?.decisions;
     expect(Array.isArray(rows) ? readDecision(rows[0])?.media : null).toEqual(answer.decision.media);
   });
@@ -342,7 +342,7 @@ describe("a post with images", () => {
     const r = rig({ failPut: true });
     const a = file(r.work, "a.png", png());
     expect(r.hill.post(POSTER, input([{ path: a }]))).toMatchObject({ ok: false });
-    expect(existsSync(mediaFolder(r, "dc_test00000001"))).toBe(false);
+    expect(existsSync(mediaFolder(r, "ak_test00000001"))).toBe(false);
   });
 
   test("an image inside the bridge's state folder is refused, whatever its bytes", () => {
@@ -448,7 +448,7 @@ describe("a trick's own folder", () => {
       walkyOn: () => true,
       memberId: "m_aaaaaaaaaa",
       machine: "desk",
-      mintId: () => `dc_trk${String((n += 1)).padStart(9, "0")}`,
+      mintId: () => `ak_trk${String((n += 1)).padStart(9, "0")}`,
       media: new HillMediaStore(hillDir(l.state), deniedFoldersSync([l.state, l.config]), () => undefined),
     });
   }
@@ -521,10 +521,10 @@ describe("images leave with their decision", () => {
     const a = file(r.work, "a.png", png());
     const kept = r.hill.post(POSTER, input([{ path: a }]));
     if (!kept.ok) throw new Error(kept.error);
-    r.media.save("dc_orphan000000", [{ id: "im_aaaaaaaaaaaaaaaa", bytes: png() }]);
+    r.media.save("ak_orphan000000", [{ id: "im_aaaaaaaaaaaaaaaa", bytes: png() }]);
     r.hill.sweep();
     expect(readdirSync(join(hillDir(r.state), MEDIA_DIR))).toEqual([kept.decision.id]);
-    r.media.save("dc_orphan000001", [{ id: "im_aaaaaaaaaaaaaaaa", bytes: png() }]);
+    r.media.save("ak_orphan000001", [{ id: "im_aaaaaaaaaaaaaaaa", bytes: png() }]);
     expect(r.hill.pruneMedia()).toBe(1);
     expect(readdirSync(join(hillDir(r.state), MEDIA_DIR))).toEqual([kept.decision.id]);
   });
@@ -534,29 +534,29 @@ describe("images leave with their decision", () => {
     mkdirSync(hillDir(state), { recursive: true });
     writeFileSync(join(hillDir(state), DECISIONS_FILE), JSON.stringify({ v: 2, decisions: [] }));
     const media = new HillMediaStore(hillDir(state), deniedFoldersSync([state]), () => undefined);
-    media.save("dc_fromnewer001", [{ id: "im_aaaaaaaaaaaaaaaa", bytes: png() }]);
+    media.save("ak_fromnewer001", [{ id: "im_aaaaaaaaaaaaaaaa", bytes: png() }]);
     const store = new HillStore(hillDir(state), () => 1000, () => undefined);
     const hill = new HillService({ store, receipts: memoryHillReceipts(), media, place: () => null, send: async () => "typed", crewMode: () => "solo", walkyOn: () => true, memberId: "m_aaaaaaaaaa", machine: "desk", now: () => 1000 });
     expect(hill.pruneMedia()).toBe(0);
     hill.sweep();
-    expect(readdirSync(join(hillDir(state), MEDIA_DIR))).toEqual(["dc_fromnewer001"]);
+    expect(readdirSync(join(hillDir(state), MEDIA_DIR))).toEqual(["ak_fromnewer001"]);
   });
 
   test("an entry this build cannot read keeps its folder; one with no id it can tell stops pruning", () => {
     const state = folder("hill-state-");
     mkdirSync(hillDir(state), { recursive: true });
     const media = new HillMediaStore(hillDir(state), deniedFoldersSync([state]), () => undefined);
-    media.save("dc_fromnewer001", [{ id: "im_aaaaaaaaaaaaaaaa", bytes: png() }]);
-    media.save("dc_orphan000000", [{ id: "im_aaaaaaaaaaaaaaaa", bytes: png() }]);
+    media.save("ak_fromnewer001", [{ id: "im_aaaaaaaaaaaaaaaa", bytes: png() }]);
+    media.save("ak_orphan000000", [{ id: "im_aaaaaaaaaaaaaaaa", bytes: png() }]);
     const deps = { receipts: memoryHillReceipts(), media, place: () => null, send: async (): Promise<"typed"> => "typed", crewMode: (): "solo" => "solo", walkyOn: () => true, memberId: "m_aaaaaaaaaa", machine: "desk", now: () => 1000 };
-    writeFileSync(join(hillDir(state), DECISIONS_FILE), JSON.stringify({ v: 1, decisions: [{ v: 2, id: "dc_fromnewer001" }, "no id here"] }));
+    writeFileSync(join(hillDir(state), DECISIONS_FILE), JSON.stringify({ v: 1, decisions: [{ v: 2, id: "ak_fromnewer001" }, "no id here"] }));
     const blind = new HillService({ ...deps, store: new HillStore(hillDir(state), () => 1000) });
     expect(blind.pruneMedia()).toBe(0);
-    expect(readdirSync(join(hillDir(state), MEDIA_DIR)).toSorted()).toEqual(["dc_fromnewer001", "dc_orphan000000"]);
-    writeFileSync(join(hillDir(state), DECISIONS_FILE), JSON.stringify({ v: 1, decisions: [{ v: 2, id: "dc_fromnewer001" }] }));
+    expect(readdirSync(join(hillDir(state), MEDIA_DIR)).toSorted()).toEqual(["ak_fromnewer001", "ak_orphan000000"]);
+    writeFileSync(join(hillDir(state), DECISIONS_FILE), JSON.stringify({ v: 1, decisions: [{ v: 2, id: "ak_fromnewer001" }] }));
     const sighted = new HillService({ ...deps, store: new HillStore(hillDir(state), () => 1000) });
     expect(sighted.pruneMedia()).toBe(1);
-    expect(readdirSync(join(hillDir(state), MEDIA_DIR))).toEqual(["dc_fromnewer001"]);
+    expect(readdirSync(join(hillDir(state), MEDIA_DIR))).toEqual(["ak_fromnewer001"]);
   });
 });
 
@@ -613,7 +613,7 @@ describe("GET /api/hill/media/<decision>/<media>", () => {
     const did = answer.decision.id;
     const mid = answer.decision.media[0]!.id;
     for (const [d, m] of [
-      ["dc_zzzzzzzzzzzz", mid],
+      ["ak_zzzzzzzzzzzz", mid],
       [did, "im_zzzzzzzzzzzzzzzz"],
       ["..", mid],
       [did, ".."],

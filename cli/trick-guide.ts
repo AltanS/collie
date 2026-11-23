@@ -122,7 +122,7 @@ export function trickGuide(): string[] {
     "  t.parts.push   a float part, a small moving picture: t.parts.push({ at: \"float\", id, mode, motion, sprite }). Original art only.",
     "  t.session      the trick's Page (the place session): a row on the Dashboard and a screen.",
     "  v.row, v.para, v.chip and the rest of v   one builder per view node.",
-    "  t.decide       ask the person a question on the Hill. The answer comes back as a tap.",
+    "  t.ask          ask the person a question in Asks. The answer comes back as a tap.",
     "  t.state        small JSON files in the trick's own state folder.",
     "  t.tool, t.sh   find and run a program without a shell.",
     "The AGENTS.md of collie trick init lists every call. Every place, part, manifest key, limit and command is one page: collie docs tricks-reference",
@@ -152,7 +152,7 @@ export function trickGuide(): string[] {
     `It brings the pictures of media/ and captures/ (PNG, JPEG or WebP, at most ${String(PROPOSE_PICTURES.bytes / (1024 * 1024))} MB each, ${String(PROPOSE_PICTURES.files)} in all), and the card names each one.`,
     "Dot files, node_modules, logs, inputs/, config.toml and any other file in media/ or captures/ stay behind.",
     "A proposal cannot carry a config.toml: the program reads it, so your person writes it.",
-    "The person sees a card with your code in this session on the phone, and in Settings, Tricks (on the Hill too, while it is on). One tap on its Switch it on approves the code and switches the trick on. Nothing runs before their yes. Nothing is added to this machine's tricks before it.",
+    "The person sees a card with your code in this session on the phone, and in Settings, Tricks (in Asks too, while it is on). One tap on its Switch it on approves the code and switches the trick on. Nothing runs before their yes. Nothing is added to this machine's tricks before it.",
     `Code that does not fit one card shows on a group of up to ${String(GROUP_CODE_CARDS + 1)} cards, every line of it.`,
     `Card 1 holds the facts. ${String(GROUP_CODE_CARDS)} cards hold the code, about ${String(GROUP_CARD_CODE_BYTES / 1024)} KB each (${String(GROUP_CODE_BYTES / 1024)} KB in all).`,
     "The yes waits until the person opened every card. collie trick check says how many.",
@@ -167,7 +167,7 @@ export function trickGuide(): string[] {
     "A trick that came from a proposal and is on gets a new version card instead.",
     "Its folder changes only after the person's yes. Their config.toml stays.",
     "A trick added on this machine or from a repository is changed there, not by proposal.",
-    "Read the answer with: collie hill status <decision id>",
+    "Read the answer with: collie walky status <ask id>",
   ];
 }
 

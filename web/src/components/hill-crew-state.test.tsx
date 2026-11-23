@@ -56,12 +56,12 @@ describe("the crew state control", () => {
     expect(screen.getByRole("radiogroup", { name: "Crew state" })).toBeInTheDocument();
     expect(screen.getByRole("radio", { name: "Here" })).toBeChecked();
     expect(screen.getByRole("radio", { name: "Quiet" })).not.toBeChecked();
-    expect(screen.getByText("Agents post as usual.")).toBeInTheDocument();
+    expect(screen.getByText("Agents ask as usual.")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Tell all sessions now" })).toBeNull();
     rerender(<HillCrewStateBar {...bar} value="quiet" saved="quiet" />);
-    expect(screen.getByText("No push. Agents post but do not wait.")).toBeInTheDocument();
+    expect(screen.getByText("Agents ask, but do not wait for your answer.")).toBeInTheDocument();
     rerender(<HillCrewStateBar {...bar} value="away" saved="away" />);
-    expect(screen.getByText("No push. Agents hold questions that need an answer now.")).toBeInTheDocument();
+    expect(screen.getByText("Agents keep back questions that need an answer now.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Tell all sessions now" })).toBeEnabled();
   });
 

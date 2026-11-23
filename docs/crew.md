@@ -339,7 +339,7 @@ until you tap on the screen of the machine that will run it. No machine of the c
 on another.
 
 So an agent on a member can hand you a trick with `collie trick propose <folder>`. The files go to the
-lead and wait there, unused, as a card on the Hill. Nothing runs until you tap "Switch it on" on that
+lead and wait there, unused, as a card in Asks. Nothing runs until you tap "Switch it on" on that
 card. `collie trick guide` tells an agent how to write a trick.
 
 A tap on a dialog card of a member's pane goes to that member's own ask route, as it does on the
@@ -440,45 +440,48 @@ read well.
 > answers "That machine's Collie is older and cannot keep pins. Update it." Run `collie crew update --all`
 > to level the crew ([Update a crew](upgrading.md#updating-the-rest-of-the-crew)).
 
-## Decisions from any machine
+## Asks from any machine
 
-An agent on any machine of the crew can put a Decision on the Hill with `collie hill post`, and follow
-it up with `collie hill status`, `withdraw` and `list`. The crew has one Hill, on the lead. The phone
-shows every Decision there, with the machine it came from on its first line.
+An agent on any machine of the crew can send an ask with `collie walky ask`, and follow it up with
+`collie walky status`, `asks` and `cancel`. The crew has one Asks list, on the lead. The phone shows every
+ask there, with the machine it came from on its first line.
 
-A member checks its own switches first: with the Hill or WalkyTalky off on that machine, the post is
-refused there. It reads the images from its own disk, under the same rules as on the lead, and sends
-them to the lead before the post. The lead checks the member's signature, and takes the machine from
-it. A member cannot post for a session of another machine, and its `--reply-to` and `--about` must
-name a session on that same machine.
+A member checks its own switches first: with Asks or WalkyTalky off on that machine, the ask is refused
+there. It reads the images from its own disk, under the same rules as on the lead, and sends them to the
+lead before the ask. The lead checks the member's signature, and takes the machine from it. A member
+cannot ask for a session of another machine. A member takes no `--file` in an ask, and refuses it with
+"linked files work on the lead's own sessions in this build; send the ask again without --file". A member's
+sessions get no reminder of their open asks ([How an agent is
+reminded](asks.md#how-an-agent-is-reminded)).
 
-Your answer goes back to the session as a WalkyTalky message, through the lead. When the session's
-machine is not answering, the phone says "laptop is not answering. Your answer was not sent." The
-card stays open, and you can answer again when the machine is back. A Decision is never closed
-because its machine went away. Dismiss still closes the card: the phone then says the session was not
-told.
+Your answers go back to the session as a WalkyTalky message, through the lead. When the session's
+machine is not answering, the phone says "laptop is not answering. Your answer was not sent." The ask
+stays open, and you can answer again when the machine is back. An ask is never closed because its
+machine went away. Dismiss still closes a card of a trick or of Collie: the phone then says the session
+was not told.
 
-The Hill is an experiment, off until switched on. A member with no Hill switch file of its own follows
-the lead: it does not refuse the post or the image, it sends them, and the lead's switch decides. A
-lead with the Hill off refuses with "the Hill is off on the lead of this crew; your person can switch
-it on in Settings, Tricks, on the phone". Only a member whose own switch says off refuses on its
-own machine.
+Asks is an experiment, off until switched on. A member with no Asks switch file of its own follows the
+lead: it does not refuse the ask or the image, it sends them, and the lead's switch decides. A lead with
+Asks off refuses, and the refusal says that your person can switch it on in Settings, Tricks, on the
+phone. Only a member whose own switch says off refuses on its own machine.
 
 A machine removed from the crew is another matter. After `collie crew remove` on the lead, or
 `collie leave` on the member, the cards whose answer would go to that machine close as undeliverable
 at the next look, with nothing typed. No answer can reach that machine any more.
 
-When the lead does not answer, `collie hill post` says so, exits 5, and posts nothing. When the answer
-comes late, it says the post is not confirmed, and exits 5. Either way it prints the command to send
-the same post again, with its `--request-id`: the lead keeps one Decision for it.
+When the lead does not answer, `collie walky ask` says so, exits 5, and sends nothing. When the answer
+comes late, it says the ask is not confirmed, and exits 5. Either way it prints the command to send
+the same ask again, with its `--request-id`: the lead keeps one ask for it.
 
-One machine's agents hold at most 40 open Decisions on the lead, and send at most four
-notifications to the phone an hour. All members together send at most six an hour, so the lead's own
-sessions always keep a share.
+One machine's agents hold at most 40 open asks on the lead.
 
-> **Note.** Decisions from a member need Collie 1.29.0 on the lead and on that member. An older lead
-> is refused with "the lead runs a Collie older than 1.29.0", and the post is not sent. Post from a
-> session on the lead machine, or run `collie crew update --all` to level the crew
+> **Note.** An ask from a member needs a lead that takes asks from other machines. A lead below 1.29.0
+> does not, and the member says "the lead (`<name>`) runs a Collie older than 1.29.0, which takes no asks
+> from other machines: update the lead, or ask from a session on the lead machine". A lead from 1.29.0 on
+> that does not know asks yet takes the ask as a plain card. The member takes it back at once and says
+> "the lead of this crew runs a Collie that does not know asks; the post was taken back. Update the lead,
+> or ask from a session on the lead". In both cases nothing is left open. Ask from a session on the lead
+> machine, or run `collie crew update --all` to level the crew
 > ([Update a crew](upgrading.md#updating-the-rest-of-the-crew)).
 
 ## Tricks that read files on every machine
@@ -556,9 +559,9 @@ as the lead.
 
 The deputy trusts what its lead says you approved. It cannot see your yes on the lead. Before a trick
 starts, the deputy checks that its code is the version the lead names. A trick that does not match does
-not start, and the Hill says so after the takeover, with an OK button. It also checks that the trick
-asks for the rights the lead says you approved. A trick that asks for other rights stays off, and the
-Hill says "The trick `<name>` is off after the takeover". Read its rights in Settings → Tricks before you
+not start, and Asks says so after the takeover, with an OK button. It also checks that the trick
+asks for the rights the lead says you approved. A trick that asks for other rights stays off, and
+Asks says "The trick `<name>` is off after the takeover". Read its rights in Settings → Tricks before you
 switch it on. When the deputy
 already has a trick folder of that name, Collie leaves the folder as it is, runs the approved version,
 and shows the folder's own code as a new version that waits for your yes.
@@ -570,12 +573,12 @@ The copy holds each trick's `config.toml` and its state folder. A token or key i
 the deputy, until it stops being the deputy: a trick may keep a login token in its state folder. When
 the deputy changes, the old one removes its copy.
 
-### Open questions on the Hill come along
+### Open asks come along
 
-The lead also keeps a copy of its Hill's open Decisions on its deputy, with their pictures, up to 32 MB
+The lead also keeps a copy of its open asks on its deputy, with their pictures, up to 32 MB
 of pictures, newest first. The deputy shows none of them while the lead is alive. Its standby page says
 how many come along, and the Take over button or `collie promote` on the deputy puts them on the
-deputy's Hill. Each keeps its place, and no phone gets a second notification for it.
+deputy's Asks. Each keeps its place.
 
 A picture that did not reach the deputy is left out, and the card says
 "A picture stayed on `<old lead>`." A question from a trick that did not start on the deputy closes,

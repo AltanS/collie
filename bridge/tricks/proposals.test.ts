@@ -128,7 +128,7 @@ async function lead(opts: { self?: { memberId: string; machine: string }; hillOf
     memberId: "lodge",
     machine: "lodge",
     now: () => clock.t,
-    mintId: () => `dc_pro${String((n += 1)).padStart(9, "0")}`,
+    mintId: () => `ak_pro${String((n += 1)).padStart(9, "0")}`,
     hillSwitch,
     onCollieAnswer: (ref, intent) => (ref.type === "proposal" ? proposals!.answer(ref, intent) : cards!.answer(ref, intent)),
   });
@@ -834,7 +834,7 @@ describe("a trick id that exists", () => {
     // Proposed: one card, nothing written.
     const v2 = proposal("legs", "new\n");
     const answer = await l.proposals.propose(v2, AGENT);
-    expect(answer).toMatchObject({ ok: true, kind: "version", id: "legs", hash: v2.hash, decision: expect.stringMatching(/^dc_/u) });
+    expect(answer).toMatchObject({ ok: true, kind: "version", id: "legs", hash: v2.hash, decision: expect.stringMatching(/^ak_/u) });
     await settle(l);
     expect(await snapshot(l)).toEqual(before);
     const [card] = openCards(l);
@@ -1070,7 +1070,7 @@ describe("nothing outside the store moves before the yes (review S5)", () => {
     expect(await wholeTree(l, outsideStore)).toEqual(before);
     expect((await lstat(l.proposals.storeDir("legs", first.hash))).isDirectory()).toBe(true);
     const second = proposal("legs", "2\n");
-    expect(await l.proposals.propose(second, AGENT)).toMatchObject({ ok: true, replaced: expect.stringMatching(/^dc_/u) });
+    expect(await l.proposals.propose(second, AGENT)).toMatchObject({ ok: true, replaced: expect.stringMatching(/^ak_/u) });
     await l.service.refresh(true);
     expect(await wholeTree(l, outsideStore)).toEqual(before);
     expect(await lstat(l.proposals.storeDir("legs", first.hash)).catch(() => null)).toBeNull();
@@ -1082,7 +1082,7 @@ describe("nothing outside the store moves before the yes (review S5)", () => {
     await l.service.refresh(true);
     const before = await wholeTree(l, (rel) => rel === STORE);
     l.hill.postCollie = () => ({ ok: false, code: null, error: "no room" });
-    expect(await l.proposals.propose(proposal("legs"), AGENT)).toEqual({ ok: false, code: "failed", error: "The Hill did not take the card, so nothing was proposed: no room" });
+    expect(await l.proposals.propose(proposal("legs"), AGENT)).toEqual({ ok: false, code: "failed", error: "Asks did not take the card, so nothing was proposed: no room" });
     expect(await storeFiles(l)).toEqual([]);
     expect(await wholeTree(l, (rel) => rel === STORE)).toEqual(before);
   });
@@ -1102,11 +1102,11 @@ describe("nothing outside the store moves before the yes (review S5)", () => {
       leadName: () => "desk",
       call: async (_route, payload) => {
         sent.push(payload);
-        return { kind: "answer", status: 200, body: { ok: true, kind: "proposal", id: "legs", hash: "h", decision: "dc_k3m9x2p7q1ab", replaced: null } };
+        return { kind: "answer", status: 200, body: { ok: true, kind: "proposal", id: "legs", hash: "h", decision: "ak_k3m9x2p7q1ab", replaced: null } };
       },
     });
     const fields = { requestId: nextRid(), files: wireFiles(proposal("legs").files) };
-    expect(await door.local(fields, { kind: "agent", address: "laptop/%1#abcd", label: "repo#one" })).toMatchObject({ ok: true, decision: "dc_k3m9x2p7q1ab" });
+    expect(await door.local(fields, { kind: "agent", address: "laptop/%1#abcd", label: "repo#one" })).toMatchObject({ ok: true, decision: "ak_k3m9x2p7q1ab" });
     expect(sent).toHaveLength(1);
     expect(local).toBe(0);
     expect(await wholeTree(l, () => false)).toEqual(before);

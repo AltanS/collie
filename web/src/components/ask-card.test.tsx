@@ -107,7 +107,7 @@ describe("the card as data", () => {
     draw({ ask: { ...ASK, kind: "dial" } });
     expect(screen.getByText("Run npm test?")).toBeInTheDocument();
     expect(screen.queryAllByRole("button")).toHaveLength(0);
-    expect(screen.getByText("This ask cannot be answered from the phone.")).toBeInTheDocument();
+    expect(screen.getByText("This question card cannot be answered from the phone.")).toBeInTheDocument();
   });
 
   it("nothing posts until a person taps", async () => {
@@ -192,7 +192,7 @@ describe("a tap", () => {
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: wording("Allow") }));
     expect(await screen.findByText("Run npm test as root?")).toBeInTheDocument();
-    expect(screen.getByText(/This ask changed/)).toBeInTheDocument();
+    expect(screen.getByText(/This question card changed/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: wording("Allow") })).toBeEnabled();
     await user.click(screen.getByRole("button", { name: wording("Allow") }));
     await waitFor(() => expect(seen).toHaveLength(2));
@@ -431,7 +431,7 @@ describe("a choice ask", () => {
 
   it("a choice with no options is not answerable", () => {
     draw({ ask: { ...CHOICE, options: [] } });
-    expect(screen.getByText("This ask cannot be answered from the phone.")).toBeInTheDocument();
+    expect(screen.getByText("This question card cannot be answered from the phone.")).toBeInTheDocument();
   });
 
   it("an unknown outcome keeps the same request id and the same pick for Try again", async () => {
@@ -560,10 +560,10 @@ describe("a form ask", () => {
 
   it("a form with no fields, or a choice field with no options, is not answerable", () => {
     const { unmount } = draw({ ask: { ...FORM, fields: [] } });
-    expect(screen.getByText("This ask cannot be answered from the phone.")).toBeInTheDocument();
+    expect(screen.getByText("This question card cannot be answered from the phone.")).toBeInTheDocument();
     unmount();
     draw({ ask: { ...FORM, fields: [{ id: "q", label: "Queue", kind: "choice", options: [] }] } });
-    expect(screen.getByText("This ask cannot be answered from the phone.")).toBeInTheDocument();
+    expect(screen.getByText("This question card cannot be answered from the phone.")).toBeInTheDocument();
   });
 
   it("the controls go off while the tap is on its way", async () => {

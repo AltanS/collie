@@ -28,7 +28,7 @@ function hillOf(opts: { mode?: "lead" | "peer"; on?: boolean; deposed?: boolean 
     memberId: "laptop",
     machine: "laptop",
     now: () => T0,
-    mintId: () => `dc_car${String((n += 1)).padStart(9, "0")}`,
+    mintId: () => `ak_car${String((n += 1)).padStart(9, "0")}`,
     hillSwitch: { on: () => opts.on ?? true },
     onCollieAnswer: async (ref, intent) => (ref.type === "carried" ? answerCarried(intent) : { ok: false, reason: "no" }),
   });

@@ -29,7 +29,7 @@
     {
       "id": "design-review",
       "name": "Design Review",
-      "description": "Turns an agent's UI notes into Decisions you approve by name.",
+      "description": "Turns an agent's UI notes into asks you approve by name.",
       "repo": "https://github.com/AltanS/collie-tricks",
       "dir": "design-review",
       "commit": "270e38621edba959fd1e0acbc4df8dd3de8cbdcb",
@@ -44,7 +44,7 @@
         "status",
         "tabbar"
       ],
-      "decides": "reply",
+      "asks": "reply",
       "previous": [
         {
           "commit": "9473ce07c1ce1a11ca49510671c71badbe2857ac",
@@ -78,7 +78,7 @@
         "status",
         "tabbar"
       ],
-      "decides": "reply",
+      "asks": "reply",
       "previous": [
         {
           "commit": "9473ce07c1ce1a11ca49510671c71badbe2857ac",

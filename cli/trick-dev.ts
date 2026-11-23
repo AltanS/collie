@@ -10,7 +10,7 @@ import { tricksConfigDir } from "../bridge/tricks/paths.ts";
 import { RUN_TIMEOUT_MS, STDOUT_CAP_BYTES } from "../bridge/tricks/run.ts";
 import { parseJson } from "../web/src/lib/json.ts";
 import { FACTS } from "../web/src/lib/tricks/fixtures/index.ts";
-import { HILL_NODE_PREFIX, INPUTS_CONTRACT, isRequestId, isTrickId, parseFacts, type FactsTrigger, type TrickManifest, type ParsedPart, type Refusal, type TrickDecision, type TrickFacts, type View, type ViewNode } from "../web/src/lib/tricks/schema.ts";
+import { ASKS_NODE_PREFIX, OLD_TRICK_NODE_PREFIX, oldNodeLine, INPUTS_CONTRACT, isRequestId, isTrickId, parseFacts, type FactsTrigger, type TrickManifest, type ParsedPart, type Refusal, type TrickDecision, type TrickFacts, type View, type ViewNode } from "../web/src/lib/tricks/schema.ts";
 import { hillWordingWarnings } from "./hill-rules.ts";
 import { EXIT } from "./io.ts";
 import { checkStatic, decisionWording, helperOlderNote, runAgainstFixture, type FixtureOptions, type FixtureRun, type TrickDeps } from "./trick.ts";
@@ -90,13 +90,14 @@ export function parseDevArgs(args: readonly string[]): DevArgs | { error: string
   if (intent === undefined && (text !== null || node !== undefined)) return { error: "--text and --node go with --tap" };
   if (intent === undefined && rid !== null) return { error: "--rid goes with --tap" };
   if (rid !== null && !isRequestId(rid)) return { error: `--rid must be a UUID, not "${rid}"` };
+  if (node !== undefined && node.startsWith(OLD_TRICK_NODE_PREFIX)) return { error: oldNodeLine(node) };
   return { target, tap: intent === undefined ? null : { intent, text, node: node ?? "main" }, json, watch: watching, facts, state, rid, inputs };
 }
 
-/** The tap trigger `--tap` sends: a hill node carries `{ text }`, any other node the text as its value. `rid` is a fresh UUID unless `--rid` gave one. */
+/** The tap trigger `--tap` sends: an ask's node (`asks/<key>`) carries `{ text }`, any other node the text as its value. `rid` is a fresh UUID unless `--rid` gave one. */
 export function devTrigger(tap: DevTap, rid: string = randomUUID()): FactsTrigger {
   const trigger: FactsTrigger = { kind: "tap", rid, node: tap.node, intent: tap.intent };
-  if (tap.node.startsWith(HILL_NODE_PREFIX)) trigger.value = { text: tap.text };
+  if (tap.node.startsWith(ASKS_NODE_PREFIX)) trigger.value = { text: tap.text };
   else if (tap.text !== null) trigger.value = tap.text;
   return trigger;
 }
@@ -171,7 +172,6 @@ export function decisionLine(decision: TrickDecision): string {
   const options = decision.options ?? [];
   words.push(options.length === 0 ? "no options (words only)" : `options ${options.map((o) => o.intent).join(", ")}`);
   if (decision.recommends !== undefined && decision.recommends !== null) words.push(`recommends ${decision.recommends.intent}`);
-  if (decision.priority !== undefined) words.push(decision.priority);
   if ((decision.media ?? []).length > 0) words.push(`images ${String(decision.media?.length ?? 0)}`);
   return words.join("  ");
 }
@@ -193,10 +193,10 @@ export function devSummary(ran: FixtureRun, refusals: readonly Refusal[]): strin
     const rows = parsed.parts.map((p) => [p.place, p.part.id, partSummary(p)]);
     if (rows.length > 0) out.push(...table(rows).map((line) => `  ${line}`));
     else out.push("  no parts");
-    if (!ran.decisionsListed) out.push("  decisions: none listed, so the open ones stay as they are");
-    else if (parsed.decisions.length === 0) out.push("  decisions: none, so the open ones are withdrawn");
+    if (!ran.decisionsListed) out.push("  asks: none listed, so the open ones stay as they are");
+    else if (parsed.decisions.length === 0) out.push("  asks: none, so the open ones are withdrawn");
     for (const decision of parsed.decisions) {
-      out.push(`  decision  ${decisionLine(decision)}`);
+      out.push(`  ask  ${decisionLine(decision)}`);
       // Soft: the words are the author's (HILL_WRITING); said under the line, never a refusal.
       for (const warning of hillWordingWarnings(decision)) out.push(`    warn  ${warning}`);
     }
@@ -348,7 +348,7 @@ async function devOnce(deps: TrickDeps, folder: string, args: DevArgs, inputs: D
     const stderr = ran.outcome.kind === "spawn-failed" ? "" : ran.outcome.stderr;
     const parsed = ran.parsed;
     const kind = args.tap === null ? (inputs.facts?.value.trigger.kind ?? "timer") : "tap";
-    const body = { folder, trigger: kind, outcome: ran.outcome.kind, ms: ran.outcome.ms, stdoutBytes: ran.stdoutBytes, problem: ran.problem, stderr, decisionsListed: ran.decisionsListed, parts: parsed?.parts ?? [], decisions: parsed?.decisions ?? [], refusals, notes: parsed?.notes ?? [], wording: decisionWording(parsed?.decisions ?? []), pictures };
+    const body = { folder, trigger: kind, outcome: ran.outcome.kind, ms: ran.outcome.ms, stdoutBytes: ran.stdoutBytes, problem: ran.problem, stderr, asksListed: ran.decisionsListed, parts: parsed?.parts ?? [], asks: parsed?.decisions ?? [], refusals, notes: parsed?.notes ?? [], wording: decisionWording(parsed?.decisions ?? []), pictures };
     const withState = inputs.state === undefined ? body : { ...body, state: inputs.state };
     deps.io.out(JSON.stringify(readLine === null ? withState : { ...withState, inputs: readLine }, null, 2));
   } else {

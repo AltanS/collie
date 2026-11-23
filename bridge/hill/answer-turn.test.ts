@@ -6,7 +6,7 @@ import { answerMessage, messageTitle, readItLine, withCrewLine } from "./service
 // The phone reads the first line of Collie's own answer message (web/src/lib/hill/answer-turn.ts). Every case here builds the
 // text with the writer, `answerMessage` in bridge/hill/service.ts, so a change to that line breaks this file.
 
-const ID = "dc_5k9vtcwnrp3z";
+const ID = "ak_5k9vtcwnrp3z";
 const TITLE = 'Use the new version of "hadoken"?';
 
 describe("answeredDecisionId reads what answerMessage writes", () => {
@@ -37,9 +37,9 @@ describe("answeredDecisionId reads what answerMessage writes", () => {
 describe("answeredDecisionId is exact", () => {
   it.each([
     ["no id", 'Answer to "T?"'],
-    ["a short id", 'Answer to dc_abc "T?"'],
-    ["a long id", 'Answer to dc_5k9vtcwnrp3zz "T?"'],
-    ["an upper case id", 'Answer to dc_5K9VTCWNRP3Z "T?"'],
+    ["a short id", 'Answer to ak_abc "T?"'],
+    ["a long id", 'Answer to ak_5k9vtcwnrp3zz "T?"'],
+    ["an upper case id", 'Answer to ak_5K9VTCWNRP3Z "T?"'],
     ["the line is not first", `Stop.\nAnswer to ${ID} "T?"`],
     ["a word before it", `Re: Answer to ${ID} "T?"`],
     ["words after the title", `Answer to ${ID} "T?" and more`],

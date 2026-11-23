@@ -170,7 +170,7 @@ export function foreignTarget(fields: JsonObject, memberId: string, place?: (add
     if (text === undefined) continue;
     if (key === "about" && (text.trim() === "" || text.trim() === "here")) continue;
     if (!resolvesToOwn(text, memberId, place)) {
-      return `\`${headerField(text, 80)}\` is not a session on this machine: a Decision from a crew member answers to, and is about, a session on that member only`;
+      return `\`${headerField(text, 80)}\` is not a session on this machine: an ask from a crew member answers to, and is about, a session on that member only`;
     }
   }
   return null;
@@ -308,7 +308,7 @@ export class HillCrewLead {
     // Images ride by hash, uploaded first: a path in the fields names a file on the member, never here.
     if (fields.images !== undefined) return badRequest("a forwarded post names its images by hash, never by path");
     const rawImages = row.images ?? [];
-    if (!Array.isArray(rawImages) || rawImages.length > HILL_MEDIA_MAX) return refused("too_many_images", `a decision has at most ${String(HILL_MEDIA_MAX)} images`);
+    if (!Array.isArray(rawImages) || rawImages.length > HILL_MEDIA_MAX) return refused("too_many_images", `an ask has at most ${String(HILL_MEDIA_MAX)} images`);
     const hashes: Array<{ readonly sha: string; readonly caption: string | null }> = [];
     for (const entry of rawImages) {
       const image = asJsonObject(entry);
@@ -365,7 +365,7 @@ export class HillCrewLead {
     const sender: HillAgentSender = { kind: "agent", address: as, memberId, harness: null, label: "", host: null };
     if (op === "list") return { status: 200, body: { ok: true, decisions: this.deps.hill.mineList(sender) } };
     const id = asJsonString(row.id);
-    if (id === undefined || !HILL_ID_RE.test(id)) return badRequest("a decision id is dc_ or ak_ and 12 characters");
+    if (id === undefined || !HILL_ID_RE.test(id)) return badRequest("an ask id is ak_ (or dc_ from an older lead) and 12 characters");
     // An ask's close (Asks, 2026-11-22) carries `answered` or `because`; a lead before asks ignores both and
     // takes it back plainly, which the member's CLI shows as the state it reads back.
     const answered = asJsonBoolean(row.answered) === true;
@@ -431,7 +431,7 @@ export const LEAD_UNREACHABLE_CODE = "lead_unreachable";
 
 /** What a member answers when its lead runs a release that takes no Decisions from other machines. */
 export function hillLeadOlder(lead: string): string {
-  return `the lead (${lead}) runs a Collie older than ${TRICKS_CREW_FIRST_VERSION}, which takes no Decisions from other machines: update the lead, or post from a session on the lead machine`;
+  return `the lead (${lead}) runs a Collie older than ${TRICKS_CREW_FIRST_VERSION}, which takes no asks from other machines: update the lead, or ask from a session on the lead machine`;
 }
 
 /** What a member answers when nothing reached its lead: nothing was posted, and the retry is safe. */
@@ -559,7 +559,7 @@ export class HillMemberForward implements HillLeadForward {
     if (posted.kind === "failed") return { ok: false, code: null, error: posted.error };
     if (asJsonBoolean(posted.body.ok) !== true) return refusalOf(posted.body);
     const decision = readDecision(posted.body.decision);
-    if (decision === null) return { ok: false, code: null, error: `the lead (${lead}) answered without a decision; check with: collie hill list` };
+    if (decision === null) return { ok: false, code: null, error: `the lead (${lead}) answered without an ask; check with: collie walky asks` };
     const crewState = posted.body.crewState;
     return isHillCrewState(crewState) ? { ok: true, decision, crewState } : { ok: true, decision };
   }
@@ -592,14 +592,14 @@ export class HillMemberForward implements HillLeadForward {
     const read = await this.call(body);
     if (read.kind === "older") return { ok: false, missing: false, error: hillLeadOlder(lead) };
     if (read.kind === "refused") return { ok: false, missing: false, error: hillLeadAway(lead) };
-    if (read.kind === "unknown") return { ok: false, missing: false, error: op === "withdraw" ? `the lead (${lead}) did not confirm the withdraw; check with: collie hill status ${id}` : hillLeadAway(lead) };
+    if (read.kind === "unknown") return { ok: false, missing: false, error: op === "withdraw" ? `the lead (${lead}) did not confirm the withdraw; check with: collie walky status ${id}` : hillLeadAway(lead) };
     if (read.kind === "failed") return { ok: false, missing: false, error: read.error };
     if (asJsonBoolean(read.body.ok) === true) {
       // Shown only, never stored: Collie's own card (a trick proposal) reads too (parse.ts `collie`).
       const decision = readDecision(read.body.decision, { collie: true });
-      return decision === null ? { ok: false, missing: false, error: `the lead (${lead}) answered without a decision` } : { ok: true, decision };
+      return decision === null ? { ok: false, missing: false, error: `the lead (${lead}) answered without an ask` } : { ok: true, decision };
     }
-    const error = leadWords(asJsonString(read.body.error), `no decision ${id} from this session`);
+    const error = leadWords(asJsonString(read.body.error), `no ask ${id} from this session`);
     return asJsonBoolean(read.body.missing) === true ? { ok: false, missing: true, error } : { ok: false, missing: false, error };
   }
 

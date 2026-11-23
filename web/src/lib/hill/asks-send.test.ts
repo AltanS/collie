@@ -11,8 +11,8 @@ function marked(over: { id: string; text?: string }): MarkedAnswer {
 
 describe("the request of a Send", () => {
   it("names each answer and carries a note only where there is one", () => {
-    const request = sendRequest("rid-1", [marked({ id: "dc_a" }), marked({ id: "dc_b", text: "but not for long" })]);
-    expect(request).toEqual({ rid: "rid-1", answers: [{ id: "dc_a", intent: "keep" }, { id: "dc_b", intent: "keep", text: "but not for long" }] });
+    const request = sendRequest("rid-1", [marked({ id: "ak_a" }), marked({ id: "ak_b", text: "but not for long" })]);
+    expect(request).toEqual({ rid: "rid-1", answers: [{ id: "ak_a", intent: "keep" }, { id: "ak_b", intent: "keep", text: "but not for long" }] });
   });
 });
 
@@ -30,8 +30,8 @@ describe("the words of a refused Send", () => {
   });
 
   it("puts a refusal about one ask on that ask", () => {
-    expect(refused({ code: "not_an_ask", error: "x", id: "dc_x" })).toEqual({ ask: "dc_x", words: "Collie no longer holds this ask. Nothing was sent." });
-    expect(refused({ code: "bad_answer", error: "x", id: "dc_y" }).ask).toBe("dc_y");
+    expect(refused({ code: "not_an_ask", error: "x", id: "ak_x" })).toEqual({ ask: "ak_x", words: "Collie no longer holds this ask. Nothing was sent." });
+    expect(refused({ code: "bad_answer", error: "x", id: "ak_y" }).ask).toBe("ak_y");
   });
 
   it("says a device that may not answer, and a Send with no readable reason", () => {

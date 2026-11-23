@@ -53,7 +53,7 @@ function BoardPhone({ drafts = NO_DRAFTS }: { drafts?: ReadonlyMap<string, AskDr
     <Phone height={760}>
       <RootRouter data={homeSolo}>
         <AppHeaderHost bridge="connected" error={false}>
-          <HillHeader count={DECK.length} nowCount={0} onBack={noop} />
+          <HillHeader count={DECK.length} onBack={noop} />
           <div data-pg-scroll className="min-h-0 flex-1 overflow-y-auto p-4">
             <HillView open={[]} closed={[]} kept={new Map()} renderCard={() => null} asks={{ count: DECK.length, node: <AsksBoard sessions={SESSIONS} live={PLAY_LIVE} now={PLAY_NOW} drafts={drafts} onOpen={noop} /> }} />
           </div>
@@ -69,7 +69,7 @@ function EmptyPhone() {
     <Phone height={560}>
       <RootRouter data={homeSolo}>
         <AppHeaderHost bridge="connected" error={false}>
-          <HillHeader count={0} nowCount={0} onBack={noop} />
+          <HillHeader count={0} onBack={noop} />
           <div data-pg-scroll className="min-h-0 flex-1 overflow-y-auto p-4">
             <HillView open={[]} closed={[closedAnsweredHere, closedCleared]} kept={new Map()} renderCard={() => null} />
           </div>

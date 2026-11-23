@@ -831,7 +831,7 @@ export async function runAgainstFixture(manifest: TrickManifest, folder: string,
     const problem = outcomeProblem(outcome, 400);
     if (problem !== null || outcome.kind !== "exited") return { outcome, problem, stdoutBytes: 0, parsed: null, decisionsListed: false };
     const parsed = parseTrickDocumentText(outcome.stdout, { declared: manifest.places, contract: manifest.contract, decidesReply: manifest.decides === "reply", draftsSession: manifest.drafts === "session" });
-    const decisionsListed = asJsonObject(parseJson(outcome.stdout))?.decisions !== undefined;
+    const decisionsListed = asJsonObject(parseJson(outcome.stdout))?.asks !== undefined;
     return { outcome, problem, stdoutBytes: new TextEncoder().encode(outcome.stdout).length, parsed, decisionsListed };
   } finally {
     if (!kept) await rm(state, { recursive: true, force: true });
@@ -916,7 +916,7 @@ function printReport(deps: Pick<TrickDeps, "io">, report: TrickCheckReport): voi
       io.out(`          ${AGENT_VIEW_TAP_WORDS}`);
     }
     if (m.rules !== undefined) io.out(`  rules:  ${m.rules}. ${RULES_WORDS}`);
-    if (m.decides === "reply") io.out(`  decides: reply. ${DECIDES_REPLY_WORDS}`);
+    if (m.decides === "reply") io.out(`  asks: reply. ${DECIDES_REPLY_WORDS}`);
     if (m.drafts === "session") io.out(`  drafts: session. ${DRAFTS_SESSION_LINE}`);
     if (m.access !== undefined) io.out(`  access: ${m.access}. ${ACCESS_LINES[m.access]}`);
   }
@@ -953,7 +953,7 @@ function printReport(deps: Pick<TrickDeps, "io">, report: TrickCheckReport): voi
     // Notes never fail the check: a node or a part this Collie leaves out, a key it ignores.
     for (const n of run.notes) io.out(`  note: output ${n.path === "" ? "" : `${n.path} `}${n.reason}`);
     // Soft too: how a Decision is worded is the author's call (HILL_WRITING).
-    for (const w of run.wording) io.out(`  warn: decision ${w.key}: ${w.text}`);
+    for (const w of run.wording) io.out(`  warn: ask ${w.key}: ${w.text}`);
     for (const line of run.pictures) io.out(`  warn: ${line}`);
     if (run.tapNote !== undefined) io.out(`  note: ${run.tapNote}`);
     if (run.problem !== null && run.stderr.trim() !== "") {
@@ -1074,8 +1074,8 @@ run((t) => {
     view: [v.list(sessions.slice(0, rows).map((s) => v.row((s.name ?? s.paneId).slice(0, 60), { end: s.status })))],
   });
 
-  // Ask the person on the Hill. The answer comes back as a tap: t.tap.decision is the key, t.tap.intent the option.
-  // t.decide({
+  // Ask the person, in Asks. The answer comes back as a tap: t.tap.ask is the key, t.tap.intent the option.
+  // t.ask({
   //   key: "tidy",
   //   title: "Close the idle sessions?",
   //   summary: \`\${sessions.length - busy} sessions are idle.\`,

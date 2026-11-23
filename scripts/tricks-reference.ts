@@ -115,7 +115,7 @@ function exampleLabel(example: Example): string {
     case "screen":
       return "The agent passes `show` this file:";
     case "decision":
-      return "A program lists this Decision:";
+      return "A program lists this ask:";
     case "tap":
       return "The answer comes back as this trigger:";
   }
@@ -157,7 +157,7 @@ function fieldTable(head: string, rows: readonly FieldRow[]): string[] {
 function hillSection(): string[] {
   const rules = hillRulesOf(programNumbers());
   return [
-    "## The Hill",
+    "## Asks",
     "",
     HILL.what,
     "",
@@ -165,7 +165,7 @@ function hillSection(): string[] {
     "",
     `**From an agent.** ${HILL.agent}`,
     "",
-    "A Decision a program lists has these keys:",
+    "An ask a program lists has these keys:",
     "",
     ...table(
       ["Key", "Type", "Needed", "Limit", "What it is"],
@@ -179,7 +179,7 @@ function hillSection(): string[] {
     "",
     "### The list is the truth",
     "",
-    "After each run that succeeded, Collie makes the Hill agree with the list of `decisions`, key by key.",
+    "After each run that succeeded, Collie makes Asks agree with the list of `asks`, key by key.",
     "",
     ...table(
       ["When", "Collie does"],
@@ -241,7 +241,7 @@ function programSection(): string[] {
     "The program prints one JSON document on stdout and exits 0:",
     "",
     "```json",
-    '{ "v": 1, "parts": [], "decisions": [], "asOf": "2026-11-08T09:41:00Z", "fresh": "90s" }',
+    '{ "v": 1, "parts": [], "asks": [], "asOf": "2026-11-08T09:41:00Z", "fresh": "90s" }',
     "```",
     "",
     ...table(
@@ -249,7 +249,7 @@ function programSection(): string[] {
       program.output.map((row) => [word(row.key), row.required, row.what]),
     ),
     "",
-    `There is no ${program.removedOutputKeys.map(word).join(" and no ")} key in the document: Collie ignores each with a note. What a trick wants to show is a \`link\`. What it wants to tell the person is a Decision.`,
+    `There is no ${program.removedOutputKeys.map(word).join(" and no ")} key in the document: Collie ignores each with a note. What a trick wants to show is a \`link\`. What it wants to tell the person is an ask.`,
     "",
     "Collie never sends a trick's text into a session on its own. Text reaches a session in three ways, and each one waits for the person's own tap:",
     "",
@@ -257,7 +257,7 @@ function programSection(): string[] {
       ["Way", "What happens", "What the trick needs"],
       [
         ["A button with `does` set to `draft`", "A tap puts the button's `value` into the reply box of the session the trick's page is open for, and opens that session. It fills only an empty box: a box with words is left as it is. Collie never sends it: the person reads it and taps Send.", "`drafts = \"session\"` in `trick.toml`"],
-        ["A Decision with `replyTo`", "The person's answer is typed into that session as their own message.", "`decides = \"reply\"` in `trick.toml`"],
+        ["An ask with `replyTo`", "The person's answer is typed into that session as their own message.", "`asks = \"reply\"` in `trick.toml`"],
         ["A button in an agent view", "A tap sends the button's label to the session the view belongs to.", "the place `agent-view` and its `rules`"],
       ],
     ),
@@ -266,7 +266,7 @@ function programSection(): string[] {
     "",
     "### Strict at write, tolerant at read",
     "",
-    "Collie checks strictly what a person or an agent writes: `trick.toml`, `collie hill post` and a trick's Decisions. An unknown key, kind or attribute there is refused. It reads a program's output tolerantly, so a trick written for a newer Collie runs on an older one, which leaves out only what it does not know. From contract 2 a part is read closed: an unknown key inside it leaves that part out, since it may carry a meaning this Collie cannot keep. The document's own keys stay open.",
+    "Collie checks strictly what a person or an agent writes: `trick.toml`, `collie walky ask` and a trick's asks. An unknown key, kind or attribute there is refused. It reads a program's output tolerantly, so a trick written for a newer Collie runs on an older one, which leaves out only what it does not know. From contract 2 a part is read closed: an unknown key inside it leaves that part out, since it may carry a meaning this Collie cannot keep. The document's own keys stay open.",
     "",
     ...table(
       ["The program prints", "Collie does"],
@@ -379,7 +379,7 @@ function partsSection(): string[] {
     `- ${VIEW_KINDS_OF.agentView}`,
     "",
     ...table(
-      ["Part", "What it is", "Sits", "In a Decision's view"],
+      ["Part", "What it is", "Sits", "In an ask's view"],
       PARTS.map((part) => [word(part.kind), part.what, part.sits, part.inDecision ? "yes" : "no"]),
     ),
   ];
@@ -398,7 +398,7 @@ function partsSection(): string[] {
     }
     if (part.agentView !== "") lines.push("", `**In an agent view.** ${part.agentView}`);
     const decision = decisionViewNote(part.kind);
-    if (decision !== "") lines.push("", `**In a Decision's view.** ${decision}`);
+    if (decision !== "") lines.push("", `**In an ask's view.** ${decision}`);
     lines.push("", "```json", JSON.stringify(part.example, null, 2), "```");
   }
   lines.push("", "### Shared values", "", ...table(["Name", "Values"], SHARED_VALUES.map((value) => [value.name, value.values])));
@@ -430,7 +430,8 @@ function commandsSection(): string[] {
     { id: "trick", title: "`collie trick`", intro: "Every verb of `collie trick`." },
     { id: "tricks", title: "`collie tricks`", intro: "The switch for tricks as a whole on this machine. Tricks are an experiment and off until switched on." },
     { id: "trick view", title: "`collie trick view`", intro: "The verbs an agent runs to draw an agent view, as `collie trick view <trick> <verb>`." },
-    { id: "hill", title: "`collie hill`", intro: "The verbs an agent or a person runs to post and read Decisions." },
+    { id: "walky ask", title: "`collie walky ask`", intro: "The verbs an agent runs to send an ask and read it: `ask`, `asks`, `status` and `cancel` of `collie walky`. The other verbs of `collie walky` send messages." },
+    { id: "asks", title: "`collie asks`", intro: "The verbs a person runs for Asks: clear the closed asks, read or set the crew state, and switch Asks on or off." },
   ];
   const lines: string[] = ["## Commands", ""];
   for (const group of groups) {

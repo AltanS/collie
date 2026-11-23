@@ -90,7 +90,7 @@ export const VIEW_MEDIA_BYTES_MAX = 2 * 1024 * 1024;
 export const VIEW_SET_BYTES_MAX = 8 * 1024 * 1024;
 /** A picture's caption, in characters: the hill's. */
 export const VIEW_CAPTION_MAX = HILL_MEDIA_CAPTION_MAX;
-/** A picture set's id: the hill's decision id shape (`dc_` and 12 random characters), minted by the bridge per set. */
+/** A picture set's id: the hill's decision id shape (`ak_` and 12 random characters), minted by the bridge per set. */
 export const VIEW_SET_RE = HILL_ID_RE;
 /** A picture's id: the hill's media id shape, minted by the bridge. */
 export const VIEW_MEDIA_ID_RE = HILL_MEDIA_ID_RE;

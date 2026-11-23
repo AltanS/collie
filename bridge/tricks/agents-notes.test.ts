@@ -26,8 +26,12 @@ function cardText(manifest: TrickManifest, files: Record<string, string>): strin
 describe("the notes init writes", () => {
   test("their text is pinned to NOTES_VERSION: a change to the text bumps the version and this hash", () => {
     const hash = (draft: boolean): string => createHash("sha256").update(sampleAgents("legs", "ts", draft)).digest("hex").slice(0, 16);
-    // v10 (ADR 0170 addendum) names the page "Tricks" again: its bytes are v8's, so a v8 draft is named as v10 now.
-    expect({ version: NOTES_VERSION, hash: hash(false), draft: hash(true) }).toEqual({ version: 10, hash: "b69910ed5436b700", draft: "5b6edf4eb83590db" });
+    // v11 (ADR 0179) says Asks and ask in place of the Hill and Decision, and asks = "reply".
+    expect({ version: NOTES_VERSION, hash: hash(false), draft: hash(true) }).toEqual({ version: 11, hash: "0061570839cc0ad1", draft: "bdf23c55be49660a" });
+    for (const word of [/\bHill\b/u, /\bhill\b/u, /\bDecisions?\b/u, /\bdecides\b/u]) expect(sampleAgents("legs", "ts", true)).not.toMatch(word);
+    // v10 (ADR 0170 addendum) names the page "Tricks" again: its bytes are v8's, so a v8 draft is named as v10.
+    const v10 = (draft: boolean): string => createHash("sha256").update(sampleAgents("legs", "ts", draft, 10)).digest("hex").slice(0, 16);
+    expect({ hash: v10(false), draft: v10(true) }).toEqual({ hash: "b69910ed5436b700", draft: "5b6edf4eb83590db" });
     const v8 = (draft: boolean): string => createHash("sha256").update(sampleAgents("legs", "ts", draft, 8)).digest("hex").slice(0, 16);
     expect({ hash: v8(false), draft: v8(true) }).toEqual({ hash: "b69910ed5436b700", draft: "5b6edf4eb83590db" });
     expect(shippedNotesVersion("legs", sampleAgents("legs", "ts", true, 8))).toBe(10);
@@ -36,7 +40,8 @@ describe("the notes init writes", () => {
     expect({ hash: v9(false), draft: v9(true) }).toEqual({ hash: "b69910ed5436b700", draft: "32a490145f37566d" });
     expect(shippedNotesVersion("legs", sampleAgents("legs", "ts", true, 9))).toBe(9);
     expect(sampleAgents("legs", "ts", true, 9)).toContain("Settings, Tricks and the Hill (on the Hill too");
-    expect(sampleAgents("legs", "ts", true)).toContain("Settings, Tricks (on the Hill too");
+    expect(sampleAgents("legs", "ts", true, 10)).toContain("Settings, Tricks (on the Hill too");
+    expect(sampleAgents("legs", "ts", true)).toContain("Settings, Tricks (in Asks too");
     expect(sampleAgents("legs", "ts", true)).not.toContain("Tricks and the Hill");
     // v7's bytes stay as written (the 1.29.1 staging), so a draft init wrote at v7 is still named, as v7.
     const v7 = (draft: boolean): string => createHash("sha256").update(sampleAgents("legs", "ts", draft, 7)).digest("hex").slice(0, 16);
@@ -70,15 +75,17 @@ describe("the notes init writes", () => {
   });
 
   test("v4 (package I): a draft's last step names where the card is, the session first, and never says the Hill must be on", () => {
-    const text = sampleAgents("legs", "sh", true);
+    const text = sampleAgents("legs", "sh", true, 10);
     expect(text).toContain("Its card shows in this session on the\n   phone and in Settings, Tricks (on the Hill too, while it is on).");
+    expect(sampleAgents("legs", "sh", true)).toContain("Its card shows in this session on the\n   phone and in Settings, Tricks (in Asks too, while it is on).");
     expect(text).not.toContain("send this draft to the Hill");
     expect(text).not.toMatch(/switch (the Hill|it) on/iu);
   });
 
   test("v5: a draft's last step says never to run collie tricks on or collie hill on, and v4 does not", () => {
-    const text = sampleAgents("legs", "sh", true);
+    const text = sampleAgents("legs", "sh", true, 10);
     expect(text).toContain("never run\n   `collie tricks on` or `collie hill on`: all three refuse inside an agent's pane.");
+    expect(sampleAgents("legs", "sh", true)).toContain("never run\n   `collie tricks on` or `collie asks on`: all three refuse inside an agent's pane.");
     expect(sampleAgents("legs", "sh", true, 4)).not.toContain("collie hill on");
   });
 

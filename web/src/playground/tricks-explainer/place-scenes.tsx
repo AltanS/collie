@@ -456,7 +456,7 @@ function HillInner() {
   const open = useMemo(() => [GATES_DECISION], []);
   return (
     <AppHeaderHost bridge="connected" error={false}>
-      <HillHeader count={1} nowCount={0} onBack={IGNORE} />
+      <HillHeader count={1} onBack={IGNORE} />
       <div className={cn("relative flex min-h-0 flex-1 flex-col overflow-hidden px-4 pt-4", footAir(true, "pb-4"))}>
         <HillView open={open} closed={[]} kept={new Map()} renderCard={(d) => <DecisionCard key={d.id} decision={d} answer={HILL_IDLE} onSend={IGNORE} />} />
       </div>

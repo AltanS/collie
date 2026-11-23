@@ -67,7 +67,7 @@ function rig() {
     memberId: "m_aaaaaaaaaa",
     machine: "lodge",
     now: () => clock.now,
-    mintId: () => `dc_tb${String((n += 1)).padStart(10, "0")}`,
+    mintId: () => `ak_tb${String((n += 1)).padStart(10, "0")}`,
     crewState: new HillCrewStateFile(stateDir, () => undefined, () => clock.now),
   });
   const posts: string[] = [];

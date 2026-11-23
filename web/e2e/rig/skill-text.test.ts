@@ -13,8 +13,8 @@ import { skillHash as tierSkillHash } from "./replay/tier";
 
 const template = (): string => readFileSync(SKILL_TEMPLATE, "utf8").replaceAll("\r\n", "\n");
 /** The first line of the template's Hill part (a marker line) and the first word-level marker, to edit inside them. */
-const HILL_OPEN = "{{HILL}}\n";
-const HILL_CLOSE = "{{/HILL}}\n";
+const HILL_OPEN = "{{ASKS}}\n";
+const HILL_CLOSE = "{{/ASKS}}\n";
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -33,8 +33,8 @@ describe("the text the rig writes", () => {
     writeWalkySkill(join(dir, "AGENTS.md"), "block");
     for (const name of ["SKILL.md", "AGENTS.md"]) {
       const text = readFileSync(join(dir, name), "utf8");
-      expect(text).not.toContain("{{HILL");
-      expect(text).not.toContain("{{/HILL");
+      expect(text).not.toContain("{{ASKS");
+      expect(text).not.toContain("{{/ASKS");
       expect(text).not.toContain("{{COLLIE_");
       expect(text).not.toContain("## Asks");
       expect(text).not.toMatch(/hill Decisions and/u);
@@ -54,7 +54,7 @@ describe("the text the rig writes", () => {
     const on = renderRigSkill(template(), true);
     const off = renderRigSkill(template(), false);
     expect(on).toContain("## Asks");
-    expect(on).not.toContain("{{HILL");
+    expect(on).not.toContain("{{ASKS");
     expect(off).not.toContain("## Asks");
     expect(off.length).toBeLessThan(on.length);
   });
@@ -84,7 +84,7 @@ describe("the recording key", () => {
     expect(edited).not.toBe(base);
     expect(skillHash(renderRigSkill(edited, false))).toBe(skillHash(renderRigSkill(base, false)));
     // The one-line Hill words in the description cut the same way.
-    const words = base.replace("{{HILL}}", "{{HILL}}extra words ");
+    const words = base.replace("{{ASKS}}", "{{ASKS}}extra words ");
     expect(words).not.toBe(base);
     expect(skillHash(renderRigSkill(words, false))).toBe(skillHash(renderRigSkill(base, false)));
   });

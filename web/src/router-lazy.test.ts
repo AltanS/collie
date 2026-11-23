@@ -64,7 +64,7 @@ describe("the lazy route table", () => {
       "/conversations",
       "/conversations/:id",
       "/pane/:paneId/history",
-      "/hill",
+      "/asks",
       "/trick-card/:decisionId",
     ]) {
       expect(lazy, path).toContain(path);

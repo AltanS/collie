@@ -3546,28 +3546,6 @@ export async function setHillSwitch(on: boolean): Promise<boolean> {
   return held;
 }
 
-/** What `POST /api/hill/test` answers: the seconds until the card is posted, and why no notification would be sent for it, if so. */
-export interface HillTestReply {
-  readonly inSeconds: number;
-  /** The first reason, a code from the bridge (`push_off`, `no_devices`, ...), or null when the notification will be sent. A code a newer bridge adds reads as a string. */
-  readonly rings: string | null;
-}
-
-/**
- * POST /api/hill/test: "Send a test Decision". The bridge posts one Decision of its own, marked Now, a few seconds
- * later, so the phone that pressed can leave the app first, and answers at once with the seconds to wait and the
- * first reason no notification would be sent. The body is empty: nothing from the request enters the card. A refusal
- * (409, the Hill is off or this machine is not the lead) throws; a body of another shape throws too.
- */
-export async function sendHillTest(): Promise<HillTestReply> {
-  const raw = await req<JsonValue>("/api/hill/test", { method: "POST", body: "{}" });
-  const doc = asJsonObject(raw);
-  const inSeconds = asJsonNumber(doc?.inSeconds);
-  const rings = doc?.rings === null ? null : asJsonString(doc?.rings);
-  if (doc === undefined || inSeconds === undefined || !Number.isFinite(inSeconds) || inSeconds < 0 || rings === undefined) throw new Error("/api/hill/test answered with a body that is not { inSeconds, rings }");
-  return { inSeconds, rings };
-}
-
 /**
  * POST /api/tricks/switch: switch tricks as a whole on or off for this bridge (off by default). Answers the
  * value the switch holds now. The snapshot carries it too (`tricksOff`), so a caller revalidates after a

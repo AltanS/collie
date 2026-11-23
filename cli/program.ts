@@ -140,7 +140,7 @@ import {
 import { apiHelp, cmdApi, declaredOperations, type ApiDeps } from "./api.ts";
 import { ASK_HELP, cmdAskCancel, cmdAskStatus, cmdWalkyAsk, cmdWalkyAsks, namesAnAsk } from "./ask.ts";
 import { type BeaconAsksDeps, runBeaconAsks, socketAsk } from "./beacon-asks.ts";
-import { cmdHill, cmdHillClear, cmdHillList, cmdHillPost, cmdHillState, cmdHillOn, cmdHillStatus, cmdHillSwitch, cmdHillWithdraw, HILL_SUBCOMMANDS, hillPostHelp, type HillDeps } from "./hill.ts";
+import { ASKS_SUBCOMMANDS, ASKS_WHAT, cmdAsks, cmdHillClear, cmdHillOn, cmdHillState, cmdHillSwitch, cmdOldHill, type HillDeps } from "./hill.ts";
 import { cmdTrickView, viewTopLines, type ViewDeps } from "./trick-view.ts";
 import { cmdTricks, cmdTricksOn, cmdTricksStatus, cmdTricksSwitch, TRICKS_SUBCOMMANDS } from "./tricks-switch.ts";
 import { cmdUpdateCheck, updateCheckDeps, wantsCheck } from "./update-check.ts";
@@ -369,55 +369,34 @@ function apiDeps(io: Io): ApiDeps {
   return { io };
 }
 
-/** `hill` (M96): walky's own deps, since the hill speaks over the walky socket. */
+/** `asks` and `walky ask` (M96, ADR 0179): walky's own deps, since asks speak over the walky socket. */
 function hillDeps(io: Io): HillDeps {
   // The person's verbs ask what this pane runs, as `collie trick on` does.
   return { ...walkyDeps(io), paneKind: () => askPaneKind(walkyDeps(io)) };
 }
 
-/** The sub-verbs of `hill` (M96). `post --help` prints the usage and the rules an agent reads first. */
-const HILL_TREE: readonly Subcommand[] = [
-  {
-    name: "post",
-    summary: "post a decision for your person: `hill post --title ... --summary ... --option <intent>=<label> --recommend <intent> --why ...`; prints its id",
-    usage: hillPostHelp,
-    run: (args, s) => cmdHillPost(hillDeps(s.io), args),
-  },
-  {
-    name: "status",
-    summary: "a decision's state, and the answer when there is one: `hill status <dc_id>`",
-    run: (args, s) => cmdHillStatus(hillDeps(s.io), args),
-  },
-  {
-    name: "withdraw",
-    summary: "take back an open decision you posted: `hill withdraw <dc_id>`",
-    run: (args, s) => cmdHillWithdraw(hillDeps(s.io), args),
-  },
-  {
-    name: "list",
-    summary: "your own decisions, open first",
-    run: (args, s) => cmdHillList(hillDeps(s.io), args),
-  },
+/** The sub-verbs of `asks` (ADR 0179): the person's own. An agent asks with `walky ask`. */
+const ASKS_TREE: readonly Subcommand[] = [
   {
     name: "clear",
-    summary: "remove every closed decision from the Hill (open ones stay): `hill clear`",
+    summary: "remove every closed ask from Asks (open ones stay): `asks clear`; `--spoken` closes the cards you answered in the session",
     run: (args, s) => cmdHillClear(hillDeps(s.io), args),
   },
   // The crew state (1.29.0): anyone reads it; the person sets it, never from an agent's pane.
   {
     name: "state",
-    summary: "the crew state (here, quiet or away) and since when; `hill state away` sets it, from your own terminal",
+    summary: "the crew state (here, quiet or away) and since when; `asks state away` sets it, from your own terminal",
     run: (args, s) => cmdHillState(hillDeps(s.io), args),
   },
-  // The Hill's switch: a file in this instance's state folder, read again by the running bridge.
+  // The switch of Asks: a file in this instance's state folder, read again by the running bridge.
   {
     name: "on",
-    summary: "switch the Hill on for this Collie (it is off until switched on)",
+    summary: "switch Asks on for this Collie (it is off until switched on)",
     run: (args, s) => cmdHillOn({ ...hillDeps(s.io), followSkill: (on) => skillFollowsSwitch(skillDeps(s.io))(on) }, args),
   },
   {
     name: "off",
-    summary: "switch the Hill off: agents and tricks cannot post, the open decisions stay",
+    summary: "switch Asks off: agents and tricks cannot ask you, the open asks stay",
     run: (args, s) => cmdHillSwitch({ ...hillDeps(s.io), followSkill: (on) => skillFollowsSwitch(skillDeps(s.io))(on) }, "off", args),
   },
 ];
@@ -452,7 +431,7 @@ const WALKY_TREE: readonly Subcommand[] = [
   {
     name: "status",
     summary: "a message's receipt, or an ask's state: `walky status <wt_ or ak_ id>`",
-    // The id's prefix says which: an ask (ak_, or dc_ for any Decision) or a message (wt_).
+    // The id's prefix says which: an ask (ak_) or a message (wt_). An old dc_ id gets one line (cli/ask.ts).
     run: (args, s) => (namesAnAsk(args) ? cmdAskStatus(hillDeps(s.io), args) : cmdWalkyStatus(walkyDeps(s.io), args)),
   },
   {
@@ -478,7 +457,7 @@ const WALKY_TREE: readonly Subcommand[] = [
   },
   {
     name: "asks",
-    summary: "the open asks of this session",
+    summary: "the open asks this session sent (your own list; your person's verbs are `collie asks`)",
     run: (args, s) => cmdWalkyAsks(hillDeps(s.io), args),
   },
 ];
@@ -1190,7 +1169,7 @@ export const COMMANDS: readonly Command[] = [
       },
       {
         name: "propose",
-        summary: "hand a trick folder to your person: a card on the lead's Hill, nothing runs before their yes: <folder> (--json)",
+        summary: "hand a trick folder to your person: a card in the lead's Asks, nothing runs before their yes: <folder> (--json)",
         run: async (args, s) => await cmdTrickPropose(walkyDeps(s.io), args),
       },
       {
@@ -1318,14 +1297,24 @@ export const COMMANDS: readonly Command[] = [
     subcommands: WALKY_TREE,
     run: (args, s) => cmdWalky({ io: s.io }, args),
   },
-  // ── The hill (M96) ─────────────────────────────────────────────────────────
-  // An agent posts a Decision for its person over the walky socket; the answer comes back as a
-  // WalkyTalky message. Declared after `walky`, whose socket and markers it uses.
+  // ── Asks (M96, ADR 0179) ───────────────────────────────────────────────────
+  // The person's verbs for the open asks of their agents and tricks. An agent asks with `walky ask`, over
+  // the walky socket. Declared after `walky`, whose socket and markers it uses.
+  {
+    name: "asks",
+    summary: `${ASKS_WHAT} Verbs: ${ASKS_SUBCOMMANDS.join(", ")}`,
+    subcommands: ASKS_TREE,
+    run: (args, s) => cmdAsks({ io: s.io }, args),
+  },
+  // `collie hill` is gone (ADR 0179, no alias): every old verb, `--help` too, fails with one line that
+  // names the new verb. Hidden from the usage list.
   {
     name: "hill",
-    summary: `the hill, decisions an agent asks its person: ${HILL_SUBCOMMANDS.join(", ")}`,
-    subcommands: HILL_TREE,
-    run: (args, s) => cmdHill({ io: s.io }, args),
+    summary: "gone: every old verb names its new one",
+    internal: true,
+    // A parent with no children: every argv, `--help` included, reaches `run` past the help guard.
+    subcommands: [],
+    run: (args, s) => cmdOldHill({ io: s.io }, args),
   },
   // ── The local API (M105 spec 03) ───────────────────────────────────────────
   // EXPERIMENTAL. One verb, its help generated from the operation table. The local API answers a trick's

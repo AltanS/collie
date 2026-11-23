@@ -54,7 +54,7 @@ describe("the Hill's row in Settings, Tricks", () => {
     expect(built.className).not.toContain("control-on");
     expect(built.querySelector("svg")).toBeNull();
     expect(row.querySelector('[data-slot="experimental-badge"]')).not.toBeNull();
-    // Answers to Decisions are typed into sessions: the chip after the label says it costs agent tokens.
+    // Answers to asks are typed into sessions: the chip after the label says it costs agent tokens.
     expect(row.querySelector('[data-slot="token-use"]')?.textContent).toBe("Uses agent tokens");
     expect(screen.getByRole("switch", { name: "Asks" })).toBeChecked();
     // The old card's long words are gone from the row: the page holds them.
@@ -72,9 +72,9 @@ describe("the Hill's row in Settings, Tricks", () => {
 
   it.each([
     [0, null],
-    [1, "1 Decision waits on you"],
-    [3, "3 Decisions wait on you"],
-  ])("with %i Decisions waiting the slot line is %s", (waiting, line) => {
+    [1, "1 ask waits on you"],
+    [3, "3 asks wait on you"],
+  ])("with %i asks waiting the slot line is %s", (waiting, line) => {
     render(<Row on disabled={false} waiting={waiting} onToggle={() => {}} />);
     const slot = document.querySelector('[data-hill-row] [data-line="slot"]');
     expect(slot?.textContent ?? null).toBe(line);
@@ -164,7 +164,7 @@ describe("the armed second tap on the switch", () => {
     fireEvent.click(sw);
     expect(onToggle).not.toHaveBeenCalled();
     expect(sw).toBeChecked();
-    expect(screen.getByRole("status")).toHaveTextContent("3 questions wait on the Hill. You cannot answer them while it is off.");
+    expect(screen.getByRole("status")).toHaveTextContent("3 questions wait in Asks. You cannot answer them while it is off.");
     // The same touch landing twice is not the second tap.
     clock.mockReturnValue(t0 + 100);
     fireEvent.click(sw);
@@ -178,7 +178,7 @@ describe("the armed second tap on the switch", () => {
   it("says one question in the singular", () => {
     render(<Row {...props} waiting={1} onToggle={() => {}} />);
     fireEvent.click(screen.getByRole("switch", { name: "Asks" }));
-    expect(screen.getByRole("status")).toHaveTextContent("1 question waits on the Hill. You cannot answer it while it is off.");
+    expect(screen.getByRole("status")).toHaveTextContent("1 question waits in Asks. You cannot answer it while it is off.");
   });
 
   it("lays the note over the text in one grid cell: arming swaps the layers and the row keeps its height", () => {
@@ -299,7 +299,7 @@ describe("the switch over the list the phone holds", () => {
     const t0 = Date.now();
     const clock = vi.spyOn(Date, "now").mockReturnValue(t0);
     fireEvent.click(sw);
-    expect(screen.getByRole("status")).toHaveTextContent("3 questions wait on the Hill. You cannot answer them while it is off.");
+    expect(screen.getByRole("status")).toHaveTextContent("3 questions wait in Asks. You cannot answer them while it is off.");
     expect(requests).toEqual([]);
     clock.mockReturnValue(t0 + ARM_DWELL_MS + 200);
     await act(async () => fireEvent.click(sw));

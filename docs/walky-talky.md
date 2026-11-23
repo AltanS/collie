@@ -487,6 +487,11 @@ collie walky cancel wt_n2d8s1v7c4b9
   "already typed, nothing to take back" and keeps its receipt. A second `cancel` prints the receipt
   and changes nothing. From another pane it is refused: only the sender can cancel it.
 
+An id that starts with `ak_` is an ask, not a message. `status ak_...` prints the state of that ask,
+and `cancel ak_...` takes back 1 to 5 asks at once. `collie walky ask` and `collie walky asks` send
+and list asks. They are not messages: your answers come back as one message, with the subject "Answers to
+your asks" ([What an agent does](asks.md#what-an-agent-does)).
+
 Every verb takes `--json` for a script.
 
 ## Across a crew
@@ -528,10 +533,10 @@ certificate with its own word for it, so the receiving machine checks the sender
   the lead leaves it out, and the typed line there has no `about` part. The body is the same. A member
   whose lead is older than 1.29.0 sends the message without its subject and prints
   `The subject was left out: the lead of this crew runs a Collie older than 1.29.0.`
-- **A Decision goes to the lead's Hill.** `collie hill post` on a member posts on the lead, and the
-  answer comes back to the session as a message through the lead. An answer to a session whose
-  machine is not answering is not sent, and the card stays open
-  ([Decisions from any machine](crew.md#decisions-from-any-machine)).
+- **An ask goes to the lead's Asks.** `collie walky ask` on a member sends the ask to the lead, and the
+  answers come back to the session as a message through the lead. An answer to a session whose
+  machine is not answering is not sent, and the ask stays open
+  ([Asks from any machine](crew.md#asks-from-any-machine)).
 
 The receipt's `verified` field says how the sender was known. `origin` means the sender's own key
 was checked. `lead` means the lead checked it, and this machine trusts the lead. `local` means
@@ -659,8 +664,8 @@ An agent uses WalkyTalky only when it knows how. Collie writes the skill that te
 your agents' own skills folders.
 
 The skill is a short text. It teaches the agent the `collie walky` verbs, how to read the header
-of a message, and when not to send. It also teaches the agent to put a Decision on the hill with
-`collie hill post`, with one example and a pointer to `collie hill --help` for the rules, and to read what a
+of a message, and when not to send. It also teaches the agent to leave an open question for you as an ask with
+`collie walky ask`, with one example, the rules and the way to close an ask, and to read what a
 trick asks of it with `collie trick skill <id>`. A copy installed before this text read as stale until the next
 `collie skill sync`. An agent keeps only the skill's name and its one-line description in its prompt.
 It reads the rest when it opens the skill.
@@ -690,9 +695,9 @@ collie skill install claude
 `collie skill install all` installs into every harness whose config folder exists. A running agent
 reads its instructions at start, so restart it after an install.
 
-Only `collie update`, `collie skill install`, `collie skill sync` and a change of the Hill's switch
-write those files. No bridge start touches them. The skill holds the Hill's section only while the
-Hill is on ([Switch the Hill on or off](hill.md#switch-the-hill-on-or-off)).
+Only `collie update`, `collie skill install`, `collie skill sync` and a change of the Asks switch
+write those files. No bridge start touches them. The skill holds the Asks section only while
+Asks is on ([Turn Asks on or off](asks.md#turn-asks-on-or-off)).
 
 ### Where the skill goes
 
@@ -846,7 +851,7 @@ These are the limits that stay on. Each bridge counts them for its own panes, on
 
 | Limit | Refused as |
 | --- | --- |
-| 30 messages per sender in 10 minutes. A sender is its kind, machine and pane, never its label. The Hill's "Tell all sessions now" counts in a budget of its own, so it never uses up the one your answers go out on | `rate limit` |
+| 30 messages per sender in 10 minutes. A sender is its kind, machine and pane, never its label. The Asks page's "Tell all sessions now" counts in a budget of its own, so it never uses up the one your answers go out on | `rate limit` |
 | Your broadcast to `all` or `<member>/all` counts one message per pane it reaches | `rate limit` |
 | 12 messages in 10 minutes between the same two panes, either direction. `COLLIE_WALKY_PAIR_LIMIT` (`walky_pair_limit` in the `[bridge]` section of the config file) sets it, from 1 to 100, and each machine counts for itself | `pair limit` |
 | On a lead, 60 messages in 10 minutes from one machine, all its panes together | `rate limit` |

@@ -2690,7 +2690,7 @@
           }
         }
       ],
-      "decisions": [
+      "asks": [
         {
           "key": "case-24",
           "title": "Leg red: case 24. Rerun it?",
@@ -2711,7 +2711,6 @@
             "intent": "merge",
             "why": "x"
           },
-          "priority": "today",
           "about": "lodge:w6X:3",
           "replyTo": "lodge:w6X:3",
           "media": [
@@ -2730,7 +2729,7 @@
       ]
     },
     "paths": [
-      "/decisions/0/recommends/intent"
+      "/asks/0/recommends/intent"
     ],
     "keeps": [
       "belt"
@@ -2752,7 +2751,7 @@
           }
         }
       ],
-      "decisions": [
+      "asks": [
         {
           "key": "case-24",
           "title": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
@@ -2785,7 +2784,6 @@
             }
           ],
           "recommends": null,
-          "priority": "today",
           "about": "lodge:w6X:3",
           "replyTo": "lodge:w6X:3",
           "media": [
@@ -2835,11 +2833,11 @@
       ]
     },
     "paths": [
-      "/decisions/0/title",
-      "/decisions/0/summary",
-      "/decisions/0/options",
-      "/decisions/0/media",
-      "/decisions/0/links"
+      "/asks/0/title",
+      "/asks/0/summary",
+      "/asks/0/options",
+      "/asks/0/media",
+      "/asks/0/links"
     ],
     "keeps": [
       "belt"
@@ -2861,7 +2859,7 @@
           }
         }
       ],
-      "decisions": [
+      "asks": [
         {
           "key": "d0",
           "title": "T",
@@ -2970,7 +2968,7 @@
       ]
     },
     "paths": [
-      "/decisions"
+      "/asks"
     ],
     "keeps": [
       "belt"
@@ -2989,7 +2987,7 @@
           }
         }
       ],
-      "decisions": [
+      "asks": [
         {
           "key": "a",
           "title": "T"
@@ -3002,7 +3000,7 @@
       ]
     },
     "paths": [
-      "/decisions/0/summary"
+      "/asks/0/summary"
     ],
     "keeps": [
       "belt"
@@ -3027,7 +3025,7 @@
           }
         }
       ],
-      "decisions": [
+      "asks": [
         {
           "key": "a",
           "title": "T",
@@ -3041,7 +3039,7 @@
       ]
     },
     "paths": [
-      "/decisions/1/key"
+      "/asks/1/key"
     ],
     "keeps": [
       "belt"
@@ -3066,7 +3064,7 @@
           }
         }
       ],
-      "decisions": [
+      "asks": [
         {
           "key": "a",
           "title": "T",
@@ -3081,7 +3079,7 @@
       ]
     },
     "paths": [
-      "/decisions/0/options/0/intent"
+      "/asks/0/options/0/intent"
     ],
     "keeps": [
       "belt"
@@ -3103,7 +3101,7 @@
           }
         }
       ],
-      "decisions": [
+      "asks": [
         {
           "key": "a",
           "title": "T",
@@ -3113,7 +3111,7 @@
       ]
     },
     "paths": [
-      "/decisions/0/replyTo"
+      "/asks/0/replyTo"
     ],
     "keeps": [
       "belt"
@@ -3135,7 +3133,7 @@
           }
         }
       ],
-      "decisions": [
+      "asks": [
         {
           "key": "a",
           "title": "T",
@@ -3147,7 +3145,7 @@
       ]
     },
     "paths": [
-      "/decisions/0/from"
+      "/asks/0/from"
     ],
     "keeps": [
       "belt"

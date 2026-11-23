@@ -70,7 +70,7 @@
     "trigger": {
       "kind": "tap",
       "rid": "0b9e8d7c-6f5a-4b3c-9d2e-1f0a9b8c7d6e",
-      "node": "hill/case-24",
+      "node": "asks/case-24",
       "intent": "rerun",
       "value": {
         "text": "Rerun it, then tell me."

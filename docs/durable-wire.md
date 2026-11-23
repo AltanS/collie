@@ -21,9 +21,9 @@ body reads as `{}`.
 | method and path | what it does | reply limit |
 | --- | --- | --- |
 | `GET /hello` | The durable agent's name, version range, epoch, readiness and caps | 16 KiB |
-| `GET /snapshot` | The layout: workspaces, tabs, panes with their state, turn and open asks, and starters. Carries an ETag, and answers 304 when nothing changed | 4 MiB |
+| `GET /snapshot` | The layout: workspaces, tabs, panes with their state, turn and open question cards, and starters. Carries an ETag, and answers 304 when nothing changed | 4 MiB |
 | `GET /pane/:id/events?after=N&epoch=E` | The pane's events after a cursor | 8 MiB |
-| `POST /pane/:id/answer` | An answer to an ask | 16 KiB |
+| `POST /pane/:id/answer` | An answer to a question card | 16 KiB |
 | `POST /pane/:id/send` | Text for the pane, to steer the running turn or wait for the next | 16 KiB |
 | `POST /pane/:id/abort` | Stop the running turn | 16 KiB |
 | `POST /pane/:id/action` | A tap on one of the pane's belt buttons | 16 KiB |
@@ -54,7 +54,7 @@ unknown outcome ([Request ids](#request-ids)).
 Collie first calls `hello` without the version header, picks the highest version both sides speak,
 and sends it on every later call. While `ready` is false, every route but `hello` answers 503
 `starting`, and the phone shows the durable agent as starting. A durable agent sets `ready` only once every
-conversation is shown again and every open ask raised again, so a restart never shows half a layout.
+conversation is shown again and every open question card raised again, so a restart never shows half a layout.
 
 The snapshot's ETag is `"<epoch>-<rev>"`. `rev` rises on every change a reader could see, so a 304
 costs the durable agent next to nothing. A new epoch tells Collie the durable agent restarted. Collie keeps
@@ -64,34 +64,34 @@ cursor and gets the pane's whole current view in one reply.
 One failed read after a good one keeps the last snapshot for that poll. Two failures in a row show
 the durable agent as unreachable. A socket path that fails the privacy walk is unreachable at once.
 
-## Asks and answers
+## Question cards and answers
 
-An ask is a question card, and it is open from the durable agent's `ask` event until its `ask-closed`.
+A question card is open from the durable agent's `ask` event until its `ask-closed`.
 
 | state | who sets it | what the phone shows |
 | --- | --- | --- |
-| Open | The durable agent raises the ask. The pane reads `waiting` while any ask is open | A card under "Needs your answer", with the durable agent's name, and the time left when the ask has `expiresAt` |
-| Changed | The durable agent changes the ask in place, and its `revision` rises | The card redraws. A tap on the old form gets 409 `stale`, and the card says "This ask changed. Read it again, then tap an answer." |
-| Taken | The phone answers, and the durable agent closes the ask with `by: "phone"` | The card goes, and the tool runs or is denied as the option says |
-| Decided in the durable agent | The durable agent closes the ask itself, `decidedBy: "program"`. A stop of the turn counts | A line in Chat that starts "Decided in the durable agent", with the ask's title |
-| Timed out | The clock passes `expiresAt`, `decidedBy: "timeout"` | A line in Chat that starts "Timed out before an answer", with the ask's title |
+| Open | The durable agent raises the question card. The pane reads `waiting` while any question card is open | A card under "Needs your answer", with the durable agent's name, and the time left when the question card has `expiresAt` |
+| Changed | The durable agent changes the question card in place, and its `revision` rises | The card redraws. A tap on the old form gets 409 `stale`, and the card says "This question card changed. Read it again, then tap an answer." |
+| Taken | The phone answers, and the durable agent closes the question card with `by: "phone"` | The card goes, and the tool runs or is denied as the option says |
+| Decided in the durable agent | The durable agent closes the question card itself, `decidedBy: "program"`. A stop of the turn counts | A line in Chat that starts "Decided in the durable agent", with the card's title |
+| Timed out | The clock passes `expiresAt`, `decidedBy: "timeout"` | A line in Chat that starts "Timed out before an answer", with the card's title |
 
 A tap that comes after the decision gets 409 `decided` with the first outcome, and nothing runs. The
 card then says who decided first: "Decided in the durable agent.", "Timed out before an answer.", or, after
-another tap, "Already answered. This card goes away on the next update." An ask the durable agent does not
+another tap, "Already answered. This card goes away on the next update." A question card the durable agent does not
 know any more answers 200 `too-late`. The card then says "Not taken. The question may show again in a
 moment.", because after a restart the durable agent may raise it again under the same id.
 
 | rule | why |
 | --- | --- |
-| The ask id is a hash of the pane id and the tool call id | The same tool call raised after a restart has the same id, so an answer sent across the restart lands |
+| The `askId` is a hash of the pane id and the tool call id | The same tool call raised after a restart has the same id, so an answer sent across the restart lands |
 | A `permission` card is built from the tool's name and its arguments, never from the model's words | A model that wants a yes would describe the call kindly |
 | A durable agent behind TLS should offer no `allow-always` | The token is the only gate, so one answer from whoever holds it would let every later call through |
 | The phone offers no `allow-always` on a card whose words were cut or cleaned, or that names no tool | The person cannot see what the grant covers |
-| `expiresAt` is ISO 8601 with a zone | Past it the ask is decided by `timeout`, and a snapshot no longer lists it as open |
-| The durable agent keeps the outcome of at least its last 500 decided asks per pane | A late tap gets `decided` and the first outcome, not a plain `too-late` |
+| `expiresAt` is ISO 8601 with a zone | Past it the question card is decided by `timeout`, and a snapshot no longer lists it as open |
+| The durable agent keeps the outcome of at least its last 500 decided question cards per pane | A late tap gets `decided` and the first outcome, not a plain `too-late` |
 
-An ask is one of four kinds: `permission`, `choice`, `text` or `form`. Each has its own answer shape,
+A question card is one of four kinds: `permission`, `choice`, `text` or `form`. Each has its own answer shape,
 listed with the SDK's [Questions](durable-sdk.md#questions).
 
 ### Request ids
@@ -107,7 +107,7 @@ Collie never retries a POST by itself. A POST that times out, loses its connecti
 an unknown outcome. For an answer, the card then says "Not sure the answer arrived. Try again sends
 it once more.", and Try again sends the same request id, so the durable agent's memory answers a repeat.
 
-A retry that finds the ask closed or the turn moved cannot tell whether the first try landed. Collie
+A retry that finds the question card closed or the turn moved cannot tell whether the first try landed. Collie
 then answers the phone "maybe applied", the card says "May already be applied. Check the chat.", and
 the act is never sent a third time.
 
@@ -153,7 +153,7 @@ Collie cuts or refuses anything past these limits, so a durable agent that stays
 | Workspaces per snapshot | 64 |
 | Tabs per snapshot | 256 |
 | Panes per snapshot | 256 |
-| Open asks per pane | 50, the oldest first |
+| Open question cards per pane | 50, the oldest first |
 | Options of a `permission` | 6 |
 | Options of a `choice`, and of a choice field | 8 |
 | Fields of a `form` | 6 |
@@ -182,7 +182,7 @@ that drops it. A reader ignores a field, an event type, an item kind or a code i
 field added inside version 1, such as `expiresAt` or `decidedBy`, is optional. A new required field,
 a new meaning for an old field, or a removed field needs a new version.
 
-An ask of a kind the phone does not know shows as one it cannot answer from the phone, with no
+A question card of a kind the phone does not know shows as one it cannot answer from the phone, with no
 buttons.
 
 When the two ranges do not meet, Collie reads nothing more from the durable agent. Once per epoch of the
@@ -199,7 +199,7 @@ The durable agent's home on the phone says the same sentence, for example
 [`WIRE.md`](../bridge/mux/durable/WIRE.md) is the contract, with every shape, code and rule.
 
 A host with no process of its own, such as a function on Vercel, fills the wire from a log on every
-request. Its rules for the epoch, the ask journal and the route are the appendix "A host with no process"
+request. Its rules for the epoch, the question card journal and the route are the appendix "A host with no process"
 at the end of `WIRE.md`. The appendix is a draft and is not part of version 1.
 
 The decisions behind it are records in the repository:

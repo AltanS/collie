@@ -16,26 +16,26 @@ import type { Files } from "./sys.ts";
 //
 // It is the same shape as `collie hooks install` (cli/hooks.ts), and it borrows that file's guards:
 //
-//  - ONLY THE SKILL VERBS, THE UPDATE AND A CHANGE OF THE HILL'S SWITCH WRITE. `collie skill install`
+//  - ONLY THE SKILL VERBS, THE UPDATE AND A CHANGE OF THE SWITCH OF ASKS WRITE. `collie skill install`
 //    and `collie skill sync` write a harness file, and every successful `collie update` (rollback and
 //    switch included) runs `skill sync` through the new binary (ADR 0111). Since 2026-11-16 (M96 spec
-//    12, ADR 0111's addendum) a real change of this instance's Hill switch runs the same sync: the
+//    12, ADR 0111's addendum) a real change of this instance's switch of Asks runs the same sync: the
 //    phone's `POST /api/hill/switch` and the takeover's adopt spawn this build's own `skill sync
-//    --json` from the bridge (bridge/hill/skill-follow.ts), and `collie hill on|off` calls
+//    --json` from the bridge (bridge/hill/skill-follow.ts), and `collie asks on|off` calls
 //    {@link syncSkills} in its own process ({@link skillFollowsSwitch}). A write of the same value, and a
 //    bridge start, write nothing. No other verb touches a harness file. `collie skill uninstall` leaves
 //    a marker under the state dir, so the next sync, this one included, leaves that target out.
-//  - THE HILL'S WORDS FOLLOW THE SWITCH. The template's Hill parts sit between `{{HILL}}` and
-//    `{{/HILL}}`, inline in the description and as marker lines around the Hill section. On keeps them,
-//    and the text is the one of before the markers; off cuts them, so an agent's context holds no Hill
-//    word while the Hill is off. `status`, `--check`, `doctor` and `print` render for the switch as it
+//  - THE WORDS OF ASKS FOLLOW THE SWITCH. The template's Asks parts sit between `{{ASKS}}` and
+//    `{{/ASKS}}`, inline in the description and as marker lines around the Asks section. On keeps them,
+//    and the text is the one of before the markers; off cuts them, so an agent's context holds no Asks
+//    word while Asks is off. `status`, `--check`, `doctor` and `print` render for the switch as it
 //    reads now, so a switch never turns them red. Measured on 2026-11-16, in project skill folders and
 //    with two agents only: when the skill file changes on disk, a running Codex session shows the new
 //    description at once, and a running Claude Code session gets the new text with its next prompt.
 //    Pi needs its `/reload`, and any other agent is unmeasured, so those keep the description they
 //    loaded until a new session starts.
 //  - KNOWN LIMIT (true before the switch too): two instances on one machine share one skill file per
-//    harness, and the instance that synced last decides its text, its binary path and now its Hill part.
+//    harness, and the instance that synced last decides its text, its binary path and now its Asks part.
 //  - A SYMLINKED FILE IS REFUSED, an unreadable one too. A rename onto a symlink replaces the link
 //    (home-manager's read-only store profile). A symlinked DIRECTORY resolves, as in hooks.
 //  - ONE `.collie-backup` BEFORE THE FIRST CHANGE, temp file plus rename, and a second install changes
@@ -80,7 +80,7 @@ const STAMP_LINE = /^<!-- collie-skill walky-talky v\d+ .*-->[ \t]*$/mu;
 export const SKILL_NAME = "collie-walky-talky";
 
 /**
- * The embedded template with `{{COLLIE_BIN}}` and `{{COLLIE_VERSION}}` resolved and its Hill parts kept or
+ * The embedded template with `{{COLLIE_BIN}}` and `{{COLLIE_VERSION}}` resolved and its Asks parts kept or
  * cut for `hillOn`. Front matter included.
  */
 export function renderWalkySkill(ctx: CliContext, fs: LinkReader, hillOn: boolean): string {
@@ -90,7 +90,7 @@ export function renderWalkySkill(ctx: CliContext, fs: LinkReader, hillOn: boolea
 }
 
 /**
- * This instance's Hill switch, read through the injected files: on only when the file says on. No file,
+ * This instance's switch of Asks, read through the injected files: on only when the file says on. No file,
  * an unreadable file or a damaged one reads off, as the bridge reads it on a lead (bridge/hill/switch.ts).
  */
 export function hillIsOn(deps: Pick<SkillReadDeps, "ctx" | "files">): boolean {
@@ -644,7 +644,7 @@ function syncLegacy(deps: SkillReadDeps, harness: string, legacy: LegacyState, d
 }
 
 /**
- * What `collie hill on|off` runs after a real change of the switch (M96 spec 12): {@link syncSkills} in
+ * What `collie asks on|off` runs after a real change of the switch (M96 spec 12): {@link syncSkills} in
  * this process, the very path of `collie skill sync`, with its lines on stderr, so `--json` stays one
  * document. `COLLIE_SKILL_SYNC=off` keeps the files as they are and says so, as the update does. A sync
  * that could not write throws, and the switch's own writer turns that into one line.

@@ -20,7 +20,7 @@
 // each row, and the table takes its rights from it.
 //
 // THE EIGHT NAMES. `hello` and `events` are answered here. The other six (`sessions`, `brief`, `read`,
-// `accounts`, `hill.list`, `machines`) are declared here, arguments included, and their handlers come in through
+// `accounts`, `asks.list`, `machines`) are declared here, arguments included, and their handlers come in through
 // {@link TableDeps.reads}: a row whose handler this bridge was not given is not in its table at all, so
 // it is neither offered by `hello` nor callable (`api.unknown_op`). Nothing here reaches a write path:
 // the context a handler gets carries no way to type, answer an ask, or change a session.
@@ -63,7 +63,7 @@ export const RUN_TOKEN_TEXT = /^[A-Za-z0-9_-]{43}$/u;
 export const API_VERSION = 1;
 
 /** Every operation name, in the order `hello` lists them. */
-export const OPERATION_NAMES = ["hello", "sessions", "brief", "read", "accounts", "hill.list", "machines", "events"] as const;
+export const OPERATION_NAMES = ["hello", "sessions", "brief", "read", "accounts", "asks.list", "machines", "events"] as const;
 export type OperationName = (typeof OPERATION_NAMES)[number];
 
 /** The levels a row of this step may need. */
@@ -80,7 +80,7 @@ export const OPERATION_LEVELS = {
   brief: "see",
   read: "read",
   accounts: "see",
-  "hill.list": "see",
+  "asks.list": "see",
   machines: "see",
   events: "see",
 } as const satisfies { readonly [K in OperationName]: ReadLevel };
@@ -231,7 +231,7 @@ export interface ArgsOf {
   brief: SessionArgs;
   read: ReadArgs;
   accounts: NoArgs;
-  "hill.list": NoArgs;
+  "asks.list": NoArgs;
   machines: NoArgs;
   events: EventsArgs;
 }
@@ -321,7 +321,7 @@ export const DECLARED: Declarations = {
     parse: parseRead,
   },
   accounts: { name: "accounts", kind: "read", right: OPERATION_LEVELS.accounts, waits: false, summary: "The agent accounts of this machine.", args: [], parse: parseNone },
-  "hill.list": { name: "hill.list", kind: "read", right: OPERATION_LEVELS["hill.list"], waits: false, summary: "The open decisions on the Hill, with no body.", args: [], parse: parseNone },
+  "asks.list": { name: "asks.list", kind: "read", right: OPERATION_LEVELS["asks.list"], waits: false, summary: "The open asks, with no body.", args: [], parse: parseNone },
   machines: { name: "machines", kind: "read", right: OPERATION_LEVELS.machines, waits: false, summary: "The machines of the crew, with their load, as the Machines page knows them.", args: [], parse: parseNone },
   events: {
     name: "events",
@@ -341,7 +341,7 @@ export const DECLARED: Declarations = {
 export type Handlers = { readonly [K in OperationName]: (args: ArgsOf[K], ctx: OperationContext) => Promise<OpResult> };
 
 /** The six read operations whose handlers come from outside this file. */
-export type ReadName = "sessions" | "brief" | "read" | "accounts" | "hill.list" | "machines";
+export type ReadName = "sessions" | "brief" | "read" | "accounts" | "asks.list" | "machines";
 export type ReadHandlers = Pick<Handlers, ReadName>;
 
 export interface TableDeps {
@@ -428,8 +428,8 @@ function bindByName(name: OperationName, handlers: Partial<Handlers>): TableRow 
       return bind(name, handlers.read);
     case "accounts":
       return bind(name, handlers.accounts);
-    case "hill.list":
-      return bind(name, handlers["hill.list"]);
+    case "asks.list":
+      return bind(name, handlers["asks.list"]);
     case "machines":
       return bind(name, handlers.machines);
     case "events":

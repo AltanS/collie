@@ -384,13 +384,13 @@ export function checkWarnings(sources: readonly { file: string; text: string; sh
 /** The helper file a TypeScript trick imports. */
 export const HELPER_FILE = "trick.ts";
 /**
- * The version of the helper this Collie writes. Its first line names it: `// collie trick helper v10`. It moves
+ * The version of the helper this Collie writes. Its first line names it: `// collie trick helper v12`. It moves
  * with EVERY change of the helper's text, shipped or not (the dev lane and an Edge build serve the text too):
  * scan.test.ts pins the text's SHA-256 to this number and fails with "bump the helper version". A text that
  * changed under an old number is read as a hand-edited helper, so a trick that kept the file counts it as its own
  * code. On a bump, add the old text's hash to {@link OLDER_HELPERS}, and never edit a pin.
  */
-export const HELPER_VERSION = 10;
+export const HELPER_VERSION = 12;
 /** The helper's source (cli/trick-kit/trick.ts), held in the binary as text. */
 export const TRICK_HELPER: string = trickHelperSource();
 
@@ -412,7 +412,9 @@ function sha256(text: string): string {
  * (v7 adds `t.api`, Collie's local API through the declared `access`), and v7 (v8 names the run's token in
  * `hello`, M105 spec 05: a v7 copy still runs, and its `t.api` hears `api.no_run_token`), and v8 (1.29.0, and the
  * released tricks repository's four helpers; v9 adds the float place's types and a draft button's `does`; v10 adds
- * a sprite's `after`). A version can hold several texts: a text committed under a version line that then moved
+ * a sprite's `after`), and v10 (v11 renames the Decisions to asks, ADR 0179: `t.ask`, `asks`, `tap.ask`; a v10 copy
+ * still runs as Collie's code, and its document's `decisions` key is refused with one line), and v11 (v12 drops `priority`
+ * from `t.ask`'s type: no ask has a priority, ADR 0179 addendum, and an ask with the key is refused with one line). A version can hold several texts: a text committed under a version line that then moved
  * without a bump (four of v8 on the dev lane, two of v9) stays known too, because a draft was written with it.
  * A trick folder keeps the copy it was approved with: an older one stays Collie's code, so a new Collie asks for no yes.
  */
@@ -433,6 +435,9 @@ export const OLDER_HELPERS: ReadonlyMap<string, number> = new Map([
   // v9 as of 701ce4ce4, and v9 as of bcc2135aa (sprite.after).
   ["ed3bbcc08f02073fbd345d869e1702bc78437f07089a59bc03df6d5e74c5db8e", 9],
   ["e3d318649b1736a68fc11c253c890ae2809fc15a4f9db82808ef3b9bc1d9234f", 9],
+  ["6786899af0b341dd9ef4afe64fde23161e58cf4bc4202cb5f0fb040f6401cb26", 10],
+  // v11 (ADR 0179, asks): the helper before `priority` left `t.ask`'s type.
+  ["2cdefcdd233806fa7566570ee7ed71cb09548e6d39a694810165cf9e28778eba", 11],
 ]);
 
 /** The version of a helper this Collie ships (this one, or one of `older`) whose bytes `text` are, or null for any other text. */

@@ -41,9 +41,9 @@ beforeEach(() => {
 });
 
 describe("the hill store", () => {
-  it("reads the whole list on the first number, sorted most urgent first", async () => {
-    const later = hillDecision({ priority: "later", title: "later" });
-    const now = hillDecision({ priority: "now", title: "now" });
+  it("reads the whole list on the first number, sorted oldest first, whatever priority it carries", async () => {
+    const later = hillDecision({ priority: "later", title: "later", at: 20 });
+    const now = hillDecision({ priority: "now", title: "now", at: 10 });
     serve(() => list(4, [later, now]));
     const { result } = renderHook(() => ({ open: useHillOpen(), count: useHillCount() }));
     await sync(4);
@@ -168,7 +168,7 @@ describe("the hill store", () => {
 
   it("keeps no words for an answer that reached its target", () => {
     const { result } = renderHook(() => useHillKept());
-    act(() => noteHillAnswer("dc_x", { receipt: hillReceipt({ at: HILL_T0 }), intent: "yes", text: "fine" }));
+    act(() => noteHillAnswer("ak_x", { receipt: hillReceipt({ at: HILL_T0 }), intent: "yes", text: "fine" }));
     expect(result.current.size).toBe(0);
   });
 

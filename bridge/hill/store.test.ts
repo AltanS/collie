@@ -38,7 +38,7 @@ describe("the decisions file", () => {
     if (HOST.platform === "win32") ensureOwnerOnlyDir(state, HOST, { root: privateRoot("state"), repair: true });
     const dir = hillDir(state);
     const store = new HillStore(dir, () => 5000);
-    expect(store.put(decision("dc_aaaaaaaaaaa1"))).toBe(true);
+    expect(store.put(decision("ak_aaaaaaaaaaa1"))).toBe(true);
     for (const [path, mode] of [[dir, 0o700], [join(dir, DECISIONS_FILE), 0o600]] as const) {
       if (HOST.platform !== "win32") expect(statSync(path).mode & 0o777).toBe(mode);
       else expect(isOwnerOnly(path, HOST)).toEqual({ state: "private" });
@@ -53,15 +53,15 @@ describe("the decisions file", () => {
     const dir = hillDir(stateDir());
     let clock = 5000;
     const store = new HillStore(dir, () => clock);
-    store.put(decision("dc_aaaaaaaaaaa1"));
+    store.put(decision("ak_aaaaaaaaaaa1"));
     const first = store.rev()!;
     expect(first).toBe(5000);
-    store.put(decision("dc_aaaaaaaaaaa1", { state: "withdrawn", closedAt: 1100, closedReason: "by the poster" }));
+    store.put(decision("ak_aaaaaaaaaaa1", { state: "withdrawn", closedAt: 1100, closedReason: "by the poster" }));
     expect(store.rev()).toBe(5001);
     clock = 9000;
     const again = new HillStore(dir, () => clock);
     expect(again.rev()).toBe(9000);
-    expect(again.get("dc_aaaaaaaaaaa1")?.state).toBe("withdrawn");
+    expect(again.get("ak_aaaaaaaaaaa1")?.state).toBe("withdrawn");
   });
 
   test("a file that does not read is set aside as .bad-<ts>, and the store starts empty with one warning", () => {
@@ -84,41 +84,41 @@ describe("the decisions file", () => {
   test("an entry that fails its reader is not listed, the good ones are", () => {
     const dir = hillDir(stateDir());
     mkdirSync(dir, { recursive: true });
-    writeFileSync(join(dir, DECISIONS_FILE), JSON.stringify({ v: 1, decisions: [decision("dc_aaaaaaaaaaa1"), { v: 1, id: "dc_bad" }, 7] }));
+    writeFileSync(join(dir, DECISIONS_FILE), JSON.stringify({ v: 1, decisions: [decision("ak_aaaaaaaaaaa1"), { v: 1, id: "ak_bad" }, 7] }));
     const store = new HillStore(dir, () => 1);
-    expect(store.all().map((held) => held.id)).toEqual(["dc_aaaaaaaaaaa1"]);
-    expect(store.list().open.map((held) => held.id)).toEqual(["dc_aaaaaaaaaaa1"]);
+    expect(store.all().map((held) => held.id)).toEqual(["ak_aaaaaaaaaaa1"]);
+    expect(store.list().open.map((held) => held.id)).toEqual(["ak_aaaaaaaaaaa1"]);
     expect(store.cleanlyLoaded()).toBe(true);
   });
 
   test("an entry a newer build wrote survives a load and every write, unchanged, and keeps its id taken", () => {
     const dir = hillDir(stateDir());
     mkdirSync(dir, { recursive: true });
-    const newer = { ...decision("dc_newer0000001"), v: 2, mood: "a field this build does not know" };
-    writeFileSync(join(dir, DECISIONS_FILE), JSON.stringify({ v: 1, decisions: [decision("dc_aaaaaaaaaaa1"), newer] }));
+    const newer = { ...decision("ak_newer0000001"), v: 2, mood: "a field this build does not know" };
+    writeFileSync(join(dir, DECISIONS_FILE), JSON.stringify({ v: 1, decisions: [decision("ak_aaaaaaaaaaa1"), newer] }));
     const store = new HillStore(dir, () => 1);
-    expect(store.get("dc_newer0000001")).toBeUndefined();
-    expect(store.taken("dc_newer0000001")).toBe(true);
-    expect(store.taken("dc_aaaaaaaaaaa1")).toBe(true);
-    expect(store.taken("dc_free00000001")).toBe(false);
-    expect(store.put(decision("dc_aaaaaaaaaaa1", { state: "withdrawn", closedAt: 5, closedReason: "by the poster" }))).toBe(true);
-    expect(store.put(decision("dc_bbbbbbbbbbb1"))).toBe(true);
+    expect(store.get("ak_newer0000001")).toBeUndefined();
+    expect(store.taken("ak_newer0000001")).toBe(true);
+    expect(store.taken("ak_aaaaaaaaaaa1")).toBe(true);
+    expect(store.taken("ak_free00000001")).toBe(false);
+    expect(store.put(decision("ak_aaaaaaaaaaa1", { state: "withdrawn", closedAt: 5, closedReason: "by the poster" }))).toBe(true);
+    expect(store.put(decision("ak_bbbbbbbbbbb1"))).toBe(true);
     const file = JSON.parse(readFileSync(join(dir, DECISIONS_FILE), "utf8"));
     expect(file.decisions).toHaveLength(3);
     expect(file.decisions).toContainEqual(newer);
     // A restart of this build reads it as unread again; the build that wrote it reads it back.
     const again = new HillStore(dir, () => 2);
-    expect(again.all().map((held) => held.id).toSorted()).toEqual(["dc_aaaaaaaaaaa1", "dc_bbbbbbbbbbb1"]);
-    again.put(decision("dc_ccccccccccc1"));
+    expect(again.all().map((held) => held.id).toSorted()).toEqual(["ak_aaaaaaaaaaa1", "ak_bbbbbbbbbbb1"]);
+    again.put(decision("ak_ccccccccccc1"));
     expect(JSON.parse(readFileSync(join(dir, DECISIONS_FILE), "utf8")).decisions).toContainEqual(newer);
   });
 
   test("the media keep set: every held id and every unread entry's id; none when an unread entry has no id", () => {
     const dir = hillDir(stateDir());
     mkdirSync(dir, { recursive: true });
-    writeFileSync(join(dir, DECISIONS_FILE), JSON.stringify({ v: 1, decisions: [decision("dc_aaaaaaaaaaa1"), { v: 2, id: "dc_newer0000001" }] }));
-    expect([...(new HillStore(dir, () => 1).mediaKeep() ?? [])].toSorted()).toEqual(["dc_aaaaaaaaaaa1", "dc_newer0000001"]);
-    writeFileSync(join(dir, DECISIONS_FILE), JSON.stringify({ v: 1, decisions: [decision("dc_aaaaaaaaaaa1"), 7] }));
+    writeFileSync(join(dir, DECISIONS_FILE), JSON.stringify({ v: 1, decisions: [decision("ak_aaaaaaaaaaa1"), { v: 2, id: "ak_newer0000001" }] }));
+    expect([...(new HillStore(dir, () => 1).mediaKeep() ?? [])].toSorted()).toEqual(["ak_aaaaaaaaaaa1", "ak_newer0000001"]);
+    writeFileSync(join(dir, DECISIONS_FILE), JSON.stringify({ v: 1, decisions: [decision("ak_aaaaaaaaaaa1"), 7] }));
     expect(new HillStore(dir, () => 1).mediaKeep()).toBeNull();
   });
 
@@ -130,7 +130,7 @@ describe("the decisions file", () => {
     expect(aside.cleanlyLoaded()).toBe(false);
     expect(aside.mediaKeep()).toBeNull();
     // It stays so after the next write: the set-aside file may still name a folder.
-    aside.put(decision("dc_aaaaaaaaaaa1"));
+    aside.put(decision("ak_aaaaaaaaaaa1"));
     expect(aside.mediaKeep()).toBeNull();
     expect(new HillStore(null).cleanlyLoaded()).toBe(true);
     expect(new HillStore(hillDir(stateDir())).cleanlyLoaded()).toBe(true);
@@ -138,23 +138,23 @@ describe("the decisions file", () => {
 
   test("every open decision is kept, and only the newest closed ones", () => {
     const closed = Array.from({ length: HILL_CLOSED_KEPT + 5 }, (_, n) =>
-      decision(`dc_c${String(n).padStart(11, "0")}`, { state: "answered", closedAt: 2000 + n }),
+      decision(`ak_c${String(n).padStart(11, "0")}`, { state: "answered", closedAt: 2000 + n }),
     );
-    const open = decision("dc_oooooooooooo", { at: 1 });
+    const open = decision("ak_oooooooooooo", { at: 1 });
     const kept = pruned([open, ...closed]);
     expect(kept).toHaveLength(HILL_CLOSED_KEPT + 1);
-    expect(kept[0]!.id).toBe("dc_oooooooooooo");
-    expect(kept.some((held) => held.id === "dc_c00000000000")).toBe(false);
+    expect(kept[0]!.id).toBe("ak_oooooooooooo");
+    expect(kept.some((held) => held.id === "ak_c00000000000")).toBe(false);
   });
 
   test("the list serves every open decision and the 20 newest closed, newest first", () => {
     const store = new HillStore(null, () => 1);
-    store.put(decision("dc_oooooooooooo"));
-    for (let n = 0; n < 25; n += 1) store.put(decision(`dc_c${String(n).padStart(11, "0")}`, { state: "expired", closedAt: 100 + n }));
+    store.put(decision("ak_oooooooooooo"));
+    for (let n = 0; n < 25; n += 1) store.put(decision(`ak_c${String(n).padStart(11, "0")}`, { state: "expired", closedAt: 100 + n }));
     const list = store.list();
-    expect(list.open.map((held) => held.id)).toEqual(["dc_oooooooooooo"]);
+    expect(list.open.map((held) => held.id)).toEqual(["ak_oooooooooooo"]);
     expect(list.closed).toHaveLength(20);
-    expect(list.closed[0]!.id).toBe("dc_c00000000024");
+    expect(list.closed[0]!.id).toBe("ak_c00000000024");
   });
 });
 
@@ -173,17 +173,17 @@ describe("forgetting closed decisions", () => {
     const dir = hillDir(stateDir());
     const heard: string[][] = [];
     const store = new HillStore(dir, () => 5000, undefined, (ids) => heard.push([...ids]));
-    store.put(decision("dc_aaaaaaaaaaa1", { state: "answered", closedAt: 1100 }), decision("dc_aaaaaaaaaaa2"));
+    store.put(decision("ak_aaaaaaaaaaa1", { state: "answered", closedAt: 1100 }), decision("ak_aaaaaaaaaaa2"));
     const rev = store.rev()!;
-    expect(store.forget([stone("dc_aaaaaaaaaaa1")])).toEqual(["dc_aaaaaaaaaaa1"]);
+    expect(store.forget([stone("ak_aaaaaaaaaaa1")])).toEqual(["ak_aaaaaaaaaaa1"]);
     expect(store.rev()).toBeGreaterThan(rev);
-    expect(store.all().map((d) => d.id)).toEqual(["dc_aaaaaaaaaaa2"]);
-    expect(store.tombstone("dc_aaaaaaaaaaa1")?.state).toBe("answered");
-    expect(store.taken("dc_aaaaaaaaaaa1")).toBe(true);
-    expect(heard).toEqual([["dc_aaaaaaaaaaa1"]]);
+    expect(store.all().map((d) => d.id)).toEqual(["ak_aaaaaaaaaaa2"]);
+    expect(store.tombstone("ak_aaaaaaaaaaa1")?.state).toBe("answered");
+    expect(store.taken("ak_aaaaaaaaaaa1")).toBe(true);
+    expect(heard).toEqual([["ak_aaaaaaaaaaa1"]]);
     const file = JSON.parse(readFileSync(join(dir, DECISIONS_FILE), "utf8"));
     expect(file.decisions).toHaveLength(1);
-    expect(file.cleared).toEqual([stone("dc_aaaaaaaaaaa1")]);
+    expect(file.cleared).toEqual([stone("ak_aaaaaaaaaaa1")]);
     // The tombstone holds none of the words.
     expect(JSON.stringify(file.cleared)).not.toContain("Ship it?");
   });
@@ -191,22 +191,22 @@ describe("forgetting closed decisions", () => {
   test("a restart reads the tombstones back; a file with none carries no `cleared` key", () => {
     const dir = hillDir(stateDir());
     const store = new HillStore(dir, () => 5000);
-    store.put(decision("dc_aaaaaaaaaaa1", { state: "answered", closedAt: 1100 }));
+    store.put(decision("ak_aaaaaaaaaaa1", { state: "answered", closedAt: 1100 }));
     expect(JSON.parse(readFileSync(join(dir, DECISIONS_FILE), "utf8")).cleared).toBeUndefined();
-    store.forget([stone("dc_aaaaaaaaaaa1")]);
+    store.forget([stone("ak_aaaaaaaaaaa1")]);
     const again = new HillStore(dir, () => 9000);
-    expect(again.tombstone("dc_aaaaaaaaaaa1")).toEqual(stone("dc_aaaaaaaaaaa1"));
-    expect(again.tombstoneOfRequest(stone("x").requestId, "local/%1#aaaa")?.id).toBe("dc_aaaaaaaaaaa1");
+    expect(again.tombstone("ak_aaaaaaaaaaa1")).toEqual(stone("ak_aaaaaaaaaaa1"));
+    expect(again.tombstoneOfRequest(stone("x").requestId, "local/%1#aaaa")?.id).toBe("ak_aaaaaaaaaaa1");
     expect(again.tombstoneOfRequest(stone("x").requestId, "local/%2#bbbb")).toBeUndefined();
   });
 
   test("an open decision, or an id the store does not hold, is never removed", () => {
     const store = new HillStore(null, () => 5000);
-    store.put(decision("dc_aaaaaaaaaaa1"));
+    store.put(decision("ak_aaaaaaaaaaa1"));
     const rev = store.rev();
-    expect(store.forget([stone("dc_aaaaaaaaaaa1"), stone("dc_unknown00001")])).toEqual([]);
-    expect(store.get("dc_aaaaaaaaaaa1")?.state).toBe("open");
-    expect(store.tombstone("dc_aaaaaaaaaaa1")).toBeUndefined();
+    expect(store.forget([stone("ak_aaaaaaaaaaa1"), stone("ak_unknown00001")])).toEqual([]);
+    expect(store.get("ak_aaaaaaaaaaa1")?.state).toBe("open");
+    expect(store.tombstone("ak_aaaaaaaaaaa1")).toBeUndefined();
     expect(store.rev()).toBe(rev);
   });
 
@@ -214,30 +214,30 @@ describe("forgetting closed decisions", () => {
     const root = stateDir();
     const dir = hillDir(root);
     const store = new HillStore(dir, () => 5000, () => undefined);
-    store.put(decision("dc_aaaaaaaaaaa1", { state: "answered", closedAt: 1100 }));
+    store.put(decision("ak_aaaaaaaaaaa1", { state: "answered", closedAt: 1100 }));
     // A directory where the temp file goes makes the write fail.
     mkdirSync(join(dir, `${DECISIONS_FILE}.tmp`));
-    expect(store.forget([stone("dc_aaaaaaaaaaa1")])).toBeNull();
-    expect(store.get("dc_aaaaaaaaaaa1")).toBeDefined();
-    expect(store.tombstone("dc_aaaaaaaaaaa1")).toBeUndefined();
+    expect(store.forget([stone("ak_aaaaaaaaaaa1")])).toBeNull();
+    expect(store.get("ak_aaaaaaaaaaa1")).toBeDefined();
+    expect(store.tombstone("ak_aaaaaaaaaaa1")).toBeUndefined();
   });
 
   test("the file keeps the newest 500 tombstones", () => {
     const store = new HillStore(null, () => 5000);
     for (let i = 0; i < 502; i += 1) {
-      const id = `dc_${String(i).padStart(11, "0")}`;
+      const id = `ak_${String(i).padStart(11, "0")}`;
       store.put(decision(id, { state: "answered", closedAt: 1100 }));
       store.forget([stone(id, { requestId: `00000000-0000-4000-8000-${String(i).padStart(12, "0")}` })]);
     }
-    expect(store.tombstone("dc_00000000000")).toBeUndefined();
-    expect(store.tombstone("dc_00000000001")).toBeUndefined();
-    expect(store.tombstone("dc_00000000002")).toBeDefined();
-    expect(store.tombstone("dc_00000000501")).toBeDefined();
+    expect(store.tombstone("ak_00000000000")).toBeUndefined();
+    expect(store.tombstone("ak_00000000001")).toBeUndefined();
+    expect(store.tombstone("ak_00000000002")).toBeDefined();
+    expect(store.tombstone("ak_00000000501")).toBeDefined();
   });
 
   test("the list counts every closed decision held, past the rows it serves", () => {
     const store = new HillStore(null, () => 5000);
-    for (let i = 0; i < 25; i += 1) store.put(decision(`dc_${String(i).padStart(11, "0")}`, { state: "answered", closedAt: 1000 + i }));
+    for (let i = 0; i < 25; i += 1) store.put(decision(`ak_${String(i).padStart(11, "0")}`, { state: "answered", closedAt: 1000 + i }));
     const list = store.list();
     expect(list.closed).toHaveLength(20);
     expect(list.closedTotal).toBe(25);
@@ -276,41 +276,41 @@ describe("an open decision stored with no expiry", () => {
 
   test("gets posted at plus the longest expiry on load, written to the file; one with an expiry and a closed one are read as they were", () => {
     const dir = seeded([
-      decision("dc_inside000001", { from: TRICK, target: null, at: 1000 }),
-      decision("dc_proposal0001", { from: PROPOSAL, target: null, at: 2000 }),
-      decision("dc_hasend000001", { at: 1000, expiresAt: 1000 + DAY }),
-      decision("dc_closed000001", { at: 1000, state: "dismissed", closedAt: 1500 }),
+      decision("ak_inside000001", { from: TRICK, target: null, at: 1000 }),
+      decision("ak_proposal0001", { from: PROPOSAL, target: null, at: 2000 }),
+      decision("ak_hasend000001", { at: 1000, expiresAt: 1000 + DAY }),
+      decision("ak_closed000001", { at: 1000, state: "dismissed", closedAt: 1500 }),
     ]);
     const store = new HillStore(dir, () => 5000);
-    expect(store.get("dc_inside000001")?.expiresAt).toBe(1000 + HILL_MAX_EXPIRY_MS);
+    expect(store.get("ak_inside000001")?.expiresAt).toBe(1000 + HILL_MAX_EXPIRY_MS);
     // A proposal of Collie's own follows the same rule.
-    expect(store.get("dc_proposal0001")?.expiresAt).toBe(2000 + HILL_MAX_EXPIRY_MS);
-    expect(store.get("dc_hasend000001")?.expiresAt).toBe(1000 + DAY);
-    expect(store.get("dc_closed000001")?.expiresAt).toBeNull();
+    expect(store.get("ak_proposal0001")?.expiresAt).toBe(2000 + HILL_MAX_EXPIRY_MS);
+    expect(store.get("ak_hasend000001")?.expiresAt).toBe(1000 + DAY);
+    expect(store.get("ak_closed000001")?.expiresAt).toBeNull();
     // Persisted: the file holds the new ends, and a restart reads the same ones.
     const file = JSON.parse(readFileSync(join(dir, DECISIONS_FILE), "utf8"));
     expect(file.decisions.map((d: { id: string; expiresAt: number | null }) => [d.id, d.expiresAt])).toEqual([
-      ["dc_inside000001", 1000 + HILL_MAX_EXPIRY_MS],
-      ["dc_proposal0001", 2000 + HILL_MAX_EXPIRY_MS],
-      ["dc_hasend000001", 1000 + DAY],
-      ["dc_closed000001", null],
+      ["ak_inside000001", 1000 + HILL_MAX_EXPIRY_MS],
+      ["ak_proposal0001", 2000 + HILL_MAX_EXPIRY_MS],
+      ["ak_hasend000001", 1000 + DAY],
+      ["ak_closed000001", null],
     ]);
-    expect(new HillStore(dir, () => 9000).get("dc_inside000001")?.expiresAt).toBe(1000 + HILL_MAX_EXPIRY_MS);
+    expect(new HillStore(dir, () => 9000).get("ak_inside000001")?.expiresAt).toBe(1000 + HILL_MAX_EXPIRY_MS);
   });
 
   test("an old one past that end closes as expired on the first sweep; one inside it stays open with its new end", () => {
     const now = 1000 + HILL_MAX_EXPIRY_MS + DAY;
     const dir = seeded([
-      decision("dc_old000000001", { from: TRICK, target: null, at: 1000 }),
-      decision("dc_oldprop00001", { from: PROPOSAL, target: null, at: 1000 }),
-      decision("dc_young0000001", { from: TRICK, target: null, at: now - DAY }),
-      decision("dc_hasend000001", { from: TRICK, target: null, at: 1000, expiresAt: now + DAY }),
+      decision("ak_old000000001", { from: TRICK, target: null, at: 1000 }),
+      decision("ak_oldprop00001", { from: PROPOSAL, target: null, at: 1000 }),
+      decision("ak_young0000001", { from: TRICK, target: null, at: now - DAY }),
+      decision("ak_hasend000001", { from: TRICK, target: null, at: 1000, expiresAt: now + DAY }),
     ]);
     const store = new HillStore(dir, () => now);
     expect(sweeper(store, now).sweep(now)).toBe(2);
-    for (const id of ["dc_old000000001", "dc_oldprop00001"]) expect(store.get(id)).toMatchObject({ state: "expired", closedAt: now, expiresAt: 1000 + HILL_MAX_EXPIRY_MS });
-    expect(store.get("dc_young0000001")).toMatchObject({ state: "open", expiresAt: now - DAY + HILL_MAX_EXPIRY_MS });
-    expect(store.get("dc_hasend000001")).toMatchObject({ state: "open", expiresAt: now + DAY });
+    for (const id of ["ak_old000000001", "ak_oldprop00001"]) expect(store.get(id)).toMatchObject({ state: "expired", closedAt: now, expiresAt: 1000 + HILL_MAX_EXPIRY_MS });
+    expect(store.get("ak_young0000001")).toMatchObject({ state: "open", expiresAt: now - DAY + HILL_MAX_EXPIRY_MS });
+    expect(store.get("ak_hasend000001")).toMatchObject({ state: "open", expiresAt: now + DAY });
     // Closed records, never a delete.
     expect(store.all()).toHaveLength(4);
   });

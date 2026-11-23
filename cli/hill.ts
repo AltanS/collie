@@ -1,48 +1,36 @@
-import { randomUUID } from "node:crypto";
-import { readFileSync, realpathSync, statSync } from "node:fs";
+import { realpathSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 
 import { edgeStateDirs, readEnvMarkers } from "./beacon.ts";
-import { HILL_RULES, HILL_WRITING, hillWordingWarnings } from "./hill-rules.ts";
+import { HILL_WRITING } from "./hill-rules.ts";
 import { holdSocketSafe } from "./hold.ts";
-import { stageImagesForBridge } from "./image-stage.ts";
 import { EXIT } from "./io.ts";
 import { AskLate, NO_SOCKET_TEXT, paneNotProvenShell, shown, type PaneKind, type WalkyDeps } from "./walky.ts";
 import type { JsonObject, JsonValue } from "../bridge/json.ts";
-import { asJsonNumber, asJsonObject, asJsonString, parseJson, parseJsonObject } from "../web/src/lib/json.ts";
+import { asJsonNumber, asJsonObject, asJsonString, parseJsonObject } from "../web/src/lib/json.ts";
 import { HILL_POST_ASK_MS } from "../bridge/hill/crew.ts";
 import { readDecision } from "../bridge/hill/parse.ts";
-import { HILL_MAX_EXPIRY_DAYS, HILL_MAX_EXPIRY_MS, HILL_STATE_ON_LEAD } from "../bridge/hill/service.ts";
+import { HILL_STATE_ON_LEAD } from "../bridge/hill/service.ts";
 import { deriveMode } from "../bridge/crew/mode.ts";
 import { enrollmentOf, parseTrustStore, trustStorePath } from "../bridge/crew/trust-store.ts";
 import { readHillSwitch, setHillSwitch, type SwitchFollower } from "../bridge/hill/switch.ts";
 import { hillCrewStatePath, readHillCrewState, writeHillCrewState } from "../bridge/hill/crew-state.ts";
 import { readCrewStateView } from "../bridge/hill/crew.ts";
-import { parseAddress } from "../bridge/walky/address.ts";
 import { BARE_BAD_REQUEST, unknownOp } from "../bridge/walky/refusals.ts";
 import { walkySocketPath } from "../bridge/walky/socket.ts";
 import {
-  HILL_ID_RE,
   HILL_MEDIA_CAPTION_MAX,
-  HILL_MEDIA_MAX,
-  HILL_PRIORITIES,
-  HILL_TEXT_MODES,
   crewStateLine,
   isHillCrewState,
-  isHillOptionIntent,
   type HillCrewState,
   type HillCrewStateView,
   type HillDecision,
   type HillImageInput,
-  type HillOption,
-  type HillPostInput,
-  type HillPriority,
-  type HillTextMode,
 } from "../web/src/lib/hill/wire.ts";
-import { isRequestId } from "../bridge/worktree-receipts.ts";
 
-// `collie hill`: the hill from an agent's terminal (M96). An agent posts a Decision for its person, and
-// the answer comes back later as a WalkyTalky message from the operator. The verb talks to the running
+// `collie asks` (the person's verbs) and the socket walk `collie walky ask` shares (cli/ask.ts). Until the
+// clean slate of ADR 0179 this was `collie hill` (M96); every old `collie hill` verb now fails with one line
+// that names its new verb, and nothing of it runs. The verbs talk to the running
 // bridge over the walky socket (`<stateDir>/walky/sock`), one JSON request per connection, exactly as
 // `collie walky` does: no token, the socket's mode is the credential, and the bridge names the poster
 // from the multiplexer's markers this process carries.
@@ -51,81 +39,52 @@ import { isRequestId } from "../bridge/worktree-receipts.ts";
 // bridge that does not know the pane answers `not here`, and one that does not know the hill answers as
 // it answers any op it cannot read; both lead to the next. When no bridge knows the hill, it says so.
 
-export const HILL_SUBCOMMANDS = ["post", "status", "withdraw", "list", "clear", "state", "on", "off"] as const;
+/** The verbs of `collie asks`: the person's own. An agent asks with `collie walky ask`. */
+export const ASKS_SUBCOMMANDS = ["clear", "state", "on", "off"] as const;
 
-export { HILL_RULES, HILL_WRITING };
+export { HILL_WRITING };
 
 /** What the CLI prints when no bridge on this machine answered a hill operation as one it knows. */
-export const HILL_UNKNOWN = "no running Collie on this machine knows the hill";
+export const HILL_UNKNOWN = "no running Collie on this machine knows Asks";
 /** What it prints when a bridge took the post and gave no answer in time: it may still post. */
-export const HILL_NOT_CONFIRMED = `the bridge took the post and did not answer within ${String(HILL_POST_ASK_MS / 1000)} s; the post is not confirmed and may still reach the Hill`;
+export const HILL_NOT_CONFIRMED = `the bridge took the post and did not answer within ${String(HILL_POST_ASK_MS / 1000)} s; the post is not confirmed and may still reach Asks`;
 /** What it prints when a bridge that knows the hill answered, and none of them drives this pane. */
 export const HILL_NOT_HERE = "no Collie bridge on this machine knows this pane";
 
-/** `post`'s flags, one line each. The help prints them under the `post` line; a usage error prints them too. */
-const POST_FLAGS = [
-  "--recommend <intent> --why <reason>",
-  "--confirm <intent>=<word>",
-  "--detail <intent>=<line>",
-  "--priority now|today|later",
-  "--text none|optional|required",
-  "--link <label>=<url>",
-  "--about here|<address>",
-  "--reply-to <address>",
-  "--supersedes <id>",
-  "--expires 2h|3d",
-  "--request-id <uuid>  a retry posts once",
-  "--image <path>[=<caption>]",
-  "--view <file.json>  facts, no buttons; kinds: collie docs tricks-reference",
-] as const;
+/** The old verbs of `collie hill`, gone with the clean slate (ADR 0179), and the verb that took each one's place. */
+export const OLD_HILL_VERBS = {
+  post: "collie walky ask",
+  status: "collie walky status",
+  withdraw: "collie walky cancel",
+  list: "collie walky asks",
+  clear: "collie asks clear",
+  state: "collie asks state",
+  on: "collie asks on",
+  off: "collie asks off",
+} as const;
 
-/** Each verb as one line of the help, and after `usage: collie hill ` as the line of a usage error. */
+/** Each verb as one line of the help, and after `usage: collie asks ` as the line of a usage error. */
 const VERB_LINES = {
-  post: "post --title <question> --summary <text> --option <intent>=<label>... [-- <body>]",
-  status: "status <id>",
-  withdraw: "withdraw <id>",
-  list: "list",
   clear: "clear [--spoken]",
   state: "state [here|quiet|away]",
   on: "on",
   off: "off",
-} as const satisfies Record<(typeof HILL_SUBCOMMANDS)[number], string>;
+} as const satisfies Record<(typeof ASKS_SUBCOMMANDS)[number], string>;
 
 /** What a usage error prints for a verb. */
 const USAGE = {
-  post: [`usage: collie hill ${VERB_LINES.post}`, ...POST_FLAGS.map((flag) => `  ${flag}`)],
-  status: [`usage: collie hill ${VERB_LINES.status} [--json]`],
-  withdraw: [`usage: collie hill ${VERB_LINES.withdraw} [--json]`],
-  list: [`usage: collie hill ${VERB_LINES.list} [--json]`],
-  clear: [`usage: collie hill ${VERB_LINES.clear} [--json]`],
-  state: [`usage: collie hill ${VERB_LINES.state} [--json]`],
-  on: ["usage: collie hill on"],
-  off: ["usage: collie hill off"],
-} as const satisfies Record<(typeof HILL_SUBCOMMANDS)[number], readonly string[]>;
+  clear: [`usage: collie asks ${VERB_LINES.clear} [--json]`],
+  state: [`usage: collie asks ${VERB_LINES.state} [--json]`],
+  on: ["usage: collie asks on"],
+  off: ["usage: collie asks off"],
+} as const satisfies Record<(typeof ASKS_SUBCOMMANDS)[number], readonly string[]>;
 
-/** The verbs an agent runs. `clear`, `on`, `off` and `state` are the operator's: the help says so in one sentence. */
-const AGENT_VERBS = ["post", "status", "withdraw", "list"] as const;
+/** The one line `collie asks --help` opens with: what the verb is, apart from `collie walky asks`. */
+export const ASKS_WHAT = "Asks: your own verbs for the open questions your agents and tricks send you. An agent's own list is collie walky asks.";
 
-/**
- * `collie hill --help`, and the same text for `collie hill post --help` and a bare `collie hill`: the
- * agent's verbs one line each, the flags of `post` one line each, then two lines on wording and the rules.
- * At most 1,500 bytes (cli/hill.test.ts holds it): an agent reads this text each time it runs the help.
- */
-export function hillHelp(): string[] {
-  const lines: string[] = [
-    `usage: collie hill {${AGENT_VERBS.join("|")}} [--json]`,
-    "The Hill is off until your operator switches it on (theirs alone: on, off, clear [--spoken], state).",
-  ];
-  for (const verb of AGENT_VERBS) {
-    lines.push(`  ${VERB_LINES[verb]}`);
-    if (verb === "post") for (const flag of POST_FLAGS) lines.push(`    ${flag}`);
-  }
-  return [...lines, "", ...HILL_WRITING, "", ...HILL_RULES];
-}
-
-/** `collie hill post --help`: the same text as `collie hill --help`. */
-export function hillPostHelp(): string[] {
-  return hillHelp();
+/** `collie asks --help`, and the same text for a bare or misspelt `collie asks`. */
+export function asksHelp(): string[] {
+  return [`usage: collie asks {${ASKS_SUBCOMMANDS.join("|")}} [--json]`, ASKS_WHAT, ...ASKS_SUBCOMMANDS.map((verb) => `  ${VERB_LINES[verb]}`)];
 }
 
 /** What `collie hill` needs: walky's own deps (the socket, the markers, stdin), and a request id mint. */
@@ -218,11 +177,11 @@ export async function request(deps: HillDeps, body: JsonObject, ms?: number): Pr
 }
 
 export function failed(deps: HillDeps, answer: Extract<HillAnswer, { ok: false }>): number {
-  deps.io.err(`hill: ${shown(answer.error)}${answer.code === null ? "" : ` (${shown(answer.code)})`}`);
+  deps.io.err(`asks: ${shown(answer.error)}${answer.code === null ? "" : ` (${shown(answer.code)})`}`);
   return answer.error.startsWith(BARE_BAD_REQUEST) ? EXIT.USAGE : answer.exit;
 }
 
-function usage(deps: HillDeps, verb: (typeof HILL_SUBCOMMANDS)[number], why: string): number {
+function usage(deps: HillDeps, verb: (typeof ASKS_SUBCOMMANDS)[number], why: string): number {
   deps.io.err(`error: ${why}`);
   for (const line of USAGE[verb]) deps.io.err(line);
   return EXIT.USAGE;
@@ -233,49 +192,6 @@ export function windows(deps: HillDeps): boolean {
   deps.io.err(NO_SOCKET_TEXT);
   return true;
 }
-
-/** `2h`, `3d`, `30m`, `1w` as milliseconds, or null. */
-export function durationMs(raw: string): number | null {
-  const match = /^(\d{1,6})([mhdw])$/u.exec(raw.trim());
-  if (match === null) return null;
-  const n = Number(match[1]);
-  const unit = match[2] === "m" ? 60_000 : match[2] === "h" ? 3_600_000 : match[2] === "d" ? 86_400_000 : 604_800_000;
-  return n > 0 ? n * unit : null;
-}
-
-/** `<key>=<value>` split at the first `=`, or null when there is none or either side is empty. */
-function pair(raw: string): { readonly key: string; readonly value: string } | null {
-  const at = raw.indexOf("=");
-  if (at <= 0 || at === raw.length - 1) return null;
-  return { key: raw.slice(0, at).trim(), value: raw.slice(at + 1) };
-}
-
-/** What `post`'s flags come to: the fields to send (no request id yet), the body source, and `--json`. */
-export interface PostArgs {
-  readonly fields: Omit<HillPostInput, "requestId" | "expiresAt" | "images">;
-  /** Each `--image` as given, the path not yet resolved. */
-  readonly images: readonly HillImageInput[];
-  readonly requestId: string | null;
-  readonly expiresInMs: number | null;
-  /** The `--view` file as given, not yet read, or null. */
-  readonly viewPath: string | null;
-  /** The body after `--`, or null to read stdin. */
-  readonly body: string | null;
-  readonly json: boolean;
-}
-
-function isPriority(value: string): value is HillPriority {
-  return HILL_PRIORITIES.some((priority) => priority === value);
-}
-
-function isTextMode(value: string): value is HillTextMode {
-  return HILL_TEXT_MODES.some((mode) => mode === value);
-}
-
-const VALUE_FLAGS = new Set(["--title", "--summary", "--option", "--recommend", "--why", "--confirm", "--detail", "--priority", "--text", "--link", "--about", "--reply-to", "--supersedes", "--expires", "--request-id", "--image", "--view"]);
-
-/** The most bytes `--view` reads of its file. The bridge holds the view itself to 8 KiB of compact JSON. */
-export const HILL_VIEW_FILE_MAX = 16 * 1024;
 
 /** One `--image` value: `<path>` or `<path>=<caption>`, split at the first `=`. An error is the one-line reason. */
 export function parseImageArg(raw: string): HillImageInput | { readonly error: string } {
@@ -304,244 +220,11 @@ export function imagePathOf(raw: string, cwd: string, realpath: (path: string) =
   }
 }
 
-/** `post`'s flags, checked as far as the CLI can check them. An error is the one-line reason. */
-export function parsePostArgs(args: readonly string[]): PostArgs | { readonly error: string } {
-  const one = new Map<string, string>();
-  const options: HillOption[] = [];
-  const confirms: Array<{ key: string; value: string }> = [];
-  const details: Array<{ key: string; value: string }> = [];
-  const links: Array<{ label: string; href: string }> = [];
-  const images: HillImageInput[] = [];
-  let json = false;
-  let body: string | null = null;
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i]!;
-    if (arg === "--") {
-      body = args.slice(i + 1).join(" ");
-      break;
-    }
-    if (arg === "--json") {
-      json = true;
-      continue;
-    }
-    if (!VALUE_FLAGS.has(arg)) return { error: arg.startsWith("-") ? `unknown flag \`${arg}\`` : `unexpected \`${arg}\`: put the body after \`--\`` };
-    const value = args[i + 1];
-    if (value === undefined) return { error: `\`${arg}\` needs a value` };
-    i += 1;
-    if (arg === "--option" || arg === "--confirm" || arg === "--detail") {
-      const split = pair(value);
-      if (split === null) return { error: `\`${arg}\` takes <intent>=<text>, got \`${value}\`` };
-      if (!isHillOptionIntent(split.key)) return { error: `\`${split.key}\` is not an option intent: a lowercase word of at most 32 characters (letters, digits, -), not answer or dismiss` };
-      if (arg === "--option") {
-        if (options.some((option) => option.intent === split.key)) return { error: `two options share the intent \`${split.key}\`` };
-        options.push({ intent: split.key, label: split.value });
-      } else (arg === "--confirm" ? confirms : details).push(split);
-      continue;
-    }
-    if (arg === "--image") {
-      const image = parseImageArg(value);
-      if ("error" in image) return image;
-      if (images.length >= HILL_MEDIA_MAX) return { error: `a decision has at most ${String(HILL_MEDIA_MAX)} \`--image\`` };
-      images.push(image);
-      continue;
-    }
-    if (arg === "--link") {
-      const split = pair(value);
-      if (split === null) return { error: `\`--link\` takes "<label>=https://...", got \`${value}\`` };
-      links.push({ label: split.key, href: split.value });
-      continue;
-    }
-    if (one.has(arg)) return { error: `\`${arg}\` is given twice` };
-    one.set(arg, value);
-  }
-  const title = one.get("--title");
-  const summary = one.get("--summary");
-  if (title === undefined) return { error: "a decision needs `--title`" };
-  if (summary === undefined) return { error: "a decision needs `--summary`, in plain words" };
-  for (const extra of [...confirms, ...details]) {
-    const option = options.find((candidate) => candidate.intent === extra.key);
-    if (option === undefined) return { error: `\`${extra.key}\` names no \`--option\`` };
-  }
-  const withExtras = options.map((option): HillOption => {
-    const confirm = confirms.find((entry) => entry.key === option.intent)?.value;
-    const detail = details.find((entry) => entry.key === option.intent)?.value;
-    const base: HillOption = detail === undefined ? option : { ...option, detail };
-    return confirm === undefined ? base : { ...base, confirm };
-  });
-  const recommend = one.get("--recommend");
-  const why = one.get("--why");
-  if ((recommend === undefined) !== (why === undefined)) return { error: "`--recommend` and `--why` go together: name one option and say why" };
-  if (recommend !== undefined && !options.some((option) => option.intent === recommend)) return { error: `\`--recommend ${recommend}\` names no \`--option\`` };
-  const priority = one.get("--priority") ?? "today";
-  if (!isPriority(priority)) return { error: "`--priority` is now, today or later" };
-  const text = one.get("--text") ?? "optional";
-  if (!isTextMode(text)) return { error: "`--text` is none, optional or required" };
-  if (text === "none" && options.length === 0) return { error: "`--text none` needs at least one `--option`" };
-  const about = one.get("--about") ?? null;
-  if (about !== null && about !== "here" && parseAddress(about)?.kind !== "pane") return { error: `\`--about ${about}\` is not a session: here, or <member>/<pane> as \`collie walky who\` prints it` };
-  const replyTo = one.get("--reply-to") ?? null;
-  if (replyTo !== null && parseAddress(replyTo)?.kind !== "pane") return { error: `\`--reply-to ${replyTo}\` is not a session: <member>/<pane> as \`collie walky who\` prints it` };
-  const supersedes = one.get("--supersedes") ?? null;
-  if (supersedes !== null && !HILL_ID_RE.test(supersedes)) return { error: `\`--supersedes ${supersedes}\` is not a decision id (dc_ and 12 characters)` };
-  const expires = one.get("--expires");
-  const expiresInMs = expires === undefined ? null : durationMs(expires);
-  if (expires !== undefined && expiresInMs === null) return { error: `\`--expires ${expires}\` is a duration such as 30m, 2h, 3d or 1w` };
-  if (expiresInMs !== null && expiresInMs > HILL_MAX_EXPIRY_MS) return { error: `\`--expires ${expires ?? ""}\` is longer than ${String(HILL_MAX_EXPIRY_DAYS)} days, the most a decision stays open` };
-  const requestId = one.get("--request-id") ?? null;
-  if (requestId !== null && !isRequestId(requestId)) return { error: `\`--request-id ${requestId}\` is not a UUID` };
-  return {
-    fields: {
-      title,
-      summary,
-      options: withExtras,
-      text,
-      recommends: recommend === undefined || why === undefined ? null : { intent: recommend, why },
-      links,
-      priority,
-      about,
-      replyTo,
-      supersedes,
-    },
-    images,
-    requestId,
-    expiresInMs,
-    viewPath: one.get("--view") ?? null,
-    body,
-    json,
-  };
-}
-
-/**
- * The `--view` file, read and parsed as JSON, or the one-line reason it cannot be sent. What the nodes
- * may be is the bridge's to judge (`parseDecisionView`): it refuses a bad view with the path of the node.
- */
-export function readViewFile(raw: string, cwd: string): { readonly view: JsonValue } | { readonly error: string } {
-  const path = resolve(cwd, raw);
-  let size: number;
-  try {
-    const st = statSync(path);
-    if (!st.isFile()) return { error: `\`--view ${raw}\` is not a file` };
-    size = st.size;
-  } catch {
-    return { error: `\`--view ${raw}\`: no such file` };
-  }
-  if (size > HILL_VIEW_FILE_MAX) return { error: `\`--view ${raw}\` is larger than ${String(HILL_VIEW_FILE_MAX / 1024)} KiB` };
-  const view = parseJson(readFileSync(path, "utf8"));
-  if (view === undefined) return { error: `\`--view ${raw}\` is not JSON` };
-  return { view };
-}
-
 /** The body: the words after `--`, else stdin when it is not a terminal, else none. */
 export async function bodyOf(deps: HillDeps, body: string | null): Promise<string> {
   if (body !== null) return body;
   if (deps.stdinIsTty) return "";
   return (await deps.readStdin()).trim();
-}
-
-/** The `hill.post` request, field by field. The bridge fills `from` from this process's pane, never from here. */
-function postLine(fields: PostArgs["fields"], requestId: string, body: string, expiresAt: number | null, images: readonly HillImageInput[], view: JsonValue | null): JsonObject {
-  const options = (fields.options ?? []).map((option): JsonObject => {
-    const row: JsonObject = { intent: option.intent, label: option.label };
-    if (option.detail !== undefined) row.detail = option.detail;
-    if (option.confirm !== undefined) row.confirm = option.confirm;
-    return row;
-  });
-  const links = (fields.links ?? []).map((link): JsonObject => ({ label: link.label, href: link.href }));
-  const recommends = fields.recommends === undefined || fields.recommends === null ? null : { intent: fields.recommends.intent, why: fields.recommends.why };
-  const line: JsonObject = {
-    op: "hill.post",
-    requestId,
-    title: fields.title,
-    summary: fields.summary,
-    body,
-    options,
-    text: fields.text ?? "optional",
-    recommends,
-    links,
-    priority: fields.priority ?? "today",
-    about: fields.about ?? null,
-    replyTo: fields.replyTo ?? null,
-    supersedes: fields.supersedes ?? null,
-    expiresAt,
-  };
-  // Paths, never bytes: the bridge reads each file itself (bridge/hill/media.ts). Sent only when there
-  // are images, so a post without them is the line it was.
-  if (images.length > 0) line.images = images.map((image): JsonObject => (image.caption === undefined ? { path: image.path } : { path: image.path, caption: image.caption }));
-  // Sent only when there is one, as images are.
-  if (view !== null) line.view = view;
-  return line;
-}
-
-/** What the CLI says when a bridge took the post and kept none of its images: a build from before images. */
-export const HILL_IMAGES_DROPPED = "the bridge posted the decision without its images: it is older than images on the hill";
-/** What the CLI says when a bridge took the post without its view: a build from before views. */
-export const HILL_VIEW_DROPPED = "the bridge posted the decision without its view: it is older than views on the hill";
-
-/** `hill post ...`: post one decision and print its id. It never waits for the answer. */
-export async function cmdHillPost(deps: HillDeps, args: readonly string[]): Promise<number> {
-  if (windows(deps)) return EXIT.STATE;
-  const parsed = parsePostArgs(args);
-  if ("error" in parsed) return usage(deps, "post", parsed.error);
-  // Soft: the words are the poster's. Said before the post, so a refused or unanswered post shows them too.
-  for (const warning of hillWordingWarnings(parsed.fields)) deps.io.err(`warning: ${warning}`);
-  const cwd = (deps.cwd ?? (() => process.cwd()))();
-  const images: HillImageInput[] = [];
-  for (const image of parsed.images) {
-    const resolved = imagePathOf(image.path, cwd);
-    if ("error" in resolved) return usage(deps, "post", resolved.error);
-    images.push(image.caption === undefined ? { path: resolved.path } : { path: resolved.path, caption: image.caption });
-  }
-  let view: JsonValue | null = null;
-  if (parsed.viewPath !== null) {
-    const read = readViewFile(parsed.viewPath, cwd);
-    if ("error" in read) return usage(deps, "post", read.error);
-    view = read.view;
-  }
-  const body = await bodyOf(deps, parsed.body);
-  const requestId = parsed.requestId ?? (deps.mintRequestId ?? randomUUID)();
-  const expiresAt = parsed.expiresInMs === null ? null : (deps.now ?? Date.now)() + parsed.expiresInMs;
-  // The bridge runs under PrivateTmp and cannot see /tmp: a picture there is copied for it, and the copy
-  // is removed when the request is over, whatever it came to (an answer, a refusal, a timeout, a throw).
-  const staged = stageImagesForBridge({ env: deps.ctx.env, home: deps.ctx.home, now: deps.now, stagingRoot: deps.stagingRoot }, images);
-  if (!staged.ok) return failed(deps, { ok: false, error: staged.error, code: staged.code, exit: staged.code === null ? EXIT.FAIL : EXIT.REFUSED });
-  let answer: HillAnswer;
-  try {
-    // The wait covers a crew member's whole forward to its lead (CREW_PROTOCOL §22), so the CLI does not
-    // give up on a post that is still on its way.
-    answer = await request(deps, postLine(parsed.fields, requestId, body, expiresAt, staged.images, view), HILL_POST_ASK_MS);
-  } finally {
-    staged.cleanup();
-  }
-  if (!answer.ok) {
-    // A refusal names the picture as the agent typed it, not the copy. One line: the reason and its code.
-    const exit = failed(deps, { ...answer, error: staged.unstage(answer.error) });
-    // A second line only when the same post can pass on a retry: no bridge answered in time (5), or a state
-    // of the machine that is not the Hill switched off (3). The same --request-id posts once.
-    if (exit === EXIT.UNREACHABLE || (exit === EXIT.STATE && answer.code !== "hill_off")) deps.io.err(`hill: send it again with --request-id ${requestId}`);
-    return exit;
-  }
-  const decision = readDecision(answer.body.decision);
-  if (decision === null) return failed(deps, { ok: false, error: "the bridge answered without a decision", code: null, exit: EXIT.FAIL });
-  if (images.length > 0 && decision.media.length === 0) deps.io.err(`hill: ${HILL_IMAGES_DROPPED}`);
-  if (view !== null && decision.view === undefined) deps.io.err(`hill: ${HILL_VIEW_DROPPED}`);
-  // The crew state at the moment of the post, when it is not `here` (1.29.0): one last line.
-  const crewState = answer.body.crewState;
-  const crew = isHillCrewState(crewState) && crewState !== "here" ? crewState : null;
-  if (parsed.json) deps.io.out(JSON.stringify(crew === null ? { decision } : { decision, crewState: crew }));
-  else {
-    deps.io.out(decision.id);
-    if (crew !== null) deps.io.out(crewStateLine(crew));
-  }
-  return EXIT.OK;
-}
-
-/** One id and `--json`, the grammar of `status` and `withdraw`. */
-function idArgs(args: readonly string[]): { readonly id: string; readonly json: boolean } | { readonly error: string } {
-  const json = args.includes("--json");
-  const rest = args.filter((arg) => arg !== "--json");
-  const id = rest[0];
-  if (id === undefined || rest.length > 1 || !HILL_ID_RE.test(id)) return { error: "name one decision id (dc_ and 12 characters)" };
-  return { id, json };
 }
 
 /** Where the answer goes, as the card's "goes to" line names it: the session's name, and its machine. */
@@ -550,7 +233,7 @@ function targetWords(target: NonNullable<HillDecision["target"]>): string {
 }
 
 /**
- * A decision's state as `status` prints it: the state, the question, where the answer goes, why it
+ * An ask's state as `walky status` prints it: the state, the question, where the answer goes, why it
  * closed, and the answer with its delivery when there is one. A session that missed the typed answer,
  * or got one with no title (it went to a session other than the poster's), reads it here.
  */
@@ -568,30 +251,6 @@ export function statusLines(decision: HillDecision): string[] {
   return lines;
 }
 
-async function oneDecision(deps: HillDeps, verb: "status" | "withdraw", args: readonly string[]): Promise<number> {
-  if (windows(deps)) return EXIT.STATE;
-  const parsed = idArgs(args);
-  if ("error" in parsed) return usage(deps, verb, parsed.error);
-  const answer = await request(deps, { op: `hill.${verb}`, id: parsed.id });
-  if (!answer.ok) return failed(deps, answer);
-  // Printed only: Collie's own card (a trick proposal, read by the proposing session) reads too.
-  const decision = readDecision(answer.body.decision, { collie: true });
-  if (decision === null) return failed(deps, { ok: false, error: "the bridge answered without a decision", code: null, exit: EXIT.FAIL });
-  if (parsed.json) deps.io.out(JSON.stringify({ decision }));
-  else for (const line of statusLines(decision)) deps.io.out(line);
-  return EXIT.OK;
-}
-
-/** `hill status <id>`: the state, and the answer when there is one. */
-export function cmdHillStatus(deps: HillDeps, args: readonly string[]): Promise<number> {
-  return oneDecision(deps, "status", args);
-}
-
-/** `hill withdraw <id>`: take an open decision back. */
-export function cmdHillWithdraw(deps: HillDeps, args: readonly string[]): Promise<number> {
-  return oneDecision(deps, "withdraw", args);
-}
-
 export function decisionsOf(value: JsonValue | undefined): HillDecision[] {
   if (!Array.isArray(value)) return [];
   return value.flatMap((entry) => {
@@ -600,41 +259,15 @@ export function decisionsOf(value: JsonValue | undefined): HillDecision[] {
   });
 }
 
-/** `hill list`: the caller's own decisions, open first. Every bridge on the machine is asked. */
-export async function cmdHillList(deps: HillDeps, args: readonly string[]): Promise<number> {
-  if (windows(deps)) return EXIT.STATE;
-  const unknown = args.find((arg) => arg !== "--json");
-  if (unknown !== undefined) return usage(deps, "list", `unknown argument \`${unknown}\``);
-  const { answers, failure } = await walk(deps, { op: "hill.list", mine: true }, true);
-  if (answers.length === 0) return failed(deps, failure);
-  const decisions: HillDecision[] = [];
-  for (const decision of answers.flatMap((answer) => decisionsOf(answer.body.decisions))) {
-    if (!decisions.some((held) => held.id === decision.id)) decisions.push(decision);
-  }
-  if (args.includes("--json")) {
-    deps.io.out(JSON.stringify({ decisions }));
-    return EXIT.OK;
-  }
-  if (decisions.length === 0) {
-    deps.io.out("no decisions");
-    return EXIT.OK;
-  }
-  for (const decision of decisions) {
-    const to = decision.target === null ? "" : `  (to ${targetWords(decision.target)})`;
-    deps.io.out(`${decision.id}  ${decision.state.padEnd(13)}  ${decision.priority.padEnd(5)}  ${shown(decision.title)}${to}`);
-  }
-  return EXIT.OK;
-}
-
-/** What `collie hill clear` prints for a count. */
+/** What `collie asks clear` prints for a count. */
 export function clearedWords(count: number): string {
-  if (count === 0) return "Nothing to clear: no closed decisions.";
-  return `Cleared ${String(count)} closed ${count === 1 ? "decision" : "decisions"}.`;
+  if (count === 0) return "Nothing to clear: no closed asks.";
+  return `Cleared ${String(count)} closed ${count === 1 ? "ask" : "asks"}.`;
 }
 
 /**
- * `hill clear`: remove every closed decision from the Hill, through the running bridge's socket. It names
- * no pane and no id, and never removes an open decision. Prints one line with the count.
+ * `asks clear`: remove every closed ask from Asks, through the running bridge's socket. It names
+ * no pane and no id, and never removes an open ask. Prints one line with the count.
  */
 export async function cmdHillClear(deps: HillDeps, args: readonly string[]): Promise<number> {
   if (windows(deps)) return EXIT.STATE;
@@ -643,7 +276,7 @@ export async function cmdHillClear(deps: HillDeps, args: readonly string[]): Pro
   const spoken = args.includes("--spoken");
   // The second Clear is the person's choice: refused in an agent's pane, here and again by the bridge.
   if (spoken && (await inAgentPane(deps))) {
-    for (const line of personOnlyRefusal("collie hill clear --spoken")) deps.io.err(line);
+    for (const line of personOnlyRefusal("collie asks clear --spoken")) deps.io.err(line);
     return EXIT.REFUSED;
   }
   const answer = await request(deps, { op: spoken ? "hill.spoken.clear" : "hill.clear" });
@@ -654,7 +287,7 @@ export async function cmdHillClear(deps: HillDeps, args: readonly string[]): Pro
   return EXIT.OK;
 }
 
-/** What `collie hill clear --spoken` prints for a count. */
+/** What `collie asks clear --spoken` prints for a count. */
 export function spokenClearedWords(count: number): string {
   if (count === 0) return "Nothing to clear: no open card you answered in its session.";
   return `Withdrew and cleared ${String(count)} ${count === 1 ? "card" : "cards"} you answered in the session. Nothing was typed.`;
@@ -664,9 +297,9 @@ export function spokenClearedWords(count: number): string {
 
 /** What each crew state means, one line, the words the phone shows under its control. */
 export const CREW_STATE_MEANING = {
-  here: "Agents post as usual.",
-  quiet: "No push. Agents post but do not wait.",
-  away: "No push. Agents hold questions that need an answer now.",
+  here: "Agents ask as usual.",
+  quiet: "Agents ask, but do not wait for your answer.",
+  away: "Agents keep back questions that need an answer now.",
 } as const satisfies Record<HillCrewState, string>;
 
 /**
@@ -674,7 +307,7 @@ export const CREW_STATE_MEANING = {
  * cards answered in the session are the person's choice. A SPEED BUMP, NOT A WALL, as `collie trick on`'s
  * (cli/trick.ts `agentPaneRefusal`): the bridge is asked whether this pane runs an agent, and only a yes refuses.
  */
-export function personOnlyRefusal(command: string, where = "on the Hill"): string[] {
+export function personOnlyRefusal(command: string, where = "in Asks"): string[] {
   return [
     `error: ${command} is your person's choice, and this runs in a pane where an agent works.`,
     `Tell your operator what you would change and why. They do it on the phone, ${where}, or with this command in a shell pane or a terminal.`,
@@ -689,7 +322,7 @@ async function inAgentPane(deps: Pick<HillDeps, "ctx" | "paneKind">): Promise<bo
   return await paneNotProvenShell(deps.ctx.env, deps.paneKind);
 }
 
-/** The second line of `collie hill state`: since when, and who set it. */
+/** The second line of `collie asks state`: since when, and who set it. */
 export function crewStateSince(view: HillCrewStateView): string {
   if (view.at === null) return "since always: nobody set it, so it is the default";
   const when = `${new Date(view.at).toISOString().slice(0, 16).replace("T", " ")} UTC`;
@@ -702,7 +335,7 @@ function localCrewState(deps: HillDeps): HillCrewStateView {
 }
 
 /**
- * Why `collie hill state` says `unknown` on a crew member no running bridge answers for (C-N3, review 8):
+ * Why `collie asks state` says `unknown` on a crew member no running bridge answers for (C-N3, review 8):
  * the state is the lead's, and this machine's own file is not it. An agent reads this before each post.
  */
 export const HILL_STATE_UNKNOWN_ON_MEMBER = "no running Collie here could ask the crew's lead, and the crew state lives there; start Collie, or look on the phone";
@@ -714,7 +347,7 @@ function memberOnDisk(deps: HillDeps): boolean {
 }
 
 /**
- * `hill state [here|quiet|away] [--json]`: with no word, the crew state, read from the running bridge (on
+ * `asks state [here|quiet|away] [--json]`: with no word, the crew state, read from the running bridge (on
  * a crew member, from its lead), else this machine's file: one word, then a line with since when. A lead
  * too old to say is a plain line and exit 4; so is a crew member no running bridge answers for, which
  * prints `unknown` (its own file is not the lead's). With a word, the person sets it: refused inside an agent's
@@ -741,7 +374,7 @@ export async function cmdHillState(deps: HillDeps, args: readonly string[]): Pro
       return EXIT.OK;
     }
     deps.io.out(json ? JSON.stringify({ crewState: null }) : "unknown");
-    if (!json) deps.io.err(`hill: ${HILL_STATE_UNKNOWN_ON_MEMBER}`);
+    if (!json) deps.io.err(`asks: ${HILL_STATE_UNKNOWN_ON_MEMBER}`);
     return EXIT.REFUSED;
   };
   if (word === undefined) {
@@ -758,14 +391,14 @@ export async function cmdHillState(deps: HillDeps, args: readonly string[]): Pro
     return failed(deps, answer);
   }
   if (await inAgentPane(deps)) {
-    for (const line of personOnlyRefusal(`collie hill state ${word}`)) deps.io.err(line);
+    for (const line of personOnlyRefusal(`collie asks state ${word}`)) deps.io.err(line);
     return EXIT.REFUSED;
   }
   const said = (view: HillCrewStateView): number => {
     if (json) deps.io.out(JSON.stringify({ crewState: view }));
     else {
       deps.io.out(`${crewStateLine(view.state)} ${CREW_STATE_MEANING[view.state]}`);
-      if (view.state !== "here") deps.io.out("To tell the sessions waiting on the Hill now, tap Tell all sessions now on the Hill.");
+      if (view.state !== "here") deps.io.out("To tell the sessions that wait for an answer now, tap Tell all sessions now in Asks.");
     }
     return EXIT.OK;
   };
@@ -778,26 +411,26 @@ export async function cmdHillState(deps: HillDeps, args: readonly string[]): Pro
     }
     if (answer.error !== HILL_UNKNOWN) return failed(deps, answer);
   }
-  // No running Collie here knows the crew state: write this machine's file, as `collie hill on|off` does.
+  // No running Collie here knows the crew state: write this machine's file, as `collie asks on|off` does.
   // Not on a member: the state is the lead's, and a file here would only mislead its next read.
   if (memberOnDisk(deps)) return failed(deps, { ok: false, error: HILL_STATE_ON_LEAD, code: "not_on_lead", exit: EXIT.REFUSED });
   try {
     writeHillCrewState(deps.ctx.stateDir, { state: word, by: "terminal" }, (deps.now ?? Date.now)());
   } catch (err) {
-    deps.io.err(`hill: could not write ${hillCrewStatePath(deps.ctx.stateDir)}: ${err instanceof Error ? err.message : String(err)}`);
+    deps.io.err(`asks: could not write ${hillCrewStatePath(deps.ctx.stateDir)}: ${err instanceof Error ? err.message : String(err)}`);
     return EXIT.FAIL;
   }
-  if (!json) deps.io.err(`hill: no running Collie answered; written to ${hillCrewStatePath(deps.ctx.stateDir)}, which the bridge reads when it runs`);
+  if (!json) deps.io.err(`asks: no running Collie answered; written to ${hillCrewStatePath(deps.ctx.stateDir)}, which the bridge reads when it runs`);
   return said(localCrewState(deps));
 }
 
-/** What `collie hill off` says once the switch is written. */
-export const HILL_OFF_WORDS = "The Hill is off on this Collie. Agents and tricks cannot post, and the Hill leaves the phone's bar. The open decisions stay and show again when you switch it on: collie hill on";
-/** What `collie hill on` says once the switch is written. */
-export const HILL_ON_WORDS = "The Hill is on. Agents and tricks can ask you again, and the open decisions are back on the phone.";
+/** What `collie asks off` says once the switch is written. */
+export const HILL_OFF_WORDS = "Asks is off on this Collie. Agents and tricks cannot ask you, and Asks leaves the phone's bar. The open asks stay and show again when you switch it on: collie asks on";
+/** What `collie asks on` says once the switch is written. */
+export const HILL_ON_WORDS = "Asks is on. Agents and tricks can ask you again, and the open asks are back on the phone.";
 
 /**
- * `hill on|off`: the Hill's switch for this Collie (bridge/hill/switch.ts). Written straight into this
+ * `asks on|off`: the switch of Asks for this Collie (bridge/hill/switch.ts). Written straight into this
  * instance's state folder, as `collie trick on|off` writes the tricks' switch; the running bridge reads
  * it again within seconds, with no restart. Works with no bridge running. A real change lets the
  * WalkyTalky skill follow (`followSkill`, cli/skill-install.ts `skillFollowsSwitch`); a fault of that is
@@ -819,13 +452,13 @@ export function cmdHillSwitch(
   const held = readHillSwitch(deps.ctx.stateDir);
   if (held.on === on && held.problem === null) {
     if (json) deps.io.out(JSON.stringify({ on }));
-    else deps.io.out(on ? "The Hill is already on." : "The Hill is already off.");
+    else deps.io.out(on ? "Asks is already on." : "Asks is already off.");
     return EXIT.OK;
   }
   try {
-    setHillSwitch(deps.ctx.stateDir, on, { now: (deps.now ?? Date.now)(), follow: deps.followSkill, warn: (line) => deps.io.err(`hill: ${line}`) });
+    setHillSwitch(deps.ctx.stateDir, on, { now: (deps.now ?? Date.now)(), follow: deps.followSkill, warn: (line) => deps.io.err(`asks: ${line}`) });
   } catch (err) {
-    deps.io.err(`hill: could not write the switch in ${deps.ctx.stateDir}: ${err instanceof Error ? err.message : String(err)}`);
+    deps.io.err(`asks: could not write the switch in ${deps.ctx.stateDir}: ${err instanceof Error ? err.message : String(err)}`);
     return EXIT.FAIL;
   }
   if (json) deps.io.out(JSON.stringify({ on }));
@@ -834,22 +467,35 @@ export function cmdHillSwitch(
 }
 
 /**
- * `hill on` from the CLI: switching the Hill on is the person's choice, so it is refused in an agent's pane
+ * `asks on` from the CLI: switching Asks on is the person's choice, so it is refused in an agent's pane
  * (the speed bump of {@link personOnlyRefusal}); anywhere else it is {@link cmdHillSwitch}. `off` needs no check.
  */
 export async function cmdHillOn(deps: Pick<HillDeps, "ctx" | "io" | "now" | "paneKind"> & { readonly followSkill: SwitchFollower | null }, args: readonly string[]): Promise<number> {
   if (await inAgentPane(deps)) {
-    for (const line of personOnlyRefusal("collie hill on", "in Settings, Tricks")) deps.io.err(line);
+    for (const line of personOnlyRefusal("collie asks on", "in Settings, Tricks")) deps.io.err(line);
     return EXIT.REFUSED;
   }
   return cmdHillSwitch(deps, "on", args);
 }
 
-/** A bare, misspelt or `--help` `collie hill`: the sub-verbs and the rules. `--help` exits 0, the others 2. */
-export function cmdHill(deps: Pick<HillDeps, "io">, args: readonly string[]): number {
+/** A bare, misspelt or `--help` `collie asks`: the sub-verbs. `--help` exits 0, the others 2. */
+export function cmdAsks(deps: Pick<HillDeps, "io">, args: readonly string[]): number {
   const help = args[0] === "--help" || args[0] === "-h";
-  if (!help && args[0] !== undefined) deps.io.err(`error: unknown hill command \`${args[0]}\``);
+  if (!help && args[0] !== undefined) deps.io.err(`error: unknown asks command \`${args[0]}\``);
   const print = help ? deps.io.out : deps.io.err;
-  for (const line of hillHelp()) print(line);
+  for (const line of asksHelp()) print(line);
   return help ? EXIT.OK : EXIT.USAGE;
+}
+
+/** The line an old `collie hill` verb fails with: the verb that took its place (ADR 0179). No alias runs. */
+export function oldHillLine(verb: string | undefined): string {
+  const known = Object.entries(OLD_HILL_VERBS).find(([old]) => old === verb);
+  if (known !== undefined) return `collie hill ${known[0]} is now: ${known[1]}`;
+  return "collie hill is now: collie asks (your verbs) and collie walky ask (an agent's)";
+}
+
+/** `collie hill ...`, any sub-verb, `--help` too: gone. One line on stderr, the usage exit. Nothing runs. */
+export function cmdOldHill(deps: Pick<HillDeps, "io">, args: readonly string[]): number {
+  deps.io.err(oldHillLine(args[0]));
+  return EXIT.USAGE;
 }

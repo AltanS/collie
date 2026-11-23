@@ -7,7 +7,7 @@ import { askDecision } from "@/test/asks-fixtures";
 
 import { AskConfirmSheet, draftOf, pickKey, startText, type AskPick } from "./ask-confirm-sheet";
 
-const ASK = askDecision({ id: "dc_ask1" });
+const ASK = askDecision({ id: "ak_ask1" });
 
 function open(pick: AskPick | null, draft: AskDraft = NO_DRAFT, ask = ASK) {
   const onConfirm = vi.fn();

@@ -39,10 +39,12 @@ const REPO = "https://github.com/AltanS/collie-tricks";
 const C1 = "1".repeat(40);
 const H1 = "a".repeat(64);
 
-function entryFields(over: Partial<Record<keyof OfficialEntry, JsonValue>> = {}) {
+/** The list's JSON keys: the entry's own, with `asks` for the field the entry calls `decides` (ADR 0179). */
+type ListKey = Exclude<keyof OfficialEntry, "decides"> | "asks";
+function entryFields(over: Partial<Record<ListKey, JsonValue>> = {}) {
   return { id: "legs", name: "Legs", description: "Counts legs.", repo: REPO, dir: "legs", commit: C1, hash: H1, extras: H1, rules: null, contract: 1, places: ["belt"], previous: [], ...over };
 }
-const entry = (over: Partial<Record<keyof OfficialEntry, JsonValue>> = {}): JsonValue => entryFields(over);
+const entry = (over: Partial<Record<ListKey, JsonValue>> = {}): JsonValue => entryFields(over);
 const listOf = (...tricks: JsonValue[]): JsonValue => ({ v: 1, tricks });
 
 // ── the list ─────────────────────────────────────────────────────────────────
@@ -1197,23 +1199,23 @@ describe("the list pins the places of each trick (contract 2, the menu place)", 
 
   test("decides = reply (2026-11-12): the list carries it, the phone learns it before Add, and the add holds the folder to it", async () => {
     // The reader takes the one word, refuses another and an agent view that carries it, and renders it back.
-    const read = parseOfficialList(listOf(entry({ decides: "reply" })));
+    const read = parseOfficialList(listOf(entry({ asks: "reply" })));
     if (!read.ok) throw new Error(read.reason);
     expect(read.entries[0]?.decides).toBe("reply");
     expect(parseOfficialList(parseJson(renderOfficialList(read.entries)))).toEqual(read);
-    expect(renderOfficialList(read.entries)).toContain('"decides": "reply"');
-    expect(parseOfficialList(listOf(entry({ decides: "replies" }))).ok).toBe(false);
-    expect(parseOfficialList(listOf(entry({ contract: 2, places: ["agent-view"], rules: "a".repeat(64), decides: "reply" }))).ok).toBe(false);
+    expect(renderOfficialList(read.entries)).toContain('"asks": "reply"');
+    expect(parseOfficialList(listOf(entry({ asks: "replies" }))).ok).toBe(false);
+    expect(parseOfficialList(listOf(entry({ contract: 2, places: ["agent-view"], rules: "a".repeat(64), asks: "reply" }))).ok).toBe(false);
     const plain = parseOfficialList(listOf(entry()));
     if (!plain.ok) throw new Error(plain.reason);
-    expect(renderOfficialList(plain.entries)).not.toContain("decides");
+    expect(renderOfficialList(plain.entries)).not.toContain("asks");
     // The wire: `decidesReply` on the pinned entry only.
     const configDir = await tempDir();
     const wire = await officialWire(configDir, [{ ...fixtureEntry(REPO, C1, H1), decides: "reply" }, fixtureEntry(REPO, C1, H1, "other")]);
     expect(wire.map((w) => w.decidesReply)).toEqual([true, undefined]);
     if (!posix) return;
     // The add: a folder whose manifest says otherwise than the pin installs nothing.
-    const files = { "inbox/trick.toml": { text: MANIFEST("inbox", 'decides = "reply"\n') }, "inbox/program.sh": PROGRAM("one") };
+    const files = { "inbox/trick.toml": { text: MANIFEST("inbox", 'asks = "reply"\n') }, "inbox/program.sh": PROGRAM("one") };
     const repo = await fixtureRepo([files]);
     const code = await hashOf({ "trick.toml": files["inbox/trick.toml"], "program.sh": files["inbox/program.sh"] });
     const plainPin = fixtureEntry(repo.url, repo.shas[0] ?? "", code, "inbox", extrasOf({}));

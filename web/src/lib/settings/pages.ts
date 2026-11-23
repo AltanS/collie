@@ -190,9 +190,15 @@ export const OLD_FRAGMENT_ROWS = {
 /**
  * Ids that a shipped Collie used and the id that holds the value now (ADR 0170, "an id survives a move"). A row
  * that is renamed or retired leaves its old id here, so an old address, a search result in an old tab and, later, a
- * settings file still find it. A key here is never declared again; `shipped-ids.test.ts` checks both. Empty today.
+ * settings file still find it. A key here is never declared again; `shipped-ids.test.ts` checks both.
+ *
+ * Two rows left with the notification for an ask (ADR 0179 addendum): the switch "Asks that need you now" and the button
+ * "Send a test ask". Neither has a successor, so each old id lands on the row that sits where it sat.
  */
-export const ALIASES = {} as const satisfies Record<string, string>;
+export const ALIASES = {
+  "notifications.decisions": "notifications.needsYou",
+  "tricks.hill.test": "tricks.hill",
+} as const satisfies Record<string, string>;
 
 /** The id a fragment or an old id names today: through the old fragments, then through `ALIASES`. */
 export function currentRowId(id: string): string {

@@ -25,9 +25,7 @@ import { cn } from "@/lib/utils";
 
 // THE HILL'S ROUTE (M96), `/hill`: one level below the Dashboard, the place Back goes up to (ADR 0067).
 // Since Asks build 2 (2026-11-23) the open asks stand at the top as one card for each session (components/asks-board.tsx); a row
-// opens the ask (`/hill/ask/:id`). Every other open card keeps its group below, unchanged.
-// Since Asks build 2 (2026-11-23) the open asks stand at the top as one card for each session (components/asks-board.tsx); a row
-// opens the ask (`/hill/ask/:id`). Every other open card keeps its group below, unchanged.
+// opens the ask. Every other open card stands under "Other cards", oldest first: no card has a priority, so nothing groups them.
 // The lists come from the hill's store, which the root loader keeps current from the snapshot's
 // `hillRev` (lib/hill/store.ts), so this route has no loader of its own and a poll that moved the hill
 // redraws it here. Each open Decision is a card wired to the bridge.
@@ -44,8 +42,8 @@ import { cn } from "@/lib/utils";
 // route draws as it did, and the fold's open state is chosen when the list does land (`HillView`'s
 // `listed`). A warm open, from the Dashboard in the same page session, holds a list and waits for nothing.
 //
-// `/hill#<decision id>` is where a `now` Decision's notification lands (lib/push-decision.ts): the route
-// scrolls that card into view once it is on the list. A closed one, or an unknown id, scrolls nothing.
+// `/asks#<ask id>` is where the tap on an old notification still on a phone lands (lib/push-decision.ts): the route
+// scrolls that card into view once it is on the list. A closed one, or an unknown id, scrolls nothing. No ask sends a notification any more.
 //
 // THE HILL SWITCHED OFF (the snapshot's `hillOff`, bridge/hill/switch.ts): the route stays, under the
 // same header, and shows a calm off state with the switch's way back on (`HillOff`), not a redirect: a
@@ -77,14 +75,14 @@ export function HillRoute() {
   const listed = useHillHeld();
   const holding = useBoundedHold(useOptionalRootData()?.hill === true && !listed);
   useScrollToDecision(open);
-  // The asks are the session cards at the top; every other open card keeps its place in the groups below (Asks build 2).
+  // The asks are the session cards at the top; every other open card stands under "Other cards" (Asks build 2).
   const board = useAsksDeck();
   const drafts = useAskDrafts();
   const cards = openCardsOf(open);
   const askCount = board.deck.length;
   return (
     <div className="mx-auto flex min-h-0 w-full max-w-screen-sm flex-1 flex-col">
-      <HillHeader count={open.length} nowCount={open.filter((d) => d.priority === "now").length} onBack={() => nav.up(homePath(scope))} off={off} held={holding} />
+      <HillHeader count={open.length} onBack={() => nav.up(homePath(scope))} off={off} held={holding} />
       <BandMain base={16} data-slot="hill-scroll" className={cn("relative flex min-h-0 flex-1 flex-col overflow-y-auto px-4 pt-4", footAir(bar.shown, "pb-4"))}>
         {off ? (
           <HillOff canWrite={sw.canWrite} busy={sw.busy} onTurnOn={() => void sw.set(true)} />
@@ -135,7 +133,7 @@ function HillCrewStateHold() {
 /** Scroll the open card the URL's hash names into view, once per hash, as soon as the list holds it. */
 function useScrollToDecision(open: readonly HillDecision[]): void {
   const { hash } = useLocation();
-  const id = hash.startsWith("#dc_") ? hash.slice(1) : null;
+  const id = hash.startsWith("#ak_") ? hash.slice(1) : null;
   const listed = id !== null && open.some((decision) => decision.id === id);
   const done = useRef<string | null>(null);
   useEffect(() => {

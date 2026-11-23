@@ -53,7 +53,7 @@ async function world(page: Page, answers?: (body: Sent) => { status: number; bod
 }
 
 async function openFirstAsk(page: Page) {
-  await page.goto("/hill");
+  await page.goto("/asks");
   await page.getByRole("button", { name: "Answer next" }).click();
   await expect(page.getByRole("heading", { name: FIRST.title })).toBeVisible();
 }
@@ -62,12 +62,12 @@ const card = (page: Page, intent: string) => page.locator(`[data-slot="ask-card"
 
 test("the board stands in cache order, and a row opens its ask", async ({ page }) => {
   await world(page);
-  await page.goto("/hill");
+  await page.goto("/asks");
   await expect(page.getByRole("heading", { name: "Asks", level: 1 })).toBeVisible();
   await expect(page.locator('[data-slot="asks-session"]')).toHaveCount(2);
   await expect(page.locator('[data-slot="asks-row"]')).toHaveCount(3);
   await page.getByRole("button", { name: /Drop the flag\?/u }).click();
-  await expect(page).toHaveURL(/\/hill\/ask\/ak_e2e000000002/u);
+  await expect(page).toHaveURL(/\/asks\/ask\/ak_e2e000000002/u);
   await expect(page.getByRole("heading", { name: "Drop the flag?" })).toBeVisible();
 });
 
@@ -130,7 +130,7 @@ test("the keys move between asks without a new history entry, pick with a digit,
   await expect(sheet).toBeHidden();
   await expect(card(page, "drop")).toHaveAttribute("data-state", "answered");
   await page.keyboard.press("Escape");
-  await expect(page).toHaveURL(/\/hill(\?|$)/u);
+  await expect(page).toHaveURL(/\/asks(\?|$)/u);
 });
 
 test("Your own answer needs words, and a words field never moves its card", async ({ page }) => {
@@ -179,19 +179,19 @@ test("the context page is a level below the ask, and Back to the answers returns
   await world(page);
   await openFirstAsk(page);
   await page.locator('[data-slot="ask-context-row"]').click();
-  await expect(page).toHaveURL(/\/hill\/ask\/ak_e2e000000001\/context/u);
+  await expect(page).toHaveURL(/\/asks\/ask\/ak_e2e000000001\/context/u);
   await expect(page.getByRole("heading", { name: "Context for this ask" })).toBeVisible();
   await expect(page.getByText("The single answer route is used by every phone bundle.")).toBeVisible();
   await expect(page.getByText("docs/plan.md")).toBeVisible();
   await page.getByRole("button", { name: "Back to the answers" }).click();
-  await expect(page).toHaveURL(/\/hill\/ask\/ak_e2e000000001(\?|$)/u);
+  await expect(page).toHaveURL(/\/asks\/ask\/ak_e2e000000001(\?|$)/u);
   await expect(page.getByRole("heading", { name: FIRST.title })).toBeVisible();
 });
 
 test("on a large screen the ask is one centred column and the keys still work", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await world(page);
-  await page.goto(`/hill/ask/${FIRST.id}`);
+  await page.goto(`/asks/ask/${FIRST.id}`);
   const screen = page.locator('[data-slot="ask-screen"]');
   await expect(screen).toBeVisible();
   const b = await screen.boundingBox();
@@ -223,7 +223,7 @@ for (const { width, height } of SHEET_WINDOWS) {
     test(`the confirm sheet is whole in the window: ${kind}, ${width} x ${height}`, async ({ page }) => {
       await page.setViewportSize({ width, height });
       await world(page);
-      await page.goto(`/hill/ask/${FIRST.id}`);
+      await page.goto(`/asks/ask/${FIRST.id}`);
       await expect(page.getByRole("heading", { name: FIRST.title })).toBeVisible();
       const intent = kind === "own answer" ? "own" : "drop";
       await card(page, intent).scrollIntoViewIfNeeded();
@@ -270,7 +270,7 @@ test("a session card on the board says its cache in words when the phone knows i
   // The second session is a pane the herd holds (the stub's panes are w1:p1 to w4:p11).
   const cold = askDecision({ id: "ak_e2e000000004", title: "Which port for the preview?", address: "local/w2:p4", at: AT - 7_200_000 });
   await page.route("**/api/hill", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ v: 1, rev: 1, open: [FIRST, cold], closed: [] }) }));
-  await page.goto("/hill");
+  await page.goto("/asks");
   const cards = page.locator('[data-slot="asks-session"]');
   await expect(cards).toHaveCount(2);
   await expect(cards.nth(0).locator('[data-slot="asks-session-cache"]')).toHaveText("warm, 38 min left");

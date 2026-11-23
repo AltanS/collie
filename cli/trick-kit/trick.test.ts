@@ -186,7 +186,7 @@ describe("the builders cannot drift from the schema", () => {
 });
 
 describe("run, the places and the Decisions", () => {
-  test("every place method prints a part the parser takes; decisions default to [] and keepDecisions leaves the key out", async () => {
+  test("every place method prints a part the parser takes; decisions default to [] and keepAsks leaves the key out", async () => {
     const program = `import { run, v } from "./trick.ts";
 run((t) => {
   t.status({ text: "3 red", icon: "flask", tone: "danger" });
@@ -196,29 +196,29 @@ run((t) => {
   t.session({ name: "Legs", subtitle: "23 of 34", badge: { count: 3 }, progress: { value: 2, max: 4 }, actions: [{ id: "rerun", label: "Rerun", intent: "rerun", icon: "refresh" }], view: [v.para("hi")] });
   t.fresh("90s");
   t.asOf(1794130692000);
-  if (t.facts.trigger.kind === "tap") t.keepDecisions();
+  if (t.facts.trigger.kind === "tap") t.keepAsks();
 });
 `;
     const { dir, state } = await trickFolder(program);
     const ran = await runProgram(dir, factsFor(dir, state));
     expect(ran.code).toBe(0);
     const doc = JSON.parse(ran.stdout);
-    expect(doc.decisions).toEqual([]);
+    expect(doc.asks).toEqual([]);
     expect(doc.fresh).toBe("90s");
     expect(doc.asOf).toBe("2026-11-08T09:38:12.000Z");
     const parsed = parseTrickDocumentText(ran.stdout, { declared: ALL_PLACES });
     expect(parsed.refusals).toEqual([]);
     expect(parsed.parts.map((p) => p.part.id)).toEqual(["status", "belt", "dashboard", "tabbar", "main"]);
     const tapped = await runProgram(dir, factsFor(dir, state, { kind: "tap", rid: "0b9e8d7c-1111-4222-8333-444455556666", node: "belt", intent: "rerun" }));
-    expect(JSON.parse(tapped.stdout)).not.toHaveProperty("decisions");
+    expect(JSON.parse(tapped.stdout)).not.toHaveProperty("asks");
   });
 
   test("decide adds a Decision the parser takes; a tap from any place reads as the one t.tap", async () => {
     const program = `import { run } from "./trick.ts";
 run((t) => {
-  t.decide({ key: "case-24", title: "Rerun case 24?", summary: "It failed twice.", options: [{ intent: "rerun", label: "Rerun" }, { intent: "skip", label: "Skip", confirm: "Skip it" }], recommends: { intent: "rerun", why: "It passed yesterday." }, priority: "now" });
+  t.ask({ key: "case-24", title: "Rerun case 24?", summary: "It failed twice.", options: [{ intent: "rerun", label: "Rerun" }, { intent: "skip", label: "Skip", confirm: "Skip it" }], recommends: { intent: "rerun", why: "It passed yesterday." } });
   const tap = t.tap;
-  t.status({ text: tap === null ? "none" : tap.decision === null ? "tap:" + tap.intent : tap.decision + ":" + tap.intent + ":" + tap.text });
+  t.status({ text: tap === null ? "none" : tap.ask === null ? "tap:" + tap.intent : tap.ask + ":" + tap.intent + ":" + tap.text });
   t.state.set("tap", tap);
 });
 `;
@@ -228,14 +228,14 @@ run((t) => {
     expect(parsed.refusals).toEqual([]);
     expect(parsed.decisions.map((d) => d.key)).toEqual(["case-24"]);
     expect(JSON.parse(plain.stdout).parts[0].chip.text).toBe("none");
-    const answer = await runProgram(dir, factsFor(dir, state, { kind: "tap", rid: "0b9e8d7c-1111-4222-8333-444455556666", node: "hill/case-24", intent: "rerun", value: { text: "go" }, seen: "944a71314b332828" }));
+    const answer = await runProgram(dir, factsFor(dir, state, { kind: "tap", rid: "0b9e8d7c-1111-4222-8333-444455556666", node: "asks/case-24", intent: "rerun", value: { text: "go" }, seen: "944a71314b332828" }));
     expect(JSON.parse(answer.stdout).parts[0].chip.text).toBe("case-24:rerun:go");
     const answerTap: unknown = JSON.parse(await readFile(join(state, "tap.json"), "utf8"));
-    expect(answerTap).toEqual({ rid: "0b9e8d7c-1111-4222-8333-444455556666", node: "hill/case-24", intent: "rerun", value: null, decision: "case-24", text: "go", from: null, seen: "944a71314b332828" });
+    expect(answerTap).toEqual({ rid: "0b9e8d7c-1111-4222-8333-444455556666", node: "asks/case-24", intent: "rerun", value: null, ask: "case-24", text: "go", from: null, seen: "944a71314b332828" });
     const tap = await runProgram(dir, factsFor(dir, state, { kind: "tap", rid: "0b9e8d7c-1111-4222-8333-444455556667", node: "main", intent: "rerun", value: "fast", from: { session: "lodge:w6X:3" } }));
     expect(JSON.parse(tap.stdout).parts[0].chip.text).toBe("tap:rerun");
     const partTap: unknown = JSON.parse(await readFile(join(state, "tap.json"), "utf8"));
-    expect(partTap).toEqual({ rid: "0b9e8d7c-1111-4222-8333-444455556667", node: "main", intent: "rerun", value: "fast", decision: null, text: null, from: "lodge:w6X:3", seen: null });
+    expect(partTap).toEqual({ rid: "0b9e8d7c-1111-4222-8333-444455556667", node: "main", intent: "rerun", value: "fast", ask: null, text: null, from: "lodge:w6X:3", seen: null });
   });
 
   test("a thrown error: one warn card in the session and exit 0 when the trick has a session; exit 1 without one", async () => {
@@ -246,7 +246,7 @@ run((t) => {
     const parsed = parseTrickDocumentText(ran.stdout, { declared: ["session"] });
     expect(parsed.refusals).toEqual([]);
     expect(JSON.stringify(parsed.parts[0]?.part)).toContain("the gh call failed");
-    expect(JSON.parse(ran.stdout)).not.toHaveProperty("decisions");
+    expect(JSON.parse(ran.stdout)).not.toHaveProperty("asks");
     expect(ran.stderr.trimEnd().split("\n").at(-1)).toBe("error: the gh call failed");
     const without = await trickFolder(boom, ["belt"]);
     const failed = await runProgram(without.dir, factsFor(without.dir, without.state));
@@ -522,7 +522,7 @@ run((t) => {
   t.onPrint((doc) => mapText(doc, mask));
   t.onPrint((doc) => ({ ...doc, fresh: "5m" }));
   t.session({ subtitle: "in " + process.env.HOME + "/repo", view: [v.para("the key ${key}")] });
-  t.decide({ key: "k", title: "a " + process.env.HOME, summary: "s" });
+  t.ask({ key: "k", title: "a " + process.env.HOME, summary: "s" });
   if (t.config.boom === true) throw new Error("failed in " + process.env.HOME + "/x with ${key}");
 });
 `;
@@ -532,7 +532,7 @@ run((t) => {
     expect(ran.stdout).not.toContain(key);
     expect(ran.stdout).not.toContain(process.env.HOME ?? "/nowhere");
     const doc = JSON.parse(ran.stdout);
-    expect([doc.parts[0].subtitle, doc.decisions[0].title, doc.fresh]).toEqual(["in ~/repo", "a ~", "5m"]);
+    expect([doc.parts[0].subtitle, doc.asks[0].title, doc.fresh]).toEqual(["in ~/repo", "a ~", "5m"]);
     await writeFile(join(dir, "config.toml"), "boom = true\n");
     const failed = await runProgram(dir, factsFor(dir, state));
     expect(failed.code).toBe(0);
@@ -605,8 +605,8 @@ describe("helper v5: session settings rows and bound parts", () => {
 
   test("the v4 helper is still Collie's own code to the scan, so a trick folder that keeps it asks for no yes", async () => {
     const { shippedHelperVersion, HELPER_VERSION } = await import("../../bridge/tricks/scan.ts");
-    expect(HELPER_VERSION).toBe(10);
-    expect(TRICK_HELPER.startsWith("// collie trick helper v10\n")).toBe(true);
+    expect(HELPER_VERSION).toBe(12);
+    expect(TRICK_HELPER.startsWith("// collie trick helper v12\n")).toBe(true);
     // v7, stage's helper with `t.api` before the run token (M105 spec 05): still Collie's own code to the scan.
     const v7 = await Bun.$`git show 5c38e3f23:cli/trick-kit/trick.ts`.quiet().nothrow();
     if (v7.exitCode === 0) {

@@ -21,7 +21,7 @@ import { server } from "@/test/setup";
 // right; it opens the Messages sheet where the message card did. The duplicate: the collapsed line of the same decision is
 // not drawn while the row is on the screen, and stays when no row is.
 
-const ID = "dc_5k9vtcwnrp3z";
+const ID = "ak_5k9vtcwnrp3z";
 const MSG = "wt_answer000001";
 
 /** A trick approval, answered with `intent`, as the bridge serves it closed. */
@@ -189,30 +189,30 @@ describe("the card's own line steps aside only for the row", () => {
 
   it("is not drawn for another decision's row", async () => {
     const decision = answered("on");
-    const other = answered("on", { id: "dc_aaaaaaaaaaaa", replyTo: "lodge/w9:p9" });
+    const other = answered("on", { id: "ak_aaaaaaaaaaaa", replyTo: "lodge/w9:p9" });
     const message = typed(other, "on", "Switch it on");
     await holds([decision, other]);
     heldAnswer("on");
     chat([message], turn(message));
-    expect(row()!.dataset.id).toBe("dc_aaaaaaaaaaaa");
+    expect(row()!.dataset.id).toBe("ak_aaaaaaaaaaaa");
     expect(line()).not.toBeNull();
   });
 });
 
 describe("every other message keeps its card", () => {
   it("an answer to a question that is no trick approval", async () => {
-    const decision = hillDecision({ id: "dc_bbbbbbbbbbbb", state: "answered", answer: { rid: "r", intent: "yes", label: "Yes, Edge first", text: null, by: "phone-dev", at: 1, delivery: "typed", trick: "none" } });
+    const decision = hillDecision({ id: "ak_bbbbbbbbbbbb", state: "answered", answer: { rid: "r", intent: "yes", label: "Yes, Edge first", text: null, by: "phone-dev", at: 1, delivery: "typed", trick: "none" } });
     const message = typed(decision, "yes", "Yes, Edge first");
     await holds([decision]);
     chat([message], turn(message));
     expect(row()).toBeNull();
     expect(walkyCard()).toHaveTextContent("Message from");
     expect(walkyCard()).toHaveTextContent("operator");
-    expect(walkyCard()).toHaveTextContent(`Answer to dc_bbbbbbbbbbbb`);
+    expect(walkyCard()).toHaveTextContent(`Answer to ak_bbbbbbbbbbbb`);
   });
 
   it("an answer to a Collie card that is no trick approval", async () => {
-    const decision = collieCard("proposal", "hadoken", { id: "dc_cccccccccccc", state: "answered", answer: { rid: "r", intent: "on", label: null, text: null, by: "p", at: 1, delivery: "typed", trick: "none" } });
+    const decision = collieCard("proposal", "hadoken", { id: "ak_cccccccccccc", state: "answered", answer: { rid: "r", intent: "on", label: null, text: null, by: "p", at: 1, delivery: "typed", trick: "none" } });
     const other = { ...decision, from: { ...decision.from, ref: undefined } };
     const message = typed(other, "on", "Switch it on");
     await holds([other]);

@@ -233,7 +233,7 @@ describe("walky ask", () => {
   test("a refusal prints the bridge's words and code, and a retry line when the same ask may pass", async () => {
     const s = scripted(() => ({ ok: false, error: "this session has 5 open asks", code: "too_many_open", hill: true }));
     expect(await cmdWalkyAsk(s.d, BASE)).toBe(EXIT.REFUSED);
-    expect(s.d.io.stderr).toEqual(["hill: this session has 5 open asks (too_many_open)"]);
+    expect(s.d.io.stderr).toEqual(["asks: this session has 5 open asks (too_many_open)"]);
     const off = scripted(() => ({ ok: false, error: "the Hill is off", code: "hill_off", hill: true }));
     expect(await cmdWalkyAsk(off.d, BASE)).toBe(EXIT.STATE);
     expect(off.d.io.stderr).toHaveLength(1);

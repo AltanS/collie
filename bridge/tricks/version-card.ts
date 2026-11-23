@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 
 import { parseJson } from "../../web/src/lib/json.ts";
-import { HILL_SUMMARY_MAX, type HillCollieRef, type HillDecision, type HillPostInput } from "../../web/src/lib/hill/wire.ts";
+import { ASK_PRIORITY_FIXED, HILL_SUMMARY_MAX, type HillCollieRef, type HillDecision, type HillPostInput } from "../../web/src/lib/hill/wire.ts";
 import { viewHasCode } from "../../web/src/lib/hill/code-card.ts";
 import {
   ACCESS_LINES,
@@ -398,7 +398,7 @@ export function versionCard(subject: TrickVersionSubject, diff: VersionDiff, cre
       summary: `${filesSentence(fileCount)} ${versionTooMuch(subject.id)}`,
       options: [{ intent: "keep", label: "Keep the old version" }],
       text: "none",
-      priority: "today",
+      priority: ASK_PRIORITY_FIXED,
       recommends: null,
     });
     return honest.length > 0 ? { ...tooMuch, view: honest } : tooMuch;
@@ -437,7 +437,7 @@ export function versionCard(subject: TrickVersionSubject, diff: VersionDiff, cre
     summary,
     options,
     text: "none",
-    priority: "today",
+    priority: ASK_PRIORITY_FIXED,
     recommends: powersChanged || warnings.length > 0 || !whole ? null : recommend,
   };
   // A card whose view shows no code offers no yes (the lead's decision, 2026-11-17), and neither does one that

@@ -44,7 +44,7 @@ sed 's#collie#shop#g' "$tmp/facts.json" > "$tmp/facts-none.json"
 step "no matching session" "$fix/red" 0 "$tmp/facts-none.json" '{"decisions":["case-8"],"about":null}'
 
 # A rerun tap changes nothing: the decision stays and the state folder stays empty.
-sed 's#"trigger":{"kind":"timer"}#"trigger":{"kind":"tap","rid":"r1","node":"hill/case-8","intent":"rerun","value":{"text":null},"from":{"session":"lodge:w6X:9"}}#' "$tmp/facts.json" > "$tmp/facts-rerun.json"
+sed 's#"trigger":{"kind":"timer"}#"trigger":{"kind":"tap","rid":"r1","node":"asks/case-8","intent":"rerun","value":{"text":null},"from":{"session":"lodge:w6X:9"}}#' "$tmp/facts.json" > "$tmp/facts-rerun.json"
 step "tap rerun" "$fix/red" 0 "$tmp/facts-rerun.json" '{"label":"10/12","decisions":["case-8"],"about":"lodge:w6X:9"}'
 [ -z "$(ls -A "$tmp/state")" ] || { echo "FAIL tap rerun wrote to the state folder"; failed=1; }
 

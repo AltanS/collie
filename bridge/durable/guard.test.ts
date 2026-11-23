@@ -349,7 +349,7 @@ describe("the push path", () => {
     expect(raised).toEqual(["p0", "p1"]);
     expect(floods).toBe(1);
     const msg = askFloodMessage("desk", "desk");
-    expect(msg).toMatchObject({ title: "A durable agent on desk is raising many asks", titleCode: "ask.flood", host: "desk", tag: askFloodTag("desk") });
+    expect(msg).toMatchObject({ title: "A durable agent on desk is raising many question cards", titleCode: "ask.flood", host: "desk", tag: askFloodTag("desk") });
     expect(askFloodMessage(LOCAL_ASK_HOST, "lodge")).not.toHaveProperty("host");
     expect(askFloodTag(LOCAL_ASK_HOST)).not.toBe(askFloodTag("desk"));
   });

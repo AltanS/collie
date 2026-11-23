@@ -9,7 +9,7 @@ import { asJsonObject, asJsonString, parseJson } from "../../web/src/lib/json.ts
 import type { CrewDialAnswer } from "../walky/crew.ts";
 import { compareSemver } from "../update.ts";
 import { isSelf, parseAddress } from "../walky/address.ts";
-import type { HillAnswerRequest } from "../../web/src/lib/hill/wire.ts";
+import { ASK_PRIORITY_FIXED, type HillAnswerRequest } from "../../web/src/lib/hill/wire.ts";
 import {
   CREW_HILL_MEDIA_ROUTE,
   CREW_HILL_OP_ROUTE,
@@ -31,9 +31,7 @@ import {
 } from "./crew.ts";
 import { deniedFoldersSync, HillMediaStore } from "./media.ts";
 import { HILL_GROUP_NOT_YOURS } from "./parse.ts";
-import { HILL_PUSH_RATE, HillPush } from "./push.ts";
 import type { HillSwitchReading } from "./switch.ts";
-import type { PushMessage } from "../push.ts";
 import { memoryHillReceipts } from "./receipts.ts";
 import { HILL_MAX_EXPIRY_MS, HILL_OFF, HILL_OFF_ON_LEAD, HILL_OPEN_MEMBER_MAX, HillService, NOT_ON_LEAD, notAnswering, type HillAgentSender, type HillCrewMode, type HillPlace } from "./service.ts";
 import { hillDir, HillStore } from "./store.ts";
@@ -90,7 +88,7 @@ interface Bridge {
 }
 
 /** One bridge's hill, on disk under a fresh folder: a lead, or a member with a forward. */
-function bridge(mode: HillCrewMode, opts: { forward?: HillMemberForward; memberId: string; push?: HillPush; hillOn?: () => boolean; hillSwitch?: { on(): boolean; reading(): HillSwitchReading }; place?: (address: string) => HillPlace | null } = { memberId: "m_lead000000" }): Bridge {
+function bridge(mode: HillCrewMode, opts: { forward?: HillMemberForward; memberId: string; hillOn?: () => boolean; hillSwitch?: { on(): boolean; reading(): HillSwitchReading }; place?: (address: string) => HillPlace | null } = { memberId: "m_lead000000" }): Bridge {
   const state = folder("hill-crew-state-");
   const work = folder("hill-crew-work-");
   const media = new HillMediaStore(hillDir(state), deniedFoldersSync([state]), () => undefined);
@@ -113,7 +111,7 @@ function bridge(mode: HillCrewMode, opts: { forward?: HillMemberForward; memberI
     now: () => b.clock,
     mintId: () => {
       n += 1;
-      return `dc_crew${String(n).padStart(8, "0")}`;
+      return `ak_crew${String(n).padStart(8, "0")}`;
     },
     mintMediaId: () => {
       m += 1;
@@ -122,7 +120,6 @@ function bridge(mode: HillCrewMode, opts: { forward?: HillMemberForward; memberI
     audit: (entry) => b.audit.push(entry),
     forward: opts.forward,
     offline: mode === "lead" ? () => b.offline : undefined,
-    push: opts.push,
     hillSwitch: opts.hillSwitch ?? (opts.hillOn === undefined ? undefined : { on: opts.hillOn }),
   });
   return Object.assign(b, { hill });
@@ -260,7 +257,7 @@ describe("the lead's routes", () => {
     expect(crewLead.post({ from: { address: LAPTOP_PANE }, fields: fields({ images: [{ path: "/etc/passwd" }] }) }, "laptop").status).toBe(400);
     const answer = crewLead.post({ from: { address: LAPTOP_PANE, harness: "agent-x", label: "repo#main", host: "laptop" }, fields: fields() }, "laptop");
     expect(answer.status).toBe(200);
-    expect(answer.body).toMatchObject({ ok: true, decision: { id: "dc_crew00000001", from: { kind: "agent", address: LAPTOP_PANE, memberId: "laptop", host: "laptop" }, target: { label: "repo#main", host: "laptop" } } });
+    expect(answer.body).toMatchObject({ ok: true, decision: { id: "ak_crew00000001", from: { kind: "agent", address: LAPTOP_PANE, memberId: "laptop", host: "laptop" }, target: { label: "repo#main", host: "laptop" } } });
     expect(lead.store.all()).toHaveLength(1);
   });
 
@@ -437,7 +434,7 @@ describe("the Hill off by default, on a crew", () => {
       const { lead, member, link } = pair(leadReading, "unset");
       const answer = await member.hill.postFields(SENDER, fields());
       expect(answer).toEqual({ ok: false, code: "hill_off", error: HILL_OFF_ON_LEAD });
-      expect(HILL_OFF_ON_LEAD).toBe("the Hill is off on the lead of this crew; your person can switch it on in Settings, Tricks, on the phone");
+      expect(HILL_OFF_ON_LEAD).toBe("Asks is off on the lead of this crew; your person can switch it on in Settings, Tricks, on the phone");
       expect(link.calls).toEqual([CREW_HILL_POST_ROUTE]);
       expect(lead.store.all()).toEqual([]);
     }
@@ -479,7 +476,7 @@ describe("what the lead refuses of a member", () => {
     const crewLead = new HillCrewLead({ hill: lead.hill, held, walkyOn: () => walky });
     const bytes = png();
     const image = { sha256: sha256Hex(bytes), b64: b64(bytes) };
-    expect(crewLead.media(image, "laptop")).toEqual({ status: 200, body: { ok: false, code: "hill_off", error: expect.stringContaining("the Hill is off") } });
+    expect(crewLead.media(image, "laptop")).toEqual({ status: 200, body: { ok: false, code: "hill_off", error: expect.stringContaining("Asks is off") } });
     // Even a body that is no image is not looked at.
     expect(crewLead.media({ junk: true }, "laptop").body).toMatchObject({ ok: false, code: "hill_off" });
     on = true;
@@ -504,31 +501,15 @@ describe("what the lead refuses of a member", () => {
     expect(lead.store.all()).toHaveLength(0);
   });
 
-  test("now pushes from members: at most 4 an hour from one machine and 6 from all members together; the lead's own still ring", () => {
-    const pushes: PushMessage[] = [];
-    let clock = 1000;
-    const lead = bridge("lead", { memberId: "m_lead000000", push: new HillPush({ ready: () => true, send: (message) => pushes.push(message), now: () => clock }) });
-    clock = lead.clock;
+  test("a post from an older member with priority now is taken, and the card is stored with the one fixed priority", () => {
+    const lead = bridge("lead", { memberId: "m_lead000000" });
     const crewLead = new HillCrewLead({ hill: lead.hill, held: new HillHeldMedia(() => lead.clock) });
-    const rings = () => pushes.filter((p) => p.type === undefined).length;
-    const skipped = () => lead.audit.filter((e) => e.action === "hill.push.skipped").map((e) => e.detail?.why);
-    // One member, three sessions (each under its own 3 an hour): the fifth `now` is past 4 from this machine.
-    for (const [i, pane] of ["laptop/%1#aaaa", "laptop/%1#aaaa", "laptop/%2#bbbb", "laptop/%2#bbbb", "laptop/%3#cccc"].entries()) {
-      expect(crewLead.post({ from: { address: pane, label: "repo" }, fields: fields({ priority: "now", title: `Ship ${String(i)}?` }) }, "laptop").body).toMatchObject({ ok: true });
-    }
-    expect(rings()).toBe(HILL_PUSH_RATE.perMember);
-    expect(skipped()).toEqual(["more than 4 an hour from this machine"]);
-    // A second member rings until all members together reach 6.
-    for (const pane of ["mini/%1#aaaa", "mini/%2#bbbb", "mini/%3#cccc"]) {
-      expect(crewLead.post({ from: { address: pane, label: "repo" }, fields: fields({ priority: "now" }) }, "mini").body).toMatchObject({ ok: true });
-    }
-    expect(rings()).toBe(HILL_PUSH_RATE.crew);
-    expect(skipped().at(-1)).toBe("more than 6 an hour from the crew's other machines");
-    // The lead's own session keeps its share of the hour.
-    lead.live.push({ address: "desk/%1#aaaa", label: "lead", host: "desk", unattended: false });
-    const own = lead.hill.post({ kind: "agent", address: "desk/%1#aaaa", memberId: "m_lead000000", harness: null, label: "lead", host: "desk" }, { requestId: uuid(), title: "Mine?", summary: "Mine.", options: [{ intent: "yes", label: "Yes" }], priority: "now" });
-    expect(own.ok).toBe(true);
-    expect(rings()).toBe(HILL_PUSH_RATE.crew + 1);
+    const answer = crewLead.post({ from: { address: "laptop/%1#aaaa", label: "repo" }, fields: fields({ priority: "now", title: "Ship it?" }) }, "laptop");
+    expect(answer.body).toMatchObject({ ok: true });
+    const stored = lead.store.all();
+    expect(stored).toHaveLength(1);
+    expect(stored[0]).toMatchObject({ priority: ASK_PRIORITY_FIXED, priorityAsked: ASK_PRIORITY_FIXED });
+    expect(lead.audit.filter((e) => e.action.startsWith("hill.push"))).toEqual([]);
   });
 });
 
@@ -538,15 +519,15 @@ describe("a member's forward", () => {
     const file = join(member.work, "shot.png");
     writeFileSync(file, png());
     const answer = await member.hill.postFields(SENDER, fields({ images: [{ path: file, caption: "before" }] }));
-    expect(answer).toMatchObject({ ok: true, decision: { id: "dc_crew00000001", media: [{ caption: "before", mime: "image/png" }] } });
+    expect(answer).toMatchObject({ ok: true, decision: { id: "ak_crew00000001", media: [{ caption: "before", mime: "image/png" }] } });
     expect(link.calls).toEqual([CREW_HILL_MEDIA_ROUTE, CREW_HILL_POST_ROUTE]);
     expect(lead.store.all()).toHaveLength(1);
     expect(member.store.all()).toHaveLength(0);
     expect(member.audit.some((entry) => entry.action === "hill.forward")).toBe(true);
     // Status, list and withdraw go to the lead as well.
-    expect(await member.hill.askStatus(SENDER, "dc_crew00000001")).toMatchObject({ ok: true, decision: { state: "open" } });
-    expect(await member.hill.askList(SENDER)).toMatchObject({ ok: true, decisions: [{ id: "dc_crew00000001" }] });
-    expect(await member.hill.askWithdraw(SENDER, "dc_crew00000001")).toMatchObject({ ok: true, decision: { state: "withdrawn" } });
+    expect(await member.hill.askStatus(SENDER, "ak_crew00000001")).toMatchObject({ ok: true, decision: { state: "open" } });
+    expect(await member.hill.askList(SENDER)).toMatchObject({ ok: true, decisions: [{ id: "ak_crew00000001" }] });
+    expect(await member.hill.askWithdraw(SENDER, "ak_crew00000001")).toMatchObject({ ok: true, decision: { state: "withdrawn" } });
     expect(link.calls.slice(2)).toEqual([CREW_HILL_OP_ROUTE, CREW_HILL_OP_ROUTE, CREW_HILL_OP_ROUTE]);
   });
 
@@ -577,7 +558,7 @@ describe("a member's forward", () => {
     const answer = await member.hill.postFields(SENDER, row);
     expect(answer).toEqual({ ok: false, code: LEAD_UNREACHABLE_CODE, error: `the lead (desk) is not answering; nothing was posted. Post again with --request-id ${String(row.requestId)}: it posts once` });
     expect(lead.store.all()).toHaveLength(0);
-    expect(await member.hill.askStatus(SENDER, "dc_crew00000001")).toEqual({ ok: false, missing: false, error: "the lead (desk) is not answering; try again" });
+    expect(await member.hill.askStatus(SENDER, "ak_crew00000001")).toEqual({ ok: false, missing: false, error: "the lead (desk) is not answering; try again" });
   });
 
   test("the whole forward has one budget: an image that cannot have its time stops it before the post", async () => {
@@ -610,7 +591,7 @@ describe("a member's forward", () => {
     // The crew client's reading of a bare 401 (`signature`), and the status itself: both shapes.
     link.refusal = "signature";
     expect(await member.hill.postFields(SENDER, fields())).toMatchObject({ ok: false, code: "not_on_lead", error: expect.stringContaining("older than 1.29.0") });
-    expect(await member.hill.askStatus(SENDER, "dc_crew00000001")).toMatchObject({ ok: false, error: expect.stringContaining("older than 1.29.0") });
+    expect(await member.hill.askStatus(SENDER, "ak_crew00000001")).toMatchObject({ ok: false, error: expect.stringContaining("older than 1.29.0") });
     link.refusal = null;
     link.status = 401;
     expect(await member.hill.postFields(SENDER, fields())).toMatchObject({ ok: false, code: "not_on_lead" });

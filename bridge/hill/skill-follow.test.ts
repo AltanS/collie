@@ -116,7 +116,7 @@ describe("the phone's switch route", () => {
     expect(spawned.length).toBe(1);
     spawned[0]?.finish(0, SYNCED);
     await follow.idle();
-    expect(logs).toEqual(["[hill] the Hill was switched on; WalkyTalky skill sync: updated claude"]);
+    expect(logs).toEqual(["[asks] Asks was switched on; WalkyTalky skill sync: updated claude"]);
   });
 
   test("a follower that throws does not fail the answer", async () => {
@@ -159,8 +159,8 @@ describe("the bridge's follower", () => {
     await follow.idle();
     expect(spawned.length).toBe(2);
     expect(logs).toEqual([
-      "[hill] the Hill was switched on; WalkyTalky skill sync: nothing to change",
-      "[hill] the Hill was switched on; WalkyTalky skill sync: updated claude",
+      "[asks] Asks was switched on; WalkyTalky skill sync: nothing to change",
+      "[asks] Asks was switched on; WalkyTalky skill sync: updated claude",
     ]);
   });
 
@@ -199,10 +199,10 @@ describe("the bridge's follower", () => {
     await runSkillSync({ ...base, spawn: hanging.spawn, timeoutMs: 5 }, true);
     expect(hanging.spawned[0]?.killed).toBe(true);
     expect(logs).toEqual([
-      "[hill] the Hill was switched on, and the WalkyTalky skill sync did not start: ENOENT",
-      "[hill] the Hill was switched off, and the WalkyTalky skill sync failed: error: skill sync stopped; run `collie skill sync`",
-      "[hill] the Hill was switched off, and the WalkyTalky skill sync failed: it printed no sync result; run `collie skill sync`",
-      "[hill] the Hill was switched on, and the WalkyTalky skill sync took longer than 0.005 s; run `collie skill sync`",
+      "[asks] Asks was switched on, and the WalkyTalky skill sync did not start: ENOENT",
+      "[asks] Asks was switched off, and the WalkyTalky skill sync failed: error: skill sync stopped; run `collie skill sync`",
+      "[asks] Asks was switched off, and the WalkyTalky skill sync failed: it printed no sync result; run `collie skill sync`",
+      "[asks] Asks was switched on, and the WalkyTalky skill sync took longer than 0.005 s; run `collie skill sync`",
     ]);
   });
 

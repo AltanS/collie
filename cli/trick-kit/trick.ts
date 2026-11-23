@@ -1,5 +1,5 @@
-// collie trick helper v10
-// The helper of a Collie trick: it reads the facts, collects the parts and the Decisions, and prints the
+// collie trick helper v12
+// The helper of a Collie trick: it reads the facts, collects the parts and the asks, and prints the
 // one document the bridge reads. `collie trick init` writes it into the trick folder, and
 // `collie trick helper <id>` rewrites it with the newest version. It imports only node: built-ins and
 // Bun, so the trick needs no install. Edit your program, not this file: a rewrite replaces it.
@@ -89,7 +89,7 @@ function focusText(focus: Focus | undefined): string | undefined {
 }
 
 /**
- * A picture. On a Decision's view, `image(ref)` names one of the Decision's own `media` by its place
+ * A picture. On an ask's view, `image(ref)` names one of the ask's own `media` by its place
  * (0 is the first): the card draws it among the facts, and not again in the row above. In a Session,
  * `image(src, alt, w, h)` is a file in the trick's `media/` folder (`media/chart.png`: .png, .jpg, .jpeg
  * or .webp), `w` by `h`. Both take a caption, a fit and a focus, which crops the picture on the phone:
@@ -106,7 +106,7 @@ function image(first: number | string, second?: string | ImageLook, w?: Num, h?:
   return node("image", undefined, { src: first, alt, w, h, caption: look.caption, fit: look.fit, focus: focusText(look.focus) });
 }
 
-/** One side of a `compare`: a Decision's picture by its place, with a label and a crop, or an image node of the trick folder. */
+/** One side of a `compare`: an ask's picture by its place, with a label and a crop, or an image node of the trick folder. */
 export type CompareSide = number | { ref: number; label?: string; fit?: "contain" | "cover"; focus?: Focus } | Node;
 
 function compareSide(side: CompareSide): Node {
@@ -127,7 +127,7 @@ function inline(kind: "para" | "line", body: string | Node[], attrs: Record<stri
 
 /** The view builders, one per node kind. Each returns a plain node; a view is a list of them. */
 export const v = {
-  /** A framed box. Holds para, line, chip, button, meter, image, bar, group, number, spacer, compare, table, diff, spark. Not on a Decision's view. */
+  /** A framed box. Holds para, line, chip, button, meter, image, bar, group, number, spacer, compare, table, diff, spark. Not on an ask's view. */
   card: (kids: Node[], attrs: { tone?: Tone } = {}): Node => node("card", undefined, attrs, kids),
   /** A labelled section (no label: a plain run of facts). Holds row, group, bar, para, line, link, meter, number, spacer, image, compare, table, diff, spark. */
   group: (kids: Node[], attrs: { label?: string; fold?: "open" | "closed"; badge?: Num } = {}): Node => node("group", undefined, attrs, kids),
@@ -144,7 +144,7 @@ export const v = {
   /**
    * A button: sends `intent` on a tap, copies `value` with `does: "copy"`, or puts `value` into the reply box of
    * the session the page is open for with `does: "draft"` (needs `drafts = "session"` in trick.toml; it never
-   * sends). Not on a Decision's view.
+   * sends). Not on an ask's view.
    */
   button: (attrs: { label: string; intent?: string; tone?: Tone; disabled?: string; pressed?: "true" | "false" | "mixed"; confirm?: string; badge?: Num; icon?: Icon; hint?: string; does?: "copy" | "draft"; value?: string }): Node =>
     node("button", undefined, attrs),
@@ -186,7 +186,7 @@ export const v = {
   number: (text: Num, attrs: { label?: string; tone?: Tone; unit?: string } = {}): Node => node("number", String(text), attrs),
 
   // ── Recipes: the kinds above, put together ──
-  /** Two of the Decision's pictures as before and after, cropped to the same point. */
+  /** Two of the ask's pictures as before and after, cropped to the same point. */
   beforeAfter: (aRef: number, bRef: number, opts: { before?: string; after?: string; fit?: "contain" | "cover"; focus?: Focus } = {}): Node =>
     node("compare", undefined, {}, [image(aRef, { caption: opts.before, fit: opts.fit, focus: opts.focus }), image(bRef, { caption: opts.after, fit: opts.fit, focus: opts.focus })]),
   /**
@@ -297,45 +297,53 @@ export interface Facts {
 }
 /**
  * The tap that started a run, one shape from every place: a button or an action in the trick's session,
- * the Belt mark, and the person's answer to one of the trick's Decisions on the Hill.
+ * the Belt mark, and the person's answer to one of the trick's asks in Asks.
  */
 export interface Tap {
   /** The request id. A retried tap carries the same one: key a record on it, `t.log(name).once(rid, ...)`. */
   rid: string;
-  /** The part the control sits in (`main`, `belt`), or `hill/<key>` for an answer. */
+  /** The part the control sits in (`main`, `belt`), or `asks/<key>` for an answer. */
   node: string;
   /** The button's, the action's or the mark's intent; an answer's option, `answer` for words alone, or `dismiss`. */
   intent: string;
   /** The button's or the action's `value`, or null. */
   value: string | null;
-  /** The key of the Decision this answers, or null for a tap on a part. */
-  decision: string | null;
+  /** The key of the ask this answers, or null for a tap on a part. (`decision` before helper v11.) */
+  ask: string | null;
   /** The person's words with an answer, or null. */
   text: string | null;
   /** The session the phone had open, its `id` from the facts, or null. */
   from: string | null;
-  /** With an answer: the content hash of the version of the Decision the person saw, or null. */
+  /** With an answer: the content hash of the version of the ask the person saw, or null. */
   seen: string | null;
 }
 
 /** The facts' tap trigger as the one `Tap`, or null for any other trigger. */
 function tapOf(t: Trigger): Tap | null {
   if (t.kind !== "tap") return null;
-  const answer = t.node.startsWith("hill/");
+  const answer = t.node.startsWith("asks/");
   const words = t.value instanceof Object ? t.value.text : null;
-  return {
+  const tap: Tap = {
     rid: t.rid,
     node: t.node,
     intent: t.intent,
     value: typeof t.value === "string" ? t.value : null,
-    decision: answer ? t.node.slice("hill/".length) : null,
+    ask: answer ? t.node.slice("asks/".length) : null,
     text: answer ? words : null,
     from: t.from?.session ?? null,
     seen: t.seen ?? null,
   };
+  // Gone in helper v11: reading it throws, so an old program fails loudly. Not enumerable, so a printed tap stays clean.
+  Object.defineProperty(tap, "decision", {
+    enumerable: false,
+    get(): never {
+      throw new Error("t.tap.decision is now t.tap.ask");
+    },
+  });
+  return tap;
 }
 
-// ── Parts and Decisions ─────────────────────────────────────────────────────────────────────────
+// ── Parts and asks ──────────────────────────────────────────────────────────────────────────────
 export interface Item { label: string; icon?: Icon; badge?: Num; tone?: Tone }
 export interface Action { id: string; label: string; intent: string; value?: string; icon?: "play" | "pause" | "check" | "x" | "refresh" | "archive" | "flag" | "star" | "send" | "note" | "search" | "more"; disabled?: boolean }
 export interface SessionPart { id?: string; name?: string; icon?: Icon; tone?: Tone; subtitle?: string; badge?: { count: number } | { text: string }; progress?: { value?: number; max?: number }; actions?: Action[]; view: Node[] }
@@ -359,19 +367,19 @@ export type Part =
   | { at: "menu"; id: string; sessions?: string[]; rows: MenuRow[] }
   | { at: "dashboard" | "tabbar"; id: "dashboard" | "tabbar"; item: Item }
   | ({ at: "session"; id: string } & Omit<SessionPart, "id">);
-export interface Decision {
+export interface Ask {
   key: string; title: string; summary: string;
   options?: { intent: string; label: string; detail?: string; confirm?: string }[];
   recommends?: { intent: string; why: string };
-  body?: string; text?: "none" | "optional" | "required"; priority?: "now" | "today" | "later";
+  body?: string; text?: "none" | "optional" | "required";
   about?: string; replyTo?: string; media?: { file: string; caption?: string }[];
   links?: { label: string; href: string }[];
   /** Facts drawn under the summary: display kinds only (no button, no card), 8 KiB, 100 nodes, depth 4. An `image(ref)` or a `compare` names a picture of `media` by its place. */
   view?: Node[];
 }
 export interface ShResult { ok: boolean; code: number; stdout: string; stderr: string }
-/** What a run prints. `decisions` is left out only after `keepDecisions()`. */
-export interface Document { v: number; parts: Part[]; decisions?: Decision[]; asOf?: string; fresh?: string }
+/** What a run prints. `asks` is left out only after `keepAsks()`. */
+export interface Document { v: number; parts: Part[]; asks?: Ask[]; asOf?: string; fresh?: string }
 /** An append-only JSON-lines file in the state folder (`t.log`). A torn line from a killed run is skipped. */
 export interface Log<T extends object> {
   append(entry: T): void;
@@ -447,7 +455,7 @@ function writeWhole(path: string, json: string): void {
 // ── Collie's local API (`t.api`) ───────────────────────────────────────────────────────────────────
 /** The level each operation needs; the bridge's table (bridge/api/operations.ts) holds the same list. */
 export const API_LEVELS = {
-  hello: "see", sessions: "see", brief: "see", accounts: "see", "hill.list": "see", events: "see", machines: "see", read: "read",
+  hello: "see", sessions: "see", brief: "see", accounts: "see", "asks.list": "see", events: "see", machines: "see", read: "read",
 } as const satisfies Readonly<Record<string, "see" | "read">>;
 /** The level of an operation, or undefined for a name Collie's local API does not have. */
 function levelOf(op: string): "see" | "read" | undefined {
@@ -467,6 +475,7 @@ function apiCall(facts: Facts, op: string, args: Record<string, Json>): Promise<
   const api = facts.api;
   if (api === undefined || (api.access !== "see" && api.access !== "read") || typeof api.token !== "string" || api.token === "") return Promise.resolve(apiRefusal("trick.api_off", "Collie's local API is off here."));
   const need = levelOf(op);
+  if (op === "hill.list") return Promise.resolve(apiRefusal("trick.api_unknown", "hill.list is now asks.list."));
   if (need === undefined) return Promise.resolve(apiRefusal("trick.api_unknown", `Collie's local API has no operation named ${clip(op, 40)}.`));
   if (need === "read" && api.access !== "read") return Promise.resolve(apiRefusal("trick.api_level", `${op} needs access "read", and this trick declares "${api.access}".`));
   const given = Number(process.env.TRICK_API_MS);
@@ -527,13 +536,13 @@ export class Trick {
    * value to a shell or run it.
    */
   readonly values: { [key: string]: string | number | boolean };
-  /** The tap that started this run, from any place, a Decision's answer included (`decision` set), or null. */
+  /** The tap that started this run, from any place, an ask's answer included (`ask` set), or null. */
   readonly tap: Tap | null;
   /** Small JSON files in the trick's own state folder. A name may hold folders: `cache/ci`. */
   readonly state: { get<T extends Json>(name: string, fallback: T): T; set(name: string, value: Json): void };
   /** What this run collected, in order. `document()` prints them. */
   readonly parts: Part[] = [];
-  readonly decisions: Decision[] = [];
+  readonly asks: Ask[] = [];
   /** The id of the session part, once `session()` named one: the error card and the config.toml row go there. */
   sessionId: string | null = null;
   private keep = false;
@@ -609,7 +618,7 @@ export class Trick {
   dashboard(item: Item): void {
     this.parts.push({ at: "dashboard", id: "dashboard", item });
   }
-  /** One item in the Dashboard's bottom bar, after the Hill. */
+  /** One item in the Dashboard's bottom bar, after Asks. */
   tabbar(item: Item): void {
     this.parts.push({ at: "tabbar", id: "tabbar", item });
   }
@@ -620,18 +629,30 @@ export class Trick {
     this.parts.push({ at: "session", id, ...rest });
   }
   /**
-   * Ask the person on the Hill. The answer comes back as a tap with `t.tap.decision` set to the key.
-   * The person opens the card cold. `title` is the decision as a question the options answer, about 8
+   * Ask the person, in Asks. The answer comes back as a tap with `t.tap.ask` set to the key.
+   * The person opens the card cold. `title` is the ask as a question the options answer, about 8
    * words: "Ship 1.28.1 to Stable now?", not "Are the new kinds right?". `summary` is at most two
    * sentences: what the recommended option does, then the one fact that decides it; evidence goes in
    * `view` or `body`. Each option label starts with a verb: "Hold until CI", never a bare "Yes".
    */
-  decide(decision: Decision): void {
-    this.decisions.push(decision);
+  ask(ask: Ask): void {
+    this.asks.push(ask);
   }
-  /** Leave this trick's open Decisions as they are. Without it, the Decisions not asked for this run are withdrawn. */
-  keepDecisions(): void {
+  /** Leave this trick's open asks as they are. Without it, the asks not sent this run are withdrawn. */
+  keepAsks(): void {
     this.keep = true;
+  }
+  /** Gone in helper v11: `t.ask`. It throws, so an old program fails loudly instead of asking nothing. */
+  decide(_: never): never {
+    throw new Error("t.decide is now t.ask");
+  }
+  /** Gone in helper v11: `t.keepAsks`. It throws. */
+  keepDecisions(): never {
+    throw new Error("t.keepDecisions is now t.keepAsks");
+  }
+  /** Gone in helper v11: `t.asks`. It throws. */
+  get decisions(): never {
+    throw new Error("t.decisions is now t.asks");
   }
   /** How long the parts stay fresh, such as "90s" or "10m"; past it the phone shows their age. */
   fresh(duration: string): void {
@@ -726,7 +747,7 @@ export class Trick {
     }
   }
 
-  /** Close `key` until `untilMs` (epoch ms), such as a Decision held for a day. Kept in the state file closed.json. */
+  /** Close `key` until `untilMs` (epoch ms), such as an ask held for a day. Kept in the state file closed.json. */
   closedUntil(key: string, untilMs: number): void {
     const open = Object.entries(this.state.get<Record<string, number>>("closed", {})).filter(([, until]) => until > now());
     this.state.set("closed", { ...Object.fromEntries(open), [key]: untilMs });
@@ -810,7 +831,7 @@ export class Trick {
     if (problems.length > 0 && at < 0) process.stderr.write(`config.toml: ${clip(problems.join(". "), 400)}\n`);
     const parts = this.parts.map((p, i) => (i === at && p.at === "session" && problems.length > 0 ? { ...p, view: [...p.view, row] } : p));
     const doc: Document = { v: this.facts.contract, parts };
-    if (!this.keep) doc.decisions = this.decisions;
+    if (!this.keep) doc.asks = this.asks;
     if (this.asOfAt !== undefined) doc.asOf = this.asOfAt;
     if (this.freshFor !== undefined) doc.fresh = this.freshFor;
     return doc;

@@ -104,7 +104,7 @@ export async function adoptCarriedHill(opts: AdoptHillOptions): Promise<AdoptHil
   // Through the one writer (hill/switch.ts `setHillSwitch`): no file read off, so this is a real change and
   // the WalkyTalky skill follows it.
   if (index.on && !existsSync(hillSwitchPath(opts.stateDir))) {
-    setHillSwitch(opts.stateDir, true, { now: at, follow: opts.followSkill, warn: (line) => opts.log(`[hill] ${line}`) });
+    setHillSwitch(opts.stateDir, true, { now: at, follow: opts.followSkill, warn: (line) => opts.log(`[asks] ${line}`) });
   }
   // The crew state too (1.29.0), with the lead's time and setter, so "Tell all sessions now" is offered
   // again here for a quiet or away the sessions of this machine were never told of. The newer one wins:

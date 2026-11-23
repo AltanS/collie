@@ -1,6 +1,6 @@
 ---
 name: collie-walky-talky
-description: Send a short message to another agent session, or read one sent to you, with Collie's WalkyTalky. Use it when you need to tell, ask or answer another agent, when a prompt starts with "[walky-talky wt_", or when the operator mentions WalkyTalky. Also for hill Decisions and tricks.
+description: Send a short message to another agent session, or read one sent to you, with Collie's WalkyTalky. Use it when you need to tell, ask or answer another agent, when a prompt starts with "[walky-talky wt_", or when the operator mentions WalkyTalky. Also for asks and tricks.
 ---
 
 # WalkyTalky

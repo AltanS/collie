@@ -302,8 +302,8 @@ export function SettingsNotificationsRoute() {
       {push && (
         <>
           <Group page="notifications" id="when" hint={t("settings.group.notifications.whenHint")}>
-            <SettingSlot ids={["notifications.needsYou", "notifications.finished", "notifications.perAgent", "notifications.newVersion", "notifications.decisions"]}>
-              <NotifyPrefsControl only={{ rows: ["blocked", "done", "individual", "updates", "decisions"], watched: false }} />
+            <SettingSlot ids={["notifications.needsYou", "notifications.finished", "notifications.perAgent", "notifications.newVersion"]}>
+              <NotifyPrefsControl only={{ rows: ["blocked", "done", "individual", "updates"], watched: false }} />
             </SettingSlot>
           </Group>
           <Group page="notifications" id="cache">

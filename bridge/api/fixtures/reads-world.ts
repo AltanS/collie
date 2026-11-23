@@ -169,7 +169,7 @@ export function accountRow(overrides: Partial<AccountRow> = {}): AccountRow {
 export function decision(overrides: Partial<HillDecision> = {}): HillDecision {
   return {
     v: 1,
-    id: "dc_fixture00001",
+    id: "ak_fixture00001",
     requestId: "00000000-0000-4000-8000-000000000001",
     from: { kind: "agent", address: `${MACHINE}/w1:p1#k3f9`, trickId: null, trickKey: null, memberId: MACHINE, harness: "claude", label: "build box", host: NEEDLES.path, trickHost: null },
     about: `${MACHINE}/w1:p1#k3f9`,
@@ -200,7 +200,7 @@ export function decision(overrides: Partial<HillDecision> = {}): HillDecision {
 /** A decision that is answered: its answer text and its title carry needles and must not be listed. */
 export function answeredDecision(): HillDecision {
   return decision({
-    id: "dc_fixture00002",
+    id: "ak_fixture00002",
     title: `${NEEDLES.message} (closed)`,
     state: "answered",
     closedAt: Date.UTC(2026, 10, 17, 9, 45, 0),

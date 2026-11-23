@@ -31,7 +31,7 @@ everything:
 
 ## Where a trick can show
 
-A trick can show in eight places on the phone, and nowhere else. It can also post to the Hill.
+A trick can show in eight places on the phone, and nowhere else. It can also ask you a question in Asks.
 
 A place is a spot on the phone where a trick can show (a surface). Collie owns every place. A trick
 names the places it wants in its manifest, and its parts appear there, drawn by the phone with
@@ -49,9 +49,9 @@ Collie's own look.
   keeps its own switch.
 - **The agent view is the eighth.** It is a view of one agent session, beside Terminal and Chat, and
   that session's own agent draws it.
-- **The Hill is not a place, it ships with Collie.** It is the page of questions that wait for you,
-  and an experiment: off until you switch it on in Settings → Tricks. A trick posts a question
-  there, a Decision, and does not list the Hill in its `places`.
+- **Asks is not a place, it ships with Collie.** It is the page of questions that wait for you,
+  and an experiment: off until you switch it on in Settings → Tricks. A trick puts a question
+  there, an ask, and does not list Asks in its `places`.
 
 ![Three phone screens, the Dashboard, a session and a session's settings sheet, with the eight places of a trick numbered.](images/tricks/places.png)
 
@@ -96,7 +96,7 @@ reference.
 A trick is a program that prints parts, or rules for an agent that draws a screen.
 
 - **A program trick** is a small program on your machine. The bridge runs it on a timer, or when you
-  tap. It prints what to show, and Collie draws it in its seven places and on the Hill. Its folder
+  tap. It prints what to show, and Collie draws it in its seven places and in Asks. Its folder
   holds `trick.toml` and the program.
 - **An agent view** is rules for the agent of one session. The agent answers you by drawing one
   screen, in that session's agent view. Its folder holds `trick.toml` and `rules.md`, and no program.
@@ -186,15 +186,15 @@ that run in your sessions now. They all work the same way: a program prints data
 
 A trick can ask you a question, and your answer goes back to its program.
 
-It uses the Hill, and the parts `bar`, `chip`, `list` and `row` on the card.
+It uses Asks, and the parts `bar`, `chip`, `list` and `row` on the card.
 
-The Hill is the page of questions that wait for your tap. Each card is one Decision: one question with
-its choices. A made-up trick, Release gates, posts one when a gate is red before a release. It lists
-the Decision in what it prints:
+Asks is the page of questions that wait for your tap. Each card is one ask: one question with
+its choices. A made-up trick, Release gates, asks one when a gate is red before a release. It lists
+the ask in what it prints:
 
 ```json
 {
-  "decisions": [{
+  "asks": [{
     "key": "tag-1-28-2",
     "title": "Tag 1.28.2 with the e2e gate red?",
     "summary": "Six of the seven gates are green. The e2e gate failed once.",
@@ -209,9 +209,9 @@ the Decision in what it prints:
 
 1. The bridge runs the trick's program on its timer, and hands it the facts.
 2. The program prints its parts, and a list of the questions it wants open. Each has its own key.
-3. The bridge posts a new key to the Hill once, with the trick as the sender. The next run with the
+3. The bridge puts a new key in Asks once, with the trick as the sender. The next run with the
    same key posts nothing again.
-4. The phone shows the card on the Hill. The recommended option carries a star, and nothing is chosen
+4. The phone shows the card in Asks, under Other cards. The recommended option carries a star, and nothing is chosen
    for you.
 5. You tap "Rerun e2e first".
 6. The bridge closes the card and runs the program once more, with your answer as a tap.
@@ -221,22 +221,22 @@ The program reads your answer on stdin, in fields of Collie's. `seen` names the 
 you answered, so a program that changed it since can tell:
 
 ```json
-{ "kind": "tap", "node": "hill/tag-1-28-2", "intent": "rerun",
+{ "kind": "tap", "node": "asks/tag-1-28-2", "intent": "rerun",
   "value": { "text": null }, "rid": "0b9e8d7c-…", "seen": "944a71314b332828" }
 ```
 
-A key the program stops listing is taken back from the Hill. A changed card replaces the open one.
+A key the program stops listing is taken back from Asks. A changed card replaces the open one.
 When the program fails, the last good cards stay.
 
-An agent can post a Decision too, with `collie hill post`. Its answer is then typed into its session
-as a short message from you. A trick's Decision can name a session too: your answer then reaches that
+An agent can ask you too, with `collie walky ask`. Your answers are then typed into its session
+as one message from you. A trick's ask can name a session too: your answer then reaches that
 session as your own message, and then the program.
 
-> **Note.** A permission needs a person's tap. A trick cannot answer a Decision, press a key or type
+> **Note.** A permission needs a person's tap. A trick cannot answer an ask, press a key or type
 > into a session for you. And a recommendation you did not read never becomes the answer by default.
 
-[The Hill](hill.md) covers the page itself, and the
-[reference](tricks-reference.md#the-hill) lists every key of a Decision.
+[Asks](asks.md) covers the page itself, and the
+[reference](tricks-reference.md#asks) lists every key of an ask.
 
 ## Example 3: Morph, an agent view
 
@@ -306,11 +306,11 @@ like one of Collie's own questions.
 Collie holds no model key and calls no model.
 
 - **Disk space: nowhere.** A shell program reads a number and prints it. No model is involved at all.
-- **Release gates: nowhere.** Its program reads the gates and asks on the Hill. You do the deciding,
+- **Release gates: nowhere.** Its program reads the gates and asks you in Asks. You do the deciding,
   and the program acts on your answer.
 - **Morph: in the session's own agent.** The agent thinks once per screen, inside the session you
   already run. Collie only checks and draws the result.
-- **An agent's Decision: in the agent that asked.** It wrote the question and its advice in its own
+- **An agent's ask: in the agent that asked.** It wrote the question and its advice in its own
   turn. The card and your tap need no model.
 
 The thinking comes from the agent you already run: Claude Code, Codex or another, on your own plan or
@@ -328,7 +328,7 @@ Every word your agent gets from Collie is text you can read.
 An agent only knows what it reads. Collie gets its rules to an agent in three ways. A skill is a short
 instruction file that an agent such as Claude Code or Codex reads when a task calls for it.
 
-1. **The WalkyTalky and Hill rules.** Collie writes one skill into each agent's own instruction files,
+1. **The WalkyTalky and Asks rules.** Collie writes one skill into each agent's own instruction files,
    after each update, or when you run `collie skill sync`. Every agent on the machine knows them.
 2. **How to write a trick, and what one installed trick asks of an agent.** The agent runs
    `collie trick guide`, or `collie trick skill <id>`, and reads what it prints. Only an agent that
@@ -361,7 +361,7 @@ every yes for you, and it tells you plainly what it found in the code.
 - **Collie checks** the manifest and every part against the closed list, holds each run to 10 seconds
   and 64 KiB, runs only the code you said yes to, and searches the code for six risky things.
 - **Your tap decides** Add, and the switch: a trick is off until you switch it on. It also decides
-  each new version, each Decision and each view.
+  each new version, each ask and each view.
 - **Your job** is to judge the code: read it, or ask a session to read it for you. The yes does not
   wait for that. It is a hold of 1.5 seconds, so that it is never a stray tap.
 
@@ -390,12 +390,12 @@ official repository. Any other https git repository takes an address, then optio
 folder, and `#` and a branch, a tag or a full 40-digit commit. An address with a user name or a
 password is refused, and so is any address that is not https.
 
-On the phone, Settings → Tricks shows one list of tricks. The official tricks come first, in the order of the
+On the phone, Settings → Tricks shows one list of tricks. After the Asks row, the official tricks come first, in the order of the
 release's list, then your other tricks by name. Each row says Official or Community. An official trick
 you have not added shows an Add button in its place. A tap makes one git fetch, then checks the hash of
 what arrived. The added trick stays in the same place, with its switch. Adding a trick or switching it
-changes its row, never its place. The Hill is not a row of that card: it is not a trick, and its
-switch is on the same page, in the card **The Hill**.
+changes its row, never its place. The Asks row stands first, with the label "Built in". It is not a
+trick, and its switch is its own.
 
 ### Add from a repository that lists its tricks
 
@@ -443,15 +443,15 @@ collie tricks status
 ```
 
 Tricks as a whole have one switch for each machine, and it is off until you switch it on. On the phone
-it is the **Tricks** card at the top of Settings → Tricks. The Hill is the first row of the list below it,
-with its own switch, which does not depend on this one (see [the Hill](hill.md#switch-the-hill-on-or-off)). The page
-always shows the switch. While the switch is on, it also shows the list of your tricks, with the Hill
-as its first row. While it is off, the list of tricks is gone, and the Hill's row stays on its own.
+it is the **Tricks** card at the top of Settings → Tricks. Asks is the first row of the list below it,
+with its own switch, which does not depend on this one (see [Turn Asks on or off](asks.md#turn-asks-on-or-off)). The page
+always shows the switch. While the switch is on, it also shows the list of your tricks, with Asks
+as its first row. While it is off, the list of tricks is gone, and the Asks row stays on its own.
 The switch holds for the machine, on every phone at once. A trick's program runs as you on this
 machine.
 
 While tricks are off, no trick runs and none draws a part, in any place. No agent view opens, and no
-trick asks on the Hill. A Decision that a trick asked before stays open but hidden, and it is back
+trick asks you in Asks. An ask that a trick sent before stays open but hidden, and it is back
 when tricks are on again. `collie trick add`, `collie trick update` and `collie trick propose` answer
 that tricks are off and where to switch them on. `collie trick list` still lists your tricks, so you
 can read each one before you switch.
@@ -477,14 +477,14 @@ own and runs that copy. The row, and `collie trick on`, list any warnings from a
 code first. The search reads every file the `run` line names, whatever its name, and warns about code
 the `run` line hands over that it could not read.
 
-Switching off stops the runs and removes the trick's parts from the phone. It withdraws the trick's
-open Decisions too.
+Switching off stops the runs and removes the trick's parts from the phone. It takes back the trick's
+open asks too.
 
 To remove a trick, switch it off first. Then open its details page from Settings → Tricks,
 tap **Remove trick** in the Remove section at the end of the page, and confirm. The button needs a
 device with write access. Or run
 `collie trick remove <name>` in a shell. Both delete the trick's folder, its saved settings, its approved
-code and any copy waiting for your yes from that machine, and they drop its agent views and the Hill's record of it.
+code and any copy waiting for your yes from that machine, and they drop its agent views and Asks' record of it.
 You cannot undo it. While the trick is on, the section says "Switch the trick off to remove it." and
 the command says to run `collie trick off <name>` first. While a run of the trick is still going,
 both refuse; try again in a few seconds. A folder of the trick that is a link, or lies outside the
@@ -505,11 +505,11 @@ is a speed bump, not a lock. Your user account is the real boundary
 Collie runs the approved copy. When you edit the trick's folder, or `collie trick update` fetches new
 code, the trick keeps running the old version. Its row says "A new version waits for your yes."
 
-A card asks "Use the new version of `<name>`?". It is on the [Hill](hill.md), and in Settings → Tricks
-under **Waiting for your yes**, where the trick's row opens it too, with the Hill on or off. It shows the files that changed
+A card asks "Use the new version of `<name>`?". It is in [Asks](asks.md), and in Settings → Tricks
+under **Waiting for your yes**, where the trick's row opens it too, with Asks on or off. It shows the files that changed
 and any new power the version asks for. You have three options:
 
-- **Hold to use** approves the code on the card, and the trick runs it. Keep a finger on it for three
+- **Hold to use** approves the code on the card, and the trick runs it. Keep a finger on it for 1.5
   seconds; with a keyboard, press it twice.
 - **Hold to use and stop asking** does the same, and switches on "Update this trick without asking". It is
   offered only when the version asks for no new power.
@@ -532,7 +532,7 @@ before.
 
 ### Powers, the environment and the warnings
 
-A trick cannot type for you, cannot put code on your phone, and asks only through the Hill. At most,
+A trick cannot type for you, cannot put code on your phone, and reaches you only through Asks. At most,
 a button can put a text into your empty reply box, and you send it yourself. Past that, it can do what
 you can do.
 
@@ -622,8 +622,8 @@ tries it with `collie trick dev`, and then proposes it to you:
 collie trick propose ~/work/disk-space
 ```
 
-A card appears with the whole code on it: on your Hill, or in Settings → Tricks under **Waiting for
-your yes** while the Hill is off. Collie never recommends "Switch it on": your
+A card appears with the whole code on it: in your Asks, or in Settings → Tricks under **Waiting for
+your yes** while Asks is off. Collie never recommends "Switch it on": your
 own judgement is the check. The yes is a hold of 1.5 seconds. Nothing of the trick runs before your yes. Collie offers an agent no way to
 switch a trick on. A program that runs as you can still do it.
 
@@ -650,8 +650,8 @@ that, and the lead asks each member again for each read
 A trick's settings live on the lead too. A member shows them and cannot change them. They do not move
 to a deputy: after a takeover the trick says "Needs setup" until you set them again there.
 
-An agent on a member machine can still put a Decision on the lead's Hill
-([Decisions from any machine](crew.md#decisions-from-any-machine)).
+An agent on a member machine can still ask you in the lead's Asks
+([Asks from any machine](crew.md#asks-from-any-machine)).
 
 ## Troubleshooting
 
@@ -669,7 +669,7 @@ Most problems show in the trick's row in Settings → Tricks, or in `collie tric
 | "Stopped after repeated failures" | The program failed after 1, 5 and 30 minutes. Fix it, then switch it off and on, or tap its mark |
 | "Last run failed" | The phone keeps the last good version. "Why" shows the error, and "Copy for an agent" copies it |
 | "This Collie cannot draw this part" | A crew member's older Collie does not know the kind. Update Collie |
-| "The Hill is off: this trick's Decisions are not shown." | Switch the Hill on in Settings → Tricks, or run `collie hill on` |
+| "Asks is off: this trick's asks are not shown." | Switch Asks on in Settings → Tricks, or run `collie asks on` |
 | "Tricks run on the lead of this crew. This machine runs none." | You are on a member. Switch tricks on from the lead |
 | "Could not switch `<name>`. Try again." | The phone could not write the switch. Check that the device may write, and that the bridge answers |
 | "error: collie trick on is a person's yes to the code, ..." | An agent ran the command. Run it in a shell pane, or tap the switch on the phone |
@@ -678,7 +678,7 @@ Most problems show in the trick's row in Settings → Tricks, or in `collie tric
 | "This trick needs a newer Collie: ..." | The trick was written for a later Collie. Run `collie update` |
 | "The trick is busy. Try again in a moment." | A tap came while another waited. Tap again |
 | "The bridge restarted while this tap ran. ..." | Check the result, then tap again if needed |
-| "A decision is answered on the Hill, not with a tap." | A Decision's card is answered on the Hill, not from the trick's Page |
+| "An ask is answered in Asks, not with a tap." | An ask's card is answered in Asks, not from the trick's Page |
 
 A trick that runs but shows nothing on a timer may be waiting for a phone. Open the app, and give it a
 minute.
@@ -691,6 +691,6 @@ starts and reaches, and `collie trick dev <folder>` runs it once and prints what
 
 - [Tricks reference](tricks-reference.md), for every place, part, key, limit and command.
 - [Write a trick](tricks-authoring.md), for the person or agent who writes one.
-- [The Hill](hill.md), for the Decisions a trick or an agent asks you.
+- [Asks](asks.md), for the asks a trick or an agent sends you.
 - [Crews](crew.md), for tricks that read files on every machine.
 - [Security](security.md), for what a program under your user can still do.

@@ -281,7 +281,7 @@ describe.if(posix)("collie trick add", () => {
     views.put(viewEntry({ trick: "legs", session: "lodge/%1", on: true, shows: 0, changedAt: 1 }));
     views.put(viewEntry({ trick: "legs", session: "lodge/%2", on: true, shows: 0, changedAt: 2 }));
     views.put(viewEntry({ trick: "morph", session: "lodge/%1", on: true, shows: 0, changedAt: 3 }));
-    const key = { decisionId: "dc_1", hash: "a".repeat(16), state: "answered", seq: 1 };
+    const key = { decisionId: "ak_1", hash: "a".repeat(16), state: "answered", seq: 1 };
     await mkdir(hillDir(r.stateDir), { recursive: true });
     await writeFile(join(hillDir(r.stateDir), TRICKS_MAP_FILE), `${JSON.stringify({ v: 1, tricks: { legs: { gen: 2, keys: { ask: key } }, morph: { gen: 0, keys: { ask: key } } } })}\n`);
     expect(await cmdTrickAdd(r, [repo.bare])).toBe(EXIT.OK);

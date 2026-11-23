@@ -160,7 +160,7 @@ export function KindsSketch() {
       <Down x={82} y={78} hue="bridge" />
       <KindStep x={4} y={98} hue="bridge" lines={["The bridge runs it:", "a timer, a file, a tap"]} />
       <Down x={82} y={146} hue="trick" />
-      <KindStep x={4} y={166} hue="phone" lines={["It prints parts.", `The phone draws them`, `in ${PLACE_KINDS.length} places, and the Hill.`]} />
+      <KindStep x={4} y={166} hue="phone" lines={["It prints parts.", `The phone draws them`, `in ${PLACE_KINDS.length} places, and Asks.`]} />
 
       <text x={186} y={18} fontSize={14} fontWeight={700} fill={HUE_VAR.agent}>
         An agent view
@@ -248,7 +248,7 @@ export const TRUST_COLUMNS: readonly { hue: Hue; title: string; outline?: boolea
     title: "Collie checks",
     items: ["every part against a closed list", "10 seconds and 64 KiB per run", "that what runs is what you approved", "the code, for five risky things"],
   },
-  { hue: "you", title: "Your tap decides", items: ["Add, and the switch", "each version, Decision and view"] },
+  { hue: "you", title: "Your tap decides", items: ["Add, and the switch", "each version, ask and view"] },
   { hue: "you", title: "Your job", outline: true, items: ["read the code, or ask an agent to"] },
 ];
 
@@ -330,7 +330,7 @@ export const FIGURES = {
   },
   "example-hill": {
     aspect: COMPACT_ASPECT,
-    render: ({ playing }) => <MapLoop flow={HILL_FLOW} playing={playing} label="The map, lit step by step for a trick that asks on the Hill" />,
+    render: ({ playing }) => <MapLoop flow={HILL_FLOW} playing={playing} label="The map, lit step by step for a trick that sends an ask" />,
   },
   "example-agent-view": {
     aspect: COMPACT_ASPECT,

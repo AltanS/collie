@@ -77,22 +77,22 @@ describe("the machines paths", () => {
 
 describe("the hill path", () => {
   it("names the hill and carries the scope, one level under the Dashboard", () => {
-    expect(hillPath()).toBe("/hill");
-    expect(hillPath({ host: "badger", session: undefined })).toBe("/hill?h=badger");
-    expect(ancestorsOf("/hill")).toEqual(["/"]);
+    expect(hillPath()).toBe("/asks");
+    expect(hillPath({ host: "badger", session: undefined })).toBe("/asks?h=badger");
+    expect(ancestorsOf("/asks")).toEqual(["/"]);
   });
 });
 
 describe("a trick's card (M96 spec 14)", () => {
   it("carries the scope, and Back steps back to Settings, Tricks or the Dashboard, whichever opened it", () => {
-    expect(trickCardPath("dc_abc123def456")).toBe("/trick-card/dc_abc123def456");
-    expect(trickCardPath("dc_abc123def456", { host: "badger", session: undefined })).toBe("/trick-card/dc_abc123def456?h=badger");
-    expect(ancestorsOf("/trick-card/dc_abc123def456")).toEqual(["/", "/settings/tricks"]);
-    expect(resolveUp("/trick-card/dc_abc123def456", "/settings/tricks", "/")).toEqual({ kind: "back" });
-    expect(resolveUp("/trick-card/dc_abc123def456", "/", "/")).toEqual({ kind: "back" });
+    expect(trickCardPath("ak_abc123def456")).toBe("/trick-card/ak_abc123def456");
+    expect(trickCardPath("ak_abc123def456", { host: "badger", session: undefined })).toBe("/trick-card/ak_abc123def456?h=badger");
+    expect(ancestorsOf("/trick-card/ak_abc123def456")).toEqual(["/", "/settings/tricks"]);
+    expect(resolveUp("/trick-card/ak_abc123def456", "/settings/tricks", "/")).toEqual({ kind: "back" });
+    expect(resolveUp("/trick-card/ak_abc123def456", "/", "/")).toEqual({ kind: "back" });
     // Opened from anywhere else (a bookmark): Back lands on the Dashboard.
-    expect(resolveUp("/trick-card/dc_abc123def456", "/hill", "/")).toEqual({ kind: "replace", to: "/" });
-    expect(parentChain("/trick-card/dc_abc123def456", "")).toEqual(["/"]);
+    expect(resolveUp("/trick-card/ak_abc123def456", "/asks", "/")).toEqual({ kind: "replace", to: "/" });
+    expect(parentChain("/trick-card/ak_abc123def456", "")).toEqual(["/"]);
   });
 });
 
@@ -366,7 +366,7 @@ describe("ancestorsOf / isAncestor: the level tree", () => {
     ["/pane/w1%3Ap1", "/settings", true],
     ["/space/w1?h=badger", "/settings", true],
     ["/crew", "/settings", true],
-    ["/hill", "/settings", true],
+    ["/asks", "/settings", true],
     ["/new", "/settings", true],
     ["/conversations", "/settings", true],
     ["/pane/w1%3Ap1/history", "/settings", false],
@@ -408,7 +408,7 @@ describe("Settings' back arrow", () => {
     ["a space", "/space/w1?h=badger"],
     ["a pane", "/pane/w1%3Ap1?h=badger"],
     ["Crew", "/crew?h=badger"],
-    ["the Hill", "/hill?h=badger"],
+    ["the Hill", "/asks?h=badger"],
     ["the New page", "/new?pane=w1%3Ap1"],
     ["Conversations", "/conversations?pane=w1%3Ap1"],
   ])("steps back onto %s, where it was opened", (_name, from) => {
@@ -511,7 +511,7 @@ describe("resolveUpTo: a named parent", () => {
 describe("resolveHomeScope", () => {
   it("reads ?h= and ?s= directly from the current URL when present", () => {
     expect(resolveHomeScope("/settings", "?h=peer&s=work")).toEqual({ host: "peer", session: "work" });
-    expect(resolveHomeScope("/hill", "?h=peer")).toEqual({ host: "peer", session: undefined });
+    expect(resolveHomeScope("/asks", "?h=peer")).toEqual({ host: "peer", session: undefined });
   });
 
   it("reads ?machine= and ?s= on /new and /new/add", () => {
@@ -543,7 +543,7 @@ describe("resolveHomeScope", () => {
 
   it("does not leak a stale peer scope from state.from onto scoped routes on the lead", () => {
     expect(resolveHomeScope("/pane/w1%3Ap1", "", { from: "/space/w1?h=peer" })).toEqual({});
-    expect(resolveHomeScope("/trick-card/dc_abc", "", { from: "/?h=peer" })).toEqual({});
+    expect(resolveHomeScope("/trick-card/ak_abc", "", { from: "/?h=peer" })).toEqual({});
   });
 });
 
@@ -614,8 +614,8 @@ describe("parentChain: what a cold deep link gets behind it", () => {
     ["/new", "?pane=w1%3Ap1", ["/", "/pane/w1%3Ap1"]],
     ["/new", "?machine=mini&pane=w1%3Ap1&s=demo", ["/?h=mini&s=demo", "/pane/w1%3Ap1?h=mini&s=demo"]],
     // The hill sits under the Dashboard, its only way in (M96).
-    ["/hill", "", ["/"]],
-    ["/hill", "?h=badger", ["/?h=badger"]],
+    ["/asks", "", ["/"]],
+    ["/asks", "?h=badger", ["/?h=badger"]],
     // The approver's page (ADR 0139) sits under the Dashboard; its request id is not a scope.
     ["/pair/approve", "?r=abc", ["/"]],
     ["/nowhere", "", []],

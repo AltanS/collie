@@ -4,11 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type { AuditEntry } from "../audit.ts";
-import { hillTopic, type PushMessage } from "../push.ts";
 import { HILL_SWITCHED_OFF_TEXT, hillAnswerRoute, hillSwitchRoute, withHill } from "../server.ts";
 import type { SnapshotResponse } from "../types.ts";
 import { HILL_COLLIE_REF_TYPES, HILL_OFF_TRICK_CARDS, isTrickCard, type HillCollieRef, type HillPostInput } from "../../web/src/lib/hill/wire.ts";
-import { HillPush, hillPushTag } from "./push.ts";
 import { memoryHillReceipts } from "./receipts.ts";
 import { EXPIRED, HILL_OFF, HillService, type HillAgentSender, type HillCollieSender, type HillPlace, type HillPostAnswer, type HillTrickSender } from "./service.ts";
 import { HillStore, hillDir } from "./store.ts";
@@ -57,7 +55,6 @@ interface Rig {
   readonly store: HillStore;
   readonly sw: HillSwitch;
   readonly dir: string;
-  readonly pushes: PushMessage[];
   readonly audit: AuditEntry[];
   readonly sent: string[];
   readonly taps: string[];
@@ -70,12 +67,11 @@ interface Rig {
 function rig(): Rig {
   const dir = stateDir();
   let n = 0;
-  const pushes: PushMessage[] = [];
   const audit: AuditEntry[] = [];
   const sent: string[] = [];
   const taps: string[] = [];
   const acts: string[] = [];
-  const state = { pushes, audit, sent, taps, acts, clock: 1000 };
+  const state = { audit, sent, taps, acts, clock: 1000 };
   const store = new HillStore(null, () => state.clock);
   const sw = new HillSwitch(dir, null, () => undefined, () => state.clock);
   const hill = new HillService({
@@ -91,13 +87,12 @@ function rig(): Rig {
     memberId: "m_aaaaaaaaaa",
     machine: "desk",
     now: () => state.clock,
-    mintId: () => `dc_swit${String((n += 1)).padStart(8, "0")}`,
+    mintId: () => `ak_swit${String((n += 1)).padStart(8, "0")}`,
     audit: (entry) => state.audit.push(entry),
     tap: async (_host, trickId) => {
       state.taps.push(trickId);
       return true;
     },
-    push: new HillPush({ ready: () => true, send: (message) => state.pushes.push(message), now: () => state.clock }),
     hillSwitch: sw,
     onCollieAnswer: async (ref, intent) => {
       state.acts.push(`${ref.type}:${ref.id}:${intent}`);
@@ -115,7 +110,7 @@ describe("the switch file", () => {
     expect(parseHillSwitch(renderHillSwitch(false, "2026-11-10T09:41:00.000Z"))).toEqual({ on: false, problem: null });
     expect(parseHillSwitch(renderHillSwitch(true, "2026-11-10T09:41:00.000Z"))).toEqual({ on: true, problem: null });
     for (const bad of ["not json", "[]", '{"v":2,"on":false}', '{"v":1,"on":"no"}', '{"v":1}']) {
-      expect(parseHillSwitch(bad)).toEqual({ on: false, problem: `${HILL_SWITCH_FILE} is not a version 1 switch file; the Hill reads as off` });
+      expect(parseHillSwitch(bad)).toEqual({ on: false, problem: `${HILL_SWITCH_FILE} is not a version 1 switch file; Asks reads as off` });
     }
   });
 
@@ -148,7 +143,7 @@ describe("the switch file", () => {
     // A file that does not read is an explicit off, with one warning for the change.
     expect(sw.reading()).toBe("off");
     expect(sw.reading()).toBe("off");
-    expect(warnings).toEqual([`${HILL_SWITCH_FILE} is not a version 1 switch file; the Hill reads as off`]);
+    expect(warnings).toEqual([`${HILL_SWITCH_FILE} is not a version 1 switch file; Asks reads as off`]);
   });
 
   test("three readings: no file is unset and reads as off; a written file is on or off; a removed file is unset again", () => {
@@ -179,7 +174,7 @@ describe("the Hill is off by default", () => {
     rmSync(hillSwitchPath(r.dir));
     expect(r.hill.isOn()).toBe(false);
     expect(r.hill.post(POSTER, input(1))).toEqual({ ok: false, code: "hill_off", error: HILL_OFF });
-    expect(HILL_OFF).toBe("the Hill is off on this Collie; your person can switch it on in Settings, Tricks, on the phone, or with: collie hill on");
+    expect(HILL_OFF).toBe("Asks is off on this Collie; your person can switch it on in Settings, Tricks, on the phone, or with: collie asks on");
     expect(r.store.all()).toEqual([]);
     expect(r.hill.switchTo(true, "Pixel 9")).toBe(true);
     posted(r.hill.post(POSTER, input(1)));
@@ -201,14 +196,13 @@ describe("the Hill is off by default", () => {
 });
 
 describe("with the Hill off", () => {
-  test("an agent's post is refused hill_off with the way back on, and nothing is stored or pushed", () => {
+  test("an agent's post is refused hill_off with the way back on, and nothing is stored", () => {
     const r = rig();
     r.sw.set(false);
-    const answer = r.hill.post(POSTER, input(1, { priority: "now" }));
+    const answer = r.hill.post(POSTER, input(1));
     expect(answer).toEqual({ ok: false, code: "hill_off", error: HILL_OFF });
-    expect(HILL_OFF).toContain("collie hill on");
+    expect(HILL_OFF).toContain("collie asks on");
     expect(r.store.all()).toEqual([]);
-    expect(r.pushes).toEqual([]);
   });
 
   test("a repeat of a post the hill once took is refused too: off is checked first", () => {
@@ -268,21 +262,17 @@ describe("with the Hill off", () => {
     expect(r.store.get(lasting)).toMatchObject({ state: "open", closedAt: null, answer: null });
   });
 
-  test("the move to off closes the notification of every open now decision once; a CLI switch is seen by the sweep", () => {
+  test("the move to off keeps every open card; a CLI switch is seen by the sweep, and no push line is written", () => {
     const r = rig();
-    const now = posted(r.hill.post(POSTER, input(1, { priority: "now" })));
-    posted(r.hill.post(POSTER, input(2, { priority: "today" })));
-    const before = r.pushes.length;
+    const first = posted(r.hill.post(POSTER, input(1)));
+    posted(r.hill.post(POSTER, input(2)));
     // The CLI writes the file; the bridge sees it on its next look, here the slow timer's sweep.
     writeHillSwitch(r.dir, false);
     r.hill.sweep();
-    expect(r.pushes.slice(before)).toEqual([{ type: "clear", tag: hillPushTag(now), topic: hillTopic(hillPushTag(now)) }]);
-    expect(r.audit.at(-1)).toEqual({ action: "hill.push.cleared", detail: { why: "the Hill is off", count: 1 } });
-    // Seen off again: nothing more is cleared.
     r.hill.sweep();
     expect(r.hill.isOn()).toBe(false);
-    expect(r.pushes.slice(before)).toHaveLength(1);
-    expect(r.store.get(now)?.state).toBe("open");
+    expect(r.audit.filter((entry) => entry.action.startsWith("hill.push"))).toEqual([]);
+    expect(r.store.get(first)?.state).toBe("open");
   });
 
   test("on again, with no restart: the kept decisions are served, a post is taken, an answer is typed", async () => {
@@ -371,9 +361,9 @@ describe("with the Hill off, a card of Collie's own about a trick", () => {
   const card = (n: number): HillPostInput => ({ requestId: uuid(n), title: "Switch on the trick legs?", summary: "A session on desk proposes it.", options: [{ intent: "on", label: "Switch it on" }, { intent: "later", label: "Not now" }], text: "none" });
   const snapshot: SnapshotResponse = { bridge: "connected", agents: [], shellPanes: [], workspaces: [], tabs: [], sessions: [], ts: 5 };
 
-  test("every kind of Collie's own card is listed, all but the test Decision are trick cards, and neither an agent nor a trick is one", () => {
+  test("every kind of Collie's own card is listed, all are trick cards, and neither an agent nor a trick is one", () => {
     expect(Object.keys(HILL_OFF_TRICK_CARDS).toSorted()).toEqual([...HILL_COLLIE_REF_TYPES].toSorted());
-    for (const type of HILL_COLLIE_REF_TYPES) expect(isTrickCard(collie(type))).toBe(type !== "test");
+    for (const type of HILL_COLLIE_REF_TYPES) expect(isTrickCard(collie(type))).toBe(true);
     expect(isTrickCard(POSTER)).toBe(false);
     expect(isTrickCard(TRICK)).toBe(false);
     // A `ref` on another kind, or a kind of ref nobody listed, opens nothing.
@@ -390,11 +380,7 @@ describe("with the Hill off, a card of Collie's own about a trick", () => {
     expect(r.store.all().map((d) => d.from.ref?.type)).toEqual([...tricky]);
     expect(r.hill.post(POSTER, input(10))).toEqual({ ok: false, code: "hill_off", error: HILL_OFF });
     expect(r.hill.postDecision(TRICK, input(11), {})).toEqual({ ok: false, code: "hill_off", error: HILL_OFF });
-    // The test Decision is about no trick (wire.ts): with the Hill off nothing posts it.
-    expect(r.hill.postCollie(collie("test", "test"), card(12))).toEqual({ ok: false, code: "hill_off", error: HILL_OFF });
     expect(r.store.all()).toHaveLength(tricky.length);
-    // Nothing rings: Collie's own card is a "today" card, with the Hill on as with it off.
-    expect(r.pushes).toEqual([]);
   });
 
   test("the caps still hold: a repeated request id answers the stored card, and another payload under it is refused", () => {
@@ -429,7 +415,7 @@ describe("with the Hill off, a card of Collie's own about a trick", () => {
       expect(r.store.get(id)?.state).toBe("open");
     }
     // An answer naming an id the Hill never held, with the Hill off, is off as before.
-    expect(await r.hill.answer({ rid: uuid(101), node: "hill/dc_nothing0000", intent: "yes", value: { text: null } }, "dc_nothing0000", "Pixel 9")).toEqual({ kind: "off" });
+    expect(await r.hill.answer({ rid: uuid(101), node: "hill/ak_nothing0000", intent: "yes", value: { text: null } }, "ak_nothing0000", "Pixel 9")).toEqual({ kind: "off" });
     expect(r.sent).toEqual([]);
     expect(r.taps).toEqual([]);
     expect(r.store.get(own)?.state).toBe("open");

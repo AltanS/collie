@@ -20,7 +20,7 @@ import { WalkyService } from "../bridge/walky/service.ts";
 import { answerRequest, HILL_PERSON_ONLY, type PlaceTarget } from "../bridge/walky/socket.ts";
 import { spaceOf } from "../bridge/walky/space.ts";
 import { capture, context } from "./fakes.ts";
-import { cmdHillClear, cmdHillPost, cmdHillState, HILL_STATE_UNKNOWN_ON_MEMBER, spokenClearedWords, CREW_STATE_MEANING, crewStateSince, personOnlyRefusal, type HillDeps } from "./hill.ts";
+import { cmdHillClear, cmdHillState, HILL_STATE_UNKNOWN_ON_MEMBER, spokenClearedWords, CREW_STATE_MEANING, crewStateSince, personOnlyRefusal, type HillDeps } from "./hill.ts";
 import { EXIT } from "./io.ts";
 import { realFiles } from "./sys.ts";
 
@@ -78,7 +78,7 @@ function bridge(mode: HillCrewMode = "solo", forward?: HillLeadForward): Bridge 
     memberId: "m_aaaaaaaaaa",
     machine: "lodge",
     now: () => Date.UTC(2026, 10, 11, 14, 2),
-    mintId: () => "dc_state0000001",
+    mintId: () => "ak_state0000001",
     audit: (entry) => audit.push(entry),
     crewState: new HillCrewStateFile(stateDir, () => undefined, () => Date.UTC(2026, 10, 11, 14, 2)),
     forward,
@@ -128,7 +128,7 @@ describe("collie hill state", () => {
     const b = bridge();
     const d = deps({ ask: b.ask, env: inPane("%1"), paneKind: async () => "agent" });
     expect(await cmdHillState(d, ["away"])).toBe(EXIT.REFUSED);
-    expect(d.io.stderr).toEqual(personOnlyRefusal("collie hill state away"));
+    expect(d.io.stderr).toEqual(personOnlyRefusal("collie asks state away"));
     expect(b.lines).toEqual([]);
     expect(b.hill.crewState().state).toBe("here");
   });
@@ -137,7 +137,7 @@ describe("collie hill state", () => {
     const b = bridge();
     const d = deps({ ask: b.ask, env: inPane("%1") });
     expect(await cmdHillState(d, ["quiet"])).toBe(EXIT.REFUSED);
-    expect(d.io.stderr).toEqual([`hill: ${HILL_PERSON_ONLY} (person_only)`]);
+    expect(d.io.stderr).toEqual([`asks: ${HILL_PERSON_ONLY} (person_only)`]);
     expect(b.hill.crewState().state).toBe("here");
   });
 
@@ -170,7 +170,7 @@ describe("collie hill state", () => {
     const d = deps({ ask: b.ask });
     expect(await cmdHillState(d, [])).toBe(EXIT.REFUSED);
     expect(d.io.stdout).toEqual([]);
-    expect(d.io.stderr).toEqual(["hill: the lead (lodge) runs a Collie too old to say the crew state (lead_too_old)"]);
+    expect(d.io.stderr).toEqual(["asks: the lead (lodge) runs a Collie too old to say the crew state (lead_too_old)"]);
     const set = deps({ ask: b.ask });
     expect(await cmdHillState(set, ["away"])).toBe(EXIT.REFUSED);
     expect(set.io.stderr[0]).toContain("the crew state lives on the crew's lead");
@@ -182,10 +182,10 @@ describe("collie hill state", () => {
     writeHillCrewState(d.ctx.stateDir, { state: "here", by: "terminal" }, 1000);
     expect(await cmdHillState(d, [])).toBe(EXIT.REFUSED);
     expect(d.io.stdout).toEqual(["unknown"]);
-    expect(d.io.stderr).toEqual([`hill: ${HILL_STATE_UNKNOWN_ON_MEMBER}`]);
+    expect(d.io.stderr).toEqual([`asks: ${HILL_STATE_UNKNOWN_ON_MEMBER}`]);
     const set = deps({ sockets: () => [], ctx: d.ctx });
     expect(await cmdHillState(set, ["away"])).toBe(EXIT.REFUSED);
-    expect(set.io.stderr).toEqual([`hill: ${HILL_STATE_ON_LEAD} (not_on_lead)`]);
+    expect(set.io.stderr).toEqual([`asks: ${HILL_STATE_ON_LEAD} (not_on_lead)`]);
     expect(readHillCrewState(d.ctx.stateDir).view.state).toBe("here");
     const win = deps({ platform: "win32", ctx: d.ctx });
     expect(await cmdHillState(win, ["--json"])).toBe(EXIT.REFUSED);
@@ -207,25 +207,6 @@ describe("collie hill state", () => {
   });
 });
 
-describe("collie hill post's result", () => {
-  const POST = ["--title", "Ship the fix?", "--summary", "The leg is green.", "--option", "yes=Yes"];
-
-  test("ends with `Crew state: away.` while the state is not here, and prints the id alone under here", async () => {
-    const b = bridge();
-    const here = deps({ ask: b.ask, env: inPane("%1") });
-    expect(await cmdHillPost(here, POST)).toBe(EXIT.OK);
-    expect(here.io.stdout).toEqual(["dc_state0000001"]);
-    writeHillCrewState(b.stateDir, { state: "away", by: "Pixel 9" }, 5);
-    const away = deps({ ask: b.ask, env: inPane("%1"), mintRequestId: () => "0f8b5c1e-5a7d-4b8e-9f00-1a2b3c4d5e70" });
-    // The same id is minted again by the fake; the store answers the repeat of the first request as stored.
-    expect(await cmdHillPost(away, [...POST, "--request-id", "0f8b5c1e-5a7d-4b8e-9f00-1a2b3c4d5e6f"])).toBe(EXIT.OK);
-    expect(away.io.stdout).toEqual(["dc_state0000001", "Crew state: away."]);
-    const json = deps({ ask: b.ask, env: inPane("%1") });
-    expect(await cmdHillPost(json, [...POST, "--json"])).toBe(EXIT.OK);
-    expect(JSON.parse(json.io.stdout[0] ?? "{}")).toMatchObject({ crewState: "away", decision: { id: "dc_state0000001" } });
-  });
-});
-
 describe("collie hill clear --spoken", () => {
   function spokenBridge(): Bridge {
     const b = bridge();
@@ -240,11 +221,11 @@ describe("collie hill clear --spoken", () => {
     const b = spokenBridge();
     const cli = deps({ ask: b.ask, env: inPane("%1"), paneKind: async () => "agent" });
     expect(await cmdHillClear(cli, ["--spoken"])).toBe(EXIT.REFUSED);
-    expect(cli.io.stderr).toEqual(personOnlyRefusal("collie hill clear --spoken"));
+    expect(cli.io.stderr).toEqual(personOnlyRefusal("collie asks clear --spoken"));
     expect(b.lines).toEqual([]);
     const socket = deps({ ask: b.ask, env: inPane("%1") });
     expect(await cmdHillClear(socket, ["--spoken"])).toBe(EXIT.REFUSED);
-    expect(socket.io.stderr).toEqual([`hill: ${HILL_PERSON_ONLY} (person_only)`]);
+    expect(socket.io.stderr).toEqual([`asks: ${HILL_PERSON_ONLY} (person_only)`]);
     expect(b.hill.list().open).toHaveLength(1);
   });
 

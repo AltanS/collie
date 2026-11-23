@@ -9,7 +9,7 @@ import { groupDigest, groupPartHash } from "./group.ts";
 import { HILL_GROUP_NOT_YOURS, readAnswerRequest, readDecision, readPostFields } from "./parse.ts";
 import { memoryHillReceipts } from "./receipts.ts";
 import { HILL_ANSWER_RUNNING, HILL_CODE_NONE, HILL_CODE_OLD_APP, HILL_GROUP_CHANGED, HILL_GROUP_OLD_APP, HILL_NO_ANSWER_HANDLER, HillService, type HillAgentSender, type HillCollieSender, type HillCollieVerdict, type HillPostAnswer } from "./service.ts";
-import { HillStore } from "./store.ts";
+import { DECISIONS_FILE, HillStore } from "./store.ts";
 import { singleCodeCard } from "../../web/src/lib/hill/code-card.ts";
 
 // COLLIE'S OWN DECISION (crew slice 3): kind `collie`, minted only by bridge code. Its answer types
@@ -59,7 +59,7 @@ function rig(dir: string | null = null, handler = true): Rig {
     memberId: "m_aaaaaaaaaa",
     machine: "desk",
     now: () => 1000,
-    mintId: () => `dc_col${String((n += 1)).padStart(9, "0")}`,
+    mintId: () => `ak_col${String((n += 1)).padStart(9, "0")}`,
   };
   const hill = new HillService(handler ? { ...deps, onCollieAnswer } : deps);
   return Object.assign(state, { hill, store });
@@ -236,7 +236,7 @@ describe("reading Collie's own Decision", () => {
     const again = rig(dir);
     expect(again.store.get(decision.id)?.from).toMatchObject({ kind: "collie", ref: REF });
     // What an older build sees: a kind it does not know. Simulated with a broken ref; it is kept raw.
-    const file = join(dir, "decisions.json");
+    const file = join(dir, DECISIONS_FILE);
     const doc = JSON.parse(readFileSync(file, "utf8"));
     doc.decisions[0].from.ref.hash = "nope";
     writeFileSync(file, JSON.stringify(doc));
@@ -316,7 +316,7 @@ describe("a group of cards", () => {
   });
 
   test("an answer's group fields are read strictly: a digest of 64 hex, and from an older phone the opened cards each once, 1 to 8", () => {
-    const base = { rid: uuid(1), node: "hill/dc_col000000001", intent: "use", value: { text: null } };
+    const base = { rid: uuid(1), node: "hill/ak_col000000001", intent: "use", value: { text: null } };
     expect(readAnswerRequest({ ...base, group: { digest: "a".repeat(64), opened: [1, 2, 3] } })).toMatchObject({ ok: true, request: { group: { digest: "a".repeat(64), opened: [1, 2, 3] } } });
     // The phone since ADR 0156 sends the digest alone.
     expect(readAnswerRequest({ ...base, group: { digest: "a".repeat(64) } })).toMatchObject({ ok: true, request: { group: { digest: "a".repeat(64) } } });

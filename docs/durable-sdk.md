@@ -88,10 +88,10 @@ Two more options exist on `createCore` only, not on `openCollie`: `receipts` and
 | `workspace(id, { title, cwd? })` | A workspace, made once per id. Its `tab(id, { title })` gives a tab, and the tab's `pane(id, options)` a pane |
 | `starters(list)` | What the phone can start from the New page, at most 50. Each is `{ id, label, run }`, and `run` resolves to `{ paneId }` of the pane it showed |
 | `history(provider)` | Serve the durable agent's own record of its conversations ([Hooks and history](#hooks-and-history)) |
-| `ready()` | Call once every pane is shown, and after a restart once every open ask is raised again. Until then every route but hello answers 503 `starting` |
+| `ready()` | Call once every pane is shown, and after a restart once every open question card is raised again. Until then every route but hello answers 503 `starting` |
 | `close()` | Stop the server. Replies already on their way still go out, for at most 2 s, then the socket file goes |
 
-`close()` leaves open asks open on purpose: a shutdown is not an answer, and the durable agent decides
+`close()` leaves open question cards open on purpose: a shutdown is not an answer, and the durable agent decides
 what happens to the work that waits on one.
 
 `tab.pane(id, { title, harness, cwd?, sessionId? })` returns the pane that has that id when there is
@@ -108,7 +108,7 @@ A pane is one conversation, and its methods set what the phone shows for it.
 
 | method | what the phone shows | limit |
 | --- | --- | --- |
-| `state(s)` | `working`, `waiting` or `idle`. A change to `working` starts a new turn | While any ask is open the pane reads `waiting` |
+| `state(s)` | `working`, `waiting` or `idle`. A change to `working` starts a new turn | While any question card is open the pane reads `waiting` |
 | `event(e)` | Chat's items: `item`, `remove`, `settled`, `reset` and `synced` events | See the item table below |
 | `subtitle(text)` | One line under the title. `null` clears it | 120 characters |
 | `badge(value)` | `{ count }` or `{ text }` next to the title. `null` clears it | A count from 0 to 9999, a text of 12 characters |
@@ -117,9 +117,9 @@ A pane is one conversation, and its methods set what the phone shows for it.
 | `onAction(fn)` | Runs a tap on one of those buttons. Return `false` to refuse it | The phone sends no tap for a `busy` or `disabled` button |
 | `onSend(fn)` | Takes the phone's text, as `fn(text, { steer, requestId })` | 32 KiB of text |
 | `onAbort(fn)` | Takes Stop, as `fn({ requestId })` | None |
-| `ask(input, { signal? })` | A question card ([Questions](#questions)) | 50 open asks per pane |
-| `updateAsk`, `decideAsk`, `outcomeOf` | Change, decide or read back an ask ([Questions](#questions)) | None |
-| `close()` | Takes the pane out of the layout. Its open asks close as stopped | None |
+| `ask(input, { signal? })` | A question card ([Questions](#questions)) | 50 open question cards per pane |
+| `updateAsk`, `decideAsk`, `outcomeOf` | Change, decide or read back a question card ([Questions](#questions)) | None |
+| `close()` | Takes the pane out of the layout. Its open question cards close as stopped | None |
 
 A pane also has four read-only fields: `id`, `sessionId`, `turnId` (the running turn, or the last one)
 and `openAsks`. The `icon` of an action is one of `play`, `pause`, `check`, `x`, `refresh`, `archive`,
@@ -202,22 +202,22 @@ id, and an answer the phone sent across the restart lands. Raising an id that is
 
 | on the pane | what it does |
 | --- | --- |
-| `updateAsk(askId, patch)` | Changes an open ask in place: `title`, `reason`, `tool`, `options`, `placeholder`, `maxLength` or `fields`. Its revision rises by one, so an answer to the old form gets 409 `stale` and the phone asks for a fresh tap. False when the ask is not open |
-| `decideAsk(askId, answer?)` | The durable agent decided the ask itself, somewhere other than the phone. With `answer`, the waiting `ask()` resolves with it. Without, it rejects with `AskClosed`. A later tap on the phone gets 409 `decided`, and the card says "Decided in the durable agent." False when the ask is not open |
-| `outcomeOf(askId)` | The first decision: `{ decidedBy, decidedAt, optionId?, effect? }`. The pane remembers its last 500. Undefined for an ask it never raised or forgot |
+| `updateAsk(askId, patch)` | Changes an open question card in place: `title`, `reason`, `tool`, `options`, `placeholder`, `maxLength` or `fields`. Its revision rises by one, so an answer to the old form gets 409 `stale` and the phone asks for a fresh tap. False when the question card is not open |
+| `decideAsk(askId, answer?)` | The durable agent decided the question card itself, somewhere other than the phone. With `answer`, the waiting `ask()` resolves with it. Without, it rejects with `AskClosed`. A later tap on the phone gets 409 `decided`, and the card says "Decided in the durable agent." False when the question card is not open |
+| `outcomeOf(askId)` | The first decision: `{ decidedBy, decidedAt, optionId?, effect? }`. The pane remembers its last 500. Undefined for a question card it never raised or forgot |
 
-`decidedBy` is `phone`, `program` or `timeout`. An ask passes its `expiresAt` and closes as decided
+`decidedBy` is `phone`, `program` or `timeout`. A question card passes its `expiresAt` and closes as decided
 by `timeout`: `ask()` rejects with `AskClosed`, whose `decidedBy` is `timeout`. The card shows the time
 left until then. A question that timed out or was decided in the durable agent leaves one line in Chat,
 such as "Timed out before an answer: refund wants to run".
 
-An aborted `signal`, `pane.close()` and a close from the phone close the ask as decided by `program`,
+An aborted `signal`, `pane.close()` and a close from the phone close the question card as decided by `program`,
 and `ask()` rejects with `AskClosed`.
 
 > **Caution.** An `allow-always` option lets every later call through after one answer. Over https the
 > token is the only gate, so a durable agent there offers Allow and Deny only. `createCore` with
 > `allowAlways: false` makes an `allow-always` option a `TypeError`. The phone offers no
-> `allow-always` on an ask whose words were cut or cleaned, or that names no tool.
+> `allow-always` on a question card whose words were cut or cleaned, or that names no tool.
 
 Every act from the phone carries a request id, and the core keeps its receipt: a repeat runs nothing
 and gets the first reply again with `replayed: true`. The default `MemoryReceiptStore` keeps the
@@ -248,7 +248,7 @@ request id may try again. The per-pane handlers win over a hook. A pane with nei
 `not-supported` to a send, a stop or a tap.
 
 The SDK applies an accepted act itself. A rename sets the title. A close removes the target and
-everything inside it, and closes their open asks as stopped. A reopen without a hook puts back a pane
+everything inside it, and closes their open question cards as stopped. A reopen without a hook puts back a pane
 this process closed; a conversation closed before a restart needs `onReopen`. The layout is made
 again on every start, so a durable agent that wants a title or a close to outlive the process stores it in
 its hook.
@@ -292,7 +292,7 @@ declared.
 | `reopen` | Shows a closed conversation again |
 
 Left out, `caps` turns on everything the SDK can do, and `history` once `history()` has a provider.
-Given, it is the whole list: a cap it does not name is off, so `{ asks: true }` declares asks alone.
+Given, it is the whole list: a cap it does not name is off, so `{ asks: true }` declares the `asks` cap alone.
 To turn one off and keep the rest, spread `ALL_CAPS`: `{ ...ALL_CAPS, steer: false }`. A route whose
 cap is off answers 409 `not-supported`. `terminal` is always false.
 
@@ -307,13 +307,13 @@ The root import also exports the parts `openCollie` is made of, and the rules it
 | `wireListener(core)` | `core.handle` as a `node:http` request listener, with `drained()` for a clean close |
 | `hello`, `versionLine` | The hello reply, and the one line a durable agent writes for a version refusal |
 | `mintId()` | A new random id, 128 bits as 32 hex characters |
-| `askIdFor(paneId, toolCallId)` | The derived ask id |
+| `askIdFor(paneId, toolCallId)` | The derived `askId` |
 | `AskClosed` | The error `ask()` rejects with when no answer came. It carries `by` and `decidedBy` |
 | `idOk(id)`, `assertId(id, what)`, `safeId(raw)` | The id rule: a check, a check that throws, and a safe id made from any string, the same one every time |
 | `cursorOk(cursor)` | The history cursor rule |
 | `cut(text, max, multiline?)` | Clean a string and cut it to `max` bytes, with `…` at the end |
 | `hrefOf`, `langOf`, `badgeOf`, `progressOf` | A link target, a code language, a badge and a progress, checked as the pane checks them |
-| `subtitleOf`, `pushTextOf`, `renameTitleOf` | A subtitle, the push words of an ask and a rename title, cleaned and cut |
+| `subtitleOf`, `pushTextOf`, `renameTitleOf` | A subtitle, the push words of a question card and a rename title, cleaned and cut |
 | `CAPS`, `LIMITS` | Every cap per field in bytes, and every cap per list |
 | `ACTION_LABEL_MAX`, `BADGE_TEXT_MAX`, `BADGE_COUNT_MAX` | 16, 12 and 9999 |
 | `SUBTITLE_MAX`, `LINK_LABEL_MAX`, `RENAME_TITLE_MAX` | 120 characters each |
@@ -333,9 +333,9 @@ history.
 | export | what it does |
 | --- | --- |
 | `showConversation(loc, harness, conversation, o)` | Shows a conversation as a pane, history first, then live events. Send goes to Pi's `submit` with the request id, and Stop to its abort. Safe to call twice |
-| `PaneRegistry` | Which pane shows which conversation. After a restart, `reRaised(risky)` waits until each risky call without a result has asked again, so `ready()` comes after the asks |
+| `PaneRegistry` | Which pane shows which conversation. After a restart, `reRaised(risky)` waits until each risky call without a result has asked again, so `ready()` comes after the question cards |
 | `riskGuard({ panes, risky, words?, timeoutMs?, onTimeout? })` | A Pi extension whose `beforeTool` hook turns a call to a tool in `risky` into an Allow and Deny card. A denied call is blocked. With `timeoutMs`, the card expires, a call nobody answered is blocked, and `onTimeout(tool, title)` lets the durable agent log it |
-| `askTools({ panes, words, timeoutMs?, onTimeout? })` | The support desk's two asking tools: `ask_queue`, a choice, and `ask_customer`, a text ask. With `timeoutMs`, an unanswered ask expires and the tool returns "timed out" |
+| `askTools({ panes, words, timeoutMs?, onTimeout? })` | The support desk's two asking tools: `ask_queue`, a choice, and `ask_customer`, a text question. With `timeoutMs`, an unanswered question card expires and the tool returns "timed out" |
 | `spawnHelperTool(o)` | The tool `spawn_helper`: a child conversation shown as a new pane, which returns the helper's answer |
 | `piHistory({ harness, panes, describe })` | A `HistoryProvider` that reads every entry of every Pi conversation |
 | `firstMessageOf(conversation)` | The text of a conversation's first message, to name its pane |
