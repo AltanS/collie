@@ -1,5 +1,6 @@
 
 import { Card } from "@/components/ui/card";
+import { PILL_HOVER } from "@/components/ui/button";
 import { BELT_SCALES, useDashPrefs, type BeltScale } from "@/hooks/use-dash-prefs";
 import { useLocale } from "@/hooks/use-locale";
 import { t, type MessageKey } from "@/lib/i18n";
@@ -52,7 +53,7 @@ export function BeltSizeControl() {
                 // ThemeControl's segmented choice: 44px floor, the weight unconditional so a
                 // selection repaints and never re-lays-out.
                 "flex min-h-11 flex-1 items-center justify-center rounded-md px-3 py-2 text-sm font-medium transition-colors",
-                selected ? "bg-primary text-primary-foreground" : "text-muted-foreground active:bg-muted",
+                selected ? "bg-primary text-primary-foreground" : `text-muted-foreground active:bg-muted ${PILL_HOVER}`,
               )}
             >
               {t(LABELS[scale])}

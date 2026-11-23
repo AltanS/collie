@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-import { Button } from "@/components/ui/button";
+import { Button, PILL_HOVER } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import type { DisplayPrefs } from "@/hooks/use-display-prefs";
 import { CHAT_FONT_MAX, CHAT_FONT_MIN, FONT_MAX, FONT_MIN } from "@/hooks/use-display-prefs";
@@ -208,7 +208,7 @@ function ViewRow({ view }: { view: PaneViewControl }) {
                 "disabled:opacity-50",
                 selected
                   ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground active:bg-muted",
+                  : `text-muted-foreground active:bg-muted ${PILL_HOVER}`,
               )}
             >
               {option.label}

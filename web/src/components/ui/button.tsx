@@ -24,6 +24,14 @@ export const FOCUS_RING_INSET = "focus-visible:outline-2 focus-visible:-outline-
 export const HOVER_FILL = "hover:bg-(--state-hover)";
 
 /**
+ * The pointer on a pill-style choice that is not chosen (Theme, Belt size, the Changes depth, the Chat and Pane views):
+ * the house hover, `--state-hover`, and the full ink the pressed state takes. `enabled:` leaves a disabled pill alone, and
+ * `enabled:active:bg-muted` keeps the pressed fill the pill always had, which the hover would otherwise outrank (both are
+ * three classes deep). A pointer only, so a phone looks as before. Colour only: the chosen pill, the box and the border stay.
+ */
+export const PILL_HOVER = "enabled:hover:bg-(--state-hover) enabled:hover:text-foreground enabled:active:bg-muted";
+
+/**
  * "MY MENU IS OPEN", ONE LOOK FOR EVERY TRIGGER. A control that opens a menu, a dock or a dialog beside it
  * and carries `aria-expanded` wears the app's "on" look while that attribute is `true`: `--state-open` (the
  * `control-on` tint, held off the plane it stands on; DESIGN.md §14) and the `control-on` ink that the belt gives an open dock (`ON` in `actions-row.tsx`) and the switch gives an on

@@ -3,7 +3,7 @@ import { useState } from "react";
 import { Icon } from "@/components/icons/icon";
 import type { IconKey } from "@/components/icons/keys";
 import { KeyBoardEditor } from "@/components/key-board-editor";
-import { Button } from "@/components/ui/button";
+import { Button, PILL_HOVER } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { useDashPrefs } from "@/hooks/use-dash-prefs";
@@ -130,7 +130,7 @@ export function PaneViewSettingControl() {
               onClick={() => setPaneView(view)}
               className={cn(
                 "flex min-h-11 flex-1 items-center justify-center rounded-md px-3 py-2 text-sm font-medium transition-colors",
-                selected ? "bg-primary text-primary-foreground" : "text-muted-foreground active:bg-muted",
+                selected ? "bg-primary text-primary-foreground" : `text-muted-foreground active:bg-muted ${PILL_HOVER}`,
               )}
             >
               {t(VIEW_LABEL[view])}
