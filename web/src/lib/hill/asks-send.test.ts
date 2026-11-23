@@ -20,18 +20,18 @@ describe("the words of a refused Send", () => {
   const refused = (refusal: Parameters<typeof refusalWords>[0]["refusal"], status = 409) => refusalWords({ ok: false, status, refusal });
 
   it("says too long with the count, and mixed sessions", () => {
-    expect(refused({ code: "too_long", over: 12 })).toEqual({ ask: null, words: "The message is 12 characters too long. Shorten a note." });
-    expect(refused({ code: "mixed_sessions" }).words).toBe("These answers belong to more than one session. Nothing was sent.");
+    expect(refused({ code: "too_long", error: "x", over: 12 })).toEqual({ ask: null, words: "The message is 12 characters too long. Shorten a note." });
+    expect(refused({ code: "mixed_sessions", error: "x" }).words).toBe("These answers belong to more than one session. Nothing was sent.");
   });
 
   it("names the machine that does not answer, or none", () => {
-    expect(refused({ code: "not_answering", machine: "workshop" }).words).toBe("workshop is not answering. Nothing was sent.");
-    expect(refused({ code: "not_answering" }).words).toBe("The machine of the session is not answering. Nothing was sent.");
+    expect(refused({ code: "not_answering", error: "x", machine: "workshop" }).words).toBe("workshop is not answering. Nothing was sent.");
+    expect(refused({ code: "not_answering", error: "x" }).words).toBe("The machine of the session is not answering. Nothing was sent.");
   });
 
   it("puts a refusal about one ask on that ask", () => {
-    expect(refused({ code: "not_an_ask", id: "dc_x" })).toEqual({ ask: "dc_x", words: "Collie no longer holds this ask. Nothing was sent." });
-    expect(refused({ code: "bad_answer", id: "dc_y" }).ask).toBe("dc_y");
+    expect(refused({ code: "not_an_ask", error: "x", id: "dc_x" })).toEqual({ ask: "dc_x", words: "Collie no longer holds this ask. Nothing was sent." });
+    expect(refused({ code: "bad_answer", error: "x", id: "dc_y" }).ask).toBe("dc_y");
   });
 
   it("says a device that may not answer, and a Send with no readable reason", () => {

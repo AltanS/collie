@@ -13,12 +13,11 @@ import { BandMain } from "@/components/ui/strip-host";
 import type { AsksSend } from "@/hooks/use-asks-send";
 import { useLocale } from "@/hooks/use-locale";
 import { useWidthClass } from "@/hooks/use-width-class";
-import { markedAnswer, recommendedOption, type AskDecision, type AsksReview, type SessionFacts } from "@/lib/hill/asks";
+import { markedAnswer, optionCost, recommendedOption, type AskDecision, type AsksReview, type SessionFacts } from "@/lib/hill/asks";
 import type { AskDraft } from "@/lib/hill/asks-drafts";
 import { contextFacts, contextSummary, headerLine, markWords, sendLineWords, type SessionClock } from "@/lib/hill/asks-board";
 import { askKeyAction, isTypingTarget } from "@/lib/hill/asks-keys";
-import { askMarkOf, HILL_OWN_ANSWER, optionCost } from "@/lib/hill/asks-standin";
-import { HILL_MORE_CONTEXT } from "@/lib/hill/wire";
+import { HILL_MORE_CONTEXT, HILL_OWN_ANSWER } from "@/lib/hill/wire";
 import { t } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
@@ -157,7 +156,7 @@ export function AskScreen({ ask, facts, clock, now, place, previous, next, draft
   const [sendOpen, setSendOpen] = useState(false);
   const cards = cardsOf(ask);
   const answer = markedAnswer(ask, draft);
-  const mark = askMarkOf(ask.ask);
+  const mark = ask.ask.mark;
   const summary = contextSummary(contextFacts(ask));
   const recommended = recommendedOption(ask);
   const sheetUp = pick !== null || sendOpen;
@@ -195,7 +194,18 @@ export function AskScreen({ ask, facts, clock, now, place, previous, next, draft
 
   // On a phone the chosen card stays visible above the sheet: it scrolls to the top of the page, and the page gets room
   // under its last card for the sheet to cover (it is only blank paper under the scrim, and goes when the sheet does).
+  // Where the page stood goes back when the sheet closes, so a Confirm or a Cancel moves nothing.
   const scroller = useRef<HTMLElement>(null);
+  const stood = useRef(0);
+  const picking = pick !== null;
+  useEffect(() => {
+    const page = scroller.current;
+    if (!picking || wide || page === null) return;
+    stood.current = page.scrollTop;
+    return () => {
+      page.scrollTop = stood.current;
+    };
+  }, [picking, wide]);
   useEffect(() => {
     if (pick === null || wide) return;
     const card = scroller.current?.querySelector<HTMLElement>(`[data-slot="ask-card"][data-intent="${CSS.escape(pick.kind === "option" ? pick.intent : pick.kind === "own" ? HILL_OWN_ANSWER : pick.kind === "words" ? "answer" : "")}"]`);

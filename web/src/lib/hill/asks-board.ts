@@ -6,7 +6,7 @@
 import { cacheOf } from "./asks";
 import type { AskDecision, AskSession } from "./asks";
 import { ageWords } from "./words";
-import { askMarkOf, type HillAskMark } from "./asks-standin";
+import type { HillAskMark } from "./wire";
 import { clockTime } from "../format";
 import { t, tn } from "../i18n";
 import type { AgentView } from "../types";
@@ -50,7 +50,7 @@ function compareClocks(a: SessionClock, b: SessionClock): number {
 
 /** An ask the agent has not checked since the person wrote in the session. */
 export function isUnchecked(ask: AskDecision): boolean {
-  return askMarkOf(ask.ask) === "unchecked";
+  return ask.ask.mark === "unchecked";
 }
 
 /** One session's asks, oldest first, the unchecked ones moved to the end of the group (each part keeps its age order). */

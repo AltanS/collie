@@ -15,8 +15,13 @@ import type { AgentStatus, AgentView, ServerSummary, SessionSummary } from "../t
 import { livePaneAt, type WalkyLivePanes } from "../walky-names";
 import { NO_DRAFT, type AskDraft } from "./asks-drafts";
 import { answersMessage, answersMessageLength, answersMessageOver, type MarkedAnswer } from "./answers-message";
-import { HILL_ASK_CLEARED, HILL_OWN_ANSWER, HILL_OWN_ANSWER_LABEL } from "./asks-standin";
-import { askTakenBackBecause, HILL_ANSWERS_MAX, HILL_ANSWERS_MESSAGE_MAX, HILL_ASK_ANSWERED_HERE, HILL_MORE_CONTEXT, HILL_MORE_CONTEXT_LABEL, isAsk, type HillAsk, type HillAskFile, type HillDecision } from "./wire";
+import { askTakenBackBecause, HILL_ANSWERS_MAX, HILL_ANSWERS_MESSAGE_MAX, HILL_ASK_ANSWERED_HERE, HILL_ASK_CLEARED, HILL_MORE_CONTEXT, HILL_MORE_CONTEXT_LABEL, HILL_OWN_ANSWER, HILL_OWN_ANSWER_LABEL, isAsk, type HillAsk, type HillAskFile, type HillDecision, type HillOption } from "./wire";
+
+/** What an option costs (`--cost`), or undefined when the agent sent none or only spaces. */
+export function optionCost(option: Pick<HillOption, "cost">): string | undefined {
+  const cost = option.cost;
+  return cost === undefined || cost.trim() === "" ? undefined : cost;
+}
 
 /** A Decision known to be an ask: the `ask` field is there. */
 export type AskDecision = HillDecision & { ask: HillAsk };

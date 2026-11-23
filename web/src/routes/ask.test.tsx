@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, Outlet, RouterProvider, type InitialEntry } from "react-router";
 
+import { asJsonString, parseJsonObject, type JsonObject } from "@/lib/json";
 import { forgetAskDrafts, useAskDrafts } from "@/lib/hill/asks-drafts";
 import { __resetAskNotes } from "@/lib/hill/asks-notes";
 import { __resetAsksOrder } from "@/hooks/use-asks-deck";
@@ -128,7 +129,12 @@ describe("the ask screen", () => {
 
   it("marks an answer from a card tap, stores a draft, sends nothing and moves nowhere", async () => {
     let posted = 0;
-    server.use(http.post(/\/api\/hill\/answers$/, () => (posted += 1) && HttpResponse.json({})));
+    server.use(
+      http.post(/\/api\/hill\/answers$/, () => {
+        posted += 1;
+        return HttpResponse.json({});
+      }),
+    );
     await hillHolds([ONE, TWO]);
     const router = renderAsk("/hill/ask/dc_one");
     await userEvent.click(await screen.findByRole("button", { name: /Drop the old route/u }));
@@ -202,11 +208,12 @@ describe("the ask screen", () => {
   });
 
   it("sends the marked answers of the session in one request and clears the drafts", async () => {
-    let body: { rid: string; answers: { id: string; intent: string }[] } | null = null;
+    const bodies: JsonObject[] = [];
     server.use(
       http.post(/\/api\/hill\/answers$/, async ({ request }) => {
-        body = await request.json();
-        return HttpResponse.json({ rid: body.rid, items: [{ id: "dc_one", code: "ok", reason: null, state: "answered" }], delivery: "typed", at: NOW });
+        const sent = parseJsonObject(await request.text()) ?? {};
+        bodies.push(sent);
+        return HttpResponse.json({ rid: asJsonString(sent.rid) ?? "", items: [{ id: "dc_one", code: "ok", reason: null, state: "answered" }], delivery: "typed", at: NOW });
       }),
     );
     await hillHolds([ONE, TWO]);
@@ -219,8 +226,8 @@ describe("the ask screen", () => {
     expect(within(sheet).getByText(/dc_two "Drop the flag\?": no answer yet, it stays open\./u)).toBeInTheDocument();
     server.use(http.get("/api/hill", () => HttpResponse.json({ v: 1, rev: 2, open: [TWO], closed: [] })));
     await userEvent.click(within(sheet).getByRole("button", { name: "Send 1" }));
-    await waitFor(() => expect(body).not.toBeNull());
-    expect(body).toMatchObject({ answers: [{ id: "dc_one", intent: "keep" }] });
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    expect(bodies[0]).toMatchObject({ answers: [{ id: "dc_one", intent: "keep" }] });
     await waitFor(() => expect(screen.getByTestId("drafts")).toHaveTextContent(/^$/u));
   });
 

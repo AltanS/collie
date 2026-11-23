@@ -1,6 +1,5 @@
 // Asks for the tests of the Asks pages (Asks build 2, 2026-11-23): Decisions with the `ask` field, built on `hillDecision`.
-// The mark and the cost ride as plain properties through `Object.assign`, so the file types the same before the bridge
-// worker's wire names are merged and after. Names are the hill fixtures' own; no person's name, no private path.
+// Names are the hill fixtures' own; no person's name, no private path.
 
 import type { AskDecision } from "@/lib/hill/asks";
 import type { AgentView } from "@/lib/types";
@@ -10,7 +9,7 @@ import { hillDecision, HILL_T0 } from "./hill-fixtures";
 
 /** The options of a typical ask: three, the first with a "does" text and a cost. */
 export const ASK_OPTIONS: HillOption[] = [
-  Object.assign({ intent: "keep", label: "Keep both routes", detail: "Older phones keep working." }, { cost: "Two code paths until the next minor." }),
+  { intent: "keep", label: "Keep both routes", detail: "Older phones keep working.", cost: "Two code paths until the next minor." },
   { intent: "drop", label: "Drop the old route", detail: "One code path." },
   { intent: "later", label: "Decide next week" },
 ];
@@ -54,9 +53,8 @@ export function askDecision(over: AskOver = {}): AskDecision {
   if (over.closedReason !== undefined) fields.closedReason = over.closedReason;
   const base = hillDecision(Object.assign(fields, over.decision));
   base.from = { ...base.from, address: over.address ?? base.from.address, label: over.label ?? base.from.label };
-  const ask: HillAsk = { words: over.words === true, files: over.files ?? [], root: over.root === undefined ? null : over.root };
+  const ask: HillAsk = { words: over.words === true, files: over.files ?? [], root: over.root === undefined ? null : over.root, mark: over.mark ?? "fresh" };
   if (over.confirmedAt !== undefined) ask.confirmedAt = over.confirmedAt;
-  if (over.mark !== undefined) Object.assign(ask, { mark: over.mark });
   return Object.assign(base, { ask });
 }
 

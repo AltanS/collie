@@ -1207,7 +1207,7 @@ describe("the Hill in the Dashboard's bar (M96)", () => {
     renderHome({ ...packed(), hill: true });
     await settled();
     const cells = [...bar().querySelectorAll<HTMLElement>('[data-slot="tab"], [data-slot="tab-link"]')];
-    expect(cells.map((cell) => cell.querySelector(".truncate")?.textContent)).toEqual(["Crew", "Dashboard", "Files", "Hill"]);
+    expect(cells.map((cell) => cell.querySelector(".truncate")?.textContent)).toEqual(["Crew", "Dashboard", "Files", "Asks"]);
     expect(hillItem()!.querySelector('[data-icon="hill"]')).not.toBeNull();
     expect(hillItem()!.querySelector('[data-slot="tab-badge"]')).toBeNull();
     expect(hillItem()).not.toHaveAttribute("aria-current");
@@ -1219,7 +1219,7 @@ describe("the Hill in the Dashboard's bar (M96)", () => {
     renderHome({ ...solo(), hill: true });
     await settled();
     const cells = [...bar().querySelectorAll<HTMLElement>('[data-slot="tab"], [data-slot="tab-link"]')];
-    expect(cells.map((cell) => cell.querySelector(".truncate")?.textContent)).toEqual(["Dashboard", "Files", "Hill"]);
+    expect(cells.map((cell) => cell.querySelector(".truncate")?.textContent)).toEqual(["Dashboard", "Files", "Asks"]);
     expect(hillItem()!.querySelector('[data-slot="tab-badge"]')).toBeNull();
     expect(bar().dataset.mode).toBe("equal");
   });
@@ -1230,7 +1230,7 @@ describe("the Hill in the Dashboard's bar (M96)", () => {
     await settled();
     const item = hillItem()!;
     expect(item.querySelector('[data-slot="tab-badge"]')).toHaveTextContent("3");
-    expect(item).toHaveAccessibleName("Hill, 3 Decisions wait on you");
+    expect(item).toHaveAccessibleName("Asks, 3 Decisions wait on you");
     // One of them is `now`: the mountain wears its snow cap in the warm accent (A5).
     expect(item.querySelector('[data-icon="hill-now"]')?.getAttribute("class")).toContain("text-status-working");
     await userEvent.click(item);
@@ -1303,7 +1303,7 @@ describe("the tricks' places on the Dashboard (2026-11-10)", () => {
     expect(strip()).not.toBeNull();
     expect(bar().dataset.mode).toBe("equal");
     expect(bar().querySelector('[data-slot="tab-extra"]')).toBeNull();
-    expect([...bar().querySelectorAll<HTMLElement>('[data-slot="tab"], [data-slot="tab-link"]')].map((cell) => cell.querySelector(".truncate")?.textContent)).toEqual(["Dashboard", "Files", "Hill"]);
+    expect([...bar().querySelectorAll<HTMLElement>('[data-slot="tab"], [data-slot="tab-link"]')].map((cell) => cell.querySelector(".truncate")?.textContent)).toEqual(["Dashboard", "Files", "Asks"]);
   });
 
   it("puts the tabbar items after the Hill and a divider, and pins the tabs", async () => {

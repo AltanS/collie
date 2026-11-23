@@ -5,11 +5,10 @@ import { Button } from "@/components/ui/button";
 import { FoldPanel, NoteToggle } from "@/components/ui/fold-toggle";
 import { BottomSheet } from "@/components/ui/sheet";
 import { useLocale } from "@/hooks/use-locale";
-import { markedAnswer, type AskDecision } from "@/lib/hill/asks";
+import { markedAnswer, optionCost, type AskDecision } from "@/lib/hill/asks";
 import { ASK_NOTE_MAX, type AskDraft } from "@/lib/hill/asks-drafts";
 import { confirmsOnKey } from "@/lib/hill/asks-keys";
-import { HILL_OWN_ANSWER, optionCost } from "@/lib/hill/asks-standin";
-import { HILL_MORE_CONTEXT } from "@/lib/hill/wire";
+import { HILL_MORE_CONTEXT, HILL_OWN_ANSWER } from "@/lib/hill/wire";
 import { t } from "@/lib/i18n";
 
 // THE CONFIRM SHEET OF AN ASK (Asks build 2, 2026-11-23). A tap on an answer card, or a digit key, opens it: the chosen
