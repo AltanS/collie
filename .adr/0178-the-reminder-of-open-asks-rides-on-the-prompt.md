@@ -48,9 +48,9 @@ prints. Nothing is confirmed: an ask stays open until the person answers it or t
    `resume` or `fork`; no multiplexer markers; no bridge answers a valid list. Its own limit is 1 s for the whole
    verb; the install writes `timeout: 3`. It walks the bridges on the machine and goes on after every answer that is
    not a valid list, 300 ms at most per bridge; it skips, with no socket call, a bridge whose Asks switch file is not
-   on, and a prompt that opens with the WalkyTalky header. The bridge answers only the call's `session_id` when the
-   pane's hook edges name it, and never an ask another conversation posted. The prompt text never leaves the
-   process: the bridge gets its hash, salted with that bridge's send salt, as `beacon emit` hashes it for prompts.
+   on, and a prompt whose first line is a WalkyTalky header `from agent` (`from operator` is asked). The bridge
+   answers only the call's `session_id` when the pane's hook edges name it, and never an ask another
+   conversation posted. The prompt text never leaves the process: the bridge gets its hash, salted with that bridge's send salt, as `beacon emit` hashes it for prompts.
 2. **The text.** The full form: "Collie: your open asks.", each ask with its id and its question (hidden characters
    removed, cut to 60 characters), then how to close one with the binary the skill names, then "Still true: do
    nothing." The short form, the ids only: "Collie: open ask ak_1." or "Collie: open asks ak_1, ak_2." A list

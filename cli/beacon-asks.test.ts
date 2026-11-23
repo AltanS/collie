@@ -17,6 +17,7 @@ import { WalkyLog } from "../bridge/walky/log.ts";
 import { WalkyService } from "../bridge/walky/service.ts";
 import { walkySocketPath, WalkyServer, type PlaceTarget } from "../bridge/walky/socket.ts";
 import { spaceOf } from "../bridge/walky/space.ts";
+import { formatHeader } from "../bridge/walky/types.ts";
 import type { JsonObject } from "../bridge/json.ts";
 import { parseJsonObject } from "../web/src/lib/json.ts";
 import { HILL_ASK_CLEARED } from "../web/src/lib/hill/wire.ts";
@@ -475,6 +476,33 @@ describe("the whole round over the socket", () => {
     const second: string[] = [];
     await cmdBeaconAsks(hookDeps(b, { ...PROMPT, prompt: "next" }, second, clock));
     expect(contextOf(second[0]!)).toBe("Collie: open ask ak_rmnd00000001.");
+  });
+
+  // The bridge types its own "Answers to your asks" as a WalkyTalky message of kind `operator`, so the prompt starts
+  // with the header `from operator`. The hook must still ask the bridge (which answers none, and records the hand-out
+  // of the open rest), or the prompt edge marks that rest `unchecked` for good instead of `carried` at the stop.
+  socketTest("the bridge's own Answers prompt (header from operator): the hook prints nothing, the hand-out exists, the open rest is carried", async () => {
+    const clock = { now: 1_000_000 };
+    const b = await bridge(clock);
+    for (const n of [1, 2]) expect(await cmdWalkyAsk(cliDeps(b.socket, clock), ASK(n))).toBe(EXIT.OK);
+    clock.now += 60_000;
+    // One ask is answered; the message the bridge types lists the open rest (the other ask).
+    expect(await cmdAskCancel(cliDeps(b.socket, clock), ["ak_rmnd00000002", "--answered"])).toBe(EXIT.OK);
+    const header = formatHeader({ id: "wt_k3f9x2m8q1a0", kind: "operator", from: { memberId: null, address: null, harness: null, label: "Pixel 9" }, replyTo: null });
+    const typed = { ...PROMPT, prompt: `${header}\nAnswers to your asks\n\nShip the fix on Edge first, round 2? You chose: Ship it on Edge.` };
+    const hash = promptHashOf({ files: realFiles }, b.stateDir, typed);
+    expect(hash).not.toBeNull();
+    b.hill.typedAnswers({ session: "main", paneId: "%1" }, hash!, clock.now);
+    clock.now += 1000;
+
+    const printed: string[] = [];
+    expect(await cmdBeaconAsks(hookDeps(b, typed, printed, clock))).toBe(EXIT.OK);
+    expect(printed).toEqual([]);
+    // The emitter's edges for that prompt and its stop. The hand-out is what turns the mark to `carried`.
+    b.hill.askEdge({ session: "main", paneId: "%1" }, "prompt", clock.now, hash);
+    b.hill.askEdge({ session: "main", paneId: "%1" }, "stop", clock.now + 3000, null);
+    expect(b.hill.list().open).toHaveLength(1);
+    expect(b.hill.list().open[0]).toMatchObject({ id: "ak_rmnd00000001", ask: { mark: "carried", confirmedAt: clock.now + 3000 } });
   });
 
   socketTest("a stopped bridge: silent, exit 0, within the limit", async () => {

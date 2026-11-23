@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { parseEdge } from "../bridge/beacon/parse.ts";
 import { EDGE_FILE } from "../bridge/beacon/paths.ts";
 import { hillSwitchPath } from "../bridge/hill/switch.ts";
-import { WALKY_HEADER_PREFIX } from "../bridge/walky/types.ts";
+import { formatHeader, WALKY_HEADER_PREFIX, type WalkyMessage } from "../bridge/walky/types.ts";
 import type { JsonObject } from "../bridge/json.ts";
 import { parseJsonObject } from "../web/src/lib/json.ts";
 import { ASKS_BRIDGE_MS, ASKS_LIMIT_MS, asksOfPayload, cmdBeaconAsks, fromAnotherAgent, shownQuestion, type BeaconAsksDeps } from "./beacon-asks.ts";
@@ -124,9 +124,51 @@ describe("fix 3: the payload's session_id rides on the call", () => {
   });
 });
 
-describe("fix 4: no reminder on a prompt another agent sent", () => {
-  test("a prompt that starts with the WalkyTalky header asks no bridge and prints nothing", async () => {
-    for (const prompt of [`${WALKY_HEADER_PREFIX}wt_aaaaaaaaaaaa] from agent x`, `  ${WALKY_HEADER_PREFIX}wt_aaaaaaaaaaaa] from operator "phone"`, `\n\n<pasted_content id="f2">\n${WALKY_HEADER_PREFIX}wt_aaaaaaaaaaaa] from agent x\n</pasted_content id="f2">\n`]) {
+const HEADER_PARTS: Pick<WalkyMessage, "id" | "kind" | "from" | "replyTo" | "subject"> = {
+  id: "wt_k3f9x2m8q1a0",
+  kind: "agent",
+  from: { memberId: "lodge", address: "lodge/w6:p3", harness: "claude", label: "webapp#main" },
+  replyTo: null,
+};
+/** The real header of each kind, built with the WalkyTalky code's own function. */
+const AGENT_HEADER = formatHeader(HEADER_PARTS);
+const OPERATOR_HEADER = formatHeader({ ...HEADER_PARTS, kind: "operator", from: { memberId: null, address: null, harness: null, label: "Pixel 9" } });
+
+describe("fix 4: no reminder on a prompt another agent sent; the operator's own WalkyTalky message is asked", () => {
+  test("a prompt whose first line is a header `from agent` asks no bridge and prints nothing, also with more lines below", async () => {
+    for (const prompt of [AGENT_HEADER, `  ${AGENT_HEADER}`, `${AGENT_HEADER}\nPlease look at the second test.\n\nSecond paragraph.`, `${AGENT_HEADER}\r\nbody`, `\n\n<pasted_content id="f2">\n${AGENT_HEADER}\nbody\n</pasted_content id="f2">\n`]) {
+      const f = fake({ "/s/one": { switch: ON, answer: LIST } }, { ...PROMPT, prompt });
+      expect(await cmdBeaconAsks(f.deps)).toBe(EXIT.OK);
+      expect(f.asked).toEqual([]);
+      expect(f.printed).toEqual([]);
+      expect(asksOfPayload({ ...PROMPT, prompt })).toBeNull();
+    }
+  });
+
+  test("a prompt whose first line is a header `from operator` is asked as any prompt, also with more lines below", async () => {
+    for (const prompt of [OPERATOR_HEADER, `  ${OPERATOR_HEADER}`, `${OPERATOR_HEADER}\nAnswers to your asks.\n\nSecond paragraph.`, `\n\n<pasted_content id="f2">\n${OPERATOR_HEADER}\nbody\n</pasted_content id="f2">\n`]) {
+      expect(asksOfPayload({ ...PROMPT, prompt })).toMatchObject({ event: "UserPromptSubmit" });
+      const f = fake({ "/s/one": { switch: ON, answer: LIST } }, { ...PROMPT, prompt });
+      expect(await cmdBeaconAsks(f.deps)).toBe(EXIT.OK);
+      expect(f.asked).toHaveLength(1);
+      expect(f.asked[0]?.line).toMatchObject({ op: "ask.remind", event: "prompt" });
+      expect(f.printed).toHaveLength(1);
+    }
+  });
+
+  test("a prompt that starts with the prefix and is no valid header stays silent: it is not proven to be the operator's", async () => {
+    const lookalikes = [
+      `${WALKY_HEADER_PREFIX}wt_aaaaaaaaaaaa] from robot x`,
+      `${WALKY_HEADER_PREFIX}wt_short] from operator "phone"`,
+      `${WALKY_HEADER_PREFIX}wt_aaaaaaaaaaaa from operator "phone"`,
+      WALKY_HEADER_PREFIX,
+      `${WALKY_HEADER_PREFIX}wt_aaaaaaaaaaaa]\nfrom operator "phone"`,
+      // The operator word stands on the second line only: the first line decides.
+      `${AGENT_HEADER}\n${OPERATOR_HEADER}`,
+    ];
+    for (const prompt of lookalikes) {
+      expect(fromAnotherAgent(prompt), prompt).toBe(true);
+      expect(asksOfPayload({ ...PROMPT, prompt }), prompt).toBeNull();
       const f = fake({ "/s/one": { switch: ON, answer: LIST } }, { ...PROMPT, prompt });
       expect(await cmdBeaconAsks(f.deps)).toBe(EXIT.OK);
       expect(f.asked).toEqual([]);

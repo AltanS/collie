@@ -3,7 +3,7 @@ import { AGENT_SESSION_ID } from "../bridge/beacon/parse.ts";
 import { withoutHidden } from "../bridge/hill/remind.ts";
 import { hillSwitchPath, parseHillSwitch } from "../bridge/hill/switch.ts";
 import { walkySocketPath } from "../bridge/walky/socket.ts";
-import { WALKY_HEADER_PREFIX } from "../bridge/walky/types.ts";
+import { HEADER_RE, WALKY_HEADER_PREFIX } from "../bridge/walky/types.ts";
 import { asJsonObject, asJsonString, parseJsonObject } from "../web/src/lib/json.ts";
 import { HILL_ASK_ID_RE } from "../web/src/lib/hill/wire.ts";
 import { edgeStateDirs, promptHashOf, readEnvMarkers, unwrapPrompt, type EdgeTargetDeps } from "./beacon.ts";
@@ -27,7 +27,9 @@ import { askSocket } from "./walky.ts";
 //  - The gates, in this order, each one silent with exit 0: the payload is not JSON; the event is neither
 //    `UserPromptSubmit` nor `SessionStart`; the payload names a subagent or a teammate (`agent_id`); a
 //    session start whose source gets nothing (`startup`, or any other than clear, compact, resume, fork);
-//    a prompt that another agent sent (it starts with the WalkyTalky header, `[walky-talky `); no
+//    a prompt that another agent sent (its first line is a WalkyTalky header `from agent`, or starts with
+//    `[walky-talky ` and is no header the hook can read; a header `from operator` is the operator's words and
+//    is asked as any prompt, the bridge's own "Answers to your asks" message among them); no
 //    multiplexer markers; no bridge whose own Asks switch reads on (a local file read, before any socket:
 //    off, missing or unreadable skips the bridge, and with none left no socket is opened); no bridge
 //    answers a valid list (every other answer, a refusal or "none" too, leads to the next bridge, since
@@ -140,9 +142,19 @@ export type AsksAsk = ({ readonly event: "UserPromptSubmit" } | { readonly event
   readonly sessionId: string | null;
 };
 
-/** Whether a prompt is a message another agent sent through WalkyTalky: it starts with the header. */
+/**
+ * Whether a prompt is a message another AGENT sent through WalkyTalky. The first line (after the paste wrapper
+ * and the leading white space) is read with `HEADER_RE`: `from agent` is another agent; `from operator` is not
+ * (the operator's own message from the phone, and the bridge's own "Answers to your asks", are typed so); a line
+ * that starts with the prefix and is no valid header counts as another agent's, the careful side.
+ */
 export function fromAnotherAgent(prompt: string | undefined): boolean {
-  return prompt !== undefined && unwrapPrompt(prompt).trimStart().startsWith(WALKY_HEADER_PREFIX);
+  if (prompt === undefined) return false;
+  const text = unwrapPrompt(prompt).trimStart();
+  if (!text.startsWith(WALKY_HEADER_PREFIX)) return false;
+  const first = text.split(/\r?\n/u, 1)[0] ?? "";
+  const header = HEADER_RE.exec(first);
+  return header === null || header[2] !== "operator";
 }
 
 /** The payload's question for the bridges, or null for every payload the verb answers with silence at once. */
@@ -154,7 +166,8 @@ export function asksOfPayload(payload: JsonObject): AsksAsk | null {
   const raw = asJsonString(payload.session_id)?.trim();
   const sessionId = raw !== undefined && AGENT_SESSION_ID.test(raw) ? raw : null;
   if (event === "UserPromptSubmit") {
-    // "If this message settles one, close it" is for the operator's words, not another agent's message.
+    // "If this message settles one, close it" is for the operator's words, not another agent's message
+    // (a WalkyTalky header `from operator` is the operator's, and is asked).
     if (fromAnotherAgent(asJsonString(payload.prompt))) return null;
     return { event, sessionId };
   }
