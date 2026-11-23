@@ -737,6 +737,39 @@ herdr plugin install AltanS/collie --yes
 herdr plugin action invoke restart --plugin herdr.collie
 ```
 
+## From the Hill to Asks
+
+The Hill is now Asks. An update from a release that has the Hill needs a few steps, and the old
+Decisions do not carry over. What the update takes away:
+
+- Asks starts off, also where the Hill was on. Switch it on in Settings → Tricks, on the Asks row, or
+  run `collie asks on` on the machine ([Turn Asks on or off](asks.md#turn-asks-on-or-off)). Here, Quiet
+  or Away goes back to Here.
+- Open and closed Decisions, their receipts and their pictures are not carried over, and a late answer
+  to an old one reads as gone. A trick posts its asks again at its next run, as new asks. The old
+  `hill` folder stays in the state folder, untouched and never read.
+- No ask has a priority or sends a notification. The Now, Today and Later groups, the notification for
+  a Decision marked Now and its row in Settings are gone.
+- `collie hill` is gone. An agent uses `collie walky ask` and your own commands are `collie asks`. Any
+  `collie hill` command prints one line that names its new verb and exits with code 2. The update
+  installs the new skill text, which names Asks only while Asks is on. A running agent keeps the text it
+  read at its start, so restart it ([What an agent does](asks.md#what-an-agent-does)).
+
+If you write tricks, a trick says `asks` where it said `decides`, `decisions` and `t.decide`. Run
+`collie trick helper <id>` to write the new helper into its folder. Change `decides = "reply"` to
+`asks = "reply"` in `trick.toml`, `t.decide` to `t.ask` and `t.keepDecisions` to `t.keepAsks` in the
+program, and the `decisions` list it prints to `asks`. Then approve the new version on the phone. A
+manifest that still says `decides` is refused with a line that names the fix. A program on the old
+helper keeps drawing its parts and shows none of its asks. Every old name is in
+[Names that changed](tricks-authoring.md#names-that-changed).
+
+The two official tricks `design-review` and `pr-inbox` stop after the update until you approve them
+again. Both can type your answer into a session, and their approved code still says `decides`. In
+Settings → Tricks, tap Update on the row. Then run `collie trick on design-review` (or
+`collie trick on pr-inbox`) once in a terminal on the machine, not in a pane where an agent works.
+The phone cannot approve these two, because it cannot show all of their code
+([A new version of a trick](tricks.md#a-new-version-of-a-trick)).
+
 ## Launcher rows in a crew
 
 The lead's launcher rows are now the crew's rows, and a row you add from the phone goes to the lead
