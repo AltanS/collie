@@ -20,6 +20,7 @@ import {
   HILL_ASK_FILES_MAX,
   HILL_ASK_HEADING_MAX,
   HILL_ASK_LABEL_MAX,
+  HILL_ASK_OPEN_MAX,
   HILL_ASK_OPTIONS_MAX,
   HILL_ASK_OPTIONS_MIN,
   HILL_ASK_QUESTION_MAX,
@@ -63,7 +64,7 @@ export const ASK_HELP: readonly string[] = [
   "5. Put no open question in a file or in your reply. Point to the ask id.",
   "6. Do not wait for the answer. Go on with the work that does not need it.",
   "7. A dialog that blocks a command is not an ask.",
-  "collie walky asks | status <id> | cancel <id> [--answered | --because <reason>]",
+  "collie walky asks | status <id> | keep <id>... | cancel <id> [--answered | --because <reason>]",
 ];
 
 /** What the result says when an ask has no background. */
@@ -506,6 +507,30 @@ function cancelArgs(args: readonly string[]): { readonly id: string; readonly an
   if (answered && because !== null) return { error: "--answered and --because do not go together: an ask answered in the session needs no reason." };
   if (because !== null && (because === "" || chars(because) > HILL_ASK_BECAUSE_MAX)) return { error: `--because is 1 to ${String(HILL_ASK_BECAUSE_MAX)} characters.` };
   return { id: ids[0]!, answered, because, json };
+}
+
+/**
+ * `walky keep <id>...` (.adr/0177): the agent says "still true" for one or more of its own open asks, and the
+ * bridge marks each confirmed now. Refused, whole, for an id that is not an open ask of this session.
+ */
+export async function cmdAskKeep(deps: HillDeps, args: readonly string[]): Promise<number> {
+  const json = args.includes("--json");
+  const ids = args.filter((arg) => arg !== "--json");
+  const flag = ids.find((arg) => arg.startsWith("-"));
+  if (flag !== undefined) return usage(deps, `unknown flag ${flag}. See: collie walky ask --help`);
+  if (ids.length === 0 || ids.length > HILL_ASK_OPEN_MAX) return usage(deps, `walky keep takes 1 to ${String(HILL_ASK_OPEN_MAX)} ask ids (ak_ and 12 characters).`);
+  const bad = ids.find((id) => !HILL_ID_RE.test(id));
+  if (bad !== undefined) return usage(deps, `"${shown(bad)}" is not an ask id. An ask id is ak_ and 12 characters.`);
+  if (windows(deps)) return EXIT.STATE;
+  const answer = await request(deps, { op: "ask.keep", ids: [...new Set(ids)] });
+  if (!answer.ok) return failed(deps, answer);
+  const kept = decisionsOf(answer.body.decisions);
+  if (json) {
+    deps.io.out(JSON.stringify({ decisions: kept }));
+    return EXIT.OK;
+  }
+  for (const ask of kept) deps.io.out(`${ask.id} kept: ${shown(ask.title)}`);
+  return EXIT.OK;
 }
 
 /** `walky status <ak_ or dc_ id>`: the ask's state, and the answer when there is one. */

@@ -25,6 +25,7 @@ import {
   cmdHooksUninstall,
   type HooksDeps,
   HOOKS_SUBCOMMANDS,
+  resolveHookCommand,
 } from "./hooks.ts";
 import { lifecycleDeps, updateDeps } from "./deps.ts";
 import { cmdDoctor, doctorDeps } from "./doctor.ts";
@@ -137,7 +138,8 @@ import {
   type WalkyDeps,
 } from "./walky.ts";
 import { apiHelp, cmdApi, declaredOperations, type ApiDeps } from "./api.ts";
-import { ASK_HELP, cmdAskCancel, cmdAskStatus, cmdWalkyAsk, cmdWalkyAsks, namesAnAsk } from "./ask.ts";
+import { ASK_HELP, cmdAskCancel, cmdAskKeep, cmdAskStatus, cmdWalkyAsk, cmdWalkyAsks, namesAnAsk } from "./ask.ts";
+import { type BeaconCheckDeps, runBeaconCheck, socketAsk } from "./ask-check.ts";
 import { cmdHill, cmdHillClear, cmdHillList, cmdHillPost, cmdHillState, cmdHillOn, cmdHillStatus, cmdHillSwitch, cmdHillWithdraw, HILL_SUBCOMMANDS, hillPostHelp, type HillDeps } from "./hill.ts";
 import { cmdTrickView, viewTopLines, type ViewDeps } from "./trick-view.ts";
 import { cmdTricks, cmdTricksOn, cmdTricksStatus, cmdTricksSwitch, TRICKS_SUBCOMMANDS } from "./tricks-switch.ts";
@@ -479,6 +481,11 @@ const WALKY_TREE: readonly Subcommand[] = [
     summary: "the open asks of this session",
     run: (args, s) => cmdWalkyAsks(hillDeps(s.io), args),
   },
+  {
+    name: "keep",
+    summary: "say an open ask of yours is still true: `walky keep <ak_ id>...`",
+    run: (args, s) => cmdAskKeep(hillDeps(s.io), args),
+  },
 ];
 
 function sttDeps(io: Io): SttDeps {
@@ -569,6 +576,29 @@ function holdDeps(): HoldDeps {
     connect: netConnect,
     print: async (text) => {
       await Bun.write(Bun.stdout, `${text}\n`);
+    },
+  };
+}
+
+/** `beacon check` (.adr/0177): like the hold, no `Io`; it prints only the one line a bridge's "check" makes. */
+function checkDeps(): BeaconCheckDeps {
+  const ctx = loadContext(() => {});
+  return {
+    ctx,
+    files: realFiles,
+    readStdin: () => Bun.stdin.text(),
+    uid: process.getuid?.(),
+    ask: socketAsk,
+    print: async (text) => {
+      await Bun.write(Bun.stdout, `${text}\n`);
+    },
+    // The binary the skill names for this install, so the commands in the text are the ones it already knows.
+    binary: () => {
+      try {
+        return resolveHookCommand(ctx, realLinkFs).binary;
+      } catch {
+        return "collie";
+      }
     },
   };
 }
@@ -926,7 +956,7 @@ export const COMMANDS: readonly Command[] = [
   },
   {
     name: "beacon",
-    summary: "internal: `beacon emit`, `beacon hold` and `beacon statusline`, the agent hooks Collie installs",
+    summary: "internal: `beacon emit`, `beacon hold`, `beacon check` and `beacon statusline`, the agent hooks Collie installs",
     internal: true,
     subcommands: [
       {
@@ -939,6 +969,15 @@ export const COMMANDS: readonly Command[] = [
         name: "hold",
         summary: "internal: hold one permission request for a tap on the phone (M56 spec 12)",
         run: () => runBeaconHold(holdDeps),
+      },
+      {
+        name: "check",
+        summary: "internal: at the end of a turn, show the agent its open asks once (.adr/0177)",
+        // The hook's own time limit is inside the verb; the exit ends a socket or a stdin read still pending.
+        run: async () => {
+          await runBeaconCheck(checkDeps);
+          process.exit(EXIT.OK);
+        },
       },
       {
         name: "statusline",
