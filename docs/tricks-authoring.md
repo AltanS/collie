@@ -123,7 +123,6 @@ run((t) => {
       ],
       recommends: { intent: "leave", why: "An idle agent costs nothing." },
       text: "optional",
-      priority: "later",
       replyTo: s.id,
     });
   }
@@ -146,7 +145,7 @@ trick idle-watch (Idle watch) in /tmp/tricks-doc-lab/idle-watch
   run:    program.ts
   asks: reply. Your answers to its asks go to a session as your own message.
   code:   sha256 63bc959b… (what `collie trick on` approves)
-  helper: trick.ts is collie trick helper v11, Collie's own code, not checked line by
+  helper: trick.ts is collie trick helper v12, Collie's own code, not checked line by
           line
   ran in 31 ms: exit 0
   parts: status status, dashboard dashboard, session main
@@ -158,8 +157,7 @@ a timer run
   status     status     "1 idle"  icon clock  tone warn
   dashboard  dashboard  "Idle"  badge 1
   session    main       (the manifest's name)  subtitle "1 idle for 20 min or more"
-  ask       idle-w1-p1-mwbtwjk0  "Wake api-fix?"  options wake, leave
-            recommends leave  later
+  ask  idle-w1-p1-mwbtwjk0  "Wake api-fix?"  options wake, leave  recommends leave
   ran in 111 ms of 10 s, exit 0, stdout 746 B of 64.0 KiB
 ```
 
@@ -402,9 +400,10 @@ kept the same way, in `https://github.com/AltanS/collie-tricks`.
 
 ## Names that changed
 
-A trick written before Asks used older names. Each old name fails with a message that names the new
+A trick written before Asks used older names. Most old names fail with a message that names the new
 one, so a trick that breaks tells you what to write instead. After you change the names, update the
-helper with `collie trick helper <id>`.
+helper with `collie trick helper <id>`. An ask takes no `priority` key. An ask that has one is refused
+alone, with the line `an ask has no priority: remove the key "priority".`, and the other asks post.
 
 | Old name | New name |
 | --- | --- |
@@ -422,6 +421,13 @@ helper with `collie trick helper <id>`.
 | the ids `dc_...` | `ak_...` |
 | `collie hill post`, `status`, `withdraw`, `list` | `collie walky ask`, `status`, `cancel`, `asks` |
 | `collie hill clear`, `state`, `on`, `off` | `collie asks clear`, `state`, `on`, `off` |
+
+The document key `decisions` is the one old name that does not fail. A program that still uses helper v10
+or older prints it on every run. Collie drops the key and reads no asks from it, so the trick's asks do
+not show. The note says `"decisions" is "asks" now (ADR 0179). Update the helper with: collie trick helper
+<id>. This Collie ignores it.` It shows in `collie trick dev` and `collie trick check --run`, and not on
+the trick's row. The trick's other parts draw as before. Run `collie trick helper <id>`, then change
+`t.decide` to `t.ask`.
 
 ## Where to go next
 

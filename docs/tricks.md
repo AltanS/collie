@@ -509,7 +509,7 @@ A card asks "Use the new version of `<name>`?". It is in [Asks](asks.md), and in
 under **Waiting for your yes**, where the trick's row opens it too, with Asks on or off. It shows the files that changed
 and any new power the version asks for. You have three options:
 
-- **Hold to use** approves the code on the card, and the trick runs it. Keep a finger on it for three
+- **Hold to use** approves the code on the card, and the trick runs it. Keep a finger on it for 1.5
   seconds; with a keyboard, press it twice.
 - **Hold to use and stop asking** does the same, and switches on "Update this trick without asking". It is
   offered only when the version asks for no new power.
@@ -532,7 +532,7 @@ before.
 
 ### Powers, the environment and the warnings
 
-A trick cannot type for you, cannot put code on your phone, and asks only through Asks. At most,
+A trick cannot type for you, cannot put code on your phone, and reaches you only through Asks. At most,
 a button can put a text into your empty reply box, and you send it yourself. Past that, it can do what
 you can do.
 
