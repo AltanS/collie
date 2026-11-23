@@ -390,12 +390,12 @@ official repository. Any other https git repository takes an address, then optio
 folder, and `#` and a branch, a tag or a full 40-digit commit. An address with a user name or a
 password is refused, and so is any address that is not https.
 
-On the phone, Settings → Tricks shows one list of tricks. The official tricks come first, in the order of the
+On the phone, Settings → Tricks shows one list of tricks. After the Asks row, the official tricks come first, in the order of the
 release's list, then your other tricks by name. Each row says Official or Community. An official trick
 you have not added shows an Add button in its place. A tap makes one git fetch, then checks the hash of
 what arrived. The added trick stays in the same place, with its switch. Adding a trick or switching it
-changes its row, never its place. Asks is not a row of that card: it is not a trick, and its
-switch is on the same page, in the card **Asks**.
+changes its row, never its place. The Asks row stands first, with the label "Built in". It is not a
+trick, and its switch is its own.
 
 ### Add from a repository that lists its tricks
 
