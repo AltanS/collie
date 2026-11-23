@@ -513,6 +513,41 @@ export async function existingPaths(ctx: FilesContext, paths: readonly string[])
   return asked.filter((_, i) => found[i] === true);
 }
 
+// ── A linked file of an ask (Asks, 2026-11-22) ──────────────────────────────────────────────────
+
+/** What {@link linkableFile} answers: the path relative to the root, or why the Files view would not open it. */
+export type LinkableFile = { ok: true; path: string } | { ok: false; reason: "no-folder" | "outside" | typeof UNKNOWN_PATH };
+
+/**
+ * Whether an absolute path names a regular file the Files view would open under this root, and its path
+ * relative to the root (`/`-separated, as `?path=` takes it). `collie walky ask --file` stores that relative
+ * path as a pointer; nothing is opened and no byte is read here or later. The checks are a read's own: the
+ * root's real path and bound, the shape rule ({@link parseRelPath}), the real path inside the root's
+ * (`checkedTarget`: a link that leads out, `.git`, the private folders, a state secret's name), then one
+ * `lstat` that must find a regular file. `outside`: the path is not under the root's real path at all. Every
+ * other refusal is the read's one answer, `unknown-path`.
+ */
+export async function linkableFile(ctx: FilesContext, absolute: string): Promise<LinkableFile> {
+  const r = await resolveRoot(ctx);
+  if (r === null) return { ok: false, reason: "no-folder" };
+  const path = r.host.path;
+  if (!path.isAbsolute(absolute)) return { ok: false, reason: UNKNOWN_PATH };
+  const rel = path.relative(r.rootReal, absolute);
+  if (rel === "" || rel === ".." || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel)) return { ok: false, reason: "outside" };
+  const asked = rel.split(path.sep).join("/");
+  const segments = parseRelPath(asked, r.host);
+  if (segments === null || segments.length === 0) return { ok: false, reason: UNKNOWN_PATH };
+  try {
+    const real = await checkedTarget(segments, r);
+    if (real === null) return { ok: false, reason: UNKNOWN_PATH };
+    const st = await r.fs.lstat(real).catch(() => null);
+    if (st === null || st.isSymbolicLink() || !st.isFile()) return { ok: false, reason: UNKNOWN_PATH };
+    return { ok: true, path: segments.join("/") };
+  } catch {
+    return { ok: false, reason: UNKNOWN_PATH };
+  }
+}
+
 /** List or read, as the query asks. */
 export function serveFiles(ctx: FilesContext, query: FilesQuery): Promise<FilesResult<FilesListing | FileReadAnswer>> {
   return query.mode === "read" ? readFile(ctx, query.path) : listFolder(ctx, query.dir);

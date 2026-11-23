@@ -4,6 +4,7 @@ import { basename, dirname, join } from "node:path";
 import { BEACON_HOOKS } from "./beacon.ts";
 import {
   claudeSettingsTargets,
+  checkInstalledIn,
   hookBinaryOf,
   HOOK_MARKER_VERSION,
   markedCommandsByEvent,
@@ -317,6 +318,7 @@ export async function cmdDoctor(deps: DoctorDeps, args: readonly string[]): Prom
     ...(deps.host.platform === "win32" ? [windowsTask(deps), windowsLongPaths(deps), secretsPrivate(deps)] : []),
     beaconHooks(deps, hookEntries, declaration?.supports.agentDetection ?? true, sessionsFromHooks),
     ...statusLineWrap(deps, hookEntries.length > 0),
+    ...askCheckHook(deps, hookEntries),
     await beacons(deps, hookEntries.length > 0),
     skillWalkyTalky(deps),
     ...skillOldMorph(deps),
@@ -1859,6 +1861,32 @@ export function statusLineWrap(deps: Pick<DoctorDeps, "ctx" | "files" | "host">,
   }
   if (wrapped > 0) return [ok(check, "wrapped: the phone shows the context in percent of the window Claude Code states")];
   return [ok(check, "no statusLine configured, and Collie adds none (one would hide Claude Code's footer hints), so the phone shows the context as a token count")];
+}
+
+/**
+ * `ask-check-claude` (.adr/0177): does each settings file that carries our hooks also carry the check at the
+ * end of a turn? Without it the agent is never shown its open asks, and the phone marks them "Not checked".
+ * A hint, never an error, and no row where the beacon hooks are not installed (`beacon-hooks-claude`
+ * speaks for that).
+ */
+export function askCheckHook(deps: Pick<DoctorDeps, "files">, entries: readonly { readonly target: HookTarget }[]): Finding[] {
+  if (entries.length === 0) return [];
+  const check = "ask-check-claude";
+  const paths = [...new Set(entries.map((entry) => entry.target.path))];
+  const missing = paths.filter((path) => {
+    const text = deps.files.read(path);
+    return text === null || !checkInstalledIn(parseJson(text) ?? null);
+  });
+  if (missing.length > 0) {
+    return [
+      warn(
+        check,
+        `${missing.join(", ")} has no check at the end of a turn, so an agent there is never shown its open asks again`,
+        "`collie hooks install claude` adds it beside the emitter and leaves every other hook alone; running Claudes must be relaunched",
+      ),
+    ];
+  }
+  return [ok(check, "installed: at the end of a turn an agent with open asks sees them once; with none it prints nothing")];
 }
 
 /**

@@ -31,7 +31,7 @@
 // before the clear. The trick map (tricks/hill.ts) reads the state too, so an answered key stays closed.
 // The newest {@link HILL_CLEARED_KEPT} are kept. A build from before Clear reads the file without them.
 //
-// AN OPEN DECISION WITH NO EXPIRY gets one when the file is read: the time it was posted plus
+// AN OPEN DECISION WITH NO EXPIRY (an ask aside: it has none by design) gets one when the file is read: the time it was posted plus
 // HILL_MAX_EXPIRY_MS, written back at once. An older build stored decisions with `expiresAt: null`, and the
 // sweep (service.ts `sweep`) closes only a decision past a time, so such a card waited for ever. With its
 // end in place the sweep closes it as `expired` on its usual path, a closed record like any other, never a
@@ -108,8 +108,17 @@ export function pruned(decisions: readonly HillDecision[], keep = HILL_CLOSED_KE
  * array when none needed one.
  */
 export function withEnds(decisions: HillDecision[]): HillDecision[] {
-  if (!decisions.some((decision) => decision.state === "open" && decision.expiresAt === null)) return decisions;
-  return decisions.map((decision) => (decision.state === "open" && decision.expiresAt === null ? { ...decision, expiresAt: decision.at + HILL_MAX_EXPIRY_MS } : decision));
+  if (!decisions.some(needsEnd)) return decisions;
+  return decisions.map((decision) => (needsEnd(decision) ? { ...decision, expiresAt: decision.at + HILL_MAX_EXPIRY_MS } : decision));
+}
+
+/**
+ * Whether an open decision is stored with no end and must get one. Never an ask (Asks, 2026-11-22): an ask
+ * stays open across turns with no close by age; it closes by an answer, a take back, a replace, or the
+ * sweep when its session is gone.
+ */
+function needsEnd(decision: HillDecision): boolean {
+  return decision.state === "open" && decision.expiresAt === null && decision.ask === undefined;
 }
 
 /** The `id` of a raw entry, when it has a string one; null when it has none this build can tell. */

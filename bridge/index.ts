@@ -236,6 +236,7 @@ import { CLEAR_BURST_MS, Push } from "./push.ts";
 import { currentNotesReader } from "./release-notes.ts";
 import { pluginRoot } from "./root.ts";
 import { agentPaneFilesRoot, buildId, filesPrivateFolders, paneReadHint, recentRead, startServer } from "./server.ts";
+import { askFilesResolver } from "./hill/ask-files.ts";
 import {
   DEFAULT_SESSION_NAME,
   herdTagFor,
@@ -318,6 +319,7 @@ import { RequestStore } from "./surface/requests.ts";
 import { HoldStore } from "./surface/holds.ts";
 import { SurfaceLedger } from "./surface/counters.ts";
 import { deliverEdge, EdgeRouter, type EdgeTarget } from "./surface/edges.ts";
+import { AskCheckBook } from "./hill/check.ts";
 import { counterWordOf, HoldBook, HoldServer, takeHold, type Held, type HoldConn, type HoldTarget } from "./surface/hold.ts";
 import { holdAuditEntry } from "./refusal.ts";
 import type { HoldRequest } from "../web/src/lib/surface/hold.ts";
@@ -1974,6 +1976,10 @@ const sendProfile = createPaneProfile({ versions: sendVersions, binaries: harnes
 // before they exist is skipped by the source, never published with an invented id.
 const eventBus = new EventBus({ machine: () => bridgeId.id });
 
+// The check at the end of a turn (.adr/0177, bridge/hill/check.ts): the turn each pane is in, from its prompt
+// edges, the brake of each session, and the lift of a pane while its check runs. In memory: a restart forgives.
+const askChecks = new AskCheckBook();
+
 const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
   const built = endpoint.kind === "program" ? programAdapter(endpoint.source) : terminalAdapter(endpoint.socketPath);
   const target = built.target;
@@ -2186,6 +2192,11 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
   // The screen wins for an ask (M78 spec 07): a pane whose last read shows an ask is `blocked` on the
   // phone and in the push, also where the multiplexer says `working` (herdr-core with pi's question).
   if (surface !== undefined) engine.liftScreenAsks((paneId) => surface.askOnScreen(paneId));
+  // A session that works on its check at the end of a turn reads as working, not idle (.adr/0177).
+  engine.liftChecks((paneId) => askChecks.lifting(name, paneId));
+  askChecks.onLiftChange((session) => {
+    if (session === name) engine.pokeNow();
+  });
   if (surface !== undefined) {
     engine.onUpdate((s) => {
       void surface.observe(s.agents).then(() => {
@@ -2305,7 +2316,9 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
       // A pane the shadow has not read yet (an agent that just started) takes no edge into a fold; the
       // edge still counts, under its harness with no version, like a dropped one. A subagent's edge
       // never reaches the fold (deliverEdge), only the hold book.
-      deliver: (paneId, edge) =>
+      deliver: (paneId, edge) => {
+        // The turn and the end of a check's turn (.adr/0177): the pane's own edges only, never a subagent's.
+        if (edge.record.agent === undefined) askChecks.edge(name, paneId, edge.kind, edge.record.at);
         deliverEdge(
           {
             fold: (pane, kind, at) => surface.edge(pane, kind, at),
@@ -2315,7 +2328,8 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
           },
           paneId,
           edge,
-        ),
+        );
+      },
     };
     /** The session's hand-off of one placed hold request, from the settings hook or from a part. */
     const takePaneHold = (book: HoldBook, paneId: string, request: HoldRequest, conn: HoldConn, onClose: (listener: (how: "closed" | "elsewhere") => void) => void): Held | null =>
@@ -2781,6 +2795,15 @@ const hill = new HillService({
   // Hill of a lead whose store already names a new lead (after approve-promote, before its restart).
   deposed: () => hillMovedAway(deposed, trustStore.current()),
   walkyOn: () => cfg.walky,
+  // An ask's linked files (Asks, 2026-11-22): checked under the poster's pane's Files root by the Files
+  // view's own rules, and stored as pointers. Nothing is read; the phone opens them by the Files route.
+  // The check at the end of a turn (.adr/0177): the turn, the brake and the lift, shared with the sessions above.
+  checks: askChecks,
+  askFiles: askFilesResolver({
+    paneRoot: (paneId) => agentPaneFilesRoot(registry.all().map((rt) => rt.engine.current()), paneId, homedir()),
+    home: homedir(),
+    privateFolders: filesPrivateFolders(cfg),
+  }),
   memberId: bridgeId.id,
   keepId: bridgeId.keep,
   machine: hostname(),

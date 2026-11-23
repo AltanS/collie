@@ -32,14 +32,25 @@ import {
   HILL_GROUP_PARTS,
   type HillGroupAnswer,
   cardName,
+  HILL_ANSWERS_MAX,
+  HILL_ASK_FILE_PATH_MAX,
+  HILL_ASK_FILES_MAX,
+  HILL_ASK_HEADING_MAX,
+  type HillAnswersEntry,
+  type HillAnswersRequest,
+  type HillAsk,
+  type HillAskFile,
+  type HillAskFileInput,
+  type HillAskInput,
 } from "../../web/src/lib/hill/wire.ts";
+import { parseRelPath } from "../files-view.ts";
 import { isRequestId } from "../worktree-receipts.ts";
 import { isHillPushTag } from "./push.ts";
 import { readGroup } from "./group.ts";
 import { parseDecisionView, type View } from "../../web/src/lib/tricks/schema.ts";
 
 /** What the socket answers a status or withdraw whose id is not a decision id. */
-export const HILL_BAD_ID = "bad request: a decision id is dc_ and 12 characters";
+export const HILL_BAD_ID = "bad request: a decision id is dc_ or ak_ and 12 characters";
 
 /** The longest raw string a post or an answer may carry before cleaning. Longer is refused, not cut. */
 export const HILL_RAW_MAX = 32 * 1024;
@@ -164,7 +175,7 @@ export function readPostFields(row: JsonObject): HillPostRead {
   const replyTo = optionalText(row, "replyTo");
   if (about === undefined || replyTo === undefined) return refused("bad_target", "an address is text");
   const supersedes = optionalText(row, "supersedes");
-  if (supersedes === undefined || (supersedes !== null && !HILL_ID_RE.test(supersedes))) return refused("bad_supersedes", "supersedes names a decision id, dc_ and 12 characters");
+  if (supersedes === undefined || (supersedes !== null && !HILL_ID_RE.test(supersedes))) return refused("bad_supersedes", "supersedes names a decision id, dc_ or ak_ and 12 characters");
   let expiresAt: number | null = null;
   if (row.expiresAt !== undefined && row.expiresAt !== null) {
     const at = asJsonNumber(row.expiresAt);
@@ -181,6 +192,12 @@ export function readPostFields(row: JsonObject): HillPostRead {
     images.push(image);
   }
   const input: HillPostInput = { requestId, title, summary, body: body ?? "", options, text, recommends, links, priority, about, replyTo, supersedes, expiresAt, images };
+  // An ask (`collie walky ask`): a post from a bridge before asks never carries the field.
+  if (row.ask !== undefined && row.ask !== null) {
+    const ask = readAskInput(row.ask);
+    if ("error" in ask) return refused(ask.code, ask.error);
+    input.ask = ask;
+  }
   // The view is the one field read with the schema's own view parser: its refusal names the node.
   if (row.view !== undefined && row.view !== null) {
     // An image node's `ref` names one of this post's images, so the count goes with the view.
@@ -190,6 +207,109 @@ export function readPostFields(row: JsonObject): HillPostRead {
     input.view = read.view;
   }
   return { ok: true, input };
+}
+
+/** UTF-8 bytes of a string. */
+function utf8Bytes(text: string): number {
+  return new TextEncoder().encode(text).byteLength;
+}
+
+/** A positive whole line number, or undefined when the value is none of that. */
+function lineOf(value: JsonValue | undefined): number | undefined {
+  const n = asJsonNumber(value);
+  return n !== undefined && Number.isSafeInteger(n) && n > 0 ? n : undefined;
+}
+
+/**
+ * The `ask` of a post (`collie walky ask`): `{ words, files: [{ path, heading?, line? }] }`. Each path is
+ * the absolute real path the CLI resolved; what it names is the service's to check, under the Files rules.
+ */
+function readAskInput(value: JsonValue): HillAskInput | { readonly code: HillRefusalCode; readonly error: string } {
+  const row = asJsonObject(value);
+  const words = asJsonBoolean(row?.words);
+  if (row === undefined || words === undefined) return { code: "bad_body", error: "bad request: an ask is { words, files }" };
+  const raw = row.files ?? [];
+  if (!Array.isArray(raw)) return { code: "bad_file", error: "bad request: an ask's files are a list" };
+  if (raw.length > HILL_ASK_FILES_MAX) return { code: "bad_file", error: `--file may be given at most ${String(HILL_ASK_FILES_MAX)} times. You gave ${String(raw.length)}.` };
+  const files: HillAskFileInput[] = [];
+  for (const entry of raw) {
+    const file = asJsonObject(entry);
+    const path = asJsonString(file?.path);
+    if (file === undefined || path === undefined || path === "") return { code: "bad_file", error: "bad request: a linked file is { path, heading?, line? }" };
+    if (utf8Bytes(path) > HILL_ASK_FILE_PATH_MAX) return { code: "bad_file", error: `--file path has more than ${String(HILL_ASK_FILE_PATH_MAX)} bytes` };
+    const heading = file.heading === undefined || file.heading === null ? undefined : asJsonString(file.heading);
+    if (file.heading !== undefined && file.heading !== null && (heading === undefined || [...heading].length > HILL_ASK_HEADING_MAX)) return { code: "bad_file", error: `--file #heading is at most ${String(HILL_ASK_HEADING_MAX)} characters` };
+    const line = file.line === undefined || file.line === null ? undefined : lineOf(file.line);
+    if (file.line !== undefined && file.line !== null && line === undefined) return { code: "bad_file", error: "--file :line is a positive whole number" };
+    if (heading !== undefined && line !== undefined) return { code: "bad_file", error: "--file takes #heading or :line, not both" };
+    const base: HillAskFileInput = { path };
+    files.push(heading !== undefined ? { ...base, heading } : line !== undefined ? { ...base, line } : base);
+  }
+  return { words, files };
+}
+
+/** A stored linked file, or null: a path the Files routes take (relative, no `..`, no `.git`), and its place. */
+function readAskFile(value: JsonValue | undefined): HillAskFile | null {
+  const row = asJsonObject(value);
+  const path = asJsonString(row?.path);
+  if (row === undefined || path === undefined || path === "" || utf8Bytes(path) > HILL_ASK_FILE_PATH_MAX || parseRelPath(path) === null) return null;
+  const heading = row.heading === undefined ? undefined : asJsonString(row.heading);
+  if (row.heading !== undefined && (heading === undefined || [...heading].length > HILL_ASK_HEADING_MAX)) return null;
+  const line = row.line === undefined ? undefined : lineOf(row.line);
+  if (row.line !== undefined && line === undefined) return null;
+  const base: HillAskFile = { path };
+  if (heading !== undefined) return { ...base, heading };
+  return line === undefined ? base : { ...base, line };
+}
+
+/** A stored decision's `ask`, or null when any part fails (the decision then fails too). */
+function readStoredAsk(value: JsonValue | undefined): HillAsk | null {
+  const row = asJsonObject(value);
+  const words = asJsonBoolean(row?.words);
+  if (row === undefined || words === undefined || !Array.isArray(row.files) || row.files.length > HILL_ASK_FILES_MAX) return null;
+  const files: HillAskFile[] = [];
+  for (const entry of row.files) {
+    const file = readAskFile(entry);
+    if (file === null) return null;
+    files.push(file);
+  }
+  const root = row.root === null ? null : asJsonString(row.root);
+  if (root === undefined || (root !== null && (root === "" || root.length > 256))) return null;
+  const ask: HillAsk = { words, files, root };
+  if (row.confirmedAt === undefined) return ask;
+  const confirmedAt = asJsonNumber(row.confirmedAt);
+  return confirmedAt !== undefined && Number.isSafeInteger(confirmedAt) && confirmedAt > 0 ? { ...ask, confirmedAt } : null;
+}
+
+/** What `readAnswersRequest` answers: the request, or the words of the 400. */
+export type HillAnswersRead = { readonly ok: true; readonly request: HillAnswersRequest } | { readonly ok: false; readonly error: string };
+
+/**
+ * A phone's `POST /api/hill/answers` body (one Send per session, Asks), or why it is not one: `rid` a
+ * canonical UUID, `answers` 1 to {@link HILL_ANSWERS_MAX} entries, each `{ id, intent, text? }` with a
+ * Decision id named once, an intent of at most 32 characters and a text that is a string or null. What the
+ * ids and intents mean is the service's to judge. Another shape is a 400 and writes no receipt.
+ */
+export function readAnswersRequest(value: JsonValue | undefined): HillAnswersRead {
+  const row = asJsonObject(value);
+  if (row === undefined) return { ok: false, error: "bad body" };
+  const rid = asJsonString(row.rid);
+  if (!isRequestId(rid)) return { ok: false, error: "bad rid" };
+  const raw = row.answers;
+  if (!Array.isArray(raw) || raw.length === 0 || raw.length > HILL_ANSWERS_MAX) return { ok: false, error: `bad answers: 1 to ${String(HILL_ANSWERS_MAX)}` };
+  const answers: HillAnswersEntry[] = [];
+  for (const entry of raw) {
+    const one = asJsonObject(entry);
+    const id = asJsonString(one?.id);
+    const intent = asJsonString(one?.intent);
+    if (one === undefined || id === undefined || !HILL_ID_RE.test(id)) return { ok: false, error: "bad id" };
+    if (answers.some((held) => held.id === id)) return { ok: false, error: "bad answers: an id is named twice" };
+    if (intent === undefined || intent === "" || intent.length > 32) return { ok: false, error: "bad intent" };
+    const text = one.text === null || one.text === undefined ? null : asJsonString(one.text);
+    if (text === undefined || (text !== null && text.length > HILL_RAW_MAX)) return { ok: false, error: "bad text" };
+    answers.push({ id, intent, text });
+  }
+  return { ok: true, request: { rid, answers } };
 }
 
 /** The refusal of a post that carries a group of cards: only Collie's own Decision has one. */
@@ -495,9 +615,15 @@ export function readDecision(value: JsonValue | undefined, opts: ReadDecisionOpt
     decision.group = group;
   }
   if (pushTag !== undefined) decision.pushTag = pushTag;
+  // An ask (`collie walky ask`): only an agent posts one, and any part that fails drops the decision.
+  if (row.ask !== undefined) {
+    const ask = from.kind === "agent" ? readStoredAsk(row.ask) : null;
+    if (ask === null) return null;
+    decision.ask = ask;
+  }
   // Absent until the person wrote to the posting session (1.29.0): kept absent; a bad value drops only the
   // mark. Only an agent's card has a posting session (C-A7): a trick's or Collie's own never carries it.
   const spokeAfter = asJsonNumber(row.spokeAfter);
-  if (spokeAfter !== undefined && Number.isSafeInteger(spokeAfter) && spokeAfter > 0 && decision.state === "open" && from.kind === "agent") decision.spokeAfter = spokeAfter;
+  if (spokeAfter !== undefined && Number.isSafeInteger(spokeAfter) && spokeAfter > 0 && decision.state === "open" && from.kind === "agent" && decision.ask === undefined) decision.spokeAfter = spokeAfter;
   return postDigest === undefined ? decision : { ...decision, postDigest };
 }

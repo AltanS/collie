@@ -118,6 +118,39 @@ export interface HookCommand {
  */
 const HOOK_VERB = " beacon emit ";
 
+/**
+ * The check at the end of a turn (.adr/0177): a second entry in OUR `Stop` group, beside the emitter, with
+ * the same binary and marker. Claude Code runs the hooks of one event in parallel, so it delays nothing.
+ */
+const CHECK_VERB = " beacon check ";
+
+/** The event whose group of ours carries the check. */
+export const CHECK_EVENT = "Stop";
+
+/** The check's command for an emitter command this build wrote: the same binary, the same marker. */
+export function checkCommandFor(emitCommand: string): string {
+  return emitCommand.replace(HOOK_VERB, CHECK_VERB);
+}
+
+/**
+ * Whether a settings document carries the check in a `Stop` group of ours with no matcher: the row
+ * `hooks status` and `doctor` print. The marker says the group is ours; the verb says it is the check.
+ */
+export function checkInstalledIn(document: JsonValue | null): boolean {
+  const section = asObject(asObject(document)?.hooks) ?? {};
+  const groups = asArray(section[CHECK_EVENT]) ?? [];
+  return groups.some((group) => {
+    if (matcherOf(group) !== undefined) return false;
+    const entries = asArray(asObject(group)?.hooks) ?? [];
+    return entries.some((entry) => {
+      const command = asObject(entry)?.command;
+      if (command === undefined || command === null) return false;
+      const text = String(command);
+      return text.includes(HOOK_MARKER_PREFIX) && text.includes(CHECK_VERB);
+    });
+  });
+}
+
 /** An optional prefix of an installed command: the shell replaces itself with the binary. */
 const HOOK_EXEC = "exec ";
 
@@ -326,9 +359,12 @@ export type HookDocument =
  * in place.
  */
 function ourGroup(registration: HookRegistration, command: string): JsonObject {
+  // The `Stop` group carries the check beside the emitter (.adr/0177). The group is rebuilt on every run, so
+  // an install from before the check gains it at the next byte comparison, with no marker bump.
+  const check = registration.event === CHECK_EVENT ? [{ type: "command", command: checkCommandFor(command), timeout: 10 }] : [];
   return {
     matcher: registration.matcher,
-    hooks: [{ type: "command", command, timeout: 10 }],
+    hooks: [{ type: "command", command, timeout: 10 }, ...check],
   };
 }
 
@@ -720,6 +756,7 @@ export function cmdHooksInstall(deps: HooksDeps, args: readonly string[]): numbe
 
   if (failed) return EXIT.FAIL;
   deps.io.out(`  ${BEACON_HOOKS.map((r) => r.event).join(", ")} → \`${binary} beacon emit\``);
+  deps.io.out(`  ${CHECK_EVENT} → \`${binary} beacon check\`: at the end of a turn the agent sees its open asks once. With none, or with the Hill off, it prints nothing.`);
   deps.io.out(`  ${PINNED_NOTE[source]}`);
   deps.io.out("  Outside a multiplexer the hook exits at once and writes nothing. In Herdr it writes hook edges only. In herdr-core it also names the Claude session, which gives the pane History.");
   deps.io.out(`  Hook edges go to each running bridge listed in ${hookTargetsDir(deps.ctx.env, deps.ctx.home)}.`);
@@ -800,6 +837,8 @@ export type HookTargetState =
   | { readonly kind: "not-installed" }
   /** Ours, and missing at least one registration this build knows — the shape a grown set leaves. */
   | { readonly kind: "partial"; readonly at: string; readonly present: number }
+  /** Ours, every event, but the `Stop` group has no check at the end of a turn (.adr/0177). */
+  | { readonly kind: "no-check"; readonly at: string }
   /** Ours, complete, but written by a build whose marker was a different version. */
   | { readonly kind: "stale"; readonly at: string }
   /** Ours and complete, but the operator's WRAPPED statusLine names another collie binary, so it prints nothing. */
@@ -823,6 +862,8 @@ function targetState(deps: HooksDeps, target: HookTarget): HookTargetState {
   const at = `v${[...versions].join("/")}`;
   if (present < BEACON_HOOKS.length) return { kind: "partial", at, present };
   if (!versions.has(String(HOOK_MARKER_VERSION)) || versions.size !== 1) return { kind: "stale", at };
+  // Every event, but no check at the end of a turn: an install from before it, healed by the next install.
+  if (!checkInstalledIn(settings.value)) return { kind: "no-check", at };
   const document = asObject(settings.value);
   const { binary } = resolveHookCommand(deps.ctx, deps.fs);
   return wrapsStatusLine() && document !== null && statusLineBehind(document, binary) ? { kind: "statusline", at } : { kind: "installed", at };
@@ -852,7 +893,7 @@ export function hooksAreBehind(deps: HooksDeps): boolean {
  */
 export function behindReason(deps: HooksDeps): "hooks" | "statusline" | null {
   const states = claudeSettingsTargets(deps.ctx).map((target) => targetState(deps, target));
-  if (states.some((state) => state.kind === "partial" || state.kind === "stale")) return "hooks";
+  if (states.some((state) => state.kind === "partial" || state.kind === "stale" || state.kind === "no-check")) return "hooks";
   return states.some((state) => state.kind === "statusline") ? "statusline" : null;
 }
 
@@ -879,6 +920,8 @@ export function cmdHooksStatus(deps: HooksDeps, args: readonly string[] = []): n
   deps.io.out(`would install: ${binary} beacon emit  (${SOURCE_NAME[source]})`);
   for (const target of claudeSettingsTargets(deps.ctx)) {
     deps.io.out(`${target.path}: ${describeTarget(deps, target)}`);
+    const check = checkRow(deps, target);
+    if (check !== null) deps.io.out(`  the check at the end of a turn: ${check}`);
   }
   deps.io.out(codexHooksStatusLine(deps, binary));
   return EXIT.OK;
@@ -891,6 +934,18 @@ function targetHolds(deps: HooksDeps, target: HookTarget): boolean {
   const settings = readSettings(deps, resolved.target);
   if (settings === null) return false;
   return HOOK_HARNESSES.some((harness) => holdEvents(harness).slice(0, 1).some((event) => holdCommandIn(settings.value, event) !== null));
+}
+
+/**
+ * The check's row for one settings file (.adr/0177), or null where none of our hooks is installed: the check
+ * is part of the install, so a file that opted out gets no row.
+ */
+export function checkRow(deps: HooksDeps, target: HookTarget): string | null {
+  const state = targetState(deps, target);
+  if (state.kind !== "installed" && state.kind !== "statusline" && state.kind !== "stale" && state.kind !== "no-check") return null;
+  const resolved = resolveTarget(deps, target);
+  const settings = resolved.kind === "ok" ? readSettings(deps, resolved.target) : null;
+  return settings !== null && checkInstalledIn(settings.value) ? "installed" : "missing — re-run `collie hooks install claude` to add it";
 }
 
 function describeTarget(deps: HooksDeps, target: HookTarget): string {
@@ -922,6 +977,8 @@ function describeBeacons(deps: HooksDeps, target: HookTarget): string {
     // like once the set grows. So the line names the remedy: install adds the missing ones in place.
     case "partial":
       return `partly installed (${state.at}, ${state.present}/${BEACON_HOOKS.length} events) — re-run install to add the rest`;
+    case "no-check":
+      return `installed (${state.at})`;
     case "stale":
       return `installed at ${state.at} — re-run install to heal it to v${HOOK_MARKER_VERSION}`;
     case "statusline":

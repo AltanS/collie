@@ -24,6 +24,9 @@ import { asJsonBoolean, asJsonNumber, asJsonObject, asJsonString, type JsonObjec
 import { DECISION_VIEW_LIMITS, parseDecisionView, type View } from "@/lib/tricks/schema";
 
 import {
+  HILL_ASK_FILE_PATH_MAX,
+  HILL_ASK_FILES_MAX,
+  HILL_ASK_HEADING_MAX,
   HILL_GROUP_HASH_RE,
   HILL_GROUP_PARTS,
   HILL_MEDIA_BYTES_MAX,
@@ -38,6 +41,8 @@ import {
   cardName,
   hillCollieRef,
   isHillCrewState,
+  type HillAsk,
+  type HillAskFile,
   type HillCrewStateView,
   type HillDecision,
   type HillGroup,
@@ -109,6 +114,42 @@ function readOption(value: JsonValue): HillOption | null {
   const confirm = asJsonString(o.confirm);
   if (confirm !== undefined && confirm !== "") option.confirm = confirm;
   return option;
+}
+
+/**
+ * One linked file of an ask, or null when it does not fit. The path is a pointer under the ask's root: relative,
+ * `/`-separated, and never climbing out (the bridge checks it too; a phone does not open a path it would refuse).
+ */
+function readAskFile(value: JsonValue): HillAskFile | null {
+  const o = asJsonObject(value);
+  const path = asJsonString(o?.path);
+  if (o === undefined || path === undefined || path === "" || path.length > HILL_ASK_FILE_PATH_MAX) return null;
+  if (path.startsWith("/") || path.includes("\\") || path.includes("\0") || path.split("/").some((part) => part === "..")) return null;
+  const file: HillAskFile = { path };
+  const heading = asJsonString(o.heading);
+  if (heading !== undefined && heading !== "" && heading.length <= HILL_ASK_HEADING_MAX) file.heading = heading;
+  const line = asJsonNumber(o.line);
+  if (line !== undefined && Number.isSafeInteger(line) && line > 0) file.line = line;
+  return file;
+}
+
+/**
+ * The `ask` field of an Ask (`collie walky ask`), or undefined when it does not fit: the decision then draws as the
+ * plain card it also is, with its question and its options, in the list of cards that are no ask. A file that does not
+ * fit is left out and the ask stays, as a picture is.
+ */
+export function readAsk(value: JsonValue | undefined): HillAsk | undefined {
+  const o = asJsonObject(value);
+  const words = asJsonBoolean(o?.words);
+  if (o === undefined || words === undefined) return undefined;
+  const root = nullableString(o.root);
+  const rawFiles = arrayOf(o.files);
+  if (root === undefined || rawFiles === undefined) return undefined;
+  const files = rawFiles.map(readAskFile).filter((file) => file !== null).slice(0, HILL_ASK_FILES_MAX);
+  const ask: HillAsk = { words, files, root };
+  const confirmedAt = asJsonNumber(o.confirmedAt);
+  if (confirmedAt !== undefined && Number.isSafeInteger(confirmedAt) && confirmedAt > 0) ask.confirmedAt = confirmedAt;
+  return ask;
 }
 
 /** The parsed address, or null when `href` is not an absolute URL. */
@@ -331,6 +372,9 @@ export function readHillDecision(value: JsonValue): HillDecision | null {
   // The person wrote to the posting session after it asked (1.29.0): a time, on an agent's open card only.
   const spokeAfter = asJsonNumber(o.spokeAfter);
   if (spokeAfter !== undefined && Number.isSafeInteger(spokeAfter) && spokeAfter > 0 && state === "open" && from.kind === "agent") decision.spokeAfter = spokeAfter;
+  // An ask (`collie walky ask`): the field that makes the Decision one. Whole or not at all.
+  const ask = o.ask === undefined || o.ask === null ? undefined : readAsk(o.ask);
+  if (ask !== undefined) decision.ask = ask;
   return decision;
 }
 

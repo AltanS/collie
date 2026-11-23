@@ -47,8 +47,9 @@ import { noteServerDate } from "./server-clock";
 import { mounted } from "./base-path";
 import { WALKY_LIST_LIMIT, type WalkyReceipt, type WalkyRefusals, type WalkyRow, type WalkySendBody, type WalkySkipped, type WalkyTakeBack, type WalkyTarget, type WalkyWho } from "./walky";
 import { CHAT_UNCHANGED, type ChatAnswer } from "./chat-window";
+import { readAnswersRefusal, readAnswersResult } from "./hill/answers-reader";
 import { readHillCrewStateView, readHillList, readHillReceipt } from "./hill/reader";
-import type { HillAnswerRequest, HillCrewState, HillCrewStateView, HillList, HillReceipt } from "./hill/wire";
+import type { HillAnswerRequest, HillAnswersRefusal, HillAnswersRequest, HillAnswersResult, HillCrewState, HillCrewStateView, HillList, HillReceipt } from "./hill/wire";
 import { readTrickViewsAnswer, readTrickViewSession, TRICK_VIEWS_ROUTE, TRICK_VIEWS_SWITCH_ROUTE, type TrickViewSession, type TrickViewsAnswer, type TrickViewSwitchBody } from "./agent-view/wire";
 import { decidedOf, parseAsk, type AnswerResult, type AskAnswer } from "./ask";
 import type { ColumnRange } from "./column-range";
@@ -1901,6 +1902,31 @@ export async function postHillAnswer(body: HillAnswerRequest): Promise<HillRecei
     return null;
   });
   return readHillReceipt(got) ?? { rid: body.rid, code: "unknown", reason: null, state: null, delivery: null, trick: null, at: Date.now() };
+}
+
+/** What one Send came to: the bridge's result, or its refusal (a 4xx with a body of its own shape, or none this phone reads). */
+export type HillAnswersOutcome = { ok: true; result: HillAnswersResult } | { ok: false; status: number; refusal: HillAnswersRefusal | null };
+
+/**
+ * POST /api/hill/answers (Asks): the answers marked for ONE session's open asks, sent as one message. The caller
+ * mints `rid` once per attempt and sends the same one on a retry : a repeat answers with
+ * the stored result and runs nothing. A 200 is `ok`. A 400, 403 or 409 is a refusal, and nothing closed and
+ * nothing was typed: the body is read for its code, null when it is not one. A 503 and a lost request THROW, the
+ * retry case. A 200 whose body this phone cannot read also throws: the Send may have gone, and the retry with the
+ * same `rid` finds out without sending twice.
+ */
+export async function sendHillAnswers(body: HillAnswersRequest): Promise<HillAnswersOutcome> {
+  const got = await req<JsonValue>("/api/hill/answers", { method: "POST", body: JSON.stringify(body) }, (status, detail) =>
+    status === 400 || status === 401 || status === 403 || status === 409 ? { refused: status, detail } : null,
+  );
+  const refused = asJsonObject(got);
+  const status = asJsonNumber(refused?.refused);
+  if (refused !== undefined && status !== undefined) {
+    return { ok: false, status, refusal: readAnswersRefusal(parseJson(asJsonString(refused.detail) ?? "")) };
+  }
+  const result = readAnswersResult(got);
+  if (result === null) throw new ApiError("The answers route sent a body this phone cannot read.", 502);
+  return { ok: true, result };
 }
 
 /**

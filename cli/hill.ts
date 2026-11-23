@@ -149,7 +149,7 @@ function socketPaths(deps: HillDeps): string[] {
   return [...new Set(listed)].filter((path) => holdSocketSafe(deps, path));
 }
 
-type Answer = { readonly ok: true; readonly body: JsonObject; readonly path: string } | { readonly ok: false; readonly error: string; readonly code: string | null; readonly exit: number };
+export type HillAnswer = { readonly ok: true; readonly body: JsonObject; readonly path: string } | { readonly ok: false; readonly error: string; readonly code: string | null; readonly exit: number };
 
 /** Whether a refusal says the bridge does not know this op: today's words for it, or the bare word of a bridge before 2026-10-30. */
 export function unknownToBridge(error: string, op: string): boolean {
@@ -161,10 +161,10 @@ export function unknownToBridge(error: string, op: string): boolean {
  * that does not know the op (an older bridge); a `missing` sentence is kept and printed only when no
  * bridge held the decision. With `all`, every bridge is asked and the ok answers are all returned.
  */
-async function walk(deps: HillDeps, body: JsonObject, all = false, ms?: number): Promise<{ readonly answers: Extract<Answer, { ok: true }>[]; readonly failure: Extract<Answer, { ok: false }> }> {
+export async function walk(deps: HillDeps, body: JsonObject, all = false, ms?: number): Promise<{ readonly answers: Extract<HillAnswer, { ok: true }>[]; readonly failure: Extract<HillAnswer, { ok: false }> }> {
   const op = asJsonString(body.op) ?? "";
   const line = `${JSON.stringify({ v: 1, markers: readEnvMarkers(deps.ctx.env), ...body })}\n`;
-  const answers: Extract<Answer, { ok: true }>[] = [];
+  const answers: Extract<HillAnswer, { ok: true }>[] = [];
   let knows = false;
   let notHere = false;
   let missing: string | null = null;
@@ -212,12 +212,12 @@ export function refusalExit(code: string | null): number {
   return code === null || code === "hill_off" ? EXIT.STATE : EXIT.REFUSED;
 }
 
-async function request(deps: HillDeps, body: JsonObject, ms?: number): Promise<Answer> {
+export async function request(deps: HillDeps, body: JsonObject, ms?: number): Promise<HillAnswer> {
   const { answers, failure } = await walk(deps, body, false, ms);
   return answers[0] ?? failure;
 }
 
-function failed(deps: HillDeps, answer: Extract<Answer, { ok: false }>): number {
+export function failed(deps: HillDeps, answer: Extract<HillAnswer, { ok: false }>): number {
   deps.io.err(`hill: ${shown(answer.error)}${answer.code === null ? "" : ` (${shown(answer.code)})`}`);
   return answer.error.startsWith(BARE_BAD_REQUEST) ? EXIT.USAGE : answer.exit;
 }
@@ -228,7 +228,7 @@ function usage(deps: HillDeps, verb: (typeof HILL_SUBCOMMANDS)[number], why: str
   return EXIT.USAGE;
 }
 
-function windows(deps: HillDeps): boolean {
+export function windows(deps: HillDeps): boolean {
   if (deps.platform !== "win32") return false;
   deps.io.err(NO_SOCKET_TEXT);
   return true;
@@ -432,7 +432,7 @@ export function readViewFile(raw: string, cwd: string): { readonly view: JsonVal
 }
 
 /** The body: the words after `--`, else stdin when it is not a terminal, else none. */
-async function bodyOf(deps: HillDeps, body: string | null): Promise<string> {
+export async function bodyOf(deps: HillDeps, body: string | null): Promise<string> {
   if (body !== null) return body;
   if (deps.stdinIsTty) return "";
   return (await deps.readStdin()).trim();
@@ -504,7 +504,7 @@ export async function cmdHillPost(deps: HillDeps, args: readonly string[]): Prom
   // is removed when the request is over, whatever it came to (an answer, a refusal, a timeout, a throw).
   const staged = stageImagesForBridge({ env: deps.ctx.env, home: deps.ctx.home, now: deps.now, stagingRoot: deps.stagingRoot }, images);
   if (!staged.ok) return failed(deps, { ok: false, error: staged.error, code: staged.code, exit: staged.code === null ? EXIT.FAIL : EXIT.REFUSED });
-  let answer: Answer;
+  let answer: HillAnswer;
   try {
     // The wait covers a crew member's whole forward to its lead (CREW_PROTOCOL §22), so the CLI does not
     // give up on a post that is still on its way.
@@ -592,7 +592,7 @@ export function cmdHillWithdraw(deps: HillDeps, args: readonly string[]): Promis
   return oneDecision(deps, "withdraw", args);
 }
 
-function decisionsOf(value: JsonValue | undefined): HillDecision[] {
+export function decisionsOf(value: JsonValue | undefined): HillDecision[] {
   if (!Array.isArray(value)) return [];
   return value.flatMap((entry) => {
     const decision = readDecision(asJsonObject(entry));

@@ -84,6 +84,10 @@ export const ACK_MANIFEST = {
     channel: "inline",
     why: "An answer to a Decision on the hill (M96): the card says Sending, then the receipt in words, in place, until the next list takes the card away; a refusal, a gone target and a failed call stay on the card with the person's words, because a status line would be gone before the person read why the answer did not land.",
   },
+  sendHillAnswers: {
+    channel: "inline",
+    why: "Send of the answers marked for one session (Asks): the button holds disabled while the call runs, and a success shows the fold line (\"3 answers sent, 2 min ago\") where the asks were; an ask that closed meanwhile and a failed call land as lines beside the button, with every mark kept, because a status line would be gone before the person read which answer did not go.",
+  },
   cancelWalky: {
     channel: "inline",
     why: "The operator's Cancel on a held walky talky message it sent (M62 spec 03): the row's receipt turns to `cancelled by sender` on the next read, so a taken message says nothing more; an `already typed` answer and a failed call land as a line under the row, because the operator asked for something that did not happen.",

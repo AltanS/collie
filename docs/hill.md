@@ -516,6 +516,34 @@ shows every Decision, with the machine it came from. Your answer goes back throu
 from a member need Collie 1.29.0 on the lead and on that member
 ([Decisions from any machine](crew.md#decisions-from-any-machine)).
 
+## Asks (in work)
+
+An ask is a Decision that an agent sends with `collie walky ask`, for a question it meets during its
+work. It holds one question, the fact that decides it, two to five options that each say what they
+do, and a background in Markdown. It can link files of the agent's workspace, which you open with the
+Files view. An ask rings no notification and does not expire. It stays open until you answer it, the
+agent takes it back, or the session ends. A session has at most five open asks.
+
+Each ask also takes the answer "I need more context". The agent then sends the ask again with a
+better background. Your answers to the asks of one session go back together, as one message.
+
+### The check at the end of a turn
+
+On Claude Code, Collie shows the agent its open asks once at the end of a turn. The agent then does one
+thing for each ask: it keeps it (`collie walky keep <id>`, the ask is still true), replaces it with a new
+ask, or takes it back, also as "answered in the session". So the list stays in step with the work, and an
+ask that is no longer true does not wait for you. Each ask shows when the agent last confirmed it.
+
+The check comes at most once per turn you start, and never for an ask the agent sent or kept in that turn.
+When the agent lets a check pass without a word, the next one comes 2 turns later, then 4, then 8. It needs
+the hooks of `collie hooks install claude` and the Hill switched on. Other agents get no check, so their
+asks show as not checked.
+
+What it costs: a turn with no open asks costs one short process start and no model call. A turn with open
+asks costs one short extra step of the agent, on a warm cache.
+
+This part of the Hill is still being built.
+
 ## Where to go next
 
 - [Tricks](tricks.md), for the tricks that ask you here.

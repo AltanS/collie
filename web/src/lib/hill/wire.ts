@@ -36,12 +36,25 @@ export const HILL_TEXT_MODES: readonly HillTextMode[] = ["none", "optional", "re
 
 /** An option's intent: a short lowercase word the poster reads back. */
 export const HILL_INTENT_RE = /^[a-z][a-z0-9-]{0,31}$/;
+/**
+ * The fixed answer every ask takes besides its options (Asks, 2026-11-22): "I need more context", with an
+ * optional note. It closes the ask as answered, as an option does; the agent then sends the ask again
+ * with a better background and `--replaces <id>`.
+ */
+export const HILL_MORE_CONTEXT = "more-context";
+/** The label the stored answer of {@link HILL_MORE_CONTEXT} carries. */
+export const HILL_MORE_CONTEXT_LABEL = "I need more context";
 /** Intents the hill itself uses. A poster may not name an option with one of them. */
-export const HILL_RESERVED_INTENTS: readonly string[] = ["answer", "dismiss"];
+export const HILL_RESERVED_INTENTS: readonly string[] = ["answer", "dismiss", HILL_MORE_CONTEXT];
 /** A device id on an answer: "dv_" and 16 hex characters, derived by the bridge from a pairing record. */
 export const HILL_DEVICE_ID_RE = /^dv_[0-9a-f]{16}$/;
-/** A decision id: "dc_" and 12 characters, minted by the bridge. */
-export const HILL_ID_RE = /^dc_[a-z0-9]{12}$/;
+/**
+ * A decision id: "dc_" and 12 characters, minted by the bridge; an ask's id is "ak_" and 12 characters
+ * (Asks, 2026-11-22). Every place that tells a Decision id from a WalkyTalky message id (`wt_`) takes both.
+ */
+export const HILL_ID_RE = /^(?:dc|ak)_[a-z0-9]{12}$/;
+/** An ask's id: "ak_" and 12 characters, minted by the bridge for a post from `collie walky ask`. */
+export const HILL_ASK_ID_RE = /^ak_[a-z0-9]{12}$/;
 /** The node name a decision has in an answer request: "hill/<decision id>". */
 export const HILL_NODE_PREFIX = "hill/";
 
@@ -63,6 +76,44 @@ export const HILL_OPEN_MAX = 20;
 export const HILL_NOW_MAX = 3;
 /** How many closed decisions the list serves, newest first. */
 export const HILL_CLOSED_SERVED = 20;
+
+// ── ASKS (2026-11-22): the limits of a post from `collie walky ask`. The Hill's own limits above stay
+// for every other Decision; an ask is checked against these instead.
+
+/** The question (`title`), in characters. It ends with `?`. */
+export const HILL_ASK_QUESTION_MAX = 90;
+/** The fact that decides it (`summary`), in characters. */
+export const HILL_ASK_FACT_MAX = 240;
+/** The background (`body`), Markdown, in characters. */
+export const HILL_ASK_BODY_MAX = 20_000;
+/** An ask with options has 2 to 5 of them; a `--words` ask has none. */
+export const HILL_ASK_OPTIONS_MIN = 2;
+export const HILL_ASK_OPTIONS_MAX = 5;
+/** An option's label, in characters. Never a bare word of {@link HILL_ASK_BARE_LABELS}. */
+export const HILL_ASK_LABEL_MAX = 60;
+/** What an option does (its `detail`, required on an ask), in characters. */
+export const HILL_ASK_DOES_MAX = 300;
+/** The reason for the recommendation, in characters. */
+export const HILL_ASK_WHY_MAX = 200;
+/** Linked files one ask may carry. */
+export const HILL_ASK_FILES_MAX = 10;
+/** The longest path `--file` may name, in UTF-8 bytes. */
+export const HILL_ASK_FILE_PATH_MAX = 4096;
+/** A linked file's `#heading`, in characters. */
+export const HILL_ASK_HEADING_MAX = 120;
+/** Open asks one session may hold at once. The machine and total caps of the Hill stay beside it. */
+export const HILL_ASK_OPEN_MAX = 5;
+/** The agent's reason on a take back (`collie walky cancel <id> --because`), in characters. */
+export const HILL_ASK_BECAUSE_MAX = 200;
+/** Labels an ask's option may not be, compared lowercase with a trailing period dropped: they say nothing. */
+export const HILL_ASK_BARE_LABELS: readonly string[] = ["yes", "no", "ok", "cancel"];
+/** The answers one `POST /api/hill/answers` may carry: one Send per session, at most its open asks. */
+export const HILL_ANSWERS_MAX = HILL_ASK_OPEN_MAX;
+/**
+ * The longest message one Send may type, in characters (code points): a WalkyTalky message's body
+ * (bridge/walky/types.ts `WALKY_BODY_MAX`; bridge/hill/answers.test.ts holds the two equal).
+ */
+export const HILL_ANSWERS_MESSAGE_MAX = 4000;
 
 /** Images one decision may carry. */
 export const HILL_MEDIA_MAX = 4;
@@ -141,6 +192,30 @@ export type RightsClosed = keyof typeof RIGHTS_CLOSED;
  * says it in its own words, never "Withdrawn by the poster". The name stays for its callers.
  */
 export const HILL_ANSWERED_IN_SESSION = "your person wrote in the session";
+
+/** The closed reason of a Decision its poster took back (`collie hill withdraw`, `collie walky cancel`). */
+export const HILL_BY_THE_POSTER = "by the poster";
+/**
+ * The closed reason of an ask the agent closed with `collie walky cancel <id> --answered`: the person gave
+ * the answer in the session itself (Asks, 2026-11-22). Its own reason, state `withdrawn`, so the phone says
+ * "answered in the session" and never "taken back". Not {@link HILL_ANSWERED_IN_SESSION}, which Collie
+ * sets when it only saw the person write.
+ */
+export const HILL_ASK_ANSWERED_HERE = "answered in the session";
+/** The prefix of an ask's closed reason when the agent gave a reason for its take back. */
+const BECAUSE_PREFIX = `${HILL_BY_THE_POSTER}: `;
+
+/** The closed reason of a take back: {@link HILL_BY_THE_POSTER}, with the agent's reason after it when it gave one. */
+export function askTakenBack(because: string | null): string {
+  return because === null || because === "" ? HILL_BY_THE_POSTER : `${BECAUSE_PREFIX}${because}`;
+}
+
+/** The agent's reason inside a take back's closed reason (`--because`), or null when it gave none. */
+export function askTakenBackBecause(closedReason: string | null): string | null {
+  if (closedReason === null || !closedReason.startsWith(BECAUSE_PREFIX)) return null;
+  const because = closedReason.slice(BECAUSE_PREFIX.length);
+  return because === "" ? null : because;
+}
 export const RIGHTS_CLOSED_KEYS: readonly RightsClosed[] = ["approved", "off", "removed", "moved"];
 /** The id inside a Collie Decision's `ref`: a trick id for `version`. */
 export const HILL_COLLIE_REF_ID_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
@@ -248,6 +323,39 @@ export interface HillMedia {
   height: number | null;
   /** At most {@link HILL_MEDIA_CAPTION_MAX} characters, cleaned like every text field. */
   caption?: string;
+}
+
+/** One linked file of an ask: a pointer, never a copy. The bridge never reads, copies or serves its content. */
+export interface HillAskFile {
+  /** Relative to the ask's `root`, `/`-separated, as the Files routes take it in `?path=`. */
+  path: string;
+  /** `path#heading` as the agent gave it: at most {@link HILL_ASK_HEADING_MAX} characters. Stored, never used to read. */
+  heading?: string;
+  /** `path:line` as the agent gave it: a positive integer. Stored, never used to read. */
+  line?: number;
+}
+
+/** What makes a Decision an ask (`collie walky ask`, 2026-11-22). */
+export interface HillAsk {
+  /** The ask takes its answer in words and has no options. */
+  words: boolean;
+  /** Linked files: a pointer, never a copy. `path` is relative to `root`. At most {@link HILL_ASK_FILES_MAX}. */
+  files: HillAskFile[];
+  /**
+   * What the phone needs to open a linked file in Files: the PANE ID of the poster's pane at post time, as
+   * `GET /api/pane/<pane id>/files?path=<path>` takes it. The paths hang under that pane's Files root (its
+   * workspace root as the pane sees it, else its own bounded folder), the same root the bridge measured
+   * them against. Null when the pane had no Files root, and on an ask a crew member forwarded (the lead
+   * cannot see the member's disk). The phone adds `?host=<from.memberId>` for a crew member's pane.
+   */
+  root: string | null;
+  /** Part B fills this: ms of the agent's last keep. Absent until then. */
+  confirmedAt?: number;
+}
+
+/** Whether a Decision is an ask. */
+export function isAsk(decision: Pick<HillDecision, "ask">): decision is Pick<HillDecision, "ask"> & { ask: HillAsk } {
+  return decision.ask !== undefined;
 }
 
 /** A decision as the bridge stores it and serves it (wire version 1). */
@@ -389,6 +497,11 @@ export interface HillDecision {
    * fresh cards of its priority, and it stays open and answerable.
    */
   spokeAfter?: number;
+  /**
+   * Present on an ask (`collie walky ask`); absent on every other Decision. An ask is stored with priority
+   * `today` and no expiry, never pushes, and never gets `spokeAfter`.
+   */
+  ask?: HillAsk;
 }
 
 /**
@@ -459,6 +572,19 @@ export interface HillImageInput {
   caption?: string;
 }
 
+/** One `--file` as the CLI sends it: the absolute real path it resolved, and the place as the agent gave it. */
+export interface HillAskFileInput {
+  path: string;
+  heading?: string;
+  line?: number;
+}
+
+/** What a post from `collie walky ask` adds to the post's fields. */
+export interface HillAskInput {
+  words: boolean;
+  files: HillAskFileInput[];
+}
+
 /** The fields an agent sends to post a decision. */
 export interface HillPostInput {
   requestId: string;
@@ -480,6 +606,8 @@ export interface HillPostInput {
   view?: View;
   /** The cards of a group, instead of `view`: Collie's own Decision only (`HillService.postCollie`). */
   group?: { decline: string; parts: View[] };
+  /** Present on a post from `collie walky ask`: the post is an ask, checked against the `HILL_ASK_*` limits. */
+  ask?: HillAskInput;
 }
 
 /** Why the bridge refuses a post. */
@@ -505,8 +633,10 @@ export type HillRefusalCode =
   | "lead_unreachable"
   /** A person's verb (the crew state, Clear of the cards answered in the session) asked from an agent's pane (1.29.0). */
   | "person_only"
-  /** The crew state asked of a member whose lead runs a release too old to say it (1.29.0). */
-  | "lead_too_old";
+  /** The crew state asked of a member whose lead runs a release too old to say it (1.29.0); an ask forwarded to a lead that does not know asks. */
+  | "lead_too_old"
+  /** An ask's `--file` that names no file the Files view would open under the pane's root (Asks). */
+  | "bad_file";
 
 /** The node name of a decision: "hill/<id>". */
 export function hillNode(id: string): string {
@@ -585,3 +715,74 @@ export function crewStateTellLine(state: HillCrewState): string {
 export const HILL_TELL_MAX = 20;
 /** A session that posted a Decision this long ago or less is told, even when that Decision closed. */
 export const HILL_TELL_RECENT_MS = 60 * 60 * 1000;
+
+// ── ONE SEND PER SESSION (Asks, 2026-11-22): `POST /api/hill/answers` ───────────────────────────────
+// The same gate as `POST /api/hill/answer` (a paired device with the write right). The bridge claims each
+// ask in the answer lane, closes each as answered with its own receipt, and types ONE WalkyTalky message
+// from the operator into the session (answers-message.ts `answersMessage`, which the phone shows first).
+
+/** One answer of a Send: an open ask's id, and `intent` one of its options, `more-context`, or `answer` for a `--words` ask. */
+export interface HillAnswersEntry {
+  id: string;
+  intent: string;
+  /** The note (optional on every answer), or the words of a `--words` ask (required there). */
+  text?: string | null;
+}
+
+/** What the phone sends for one Send: 1 to {@link HILL_ANSWERS_MAX} answers, all to asks of one session. */
+export interface HillAnswersRequest {
+  /** A UUID the phone minted. A repeat answers with the stored result and runs nothing. */
+  rid: string;
+  answers: HillAnswersEntry[];
+}
+
+/** What one ask of a Send came to: `ok` (closed as answered), or `gone` (it closed before the Send) and why. */
+export interface HillAnswersItem {
+  id: string;
+  code: "ok" | "gone";
+  /** Plain words for a `gone` one, for example "the decision is withdrawn"; null for `ok`. */
+  reason: string | null;
+  /** The ask's state after this Send. */
+  state: HillState | null;
+}
+
+/** The 200 answer of `POST /api/hill/answers`. */
+export interface HillAnswersResult {
+  rid: string;
+  /** One entry per answer the request named, in its order. */
+  items: HillAnswersItem[];
+  /** What walky reported of the one message; `none` when every ask had closed and nothing was typed. */
+  delivery: "typed" | "held" | "unknown" | "none";
+  /** Set when the typed message's write was not confirmed (see `HillDecision.answer.unconfirmed`). */
+  unconfirmed?: true;
+  at: number;
+}
+
+/** Why a whole Send was refused: nothing closed and nothing typed. */
+export type HillAnswersRefusalCode =
+  /** The message would be longer than a WalkyTalky message may be; `over` says by how many characters. */
+  | "too_long"
+  /** The answers name asks of more than one session (sender address). */
+  | "mixed_sessions"
+  /** An id that is not an ask this bridge holds; `id` names it. */
+  | "not_an_ask"
+  /** An answer this ask does not take (not one of its options, text missing on a `--words` ask); `id` names it. */
+  | "bad_answer"
+  /** The session's machine is not answering now (a crew member); `machine` names it. */
+  | "not_answering"
+  /** WalkyTalky refused to type the message now (a rate limit, the pane busy); the asks stay open. */
+  | "not_typed"
+  /** The `rid` was used for another Send. */
+  | "rid_reused";
+
+/** The 409 body of a refused Send. */
+export interface HillAnswersRefusal {
+  code: HillAnswersRefusalCode;
+  error: string;
+  /** On `too_long`: how many characters over {@link HILL_ANSWERS_MESSAGE_MAX}. */
+  over?: number;
+  /** On `not_an_ask` and `bad_answer`: the id. */
+  id?: string;
+  /** On `not_answering`: the machine's name. */
+  machine?: string;
+}
