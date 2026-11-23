@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { join } from "node:path";
 
 import type { JsonValue } from "../json.ts";
+import { asJsonObject } from "../../web/src/lib/json.ts";
 import { MANIFEST_TRIGGERS, parseManifest, RULES_MAX_BYTES, rulesTextProblems, type TrickManifest, type Refusal } from "../../web/src/lib/tricks/schema.ts";
 import { CONFIG_FILE, diskTrickFs, hashCodeEntries, walkFingerprint, walkTrickCode, type FsStat, type TrickFs } from "./code-hash.ts";
 import { ORIGIN_FILE, readOrigin, readProposalOrigin, type ProposalOrigin, type TrickOrigin } from "./origin.ts";
@@ -78,6 +79,49 @@ export function readManifestText(text: string | null, id: string): ManifestRead 
   }
   const parsed = parseManifest(doc, { folder: id, triggers: MANIFEST_TRIGGERS });
   return parsed.manifest === undefined ? { refusals: parsed.refusals } : { manifest: parsed.manifest, refusals: parsed.refusals };
+}
+
+// THE EARLIER KEY NAME, FOR ONE COMPARISON ONLY (ADR 0179). This build refuses `decides` (it is `asks` now), and
+// so it refuses the manifest of a copy a person approved under the build before. The rights that copy holds
+// are still what the person said yes to, so the "new version" card compares the new version's rights with
+// them: {@link readEarlierManifest} reads such a copy with `decides = "reply"` taken as `asks = "reply"`, and
+// nothing else mapped. Its manifest never runs, never stands in a row, and never lets `auto` take a version
+// (service.ts `notePending` reads the strict manifest for that). A manifest that still does not read is none.
+
+/** Whether a refusal is the one of the earlier key `decides` (schema.ts `DECIDES_IS_ASKS`). */
+export function isEarlierKeyRefusal(refusal: Pick<Refusal, "code" | "path">): boolean {
+  return refusal.code === "unknown-key" && refusal.path === "/decides";
+}
+
+/**
+ * The manifest of the folder `dir` as the build before the rename read it, for comparing its rights only, or
+ * undefined. Only for a folder whose strict read (`strict`, its scan's refusals) failed on the key `decides`:
+ * the text must say `decides = "reply"` and no `asks`, it must parse whole once that key is named `asks`, and
+ * every other refusal of the strict read must be one the earlier read has too (so a refused `config.toml`, a
+ * code walk that failed or a refused rules file still reads as none). Read the hardened way, as the strict read.
+ */
+export async function readEarlierManifest(fs: TrickFs, dir: string, id: string, strict: readonly Refusal[]): Promise<TrickManifest | undefined> {
+  if (!strict.some(isEarlierKeyRefusal)) return undefined;
+  const read = await readSmallFile(fs, dir, MANIFEST_FILE);
+  if (read.kind !== "bytes") return undefined;
+  let doc: JsonValue;
+  try {
+    // SAFETY: as in readManifestText: a parsed TOML document, read only through `parseManifest`.
+    doc = Bun.TOML.parse(new TextDecoder().decode(read.bytes)) as JsonValue;
+  } catch {
+    return undefined;
+  }
+  const obj = asJsonObject(doc);
+  if (obj === undefined || obj.decides !== "reply" || Object.hasOwn(obj, "asks")) return undefined;
+  const { decides: _earlier, ...rest } = obj;
+  const parsed = parseManifest({ ...rest, asks: "reply" }, { folder: id, triggers: MANIFEST_TRIGGERS });
+  if (parsed.manifest === undefined) return undefined;
+  const kept = (refusal: Refusal) => parsed.refusals.some((own) => own.code === refusal.code && own.path === refusal.path);
+  if (!strict.every((refusal) => isEarlierKeyRefusal(refusal) || kept(refusal))) return undefined;
+  const name = parsed.manifest.rules;
+  if (name === undefined) return parsed.manifest;
+  const rules = await readRulesFile(fs, dir, name);
+  return rules.ok ? { ...parsed.manifest, rulesText: rules.text, rulesSha256: rules.sha256 } : undefined;
 }
 
 /** A small file read the hardened way: the bytes, absent (null), or a refusal. */
