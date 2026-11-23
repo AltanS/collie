@@ -42,9 +42,9 @@ local:
                                     none (one would hide Claude Code's footer
                                     hints), so the phone shows the context as a
                                     token count
-  ✓        ask-check-claude         installed: at the end of a turn an agent
-                                    with open asks sees them once; with none it
-                                    prints nothing
+  ✓        ask-reminder-claude      installed: an agent with open asks gets them
+                                    next to each prompt and after a compaction;
+                                    with none it prints nothing
   skipped: beacons                  no agent has written one yet — the emitter
                                     is installed, and a beacon appears at an
                                     agent's first hook event → start (or prompt)
@@ -180,9 +180,9 @@ local:
                                     none (one would hide Claude Code's footer
                                     hints), so the phone shows the context as a
                                     token count
-  ✓        ask-check-claude         installed: at the end of a turn an agent
-                                    with open asks sees them once; with none it
-                                    prints nothing
+  ✓        ask-reminder-claude      installed: an agent with open asks gets them
+                                    next to each prompt and after a compaction;
+                                    with none it prints nothing
   skipped: beacons                  no agent has written one yet — the emitter
                                     is installed, and a beacon appears at an
                                     agent's first hook event → start (or prompt)

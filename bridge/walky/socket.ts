@@ -32,9 +32,11 @@
 //   ask.status { id }                           → { ok, decision }   (as hill.status)
 //   ask.cancel { id, answered?, because? }      → { ok, decision }   (withdrawn: "answered in the session", or
 //                                                                     "by the poster[: <reason>]")
-//   ask.keep   { ids }                          → { ok, decisions }  (.adr/0177: each `ask.confirmedAt` is now)
-//   ask.check  {}                               → { ok, check: "check", asks: [{ id, title, at }] } | { ok, check: "none" }
-//                                                                    (.adr/0177: `collie beacon check`; never a refusal)
+//   ask.cancel { ids: [1 to 5], answered?, because? } → { ok, results: [{ id, ok, decision } | { id, ok: false, error }] }
+//                                                                    (one result per id, in order; one bad id stops none)
+//   ask.remind { event: "prompt", promptHash, at } | { event: "start", source }
+//                                               → { ok, remind: "full" | "short", asks: [{ id, title }] } | { ok, remind: "none" }
+//                                                                    (.adr/0178: `collie beacon asks`; never a refusal)
 // A trick handed to the lead (crew slice 8), answered only by a bridge built with it:
 //   trick.propose { requestId, files }        → { ok, kind, id, hash, decision, replaced } | { ok: false, error, code, propose: true }
 //     From an agent's pane the proposer is that session; from a bare shell or with no markers, a terminal.
@@ -73,7 +75,7 @@ import type { BeaconMarker } from "../beacon/types.ts";
 import { HOST, type Host } from "../host.ts";
 import type { HillCrewState, HillCrewStateView, HillDecision, HillRefusalCode } from "../../web/src/lib/hill/wire.ts";
 import type { HillService } from "../hill/service.ts";
-import type { AskCheckItem } from "../hill/check.ts";
+import type { AskRemindItem } from "../hill/remind.ts";
 import type { LocalProposer } from "../tricks/propose-door.ts";
 import type { ProposeAnswer } from "../tricks/proposals.ts";
 import { PROPOSE_TOO_MANY_PARTS, proposalParseable, type ProposeRefusalCode } from "../tricks/propose-wire.ts";
@@ -108,7 +110,7 @@ export type ViewSocket = Pick<AgentViewService, "start" | "show" | "clear" | "st
  * What the socket needs of the hill (M96). Absent: the bridge answers the four operations as unknown. The
  * `ask` calls answer from this bridge, or on a crew member from its lead (CREW_PROTOCOL §22).
  */
-export type HillSocket = Pick<HillService, "agentSender" | "postFields" | "askStatus" | "askWithdraw" | "askList" | "clear" | "askCrewState" | "setCrewState" | "clearSpoken" | "askPost" | "askOpen" | "askCancel" | "askKeep" | "askCheck">;
+export type HillSocket = Pick<HillService, "agentSender" | "postFields" | "askStatus" | "askWithdraw" | "askList" | "clear" | "askCrewState" | "setCrewState" | "clearSpoken" | "askPost" | "askOpen" | "askCancel" | "askRemind">;
 
 /** The socket of one state dir. */
 export function walkySocketPath(stateDir: string): string {
@@ -200,9 +202,11 @@ export type WalkyAnswer =
   | { readonly ok: true; readonly decisions: readonly HillDecision[] }
   | { readonly ok: true; readonly crewState: HillCrewStateView }
   | { readonly ok: true; readonly cleared: number }
-  // The check at the end of a turn (.adr/0177).
-  | { readonly ok: true; readonly check: "check"; readonly asks: readonly AskCheckItem[] }
-  | { readonly ok: true; readonly check: "none" }
+  // A cancel of several asks (Asks build 2): one result per id.
+  | { readonly ok: true; readonly results: readonly AskCancelResult[] }
+  // The reminder that rides on the prompt (.adr/0178).
+  | { readonly ok: true; readonly remind: "full" | "short"; readonly asks: readonly AskRemindItem[] }
+  | { readonly ok: true; readonly remind: "none" }
   // A trick proposal (crew slice 8).
   | { readonly ok: true; readonly kind: "proposal" | "version"; readonly id: string; readonly hash: string; readonly decision: string | null; readonly replaced: string | null }
   | { readonly ok: false; readonly error: string; readonly code: ProposeRefusalCode; readonly propose: true }
@@ -323,10 +327,9 @@ export async function answerRequest(
     case "ask.list":
     case "ask.status":
     case "ask.cancel":
-    case "ask.keep":
       return await answerHill(service, request, pane, hill);
-    case "ask.check":
-      return answerCheck(service, pane, hill);
+    case "ask.remind":
+      return answerRemind(service, request, pane, hill);
     case "hill.clear":
       // Answered above, before any pane is placed; kept so the switch stays exhaustive.
       return hill === undefined ? { ok: false, error: unknownOp(request.op) } : answerClear(hill);
@@ -500,7 +503,7 @@ async function answerSpokenClear(service: WalkyService, markers: WalkyRequest["m
  */
 async function answerHill(
   service: WalkyService,
-  request: Extract<WalkyRequest, { op: "hill.post" | "hill.status" | "hill.withdraw" | "hill.list" | "ask.post" | "ask.list" | "ask.status" | "ask.cancel" | "ask.keep" }>,
+  request: Extract<WalkyRequest, { op: "hill.post" | "hill.status" | "hill.withdraw" | "hill.list" | "ask.post" | "ask.list" | "ask.status" | "ask.cancel" }>,
   pane: WalkyPane | null,
   hill: HillSocket | undefined,
 ): Promise<WalkyAnswer> {
@@ -517,44 +520,52 @@ async function answerHill(
       if (answer.ok) return answer;
       return answer.code === null ? { ok: false, error: answer.error, hill: true } : { ok: false, error: answer.error, hill: true, code: answer.code };
     }
+    case "ask.cancel": {
+      const how = { answered: request.answered, because: request.because };
+      if (request.single) return oneAnswer(await hill.askCancel(sender, request.ids[0]!, how));
+      // Several ids: one result each, in order. The same id twice is closed once and then says it is closed.
+      const results: AskCancelResult[] = [];
+      for (const id of request.ids) {
+        const answer = await hill.askCancel(sender, id, how);
+        results.push(answer.ok ? { id, ok: true, decision: answer.decision } : { id, ok: false, error: answer.error });
+      }
+      return { ok: true, results };
+    }
     case "hill.status":
     case "hill.withdraw":
     case "ask.status":
-    case "ask.cancel": {
-      const answer =
-        request.op === "hill.status" || request.op === "ask.status"
-          ? await hill.askStatus(sender, request.id)
-          : request.op === "ask.cancel"
-            ? await hill.askCancel(sender, request.id, { answered: request.answered, because: request.because })
-            : await hill.askWithdraw(sender, request.id);
-      if (answer.ok) return answer;
-      return answer.missing ? { ok: false, error: "not here", hill: true, missing: answer.error } : { ok: false, error: answer.error, hill: true };
-    }
+      return oneAnswer(request.op === "hill.withdraw" ? await hill.askWithdraw(sender, request.id) : await hill.askStatus(sender, request.id));
     case "hill.list":
     case "ask.list": {
       const answer = request.op === "hill.list" ? await hill.askList(sender) : await hill.askOpen(sender);
       return answer.ok ? { ok: true, decisions: answer.decisions } : { ok: false, error: answer.error, hill: true };
     }
-    case "ask.keep": {
-      const answer = hill.askKeep(sender, request.ids);
-      return answer.ok ? { ok: true, decisions: answer.decisions } : { ok: false, error: answer.error, hill: true };
-    }
   }
 }
 
+/** One ask cancelled of several (`ask.cancel` with `ids`). */
+export type AskCancelResult = { readonly id: string; readonly ok: true; readonly decision: HillDecision } | { readonly id: string; readonly ok: false; readonly error: string };
+
+/** One decision's answer on the socket: the decision, `not here` with the sentence, or the refusal. */
+function oneAnswer(answer: Awaited<ReturnType<HillSocket["askStatus"]>>): WalkyAnswer {
+  if (answer.ok) return answer;
+  return answer.missing ? { ok: false, error: "not here", hill: true, missing: answer.error } : { ok: false, error: answer.error, hill: true };
+}
+
 /**
- * `ask.check` (.adr/0177), asked by `collie beacon check` at the end of a turn, for the session of the pane
- * the markers placed. It never refuses: "none" is the answer to every case but one, so the hook prints
- * nothing. A bridge whose markers name no pane here has answered `not here` above, and the hook asks the next.
+ * `ask.remind` (.adr/0178), asked by `collie beacon asks` from a prompt or a session start, for the session
+ * of the pane the markers placed. It never refuses: "none" is the answer to every case but a list, so the
+ * hook prints nothing. A pane that is not an agent's, or no pane here, is "none" too: the hook then asks the
+ * next bridge on the machine.
  */
-function answerCheck(service: WalkyService, pane: WalkyPane | null, hill: HillSocket | undefined): WalkyAnswer {
-  if (hill === undefined) return { ok: false, error: unknownOp("ask.check") };
+function answerRemind(service: WalkyService, request: Extract<WalkyRequest, { op: "ask.remind" }>, pane: WalkyPane | null, hill: HillSocket | undefined): WalkyAnswer {
+  if (hill === undefined) return { ok: false, error: unknownOp("ask.remind") };
   try {
-    if (pane === null || !pane.agent) return { ok: true, check: "none" };
-    const decided = hill.askCheck(hill.agentSender(pane, service.addressOf(pane.paneId, pane.instance)), { session: pane.session, paneId: pane.paneId });
-    return decided.kind === "check" ? { ok: true, check: "check", asks: decided.asks } : { ok: true, check: "none" };
+    if (pane === null || !pane.agent) return { ok: true, remind: "none" };
+    const answer = hill.askRemind(hill.agentSender(pane, service.addressOf(pane.paneId, pane.instance)), { session: pane.session, paneId: pane.paneId }, request.event);
+    return answer.kind === "list" ? { ok: true, remind: answer.form, asks: answer.asks } : { ok: true, remind: "none" };
   } catch {
-    return { ok: true, check: "none" };
+    return { ok: true, remind: "none" };
   }
 }
 

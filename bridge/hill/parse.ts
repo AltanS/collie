@@ -94,18 +94,20 @@ function isState(value: string | undefined): value is HillState {
   return HILL_STATES.some((state) => state === value);
 }
 
-/** One option as posted: `{ intent, label, detail?, confirm? }`, every part a string. */
+/** One option as posted: `{ intent, label, detail?, cost?, confirm? }`, every part a string. */
 function readOption(value: JsonValue | undefined): HillOption | null {
   const row = asJsonObject(value);
   if (row === undefined) return null;
   const intent = asJsonString(row.intent);
   const label = asJsonString(row.label);
   const detail = optionalText(row, "detail");
+  const cost = optionalText(row, "cost");
   const confirm = optionalText(row, "confirm");
-  if (intent === undefined || label === undefined || label.length > HILL_RAW_MAX || detail === undefined || confirm === undefined) return null;
+  if (intent === undefined || label === undefined || label.length > HILL_RAW_MAX || detail === undefined || cost === undefined || confirm === undefined) return null;
   const base: HillOption = { intent, label };
   const withDetail = detail === null ? base : { ...base, detail };
-  return confirm === null ? withDetail : { ...withDetail, confirm };
+  const withCost = cost === null ? withDetail : { ...withDetail, cost };
+  return confirm === null ? withCost : { ...withCost, confirm };
 }
 
 /** One image as posted: `{ path, caption? }`. What the path names is the service's to check. */

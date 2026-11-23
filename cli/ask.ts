@@ -6,7 +6,8 @@ import { stageImagesForBridge } from "./image-stage.ts";
 import { EXIT } from "./io.ts";
 import { bodyOf, decisionsOf, failed, imagePathOf, parseImageArg, request, statusLines, windows, type HillAnswer, type HillDeps } from "./hill.ts";
 import { shown } from "./walky.ts";
-import type { JsonObject } from "../bridge/json.ts";
+import type { JsonObject, JsonValue } from "../bridge/json.ts";
+import { asJsonObject, asJsonString } from "../web/src/lib/json.ts";
 import { HILL_POST_ASK_MS } from "../bridge/hill/crew.ts";
 import { readDecision } from "../bridge/hill/parse.ts";
 import { isBareLabel } from "../bridge/hill/ask-rules.ts";
@@ -14,13 +15,14 @@ import { isRequestId } from "../bridge/worktree-receipts.ts";
 import {
   HILL_ASK_BECAUSE_MAX,
   HILL_ASK_BODY_MAX,
+  HILL_ASK_CANCEL_MAX,
+  HILL_ASK_COST_MAX,
   HILL_ASK_DOES_MAX,
   HILL_ASK_FACT_MAX,
   HILL_ASK_FILE_PATH_MAX,
   HILL_ASK_FILES_MAX,
   HILL_ASK_HEADING_MAX,
   HILL_ASK_LABEL_MAX,
-  HILL_ASK_OPEN_MAX,
   HILL_ASK_OPTIONS_MAX,
   HILL_ASK_OPTIONS_MIN,
   HILL_ASK_QUESTION_MAX,
@@ -28,6 +30,8 @@ import {
   HILL_ID_RE,
   HILL_MEDIA_MAX,
   HILL_MORE_CONTEXT,
+  HILL_MORE_CONTEXT_LABEL,
+  HILL_OWN_ANSWER_LABEL,
   crewStateLine,
   isHillCrewState,
   isHillOptionIntent,
@@ -43,40 +47,56 @@ import {
 // says the same refusals; the bridge checks them again (bridge/hill/ask-rules.ts), and checks the linked
 // files under the Files rules, which only it can. A refusal names the flag and the limit.
 
+/**
+ * How an ask stays open and how it closes (Asks build 2, the reminder that rides on the prompt): the same
+ * words in `--help` and in the skill's Asks block (cli/skills/walky-talky.md).
+ */
+export const ASK_OPEN_RULE: readonly string[] = [
+  "An ask stays open until your operator answers it or you close it. Never confirm an ask: silence keeps it.",
+  "When your operator answers it in the session, or your work settles it, close it with your next command:",
+  '  collie walky cancel <id>... --answered | --because "<reason>".  One that changed: --replaces <id>.',
+];
+
 /** `collie walky ask --help`: the flags and the seven rules (spec 2.2). At most 1,500 bytes (cli/ask.test.ts holds it). */
 export const ASK_HELP: readonly string[] = [
-  'usage: collie walky ask "<question>" --fact <text> --option <id>=<label> --does <id>=<text> ... [flags]',
-  "One open question to your operator, who reads it later with no memory of your session.",
+  'usage: collie walky ask "<question>" --option <id>=<label> ... [flags]',
+  "One open question to your operator, who reads it later without your session.",
   '  "<question>"           The decision. At most 90 characters, ends with "?".',
-  "  --fact <text>          The fact that decides it. At most 240.",
-  "  --option <id>=<label>  2 to 5. The label starts with a verb. At most 60.",
-  "  --does <id>=<text>     Required per option: what it does. At most 300.",
-  "  --recommend <id> --why <reason>   Both or none.",
-  "  --body <file.md>       Background, Markdown, at most 20000. Or text after --.",
-  "  --file <path>[#heading|:line]   A workspace file to open from the ask. At most 10.",
-  "  --image <path>=<caption>  --words (answer in words, no options)  --replaces <id>",
-  "  --dry-run (print the card, send nothing)  --request-id <uuid>",
+  "  --option <id>=<label>  2 to 5, label starts with a verb, at most 60. Or --words.",
+  "Optional:",
+  "  --fact <text>  What decides it (240).  --does/--cost <id>=<text>  Then, cost (300).",
+  "  --recommend <id> --why <reason>  Both or none (200).",
+  "  --body <file.md> or text after --  Background, Markdown.",
+  "  --file <path>[#heading|:line] (10)  --image <path>=<caption>  --replaces <id>  --dry-run",
   "Rules:",
   "1. One ask holds one decision. A second question in the body is a second ask.",
-  "2. Write for a reader who has not seen your session. Explain each name a stranger would not know.",
+  "2. Write for a stranger to your session. Explain each name they would not know.",
   "3. The body adds what you found and what can go wrong. Do not repeat the options in it.",
   "4. Send the ask when you meet the decision, not as a group at the end of the turn.",
   "5. Put no open question in a file or in your reply. Point to the ask id.",
   "6. Do not wait for the answer. Go on with the work that does not need it.",
   "7. A dialog that blocks a command is not an ask.",
-  "collie walky asks | status <id> | keep <id>... | cancel <id> [--answered | --because <reason>]",
+  ...ASK_OPEN_RULE,
+  "collie walky asks | status <id>",
 ];
+
+/** The line `walky ask` prints after a posted ask's card: how it stays open, and the way to close it. */
+export function askOpenLine(id: string): string {
+  return `Open until answered. Settled first? collie walky cancel ${id} [--answered]`;
+}
 
 /** What the result says when an ask has no background. */
 export const ASK_NO_BACKGROUND = "No background. Your operator gets only the fact.";
+/** What the result says when an ask has no fact and no background. */
+export const ASK_NO_FACT_NO_BACKGROUND = "No fact and no background. Your operator gets only the question and its answers.";
 
 /** What the CLI says on a dry run, before the card. */
 export const ASK_DRY_RUN = "dry run: nothing was sent. Your operator would see:";
 
 /** The flags that take a value. */
-const VALUE_FLAGS = new Set(["--fact", "--option", "--does", "--recommend", "--why", "--body", "--file", "--image", "--replaces", "--request-id"]);
+const VALUE_FLAGS = new Set(["--fact", "--option", "--does", "--cost", "--recommend", "--why", "--body", "--file", "--image", "--replaces", "--request-id"]);
 /** The flags that may be given more than once. */
-const REPEAT_FLAGS = new Set(["--option", "--does", "--file", "--image"]);
+const REPEAT_FLAGS = new Set(["--option", "--does", "--cost", "--file", "--image"]);
 /** The flags that take no value. */
 const BARE_FLAGS = new Set(["--words", "--dry-run", "--json"]);
 
@@ -84,12 +104,16 @@ const BARE_FLAGS = new Set(["--words", "--dry-run", "--json"]);
 export interface AskOptionArg {
   readonly intent: string;
   readonly label: string;
-  readonly detail: string;
+  /** `--does`, absent when not given. */
+  readonly detail?: string;
+  /** `--cost`, absent when not given. */
+  readonly cost?: string;
 }
 
 /** An `ask`'s arguments, checked as far as the CLI can check them without a file or a bridge. */
 export interface AskArgs {
   readonly question: string;
+  /** `--fact`, or `""` when not given. */
   readonly fact: string;
   readonly options: readonly AskOptionArg[];
   readonly recommends: { readonly intent: string; readonly why: string } | null;
@@ -172,6 +196,23 @@ function readFlags(args: readonly string[]): { readonly values: Map<string, stri
   return { values, bare, positional, inline };
 }
 
+/**
+ * The `--does` or `--cost` lines, one per option at most, each for an id that is an option. An empty text
+ * counts as not given. A refusal names the flag and the id.
+ */
+function optionLines(flag: "--does" | "--cost", raws: readonly string[], labels: ReadonlyMap<string, string>, max: number): Map<string, string> | Refusal {
+  const lines = new Map<string, string>();
+  for (const raw of raws) {
+    const pair = idValue(flag, raw, "text");
+    if ("error" in pair) return pair;
+    if (!labels.has(pair.id)) return { error: `${flag} id "${pair.id}" is not one of the options (${[...labels.keys()].join(", ") || "none"}).` };
+    if (lines.has(pair.id)) return { error: `${flag} is given twice for option ${pair.id}. Give one per option.` };
+    if (chars(pair.value) > max) return { error: `${flag} ${pair.id} text has ${String(chars(pair.value))} characters. The limit is ${String(max)}.` };
+    if (pair.value !== "") lines.set(pair.id, pair.value);
+  }
+  return lines;
+}
+
 /** `ask`'s flags, checked as far as the CLI can without a file or a bridge. A refusal is one line that names the flag. */
 export function parseAskArgs(args: readonly string[]): AskArgs | Refusal {
   const read = readFlags(args);
@@ -184,7 +225,6 @@ export function parseAskArgs(args: readonly string[]): AskArgs | Refusal {
   if (chars(question) > HILL_ASK_QUESTION_MAX) return { error: `the question has ${String(chars(question))} characters. The limit is ${String(HILL_ASK_QUESTION_MAX)}.` };
   if (!question.endsWith("?")) return { error: 'the question must end with "?".' };
   const fact = (one("--fact") ?? "").trim();
-  if (fact === "") return { error: `--fact is required. Give the fact that decides it, at most ${String(HILL_ASK_FACT_MAX)} characters.` };
   if (chars(fact) > HILL_ASK_FACT_MAX) return { error: `--fact has ${String(chars(fact))} characters. The limit is ${String(HILL_ASK_FACT_MAX)}.` };
   const words = bare.has("--words");
   const labels = new Map<string, string>();
@@ -202,16 +242,10 @@ export function parseAskArgs(args: readonly string[]): AskArgs | Refusal {
   if (!words && (labels.size < HILL_ASK_OPTIONS_MIN || labels.size > HILL_ASK_OPTIONS_MAX)) {
     return { error: `--option must be given ${String(HILL_ASK_OPTIONS_MIN)} to ${String(HILL_ASK_OPTIONS_MAX)} times. You gave ${String(labels.size)}. An ask with no options takes --words.` };
   }
-  const does = new Map<string, string>();
-  for (const raw of values.get("--does") ?? []) {
-    const pair = idValue("--does", raw, "text");
-    if ("error" in pair) return pair;
-    if (!labels.has(pair.id)) return { error: `--does id "${pair.id}" is not one of the options (${[...labels.keys()].join(", ") || "none"}).` };
-    if (does.has(pair.id)) return { error: `--does is given twice for option ${pair.id}. Give one per option.` };
-    if (chars(pair.value) > HILL_ASK_DOES_MAX) return { error: `--does ${pair.id} text has ${String(chars(pair.value))} characters. The limit is ${String(HILL_ASK_DOES_MAX)}.` };
-    if (pair.value !== "") does.set(pair.id, pair.value);
-  }
-  for (const id of labels.keys()) if (!does.has(id)) return { error: `--does ${id} is required: a reader with no memory cannot judge a bare label.` };
+  const does = optionLines("--does", values.get("--does") ?? [], labels, HILL_ASK_DOES_MAX);
+  if ("error" in does) return does;
+  const cost = optionLines("--cost", values.get("--cost") ?? [], labels, HILL_ASK_COST_MAX);
+  if ("error" in cost) return cost;
   const recommend = one("--recommend");
   const why = one("--why");
   if ((recommend === null) !== (why === null)) return { error: "--recommend and --why go together. Give both or neither." };
@@ -246,7 +280,16 @@ export function parseAskArgs(args: readonly string[]): AskArgs | Refusal {
   if (replaces !== null && !HILL_ID_RE.test(replaces)) return { error: `--replaces "${replaces}" is not an ask id. An ask id is ak_ and 12 characters.` };
   const requestId = one("--request-id");
   if (requestId !== null && !isRequestId(requestId)) return { error: "--request-id is a UUID, for example 1b4e28ba-2fa1-4d3b-a3f5-ef19b5a7633b." };
-  const options = [...labels].map(([intent, label]): AskOptionArg => ({ intent, label, detail: does.get(intent)! }));
+  const options: AskOptionArg[] = [];
+  for (const [intent, label] of labels) {
+    const detail = does.get(intent);
+    const price = cost.get(intent);
+    // An absent field stays absent: no `detail: undefined` key reaches the wire.
+    if (detail !== undefined && price !== undefined) options.push({ intent, label, detail, cost: price });
+    else if (detail !== undefined) options.push({ intent, label, detail });
+    else if (price !== undefined) options.push({ intent, label, cost: price });
+    else options.push({ intent, label });
+  }
   return { question, fact, options, recommends, bodyPath, inline: read.inline, files, images, words, replaces, dryRun: bare.has("--dry-run"), json: bare.has("--json"), requestId };
 }
 
@@ -314,7 +357,7 @@ function fileWords(file: { readonly path: string; readonly heading?: string; rea
 export interface AskCardFields {
   readonly question: string;
   readonly fact: string;
-  readonly options: readonly { readonly intent: string; readonly label: string; readonly detail?: string }[];
+  readonly options: readonly { readonly intent: string; readonly label: string; readonly detail?: string; readonly cost?: string }[];
   readonly recommends: { readonly intent: string; readonly why: string } | null;
   readonly body: string;
   readonly words: boolean;
@@ -322,17 +365,22 @@ export interface AskCardFields {
   readonly images: number;
 }
 
-/** The card as the operator sees it, as plain text: question, fact, options, the recommendation, the background's first lines, the files. */
+/**
+ * The card as the operator sees it, as plain text: question, fact, options with what each does and costs, the
+ * recommendation, the fixed answers, the background's first lines, the files. Each optional line only when sent.
+ */
 export function askCard(card: AskCardFields): string[] {
-  const lines = [`Question: ${shown(card.question)}`, `Fact: ${shown(card.fact)}`];
+  const lines = [`Question: ${shown(card.question)}`];
+  if (card.fact !== "") lines.push(`Fact: ${shown(card.fact)}`);
   if (card.words) lines.push("Answer: in your operator's own words");
   for (const option of card.options) {
     const mark = card.recommends?.intent === option.intent ? " (recommended)" : "";
     lines.push(`  ${option.intent}: ${shown(option.label)}${mark}`);
-    if (option.detail !== undefined && option.detail !== "") lines.push(`    ${shown(option.detail)}`);
+    if (option.detail !== undefined && option.detail !== "") lines.push(`    Then: ${shown(option.detail)}`);
+    if (option.cost !== undefined && option.cost !== "") lines.push(`    Cost: ${shown(option.cost)}`);
   }
   if (card.recommends !== null) lines.push(`Why: ${shown(card.recommends.why)}`);
-  lines.push(`  ${HILL_MORE_CONTEXT}: I need more context`);
+  lines.push(card.words ? `  ${HILL_MORE_CONTEXT}: ${HILL_MORE_CONTEXT_LABEL}` : `  ${HILL_MORE_CONTEXT}: ${HILL_MORE_CONTEXT_LABEL}  ·  own: ${HILL_OWN_ANSWER_LABEL}`);
   if (card.body !== "") {
     const body = card.body.split("\n");
     lines.push("Background:");
@@ -369,7 +417,12 @@ function askLine(parsed: AskArgs, requestId: string, body: string, files: readon
     title: parsed.question,
     summary: parsed.fact,
     body,
-    options: parsed.options.map((option): JsonObject => ({ intent: option.intent, label: option.label, detail: option.detail })),
+    options: parsed.options.map((option): JsonObject => {
+      const out: JsonObject = { intent: option.intent, label: option.label };
+      if (option.detail !== undefined) out.detail = option.detail;
+      if (option.cost !== undefined) out.cost = option.cost;
+      return out;
+    }),
     text: parsed.words ? "required" : "optional",
     recommends: parsed.recommends === null ? null : { intent: parsed.recommends.intent, why: parsed.recommends.why },
     links: [],
@@ -420,7 +473,7 @@ export async function cmdWalkyAsk(deps: HillDeps, args: readonly string[]): Prom
     if ("error" in resolved) return usage(deps, resolved.error);
     images.push(image.caption === undefined ? { path: resolved.path } : { path: resolved.path, caption: image.caption });
   }
-  const background = body === "" ? [ASK_NO_BACKGROUND] : [];
+  const background = body === "" ? [parsed.fact === "" ? ASK_NO_FACT_NO_BACKGROUND : ASK_NO_BACKGROUND] : [];
   if (parsed.dryRun) {
     deps.io.out(ASK_DRY_RUN);
     for (const line of askCard({ question: parsed.question, fact: parsed.fact, options: parsed.options, recommends: parsed.recommends, body, words: parsed.words, files: files.files, images: images.length })) deps.io.out(line);
@@ -454,6 +507,7 @@ export async function cmdWalkyAsk(deps: HillDeps, args: readonly string[]): Prom
   for (const line of cardOf(decision)) deps.io.out(line);
   for (const line of background) deps.io.out(line);
   if (crew !== null) deps.io.out(crewStateLine(crew));
+  deps.io.out(askOpenLine(decision.id));
   return EXIT.OK;
 }
 
@@ -484,8 +538,8 @@ export function namesAnAsk(args: readonly string[]): boolean {
   return id !== undefined && HILL_ID_RE.test(id);
 }
 
-/** `--because`'s value, the id, and the flags of `cancel` for an ask. */
-function cancelArgs(args: readonly string[]): { readonly id: string; readonly answered: boolean; readonly because: string | null; readonly json: boolean } | Refusal {
+/** `--because`'s value, the 1 to 5 ids, and the flags of `cancel` for an ask. */
+function cancelArgs(args: readonly string[]): { readonly ids: readonly string[]; readonly answered: boolean; readonly because: string | null; readonly json: boolean } | Refusal {
   let because: string | null = null;
   let answered = false;
   let json = false;
@@ -503,34 +557,13 @@ function cancelArgs(args: readonly string[]): { readonly id: string; readonly an
     } else if (arg.startsWith("-")) return { error: `unknown flag ${arg}. See: collie walky ask --help` };
     else ids.push(arg);
   }
-  if (ids.length !== 1 || !HILL_ID_RE.test(ids[0]!)) return { error: "walky cancel takes exactly one ask id (ak_ and 12 characters)." };
+  const unique = [...new Set(ids)];
+  if (unique.length === 0 || unique.length > HILL_ASK_CANCEL_MAX) return { error: `walky cancel takes 1 to ${String(HILL_ASK_CANCEL_MAX)} ask ids (ak_ and 12 characters).` };
+  const bad = unique.find((id) => !HILL_ID_RE.test(id));
+  if (bad !== undefined) return { error: `"${shown(bad)}" is not an ask id. An ask id is ak_ and 12 characters.` };
   if (answered && because !== null) return { error: "--answered and --because do not go together: an ask answered in the session needs no reason." };
   if (because !== null && (because === "" || chars(because) > HILL_ASK_BECAUSE_MAX)) return { error: `--because is 1 to ${String(HILL_ASK_BECAUSE_MAX)} characters.` };
-  return { id: ids[0]!, answered, because, json };
-}
-
-/**
- * `walky keep <id>...` (.adr/0177): the agent says "still true" for one or more of its own open asks, and the
- * bridge marks each confirmed now. Refused, whole, for an id that is not an open ask of this session.
- */
-export async function cmdAskKeep(deps: HillDeps, args: readonly string[]): Promise<number> {
-  const json = args.includes("--json");
-  const ids = args.filter((arg) => arg !== "--json");
-  const flag = ids.find((arg) => arg.startsWith("-"));
-  if (flag !== undefined) return usage(deps, `unknown flag ${flag}. See: collie walky ask --help`);
-  if (ids.length === 0 || ids.length > HILL_ASK_OPEN_MAX) return usage(deps, `walky keep takes 1 to ${String(HILL_ASK_OPEN_MAX)} ask ids (ak_ and 12 characters).`);
-  const bad = ids.find((id) => !HILL_ID_RE.test(id));
-  if (bad !== undefined) return usage(deps, `"${shown(bad)}" is not an ask id. An ask id is ak_ and 12 characters.`);
-  if (windows(deps)) return EXIT.STATE;
-  const answer = await request(deps, { op: "ask.keep", ids: [...new Set(ids)] });
-  if (!answer.ok) return failed(deps, answer);
-  const kept = decisionsOf(answer.body.decisions);
-  if (json) {
-    deps.io.out(JSON.stringify({ decisions: kept }));
-    return EXIT.OK;
-  }
-  for (const ask of kept) deps.io.out(`${ask.id} kept: ${shown(ask.title)}`);
-  return EXIT.OK;
+  return { ids: unique, answered, because, json };
 }
 
 /** `walky status <ak_ or dc_ id>`: the ask's state, and the answer when there is one. */
@@ -542,15 +575,69 @@ export async function cmdAskStatus(deps: HillDeps, args: readonly string[]): Pro
   return printOne(deps, await request(deps, { op: "ask.status", id: rest[0]! }), json);
 }
 
-/** `walky cancel <ak_ or dc_ id> [--answered] [--because <reason>]`: take an ask back. */
+/** One closed ask as `cancel` prints it: its id, its state and reason, its question. */
+export function cancelBlock(decision: HillDecision): string[] {
+  const reason = decision.closedReason === null ? "" : ` (${shown(decision.closedReason)})`;
+  return [`${decision.id} ${decision.state}${reason}`, `  ${shown(decision.title)}`];
+}
+
+/**
+ * `walky cancel <id>... [--answered] [--because <reason>]`: close 1 to 5 asks at once, with one flag for all.
+ * One id goes as `id`, as an older bridge reads it; more go as `ids`, and the bridge answers one result per id,
+ * in order: one bad id does not stop the others. One short block per id; the exit is not 0 when any failed.
+ */
 export async function cmdAskCancel(deps: HillDeps, args: readonly string[]): Promise<number> {
   const parsed = cancelArgs(args);
   if ("error" in parsed) return usage(deps, parsed.error);
   if (windows(deps)) return EXIT.STATE;
-  const line: JsonObject = { op: "ask.cancel", id: parsed.id };
+  const line: JsonObject = parsed.ids.length === 1 ? { op: "ask.cancel", id: parsed.ids[0]! } : { op: "ask.cancel", ids: [...parsed.ids] };
   if (parsed.answered) line.answered = true;
   if (parsed.because !== null) line.because = parsed.because;
-  return printOne(deps, await request(deps, line), parsed.json);
+  const answer = await request(deps, line);
+  if (!answer.ok) return failed(deps, answer);
+  if (parsed.ids.length === 1) {
+    const decision = readDecision(answer.body.decision, { collie: true });
+    if (decision === null) return failed(deps, { ok: false, error: "the bridge answered without a decision", code: null, exit: EXIT.FAIL });
+    if (parsed.json) deps.io.out(JSON.stringify({ decision }));
+    else for (const out of cancelBlock(decision)) deps.io.out(out);
+    return EXIT.OK;
+  }
+  const results = cancelResultsOf(answer.body.results, parsed.ids);
+  if (results === null) return failed(deps, { ok: false, error: "the bridge answered without a result per id", code: null, exit: EXIT.FAIL });
+  if (parsed.json) {
+    deps.io.out(JSON.stringify({ results: results.map((result) => (result.decision === null ? { id: result.id, error: result.error } : { id: result.id, decision: result.decision })) }));
+  } else {
+    for (const result of results) {
+      if (result.decision !== null) for (const out of cancelBlock(result.decision)) deps.io.out(out);
+      else deps.io.err(`ask: ${result.id}: ${shown(result.error)}`);
+    }
+  }
+  return results.every((result) => result.decision !== null) ? EXIT.OK : EXIT.STATE;
+}
+
+/** One id's result of a cancel with several ids. */
+interface CancelResult {
+  readonly id: string;
+  readonly decision: HillDecision | null;
+  readonly error: string;
+}
+
+/** The bridge's results, one per id in the order asked, or null when they do not fit that. */
+function cancelResultsOf(value: JsonValue | undefined, ids: readonly string[]): CancelResult[] | null {
+  if (!Array.isArray(value) || value.length !== ids.length) return null;
+  const out: CancelResult[] = [];
+  for (const [i, entry] of value.entries()) {
+    const row = asJsonObject(entry);
+    if (row === undefined || row.id !== ids[i]) return null;
+    if (row.ok === true) {
+      const decision = readDecision(row.decision, { collie: true });
+      if (decision === null) return null;
+      out.push({ id: ids[i]!, decision, error: "" });
+      continue;
+    }
+    out.push({ id: ids[i]!, decision: null, error: asJsonString(row.error) ?? "failed" });
+  }
+  return out;
 }
 
 function printOne(deps: HillDeps, answer: HillAnswer, json: boolean): number {

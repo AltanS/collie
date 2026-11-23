@@ -242,11 +242,15 @@ describe("the merge", () => {
     expect(hooks.Notification[0].matcher).toBeUndefined();
     // A registration with no matcher writes no `matcher` key at all — not `null`, not `""`.
     expect(Object.keys(hooks.UserPromptSubmit[0])).toEqual(["hooks"]);
-    // The Stop group carries the check at the end of a turn beside the emitter (.adr/0177).
-    expect(hooks.Stop[0].hooks).toEqual([
-      { type: "command", command: COMMAND, timeout: 10 },
-      { type: "command", command: `${OWN} beacon check ${HOOK_MARKER}`, timeout: 10 },
-    ]);
+    // The UserPromptSubmit and SessionStart groups carry the reminder of open asks beside the emitter (.adr/0178).
+    for (const event of ["UserPromptSubmit", "SessionStart"]) {
+      expect(hooks[event][0].hooks).toEqual([
+        { type: "command", command: COMMAND, timeout: 10 },
+        { type: "command", command: `${OWN} beacon asks ${HOOK_MARKER}`, timeout: 3 },
+      ]);
+    }
+    // The Stop group holds the emitter alone: the check at the end of a turn (.adr/0177) is gone.
+    expect(hooks.Stop[0].hooks).toEqual([{ type: "command", command: COMMAND, timeout: 10 }]);
   });
 
   test("never clobbers an unmarked entry, and never reorders one", () => {

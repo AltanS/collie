@@ -25,7 +25,7 @@ import { formatRead, mintWalkyId, OUTCOME_ON_LEAD, readSubject, replyLine, SUBJE
 // bridges may run on one machine: the CLI asks each live one (the hook target registry, as the hold
 // does) until one knows its pane.
 
-export const WALKY_SUBCOMMANDS = ["who", "send", "reply", "inbox", "status", "cancel", "off", "on", "ask", "asks", "keep"] as const;
+export const WALKY_SUBCOMMANDS = ["who", "send", "reply", "inbox", "status", "cancel", "off", "on", "ask", "asks"] as const;
 
 /** How long `send` waits for the receipt to leave `accepted`. */
 export const SEND_WAIT_MS = 15_000;
@@ -548,12 +548,11 @@ const USAGE = {
   reply: "usage: collie walky reply <id> [--subject <words>] [--outside] [text...]   (no text: the body is read from stdin)",
   inbox: "usage: collie walky inbox [<id>] [--all] [--keep] [--json]",
   status: "usage: collie walky status <id> [--json]   (a message, wt_; or an ask, ak_)",
-  cancel: "usage: collie walky cancel <id> [--json]   (a held message you sent, wt_: it stays in the inbox, not typed; an ask, ak_: taken back, with --answered or --because <reason>)",
+  cancel: "usage: collie walky cancel <id> [--json]   (a held message you sent, wt_: it stays in the inbox, not typed; 1 to 5 asks, ak_: closed, with --answered or --because <reason>)",
   off: "usage: collie walky off [--json]   (this session: other agents cannot message it, and it cannot message them)",
   on: "usage: collie walky on [--json]   (this session: agents can message it again)",
-  ask: 'usage: collie walky ask "<question>" --fact <text> --option <id>=<label> --does <id>=<text> ...   (one open question to your operator; rules: collie walky ask --help)',
+  ask: 'usage: collie walky ask "<question>" --option <id>=<label> ... [--fact <text>] [--does <id>=<text>] [--cost <id>=<text>]   (one open question to your operator; rules: collie walky ask --help)',
   asks: "usage: collie walky asks [--json]   (the open asks of this session)",
-  keep: "usage: collie walky keep <id>... [--json]   (open asks of this session, ak_, that are still true: marks them confirmed now)",
 } as const satisfies Record<(typeof WALKY_SUBCOMMANDS)[number], string>;
 
 /** The body: the words on the command line, or stdin when there are none. */

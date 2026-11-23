@@ -456,7 +456,7 @@ export function unwrapPrompt(prompt: string): string {
  * worth nothing to a reader without it. No salt (the Send Protocol never ran) means no hash. The
  * prompt text itself is never written anywhere.
  */
-export function promptHashOf(deps: BeaconEmitDeps, stateDir: string, payload: JsonObject): string | null {
+export function promptHashOf(deps: Pick<BeaconEmitDeps, "files">, stateDir: string, payload: JsonObject): string | null {
   const prompt = asJsonString(payload.prompt);
   if (prompt === undefined || prompt.length === 0) return null;
   const salt = deps.files.read(join(stateDir, "sends", ".salt"))?.trim();

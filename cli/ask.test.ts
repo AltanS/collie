@@ -108,7 +108,7 @@ describe("the flags of walky ask", () => {
     expect(refusal(["One?", "Two?", "--fact", "x"])).toContain("only one argument");
     expect(refusal([`${"x".repeat(90)}?`, "--fact", "x"])).toBe("the question has 91 characters. The limit is 90.");
     expect(refusal(["Ship it.", "--fact", "x"])).toBe('the question must end with "?".');
-    expect(refusal(["Ship?"])).toContain("--fact is required");
+    expect(refusal(["Ship?"])).toBe("--option must be given 2 to 5 times. You gave 0. An ask with no options takes --words.");
     expect(refusal(["Ship?", "--fact", "x".repeat(241)])).toBe("--fact has 241 characters. The limit is 240.");
     expect(refusal([...BASE, "--fact", "again"])).toBe("--fact may be given only once.");
     expect(refusal(["Ship?", "--fact", "x", "--option", "edge=Ship it", "--does", "edge=x"])).toContain("--option must be given 2 to 5 times. You gave 1.");
@@ -120,7 +120,9 @@ describe("the flags of walky ask", () => {
     expect(refusal(["Ship?", "--fact", "x", "--option", "a=", "--option", "b=Hold it"])).toContain("has an empty label");
     expect(refusal(["Ship?", "--fact", "x", "--option", `a=${"x".repeat(61)}`, "--option", "b=Hold it"])).toBe("--option a label has 61 characters. The limit is 60.");
     expect(refusal(["Ship?", "--fact", "x", "--option", "aShip it"])).toContain('--option needs the form <id>="<label>"');
-    expect(refusal(["Ship?", "--fact", "x", "--option", "a=Ship it", "--option", "b=Hold it", "--does", "a=x"])).toBe("--does b is required: a reader with no memory cannot judge a bare label.");
+    expect(refusal([...BASE, "--cost", "zz=x"])).toBe('--cost id "zz" is not one of the options (edge, stable).');
+    expect(refusal([...BASE, "--cost", "edge=a", "--cost", "edge=b"])).toContain("--cost is given twice");
+    expect(refusal([...BASE, "--cost", `edge=${"x".repeat(301)}`])).toBe("--cost edge text has 301 characters. The limit is 300.");
     expect(refusal([...BASE, "--does", "zz=x"])).toContain('--does id "zz" is not one of the options');
     expect(refusal([...BASE, "--does", "edge=again"])).toContain("--does is given twice");
     expect(refusal(["Ship?", "--fact", "x", "--option", "a=Ship it", "--option", "b=Hold it", "--does", `a=${"x".repeat(301)}`, "--does", "b=y"])).toBe("--does a text has 301 characters. The limit is 300.");
@@ -139,6 +141,17 @@ describe("the flags of walky ask", () => {
     expect(refusal([...BASE, "--request-id", "nope"])).toContain("--request-id is a UUID");
     expect(refusal([...BASE, "--text", "none"])).toBe("unknown flag --text. See: collie walky ask --help");
     expect(refusal(["Ship?", "--fact"])).toBe("--fact needs a value.");
+  });
+
+  test("only the question and the options are required; every other field is optional", () => {
+    const bare = parseAskArgs(["Ship it?", "--option", "a=Ship it", "--option", "b=Hold it"]);
+    expect(bare).toMatchObject({ question: "Ship it?", fact: "", options: [{ intent: "a", label: "Ship it" }, { intent: "b", label: "Hold it" }], recommends: null, bodyPath: null, inline: null, files: [], images: [], replaces: null, requestId: null });
+    expect("error" in bare ? [] : bare.options.map((option) => Object.keys(option))).toEqual([["intent", "label"], ["intent", "label"]]);
+    // One --does, no --cost: each is per option and optional.
+    expect(parseAskArgs(["Ship it?", "--option", "a=Ship it", "--option", "b=Hold it", "--does", "a=It ships."])).toMatchObject({ options: [{ intent: "a", detail: "It ships." }, { intent: "b" }] });
+    const full = parseAskArgs([...BASE, "--cost", "edge=One more day.", "--cost", "stable=A risk for all."]);
+    expect(full).toMatchObject({ options: [{ intent: "edge", detail: "Testers get it today.", cost: "One more day." }, { intent: "stable", detail: "Everyone gets it today.", cost: "A risk for all." }] });
+    expect(parseAskArgs(["What should the page say?", "--words"])).toMatchObject({ words: true, fact: "", options: [] });
   });
 
   test("--words takes no option and no recommendation", () => {
@@ -212,7 +225,9 @@ describe("walky ask", () => {
     const reread = readWalkyRequest(JSON.stringify({ v: 1, markers: [], ...s.lines[0] }));
     expect(reread.ok && reread.request.op).toBe("ask.post");
     expect(s.d.io.stdout[0]).toBe(stored.id);
-    expect(s.d.io.stdout.slice(1)).toEqual(cardOf(stored));
+    // The card, then the one line that says how the ask stays open and how to close it.
+    expect(s.d.io.stdout.slice(1, -1)).toEqual(cardOf(stored));
+    expect(s.d.io.stdout.at(-1)).toBe(`Open until answered. Settled first? collie walky cancel ${stored.id} [--answered]`);
   });
 
   test("a refusal prints the bridge's words and code, and a retry line when the same ask may pass", async () => {
@@ -274,7 +289,7 @@ describe("walky asks, status and cancel", () => {
     const s = scripted(() => ({ ok: true, decision: closed.decision }));
     expect(await cmdAskCancel(s.d, [a.id, "--answered"])).toBe(EXIT.OK);
     expect(s.lines[0]).toEqual({ v: 1, markers: expect.any(Array), op: "ask.cancel", id: a.id, answered: true });
-    expect(s.d.io.stdout).toContain("reason: answered in the session");
+    expect(s.d.io.stdout).toEqual([`${a.id} withdrawn (answered in the session)`, "  Ship the fix on Edge first, round 1?"]);
     expect(await cmdAskCancel(s.d, [a.id, "--because", "The test answers it."])).toBe(EXIT.OK);
     expect(s.lines[1]).toMatchObject({ op: "ask.cancel", because: "The test answers it." });
     expect(await cmdAskCancel(s.d, [a.id, "--answered", "--because", "x"])).toBe(EXIT.USAGE);
@@ -284,12 +299,54 @@ describe("walky asks, status and cancel", () => {
     expect(s.lines).toHaveLength(2);
   });
 
+  test("cancel takes 1 to 5 ids with one flag for all, and one bad id stops none", async () => {
+    const r = askRig();
+    const asks = [1, 2, 3, 4, 5].map((n) => posted(r.hill.post(ONE, askInput(n))));
+    const ids = asks.map((ask) => ask.id);
+    const s = scripted((row) => {
+      const asked = Array.isArray(row.ids) ? row.ids.map(String) : [];
+      return { ok: true, results: asked.map((id) => {
+        const closed = r.hill.cancelAsk(ONE, id, { answered: true, because: null });
+        return closed.ok ? { id, ok: true, decision: closed.decision } : { id, ok: false, error: closed.error };
+      }) };
+    });
+    expect(await cmdAskCancel(s.d, [...ids.slice(0, 2), "ak_zzzzzzzzzzzz", ...ids.slice(2), "--answered"])).toBe(EXIT.USAGE);
+    expect(s.d.io.stderr.at(-1)).toContain("1 to 5");
+    expect(await cmdAskCancel(s.d, [ids[0]!, "ak_zzzzzzzzzzzz", ids[1]!, "--answered"])).toBe(EXIT.STATE);
+    expect(s.lines[0]).toEqual({ v: 1, markers: expect.any(Array), op: "ask.cancel", ids: [ids[0]!, "ak_zzzzzzzzzzzz", ids[1]!], answered: true });
+    expect(s.d.io.stdout).toContain(`${ids[0]!} withdrawn (answered in the session)`);
+    expect(s.d.io.stdout).toContain(`${ids[1]!} withdrawn (answered in the session)`);
+    expect(s.d.io.stderr.at(-1)).toMatch(/^ask: ak_zzzzzzzzzzzz: /);
+    expect(await cmdAskCancel(s.d, [...ids.slice(2), "ak_yyyyyyyyyyyy", "ak_xxxxxxxxxxxx", "--because", "Settled by the test."])).toBe(EXIT.STATE);
+    expect(s.lines[1]).toMatchObject({ op: "ask.cancel", because: "Settled by the test." });
+    expect(s.lines[1]?.ids).toHaveLength(5);
+    // Every one of the five is closed now: a second cancel finds none open.
+    for (const id of ids) expect(r.hill.cancelAsk(ONE, id, { answered: true, because: null }).ok).toBe(false);
+  });
+
+  test("keep is gone: a usage error, not a silent accept", async () => {
+    const io = capture();
+    expect(await run(["walky", "keep", "ak_aaaaaaaaaaaa"], io)).toBe(EXIT.USAGE);
+  });
+
   test("the bridge reads each ask op, and refuses a bad id", () => {
     const read = (row: JsonObject) => readWalkyRequest(JSON.stringify({ v: 1, markers: [], ...row }));
     expect(read({ op: "ask.list" })).toMatchObject({ ok: true, request: { op: "ask.list" } });
     expect(read({ op: "ask.status", id: "ak_aaaaaaaaaaaa" })).toMatchObject({ ok: true, request: { op: "ask.status", id: "ak_aaaaaaaaaaaa" } });
     expect(read({ op: "ask.cancel", id: "ak_aaaaaaaaaaaa", answered: true })).toMatchObject({ ok: true, request: { op: "ask.cancel", answered: true, because: null } });
     expect(read({ op: "ask.cancel", id: "ak_aaaaaaaaaaaa", because: 4 })).toMatchObject({ ok: false });
+    expect(read({ op: "ask.cancel", ids: ["ak_aaaaaaaaaaaa", "ak_bbbbbbbbbbbb"], answered: true })).toMatchObject({ ok: true, request: { op: "ask.cancel", ids: ["ak_aaaaaaaaaaaa", "ak_bbbbbbbbbbbb"], single: false, answered: true } });
+    expect(read({ op: "ask.cancel", ids: Array.from({ length: 6 }, () => "ak_aaaaaaaaaaaa") })).toMatchObject({ ok: false });
+    expect(read({ op: "ask.cancel", ids: [] })).toMatchObject({ ok: false });
+    expect(read({ op: "ask.cancel", ids: ["ak_aaaaaaaaaaaa", "wt_aaaaaaaaaaaa"] })).toMatchObject({ ok: false });
+    expect(read({ op: "ask.cancel", id: "ak_aaaaaaaaaaaa", ids: ["ak_aaaaaaaaaaaa"] })).toMatchObject({ ok: false });
+    expect(read({ op: "ask.keep", id: "ak_aaaaaaaaaaaa" })).toMatchObject({ ok: false });
+    expect(read({ op: "ask.check" })).toMatchObject({ ok: false });
+    expect(read({ op: "ask.remind", event: "prompt", promptHash: "abc", at: 5 })).toMatchObject({ ok: true, request: { op: "ask.remind", event: { kind: "prompt", hash: "abc", at: 5 } } });
+    expect(read({ op: "ask.remind", event: "prompt", promptHash: null, at: 5 })).toMatchObject({ ok: true, request: { event: { kind: "prompt", hash: null } } });
+    expect(read({ op: "ask.remind", event: "start", source: "compact" })).toMatchObject({ ok: true, request: { event: { kind: "start", source: "compact" } } });
+    expect(read({ op: "ask.remind", event: "stop" })).toMatchObject({ ok: false });
+    expect(read({ op: "ask.remind", event: "prompt", promptHash: "abc" })).toMatchObject({ ok: false });
     expect(read({ op: "ask.status", id: "wt_aaaaaaaaaaaa" })).toMatchObject({ ok: false });
   });
 });
