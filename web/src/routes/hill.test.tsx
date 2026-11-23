@@ -135,7 +135,7 @@ describe("the hill route", () => {
     renderHill();
     await screen.findByRole("heading", { name: "Hill" });
     expect(document.querySelector('[data-slot="hill-count"]')).toHaveTextContent("All clear");
-    expect(document.querySelector('[data-slot="hill-empty"]')).toHaveTextContent("The hill is clear.");
+    expect(document.querySelector('[data-slot="hill-empty"]')).toHaveTextContent("No asks wait on you.");
   });
 
   it("goes back up to the Dashboard", async () => {
@@ -256,7 +256,7 @@ describe("the hill route on a cold open (calm load, row 4)", () => {
     expect(document.querySelector('[data-slot="hill-empty"]')).toBeNull();
     release();
     await act(() => __settleHill());
-    await waitFor(() => expect(document.querySelector('[data-slot="hill-empty"]')).toHaveTextContent("The hill is clear."));
+    await waitFor(() => expect(document.querySelector('[data-slot="hill-empty"]')).toHaveTextContent("No asks wait on you."));
     expect(document.querySelector('[data-slot="hill-count"]')).toHaveTextContent("All clear");
   });
 
@@ -434,7 +434,7 @@ describe("the hill route with the Hill switched off", () => {
     const button = await screen.findByRole("button", { name: "Switch the Hill on" });
     data = home({ hill: true });
     await userEvent.click(button);
-    await waitFor(() => expect(document.querySelector('[data-slot="hill-empty"]')).toHaveTextContent("The hill is clear."));
+    await waitFor(() => expect(document.querySelector('[data-slot="hill-empty"]')).toHaveTextContent("No asks wait on you."));
     expect(posted).toBe('{"on":true}');
     expect(document.querySelector('[data-slot="hill-off"]')).toBeNull();
   });

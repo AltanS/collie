@@ -257,7 +257,7 @@ export function AskScreen({ ask, facts, clock, now, place, previous, next, draft
                 kind={spec.kind}
                 number={spec.number}
                 title={spec.title}
-                then={spec.does}
+                does={spec.does}
                 cost={spec.cost}
                 why={spec.why}
                 recommended={spec.recommended}

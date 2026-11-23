@@ -10,7 +10,7 @@ import type { HillAskFile } from "@/lib/hill/wire";
 import { t } from "@/lib/i18n";
 
 // THE CONTEXT PAGE OF AN ASK (Asks build 2, 2026-11-23), `/hill/ask/:id/context`: what is behind the question, one level
-// below the ask, so the ask screen stays short. The agent's background in Markdown (`font-content`, the agent's own words),
+// below the ask, so the ask screen stays short. The question, the agent's background in Markdown (`font-content`, the agent's own words),
 // its pictures in the row the cards of the board use, and the files it linked. A linked file is a pointer, never a copy:
 // "Open" goes to the existing Files preview of the session's pane, and where this device cannot make that request (no
 // root, a session that is gone, a machine with no screen) the row says so in words. One bar at the foot goes back.
@@ -62,6 +62,9 @@ export function AskContext({
     <div data-slot="ask-context" className="mx-auto flex min-h-0 w-full max-w-screen-sm flex-1 flex-col">
       <AskHeader name={t("asks.contextPage.title")} line={name} place={null} backLabel={t("asks.contextPage.backAria")} onBack={onBack} />
       <BandMain base={16} className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-4 pt-4 pb-4">
+        <h2 data-slot="ask-context-question" className="font-content text-xl font-semibold leading-snug text-balance">
+          {ask.title}
+        </h2>
         {ask.body.trim() !== "" && (
           <div data-slot="ask-context-body" className="font-content text-[15px] leading-relaxed">
             <MarkdownText text={ask.body} showLinkTargets />

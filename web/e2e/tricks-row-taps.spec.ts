@@ -119,20 +119,20 @@ test("the Hill's row: its lines open its page, the switch keeps its own taps and
   await expect(page.locator(row)).toBeVisible();
   for (const line of ["description"]) {
     const { x, y } = await centre(page, `${row} [data-line="${line}"]`);
-    expect(await targetAt(page, x, y), line).toBe("About The Hill");
+    expect(await targetAt(page, x, y), line).toBe("About Asks");
   }
   const sw = (await page.locator(`${row} [role="switch"]`).boundingBox())!;
-  expect(await targetAt(page, sw.x + sw.width / 2, sw.y + sw.height / 2)).toBe("The Hill");
+  expect(await targetAt(page, sw.x + sw.width / 2, sw.y + sw.height / 2)).toBe("Asks");
   // The reach: 44px tall in all, as a trick row's switch.
-  expect(await targetAt(page, sw.x + sw.width / 2, sw.y - 6)).toBe("The Hill");
-  expect(await targetAt(page, sw.x + sw.width / 2, sw.y + sw.height + 6)).toBe("The Hill");
+  expect(await targetAt(page, sw.x + sw.width / 2, sw.y - 6)).toBe("Asks");
+  expect(await targetAt(page, sw.x + sw.width / 2, sw.y + sw.height + 6)).toBe("Asks");
   await page.mouse.click(sw.x + sw.width / 2, sw.y + sw.height / 2);
   await expect.poll(() => posts).toEqual(["/api/hill/switch"]);
   await expect(page).toHaveURL(/\/settings\/tricks$/);
   const { x, y } = await centre(page, `${row} [data-line="description"]`);
   await page.mouse.click(x, y);
   await expect(page).toHaveURL(/\/settings\/tricks\/hill$/);
-  await expect(page.locator('[data-slot="trick-detail-name"]')).toHaveText("The Hill");
+  await expect(page.locator('[data-slot="trick-detail-name"]')).toHaveText("Asks");
 });
 
 test("the Hill's row with Decisions waiting: arming swaps the text for the note and moves nothing, the text opens the page while unarmed", async ({ page }) => {
@@ -155,7 +155,7 @@ test("the Hill's row with Decisions waiting: arming swaps the text for the note 
   const swBox = (await page.locator(`${row} [role="switch"]`).boundingBox())!;
   // Unarmed, a tap on the slot line reaches the stretched link.
   const slot = await centre(page, `${row} [data-line="slot"]`);
-  expect(await targetAt(page, slot.x, slot.y)).toBe("About The Hill");
+  expect(await targetAt(page, slot.x, slot.y)).toBe("About Asks");
   await page.locator(`${row} [role="switch"]`).click();
   await expect(page.locator(`${row} [data-line="armed"]:not([aria-hidden])`)).toBeVisible();
   await expect(page.locator(`${row} [data-layer="text"]`)).toHaveCSS("visibility", "hidden");

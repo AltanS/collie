@@ -29,7 +29,7 @@ export interface AskAnswerCardProps {
   number: number;
   title: string;
   /** What happens then (`--does`), the cost (`--cost`) and why this one is recommended (`--why`): each only when the agent sent it. */
-  then?: string;
+  does?: string;
   cost?: string;
   why?: string;
   recommended?: boolean;
@@ -63,7 +63,7 @@ export function noteLine(note: string): string {
   return note.replace(/\s+/gu, " ").trim();
 }
 
-export function AskAnswerCard({ kind, number, title, then, cost, why, recommended = false, answered, note, line, text, picked = false, disabled = false, intent, onPick }: AskAnswerCardProps): ReactNode {
+export function AskAnswerCard({ kind, number, title, does, cost, why, recommended = false, answered, note, line, text, picked = false, disabled = false, intent, onPick }: AskAnswerCardProps): ReactNode {
   useLocale();
   const on = answered || picked;
   const own = kind !== "option";
@@ -94,7 +94,7 @@ export function AskAnswerCard({ kind, number, title, then, cost, why, recommende
           />
         ) : (
           <>
-            {then !== undefined && <Line slot="ask-card-then" label={t("asks.card.then")} text={then} />}
+            {does !== undefined && <Line slot="ask-card-then" label={t("asks.card.then")} text={does} />}
             {cost !== undefined && <Line slot="ask-card-cost" label={t("asks.card.cost")} text={cost} />}
             {why !== undefined && <Line slot="ask-card-why" label={t("asks.card.why")} text={why} />}
           </>

@@ -88,7 +88,7 @@ export const SCREENS: readonly Screen[] = [
   { id: "trick-session", route: "trick/:paneId", path: "/trick/trick%3Alodge%3Aci%3Arun", title: "A trick's own session", wide: "column", setup: "tricks" },
 
   // ── The Hill ─────────────────────────────────────────────────────────────
-  { id: "hill", route: "hill", path: "/hill", title: "The Hill, open decisions", wide: "column", setup: "rich" },
+  { id: "hill", route: "hill", path: "/hill", title: "Asks, the board", wide: "column", setup: "rich" },
   { id: "trick-card", route: "trick-card/:decisionId", path: "/trick-card/dc_screens0001", title: "A card of Collie's own", wide: "column", setup: "hillCard" },
 
   // ── New ──────────────────────────────────────────────────────────────────

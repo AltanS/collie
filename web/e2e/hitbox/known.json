@@ -1220,7 +1220,7 @@
   {
     "screen": "settings-tricks",
     "selector": "span[data-slot=\"hill-switch\"] > button[data-slot=\"switch\"]",
-    "name": "The Hill",
+    "name": "Asks",
     "why": "The Hill's row is a trick row (2026-11-22), so its switch has a trick row's reach, ROW_OPEN_SWITCH in ui/row-open.ts: 56x40 around the 44x24 switch, 4px short of the 44px floor. The same reach every trick row's switch has; it moves with that constant, not with this row."
   },
   {

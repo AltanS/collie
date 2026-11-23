@@ -2,9 +2,11 @@ import { useEffect, useRef } from "react";
 import { useLocation } from "react-router";
 
 import { DashboardRouteBar, footAir } from "@/components/dashboard-route-bar";
+import { AsksBoard } from "@/components/asks-board";
 import { HillCrewStateBar } from "@/components/hill-crew-state";
 import { HillHeader, HillOff, HillView, LiveDecisionCard } from "@/components/hill-view";
 import { BandMain } from "@/components/ui/strip-host";
+import { useAsksDeck } from "@/hooks/use-asks-deck";
 import { useBoundedHold } from "@/hooks/use-bounded-hold";
 import { useDashboardBar } from "@/hooks/use-dashboard-bar";
 import { useHillClear } from "@/hooks/use-hill-clear";
@@ -12,14 +14,20 @@ import { useHillCrewStateControl } from "@/hooks/use-hill-crew-state";
 import { useHillSwitch } from "@/hooks/use-hill-switch";
 import { useLocale } from "@/hooks/use-locale";
 import { useNav } from "@/hooks/use-nav";
+import { openCardsOf } from "@/lib/hill/asks";
+import { useAskDrafts } from "@/lib/hill/asks-drafts";
 import { useHillClosed, useHillClosedTotal, useHillHeld, useHillKept, useHillKeptTitles, useHillOpen } from "@/lib/hill/store";
 import type { HillDecision } from "@/lib/hill/wire";
-import { homePath } from "@/lib/nav";
+import { askPath, homePath } from "@/lib/nav";
 import { useOptionalRootData } from "@/lib/route-data";
 import { useScope } from "@/lib/session";
 import { cn } from "@/lib/utils";
 
 // THE HILL'S ROUTE (M96), `/hill`: one level below the Dashboard, the place Back goes up to (ADR 0067).
+// Since Asks build 2 (2026-11-23) the open asks stand at the top as one card for each session (components/asks-board.tsx); a row
+// opens the ask (`/hill/ask/:id`). Every other open card keeps its group below, unchanged.
+// Since Asks build 2 (2026-11-23) the open asks stand at the top as one card for each session (components/asks-board.tsx); a row
+// opens the ask (`/hill/ask/:id`). Every other open card keeps its group below, unchanged.
 // The lists come from the hill's store, which the root loader keeps current from the snapshot's
 // `hillRev` (lib/hill/store.ts), so this route has no loader of its own and a poll that moved the hill
 // redraws it here. Each open Decision is a card wired to the bridge.
@@ -69,6 +77,11 @@ export function HillRoute() {
   const listed = useHillHeld();
   const holding = useBoundedHold(useOptionalRootData()?.hill === true && !listed);
   useScrollToDecision(open);
+  // The asks are the session cards at the top; every other open card keeps its place in the groups below (Asks build 2).
+  const board = useAsksDeck();
+  const drafts = useAskDrafts();
+  const cards = openCardsOf(open);
+  const askCount = board.deck.length;
   return (
     <div className="mx-auto flex min-h-0 w-full max-w-screen-sm flex-1 flex-col">
       <HillHeader count={open.length} nowCount={open.filter((d) => d.priority === "now").length} onBack={() => nav.up(homePath(scope))} off={off} held={holding} />
@@ -96,7 +109,7 @@ export function HillRoute() {
               />
               )
             )}
-            {!holding && <HillView listed={listed} open={open} closed={closed} closedTotal={closedTotal} clear={{ canWrite: clearing.canWrite, busy: clearing.busy, onClear: () => void clearing.clear(), spoken: spoken.length, onClearSpoken: () => void clearing.clearSpoken(spoken) }} kept={kept} keptTitles={keptTitles} renderCard={(decision) => <LiveDecisionCard key={decision.id} decision={decision} />} />}
+            {!holding && <HillView listed={listed} open={cards} asks={{ count: askCount, node: askCount === 0 ? null : <AsksBoard sessions={board.sessions} live={board.live} now={board.now} drafts={drafts} onOpen={(id) => nav.down(askPath(id, scope))} /> }} closed={closed} closedTotal={closedTotal} clear={{ canWrite: clearing.canWrite, busy: clearing.busy, onClear: () => void clearing.clear(), spoken: spoken.length, onClearSpoken: () => void clearing.clearSpoken(spoken) }} kept={kept} keptTitles={keptTitles} renderCard={(decision) => <LiveDecisionCard key={decision.id} decision={decision} />} />}
           </>
         )}
       </BandMain>
