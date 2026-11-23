@@ -306,3 +306,27 @@ describe("the pane's state during a check", () => {
     expect(ended.book.turn(PANE.session, PANE.paneId)).toBeNull();
   });
 });
+
+describe("the lift tells the engine", () => {
+  test("a lift that starts and one that ends each call the listener once; an edge with no lift calls nothing", () => {
+    let now = 1000;
+    const book = new AskCheckBook(() => now);
+    const calls: string[] = [];
+    book.onLiftChange((session, paneId) => calls.push(`${session} ${paneId}`));
+    book.edge("main", "%1", "prompt", now);
+    book.edge("main", "%1", "stop", now);
+    expect(calls).toEqual([]);
+    now += 100;
+    book.lift("main", "%1");
+    expect(calls).toEqual(["main %1"]);
+    now += 100;
+    book.edge("main", "%1", "stop", now);
+    expect(calls).toEqual(["main %1", "main %1"]);
+    book.edge("main", "%1", "stop", now);
+    expect(calls).toHaveLength(2);
+    book.onLiftChange(() => {
+      throw new Error("boom");
+    });
+    expect(() => book.lift("main", "%1")).not.toThrow();
+  });
+});

@@ -57,7 +57,8 @@ agent keeps (`collie walky keep <id>`), replaces, or takes back each listed ask.
    and the check's turn has no prompt. When the bridge answers `check` it lifts the pane: the state engine reads an
    idle or done pane as `working` until the stop edge of the check's own turn (the second stop after the answer, or
    the first when the starting stop arrived before it), a prompt, a start or an end edge, or 2 minutes. A `blocked`
-   pane is never lowered.
+   pane is never lowered. The book pokes the session's engine when a lift starts or ends: with a healthy event
+   stream the engine polls on events, and neither an answer nor a placed edge is one.
 7. **The text** lists each ask with its id, its question (control characters removed, cut to 90 characters) and its
    age, then the four ways to answer it with the binary the skill names, then "Did your reply or your notes leave a
    question to your operator? Send it as an ask." and "Then stop. Write no other text." Under 1,200 bytes for five
@@ -77,4 +78,5 @@ agent keeps (`collie walky keep <id>`), replaces, or takes back each listed ask.
 - A running Claude reloads its hooks from the settings files, so an install reaches running sessions; one with hooks
   turned off (`disableAllHooks`) gets no check.
 - The block shows in Claude Code's transcript as a stop hook's reason, and the agent's short step in the pane.
-- Between the starting stop and the check's answer the pane may read idle for one poll.
+- Between the starting stop and the check's answer the pane may read idle for one poll (on the rig, under half a
+  second).

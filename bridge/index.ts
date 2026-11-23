@@ -2194,6 +2194,9 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
   if (surface !== undefined) engine.liftScreenAsks((paneId) => surface.askOnScreen(paneId));
   // A session that works on its check at the end of a turn reads as working, not idle (.adr/0177).
   engine.liftChecks((paneId) => askChecks.lifting(name, paneId));
+  askChecks.onLiftChange((session) => {
+    if (session === name) engine.pokeNow();
+  });
   if (surface !== undefined) {
     engine.onUpdate((s) => {
       void surface.observe(s.agents).then(() => {

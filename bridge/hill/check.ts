@@ -107,32 +107,54 @@ function touchedAt(decision: Pick<HillDecision, "at" | "ask">): number {
 export class AskCheckBook {
   private readonly panes = new Map<string, PaneTurn>();
   private readonly sessions = new Map<string, SessionBrake>();
+  private readonly liftListeners: Array<(session: string, paneId: string) => void> = [];
 
   constructor(private readonly now: () => number = Date.now) {}
+
+  /**
+   * Call `fn` when a pane's lift starts or ends. The state engine polls on events while its event stream is
+   * healthy, and neither a check's answer nor a placed edge is one, so without this poke the pane would read
+   * the old state until the next unrelated poll.
+   */
+  onLiftChange(fn: (session: string, paneId: string) => void): void {
+    this.liftListeners.push(fn);
+  }
+
+  private liftChanged(session: string, paneId: string): void {
+    for (const fn of this.liftListeners) {
+      try {
+        fn(session, paneId);
+      } catch {
+        // A listener that throws changes nothing here.
+      }
+    }
+  }
 
   /** One placed hook edge of a pane's own session (never a subagent's). Never throws. */
   edge(session: string, paneId: string, kind: EdgeKind, at: number): void {
     if (kind !== "prompt" && kind !== "stop" && kind !== "start" && kind !== "end") return;
     const pane = this.pane(session, paneId);
+    const lifted = pane.lift !== null;
     switch (kind) {
       case "prompt":
         pane.prompt = at;
         pane.lift = null;
-        return;
+        break;
       case "stop":
         pane.stop = at;
-        if (pane.lift === null) return;
+        if (pane.lift === null) break;
         pane.lift.stopsLeft -= 1;
         if (pane.lift.stopsLeft <= 0) pane.lift = null;
-        return;
+        break;
       case "start":
         pane.lift = null;
-        return;
+        break;
       case "end":
         pane.prompt = null;
         pane.lift = null;
-        return;
+        break;
     }
+    if (lifted && pane.lift === null) this.liftChanged(session, paneId);
   }
 
   /** The key of the pane's current operator turn, or null when the bridge saw no prompt for it. */
@@ -175,6 +197,7 @@ export class AskCheckBook {
     // The stop that ran the check may have reached the bridge first. Then only the check's own stop is left.
     const seen = pane.stop !== null && now - pane.stop <= ASK_CHECK_STOP_SEEN_MS && pane.stop >= (pane.prompt ?? Number.NEGATIVE_INFINITY);
     pane.lift = { since: now, stopsLeft: seen ? 1 : 2 };
+    this.liftChanged(session, paneId);
   }
 
   /** Whether a check's turn runs in this pane now. */
