@@ -12,7 +12,7 @@ import { StatusDot } from "@/components/status-badge";
 import { TabStrip } from "@/components/tab-strip";
 import { ColumnControls, ColumnHeader, PaneColumnBody, columnFrame } from "@/components/strip-column";
 import { NAV_EDGE, RECESS_ACCENT } from "@/components/ui/nav-edge";
-import { Button, FOCUS_RING } from "@/components/ui/button";
+import { Button, FOCUS_RING, HOVER_FILL } from "@/components/ui/button";
 import { PaneGlyph } from "@/components/ui/pane-glyph";
 import { BottomSheet } from "@/components/ui/sheet";
 import { CollieWordmark } from "@/components/collie-wordmark";
@@ -36,7 +36,7 @@ import { t } from "@/lib/i18n";
 import { useLaunchers } from "@/lib/launchers";
 import { homePath, trickSessionPath, newPath, panePath } from "@/lib/nav";
 import { useTabLook } from "@/lib/tab-look";
-import type { WorkspaceGroup } from "@/lib/pane-groups";
+import { workspaceGroupKey, type WorkspaceGroup } from "@/lib/pane-groups";
 import { paneName } from "@/lib/pane-name";
 import { isOpenBeside, queueOpenBeside, takeOpenBeside } from "@/lib/open-beside";
 import { usePairing } from "@/lib/pairing";
@@ -52,6 +52,7 @@ import { isReadOnly, statusLabel, type AgentView, type WorkspaceView } from "@/l
 import { shortcutTarget } from "@/lib/shortcuts/target";
 import { cn } from "@/lib/utils";
 import { takeSidebarReveal } from "@/lib/new-over";
+import { queueSpaceLanding } from "@/lib/space-landing";
 import {
   allowedPresets,
   arrive,
@@ -526,6 +527,20 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
     canRenameSpace && openWorkspace !== undefined && !readOnly && !root.error ? () => setRenamingSpace(openWorkspace) : undefined,
   );
 
+  // ── Open this space (open_space) ────────────────────────────────────────────────────────────
+  // On a large screen the space has no page of its own (ADR 0173): the Dashboard is its overview, a column for
+  // each space. So the move is up to the Dashboard (`upTo`, as `open_dashboard`), and the Dashboard lands on
+  // this space's column (lib/space-landing.ts). Offered where the space is known and the screen is the large
+  // one; the medium tier keeps the page, and agent-chat.tsx answers there. The space's name in the bar is its door.
+  const openSpaceDoor =
+    widthClass === "expanded" && agent !== undefined && space !== undefined
+      ? () => {
+          queueSpaceLanding(workspaceGroupKey(agent));
+          nav.upTo(homePath({ host: scope.host, session: scope.session }));
+        }
+      : undefined;
+  useShortcutHandler("open_space", openSpaceDoor);
+
   // ── The add column's sheet: the space's other panes, to move here, and a new agent ──────────
   const [adding, setAdding] = useState(false);
   const inView = new Set(shown.map((c) => c.key));
@@ -617,7 +632,7 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
               `self-stretch`: the block is the bar's whole height, so the tab row inside it can stand on the
               bar's lower edge exactly (it sat a pixel above it while this block was only as tall as the row). */}
           <div className={cn("flex min-w-0 items-center self-stretch", bookPair ? "fold-left-col pl-4" : "flex-1")}>
-            <SpaceTitle label={space?.label ?? ""} machine={machine} widthClass={widthClass} besideTabs={agent !== undefined} />
+            <SpaceTitle label={space?.label ?? ""} machine={machine} widthClass={widthClass} besideTabs={agent !== undefined} onOpen={openSpaceDoor} />
             {agent !== undefined ? (
               <TabStrip
                 workspaceId={agent.workspaceId}
@@ -1110,17 +1125,28 @@ function PositionStrip({
  * (since 1.27.0, the folder look). `mr-3` keeps the scroller's own 12px between the two. Where room runs
  * out the machine gives way first (`shrink-[999]`: it is gone before the name loses a letter), then the
  * name ends in an ellipsis; `title` carries the whole line.
+ *
+ * THE DOOR TO THE SPACE (`open_space`). Given `onOpen`, the same line is a button that runs it. The line does
+ * not move: the button stands 10px wider each side than the text and takes the 10px back in negative margins, so
+ * the box the tabs measure from is the box they always had (the gap the `mr-3` leaves is wider than its fill). 10px
+ * is also what keeps the key cap, which is 20px and centred on the button's top right corner, off the last letter.
+ * Its look is the house hover fill and focus ring; the name and the machine keep their order and their rules.
  */
-export function SpaceTitle({ label, machine, widthClass, besideTabs }: { label: string; machine: string | undefined; widthClass: WideLayoutProps["widthClass"]; besideTabs: boolean }) {
-  return (
-    <div
-      data-slot="space-title"
-      title={machine === undefined ? label : `${label} · ${machine}`}
-      className={cn(
-        "mr-3 flex min-w-0 shrink-0 whitespace-nowrap text-sm font-semibold",
-        widthClass === "medium" ? "max-w-[30%]" : besideTabs ? "max-w-1/3" : "max-w-[45%]",
-      )}
-    >
+export function SpaceTitle({
+  label,
+  machine,
+  widthClass,
+  besideTabs,
+  onOpen,
+}: {
+  label: string;
+  machine: string | undefined;
+  widthClass: WideLayoutProps["widthClass"];
+  besideTabs: boolean;
+  onOpen?: (() => void) | undefined;
+}) {
+  const line = (
+    <>
       <span data-slot="space-title-name" className="min-w-0 truncate">
         {label}
       </span>
@@ -1129,6 +1155,31 @@ export function SpaceTitle({ label, machine, widthClass, besideTabs }: { label: 
           {"\u00a0· "}
           {machine}
         </span>
+      )}
+    </>
+  );
+  return (
+    <div
+      data-slot="space-title"
+      title={machine === undefined ? label : `${label} · ${machine}`}
+      className={cn(
+        "mr-3 flex min-w-0 shrink-0 items-center whitespace-nowrap text-sm font-semibold",
+        widthClass === "medium" ? "max-w-[30%]" : besideTabs ? "max-w-1/3" : "max-w-[45%]",
+      )}
+    >
+      {onOpen === undefined ? (
+        line
+      ) : (
+        <button
+          type="button"
+          data-slot="space-title-door"
+          onClick={onOpen}
+          aria-label={t("wide.space.openAria", { workspace: label })}
+          {...shortcutTarget("open_space")}
+          className={cn("-mx-2.5 flex h-8 min-w-0 items-center rounded-md px-2.5 text-left transition-colors", FOCUS_RING, HOVER_FILL)}
+        >
+          {line}
+        </button>
       )}
     </div>
   );

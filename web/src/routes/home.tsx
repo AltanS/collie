@@ -40,6 +40,7 @@ import { usePaneOpen } from "@/hooks/use-pane-open";
 import { useScrollMemory } from "@/hooks/use-scroll-memory";
 import { useElementWidth } from "@/hooks/use-element-width";
 import { useWidthClass } from "@/hooks/use-width-class";
+import { peekSpaceLanding } from "@/lib/space-landing";
 import { showBadge } from "@/lib/app-badge";
 import { takeBundleFocus, useBundleFocusPending } from "@/lib/bundle-apply";
 import { useLaunchers } from "@/lib/launchers";
@@ -339,6 +340,12 @@ export function HomeRoute() {
   // columns is read from the width of the scroller itself, the room inside it without its scrollbar, and never
   // from the window. Compact and medium, and Off at any width, draw the phone's column exactly as before.
   const wide = useWidthClass() === "expanded";
+  // A pane's `open_space` (lib/space-landing.ts) lands on a space's column, and only the Dashboard view draws
+  // columns: Crew and Files stand in the way, so the view goes back to the Dashboard. Taken on arrival only.
+  useEffect(() => {
+    if (!wide || screenless || view === "dashboard" || peekSpaceLanding() === null) return;
+    setDashView("dashboard");
+  }, [wide, screenless, view, setDashView]);
   const [measureScroller, scrollerWidth] = useElementWidth<HTMLDivElement>(window.innerWidth, "client");
   const setScroller = useCallback(
     (el: HTMLDivElement | null) => {

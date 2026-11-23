@@ -65,6 +65,7 @@
 # focus_pane_right = "prefix+l"
 # previous_space = "prefix+k"
 # next_space = "prefix+j"
+# open_space = "prefix+o"
 # cycle_pane_next = "prefix+tab"
 # cycle_pane_previous = "prefix+shift+tab"
 

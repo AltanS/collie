@@ -859,6 +859,7 @@ export const en = {
   "paneNav.firstHint.dismissAria": "Dismiss the pane navigation hint",
   "wide.space.previous": "Previous space",
   "wide.space.next": "Next space",
+  "wide.space.openAria": "Open {workspace} overview",
   "wide.openHere": "Open here",
   "wide.openBeside": "Open beside",
   "wide.removeFromView": "Remove from view",
@@ -4291,6 +4292,7 @@ export const en = {
   "shortcuts.action.open_files": "Open Files for this pane",
   "shortcuts.action.new_agent": "New agent",
   "shortcuts.action.rename_space": "Rename this space",
+  "shortcuts.action.open_space": "Open this space",
   "shortcuts.action.new_shell": "New shell",
   "shortcuts.action.rename_tab": "Rename this tab",
   "shortcuts.action.close_tab": "Close this tab",
@@ -4324,6 +4326,7 @@ export const en = {
   "actions.command.renamePane": "Rename pane",
   "actions.command.renameTab": "Rename tab",
   "actions.command.renameSpace": "Rename space",
+  "actions.command.openSpace": "Open this space",
   "actions.command.walky": "WalkyTalky messages",
   "actions.command.pin": "Pin or unpin pane",
   "actions.command.chatTerminal": "Chat or Terminal view",
@@ -4543,7 +4546,11 @@ export type Messages = typeof en;
  * already carries, so the list cannot outlive its translations. Never a way to skip translating a
  * key for good: a key stays here only between a feature and its translation pass.
  */
-export const PENDING_TRANSLATION = [] as const satisfies readonly MessageKey[];
+export const PENDING_TRANSLATION = [
+  "shortcuts.action.open_space",
+  "actions.command.openSpace",
+  "wide.space.openAria",
+] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */
 export type PendingKey = (typeof PENDING_TRANSLATION)[number];

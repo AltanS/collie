@@ -2560,6 +2560,9 @@ export function AgentChat({
       : undefined,
   );
   useShortcutHandler("open_files", agent?.cwd ? () => nav.down(filesEntryPath) : undefined);
+  // Open this space (open_space): the door the name and chevron make, where the space has a page. On a large screen it has none
+  // (ADR 0173), and the layout answers instead: the Dashboard, landed on the space (wide-layout.tsx).
+  useShortcutHandler("open_space", agent !== undefined && !gridless && widthClass !== "expanded" ? () => openSpace(agent.workspaceId) : undefined);
   // New shell is the tab bar "+"'s plain create, a shell in a new tab of this space ("Just a shell").
   useShortcutHandler(
     "new_shell",

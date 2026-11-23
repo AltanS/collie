@@ -92,6 +92,7 @@ export const ACTIONS = [
   { id: "new_space", group: "navigation", defaults: ["prefix+shift+n"], labelKey: "shortcuts.action.new_space" },
   { id: "new_agent", group: "navigation", defaults: [], labelKey: "shortcuts.action.new_agent" },
   { id: "rename_space", group: "navigation", defaults: [], labelKey: "shortcuts.action.rename_space" },
+  { id: "open_space", group: "navigation", defaults: ["prefix+o"], labelKey: "shortcuts.action.open_space" },
   { id: "previous_space", group: "navigation", defaults: ["prefix+k"], labelKey: "shortcuts.action.previous_space" },
   { id: "next_space", group: "navigation", defaults: ["prefix+j"], labelKey: "shortcuts.action.next_space" },
   { id: "navigate_mode", group: "navigation", defaults: ["prefix+w"], labelKey: "shortcuts.action.navigate_mode", opensMode: "navigate" },

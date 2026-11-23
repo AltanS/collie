@@ -36,6 +36,7 @@ export const PALETTE_COMMANDS: readonly PaletteCommand[] = [
   { id: "rename_tab", labelKey: "actions.command.renameTab", icon: "edit" },
   { id: "close_tab", labelKey: "space.tab.close", icon: "close-pane" },
   { id: "rename_space", labelKey: "actions.command.renameSpace", icon: "edit" },
+  { id: "open_space", labelKey: "actions.command.openSpace", icon: "row-go" },
   { id: "new_tab", labelKey: "actions.command.newTab", icon: "add" },
   { id: "new_shell", labelKey: "actions.command.newShell", icon: "new-shell" },
   { id: "new_agent", labelKey: "actions.command.newAgent", icon: "new-agent" },
