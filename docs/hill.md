@@ -527,20 +527,20 @@ agent takes it back, or the session ends. A session has at most five open asks.
 Each ask also takes the answer "I need more context". The agent then sends the ask again with a
 better background. Your answers to the asks of one session go back together, as one message.
 
-### The check at the end of a turn
+### The reminder of open asks
 
-On Claude Code, Collie shows the agent its open asks once at the end of a turn. The agent then does one
-thing for each ask: it keeps it (`collie walky keep <id>`, the ask is still true), replaces it with a new
-ask, or takes it back, also as "answered in the session". So the list stays in step with the work, and an
-ask that is no longer true does not wait for you. Each ask shows when the agent last confirmed it.
+On Claude Code, the agent gets its open asks next to each prompt you send it, as a short note it reads
+before it starts. If your prompt or its work settles an ask, it closes the ask with
+`collie walky cancel <id> --answered`. An ask that is still true stays open: the agent does nothing.
+After a compaction, a resume or a fork the agent gets the full list again. A `/clear` closes the session's
+open asks with the reason "conversation cleared".
 
-The check comes at most once per turn you start, and never for an ask the agent sent or kept in that turn.
-When the agent lets a check pass without a word, the next one comes 2 turns later, then 4, then 8. It needs
-the hooks of `collie hooks install claude` and the Hill switched on. Other agents get no check, so their
-asks show as not checked.
+Each ask shows how far the agent has seen it: asked and not yet followed by a prompt, a prompt came after
+it, or the agent read it in a turn that finished. It needs the hooks of `collie hooks install claude` and
+the Hill switched on. Other agents, and the sessions of a crew member, get no reminder.
 
-What it costs: a turn with no open asks costs one short process start and no model call. A turn with open
-asks costs one short extra step of the agent, on a warm cache.
+What it costs: one short process start per prompt and no model call. The note adds a few lines to the
+prompt only when the session has open asks.
 
 This part of the Hill is still being built.
 
