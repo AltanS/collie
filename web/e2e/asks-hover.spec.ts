@@ -2,10 +2,12 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 
 import { askDecision } from "@/test/asks-fixtures";
 
+import { installApiStub } from "./fixtures/api";
 import { installWorld } from "./hitbox/world";
 
 // THE POINTER ON THE ASKS PAGES (Asks build 5, 2026-11-23). A mouse on a large screen gets the house hover on the answer
-// cards and on the Here / Quiet / Away choice: `--state-hover` of the plane (HOVER_FILL), colour only, so no box moves. A
+// cards and, from the shared `Segmented` (ui/segmented.tsx), on every segmented control, Here / Quiet / Away and Settings'
+// Large-screen layout among them: `--state-hover` of the plane (HOVER_FILL), colour only, so no box moves. A
 // chosen card keeps its border and its tint and only deepens the tint, so it never reads as a hovered unchosen card. A
 // finger leaves nothing behind. The fill is read as the computed colour in a real engine, on the shipped bundle: jsdom has no
 // cascade and no `(hover: hover)`.
@@ -146,6 +148,32 @@ test.describe("a mouse on a large screen", () => {
     await expect.poll(() => background(quiet)).toBe(token);
     await here.hover();
     await expect.poll(() => background(here)).toBe(rest);
+  });
+
+  test("a second segmented control, Settings' Large-screen layout, takes the same hover, and the chosen segment does not change", async ({ page }) => {
+    await installApiStub(page);
+    await page.goto("/settings/look");
+    const group = page.getByRole("radiogroup", { name: "Large-screen layout" });
+    await expect(group).toBeVisible();
+    const chosen = group.locator('[role="radio"][aria-checked="true"]');
+    const other = group.locator('[role="radio"][aria-checked="false"]').first();
+    await expect(chosen).toHaveCount(1);
+    await other.scrollIntoViewIfNeeded();
+    const token = await hoverToken(other);
+    const rest = await background(other);
+    const chosenRest = await background(chosen);
+    const otherBox = await boxOf(other);
+    const chosenBox = await boxOf(chosen);
+    expect(token).not.toBe(rest);
+    await other.hover();
+    await expect.poll(() => background(other)).toBe(token);
+    expect(await boxOf(other)).toEqual(otherBox);
+    const dir = process.env.ASKS_HOVER_SHOTS;
+    if (dir !== undefined && dir !== "") await page.screenshot({ path: `${dir}/segmented-pointer-on-unchosen-segment.png` });
+    await chosen.hover();
+    await expect.poll(() => background(other)).toBe(rest);
+    expect(await background(chosen)).toBe(chosenRest);
+    expect(await boxOf(chosen)).toEqual(chosenBox);
   });
 
   test("the shots for the lead", async ({ page }) => {

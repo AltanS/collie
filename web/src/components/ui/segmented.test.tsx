@@ -56,6 +56,17 @@ describe("Segmented", () => {
     expect(boxClasses(after)[0]).toContain("border");
   });
 
+  it("gives the hover only to a segment that is not chosen and is enabled", () => {
+    const options = [{ value: "a", label: "First" }, { value: "b", label: "Second" }, { value: "c", label: "Third", disabled: true }] as const;
+    render(<Segmented options={options} value="a" onChange={() => {}} label="Pick" />);
+    const hover = "enabled:hover:bg-(--state-hover)";
+    // The chosen segment keeps its look; the others carry the hover behind `enabled:`, so a disabled one shows none.
+    expect(screen.getByRole("radio", { name: "First" }).className).not.toContain(hover);
+    expect(screen.getByRole("radio", { name: "Second" }).className).toContain(hover);
+    expect(screen.getByRole("radio", { name: "Third" }).className).toContain(hover);
+    expect(screen.getByRole("radio", { name: "Third" })).toBeDisabled();
+  });
+
   it("reports a different segment and stays quiet for the selected one", async () => {
     const onChange = vi.fn();
     render(<Segmented options={OPTIONS} value="a" onChange={onChange} label="Pick" />);
