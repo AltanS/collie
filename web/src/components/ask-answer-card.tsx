@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { Icon } from "@/components/icons/icon";
 import { KeyBadge, optionSurface } from "@/components/option-button";
 import { Badge } from "@/components/ui/badge";
+import { HOVER_FILL } from "@/components/ui/button";
 import { OneOf } from "@/components/ui/one-of";
 import { useLocale } from "@/hooks/use-locale";
 import { t } from "@/lib/i18n";
@@ -19,6 +20,16 @@ import { cn } from "@/lib/utils";
 // is 16px tall and holds "Note: ..." when the card is answered with a note, and is empty otherwise; "Your own answer" and
 // "Write your answer" keep their body in a `OneOf` of the prompt and the answer text, so writing it moves nothing. The
 // agent's words (title, Then, Cost, Why) are `font-content`: the app's face never dresses what an agent wrote.
+
+// THE POINTER (Asks build 5, 2026-11-23). A card under a mouse takes the house hover: `HOVER_FILL`, the `--state-hover` of the plane
+// it stands on, which is a wait for a pointer that hovers (Tailwind wraps `hover:` in `(hover: hover)`), so a tap on a phone
+// leaves no fill behind. Colour only: the border stays one pixel and keeps its colour, so nothing moves (DESIGN.md §2). A
+// chosen card keeps its `border-primary` and its tint and only deepens the tint to the `/15` its pressed state already
+// wears, so a hovered card and a chosen card never look alike and the choice stays readable under the pointer. A card that
+// cannot be tapped (`disabled`) gets neither the fill nor, by the cursor rule, the hand: the `disabled:hover:` classes put
+// its own resting fill back, being more specific than the hover.
+const REST_HOVER = `${HOVER_FILL} disabled:hover:bg-secondary`;
+const CHOSEN_HOVER = "hover:bg-primary/15 disabled:hover:bg-primary/10";
 
 /** The three kinds of card: an option the agent offered, the fixed "Your own answer", and the one card of a `--words` ask. */
 export type AskCardKind = "option" | "own" | "words";
@@ -76,7 +87,7 @@ export function AskAnswerCard({ kind, number, title, does, cost, why, recommende
         aria-pressed={answered}
         disabled={disabled}
         onClick={onPick}
-        className={cn(optionSurface(on ? "selected" : "default"), "min-h-12 flex-col items-stretch gap-2 px-3.5 pb-2.5 pt-5 shadow-none disabled:opacity-100", own && "border-dashed", "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring")}
+        className={cn(optionSurface(on ? "selected" : "default"), "min-h-12 flex-col items-stretch gap-2 px-3.5 pb-2.5 pt-5 shadow-none disabled:opacity-100", own && "border-dashed", on ? CHOSEN_HOVER : REST_HOVER, "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring")}
       >
         {answered && <span className="sr-only">{t("asks.card.answered")}. </span>}
         {recommended && !answered && <span className="sr-only">{t("asks.card.recommended")}. </span>}
