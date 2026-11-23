@@ -4,7 +4,7 @@
 // output is raw markdown on stdout, with no pager and no colour, because the reader is an AI agent
 // working in the operator's terminal or a shell redirect into a skills directory.
 
-import { DOC_PAGES, type DocPage, findDocPage, SKILL_TEMPLATE } from "./docs-embed.ts";
+import { DOC_PAGES, type DocPage, findDocPage, renamedDocPageLine, SKILL_TEMPLATE } from "./docs-embed.ts";
 import { EXIT, type Io } from "./io.ts";
 
 /** The line `cli/skill.md` carries where the docs table goes. */
@@ -83,6 +83,8 @@ export function cmdDocs(io: Io, args: readonly string[]): number {
   const page = findDocPage(name);
   if (page === undefined) {
     io.err(`error: no page named \`${name}\` is embedded in this binary`);
+    const renamed = renamedDocPageLine(name);
+    if (renamed !== undefined) io.err(renamed);
     for (const line of docsList()) io.err(line);
     io.err("usage: collie docs [<name>|--all]");
     return EXIT.USAGE;

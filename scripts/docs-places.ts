@@ -14,7 +14,7 @@
 // the composer; the Belt's mark of a trick sits at the end of its scrolling strip, before Collie's
 // fixed block; the agent view is a third view beside Terminal and Chat. On the Dashboard, tiles sit
 // in a strip at the top, a trick's Page is a row under Tricks, and a bottom bar item comes after the
-// Hill. Session settings rows sit in the ⋮ sheet, after Collie's rows, under the trick's heading.
+// Asks. Session settings rows sit in the ⋮ sheet, after Collie's rows, under the trick's heading.
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -39,7 +39,7 @@ export const PLACE_SCREEN = {
 export const PLACE_ALT = {
   dashboard: "The Dashboard, with a trick's tile at the end of the strip of tiles at the top.",
   session: "The Dashboard, with a trick's Page as a row under Tricks.",
-  tabbar: "The Dashboard, with a trick's item at the end of the bottom bar, after the Hill.",
+  tabbar: "The Dashboard, with a trick's item at the end of the bottom bar, after Asks.",
   status: "A session, with a trick's chip at the left end of the status line, above the Belt.",
   belt: "A session, with a trick's mark at the end of the Belt's scrolling strip, before Collie's fixed block.",
   "agent-view": "A session, with the agent view as a third view beside Terminal and Chat.",
@@ -102,7 +102,7 @@ function dashboard(marks: readonly Mark[]): string {
   out.push(`<circle cx="31" cy="289" r="4.5" fill="${page ? ACCENT : MID}"/>`, bar(44, 286, 80, 4.5, page ? ACCENT : MID));
   if (page) out.push(badge(W - 22, 274, page.n));
   out.push(`<rect x="16" y="310" width="${W - 32}" height="30" rx="8" fill="${SOFTER}"/>`, `<circle cx="31" cy="325" r="4.5" fill="${MID}"/>`, bar(44, 322, 64, 4.5, MID));
-  // The bottom bar: Collie's four items, the Hill fourth, then a trick's item.
+  // The bottom bar: Collie's four items, Asks fourth, then a trick's item.
   const item = hi(marks, "tabbar");
   out.push(`<rect x="0" y="${H - 54}" width="${W}" height="54" fill="${SOFTER}"/>`, `<line x1="0" y1="${H - 54}" x2="${W}" y2="${H - 54}" stroke="${SOFT}" stroke-width="0.8"/>`);
   for (let i = 0; i < 5; i++) {
