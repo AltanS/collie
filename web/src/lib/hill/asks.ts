@@ -13,21 +13,12 @@ import { activityAt } from "../pane-order";
 import type { Scope } from "../scope";
 import type { AgentStatus, AgentView, ServerSummary, SessionSummary } from "../types";
 import { livePaneAt, type WalkyLivePanes } from "../walky-names";
+import { NO_DRAFT, type AskDraft } from "./asks-drafts";
 import { answersMessage, answersMessageLength, answersMessageOver, type MarkedAnswer } from "./answers-message";
 import { askTakenBackBecause, HILL_ANSWERS_MAX, HILL_ANSWERS_MESSAGE_MAX, HILL_ASK_ANSWERED_HERE, HILL_MORE_CONTEXT, HILL_MORE_CONTEXT_LABEL, isAsk, type HillAsk, type HillAskFile, type HillDecision } from "./wire";
 
 /** A Decision known to be an ask: the `ask` field is there. */
 export type AskDecision = HillDecision & { ask: HillAsk };
-
-/** What the phone keeps of one answer marked on it and not sent yet (lib/hill/asks-drafts.ts). */
-export interface AskDraft {
-  /** An option's intent, `more-context`, or null: nothing marked. A `--words` ask marks nothing, its words are the answer. */
-  intent: string | null;
-  /** The note, or on a `--words` ask the answer itself. */
-  text: string;
-}
-
-export const NO_DRAFT: AskDraft = { intent: null, text: "" };
 
 /** The open asks of a list, in the list's order. */
 export function openAsksOf(open: readonly HillDecision[]): AskDecision[] {

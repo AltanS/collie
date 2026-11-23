@@ -1,13 +1,22 @@
 import { useSyncExternalStore } from "react";
 
 import { asJsonNumber, asJsonObject, asJsonString, parseJson } from "@/lib/json";
-import { NO_DRAFT, type AskDraft } from "./asks";
 
 // THE ANSWERS MARKED ON THIS PHONE, NOT SENT YET (Asks, 2026-11-23). A tap on an option on an ask's page marks it; nothing
 // leaves the phone until the review page's Send. So the marks must outlive a closed tab and a killed PWA: they sit in
 // localStorage under ONE key, a map from ask id to the mark and the note. An entry is dropped when its ask is no longer
 // open (`pruneAskDrafts`), when its Send went, and after MAX_AGE_MS in any case. Unsent words of this pairing, so the
 // unpair wipe clears them (lib/wipe.ts, "ask-drafts").
+
+/** What the phone keeps of one answer marked on it and not sent yet (lib/hill/asks-drafts.ts). */
+export interface AskDraft {
+  /** An option's intent, `more-context`, or null: nothing marked. A `--words` ask marks nothing, its words are the answer. */
+  intent: string | null;
+  /** The note, or on a `--words` ask the answer itself. */
+  text: string;
+}
+
+export const NO_DRAFT: AskDraft = { intent: null, text: "" };
 
 const KEY = "collie:ask-drafts:v1";
 /** An ancient half-answer must never resurface: the ask it answered has long been closed by its poster. */

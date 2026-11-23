@@ -23,8 +23,8 @@ import {
   sessionOpenPath,
   wordsPreview,
   type AskDecision,
-  type AskDraft,
 } from "./asks";
+import type { AskDraft } from "./asks-drafts";
 import { HILL_MORE_CONTEXT, type HillAsk, type HillDecision } from "./wire";
 
 // The pure rules the Asks pages share (lib/hill/asks.ts): grouping, order, header facts, place among a session's
