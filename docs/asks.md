@@ -240,10 +240,11 @@ A closed ask stays under **Answered**, newest first, up to 20, until you clear i
 An agent does not confirm an ask. Silence means the ask is still open. A reminder rides on your next
 prompt instead.
 
-On Claude Code, the agent gets its open asks next to each prompt you send in that session, as a short
-note it reads before it starts. The note comes from Collie's hooks. If your prompt or its work settles an
-ask, the agent closes it with `collie walky cancel <id> --answered`. An ask that is still true stays
-open, and the agent does nothing.
+On Claude Code, the agent gets its open asks next to each prompt you send in that session, as a note it
+reads before it starts. The note comes from Collie's hooks. The first time an ask is listed, the note
+holds the question and how to close it. After that, each prompt gets one short line with the ids of the
+open asks. If your prompt or its work settles an ask, the agent closes it with
+`collie walky cancel <id> --answered`. An ask that is still true stays open, and the agent does nothing.
 
 - After a compaction, a resume or a fork, the agent gets the full list again.
 - A `/clear` closes the session's open asks with the reason "conversation cleared", and the phone shows
@@ -266,8 +267,8 @@ get no reminder either: their asks live on the lead, which never sees the member
 "Not checked". With no hooks, every ask reads "Asked" or "Not checked". `collie hooks status` and
 `collie doctor` say whether the entries are in place.
 
-What it costs: one short process start per prompt and no model call. The note adds a few lines to the
-prompt only when the session has open asks.
+What it costs: one short process start per prompt and no model call. The note adds text to the prompt
+only when the session has open asks: a few lines once per ask, then one short line.
 
 ## Other cards
 

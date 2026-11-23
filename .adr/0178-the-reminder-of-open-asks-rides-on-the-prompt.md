@@ -50,10 +50,12 @@ prints. Nothing is confirmed: an ask stays open until the person answers it or t
    not a valid list. The prompt text never leaves the process: the bridge gets its hash, salted with that bridge's
    send salt, as `beacon emit` hashes it for the prompt edge.
 2. **The text.** The full form: "Collie: your open asks.", each ask with its id and its question (control characters
-   removed, cut to 90 characters), then how to close one with the binary the skill names, then "Still true: do
-   nothing." The short form, when the set of asks is the one this session was shown last time: "Collie: asks ... are
-   still open. Close what this turn settles." One switch (`ASK_REMIND_SHORT_FORM`) turns the short form off. No
-   answer of the person's is ever in it.
+   removed, cut to 60 characters), then how to close one with the binary the skill names, then "Still true: do
+   nothing." The short form, the ids only: "Collie: open ask ak_1." or "Collie: open asks ak_1, ak_2." A list
+   gets the full form when at least one of its asks is new to the session, which is one it was not shown in an
+   earlier list; else the short form, so an ask that closed does not bring the full form back. One switch
+   (`ASK_REMIND_SHORT_FORM`) turns the short form off: then every list is full. No answer of the person's is ever
+   in it. The owner asked for this trim on 2026-11-23, because the first form cost too many tokens.
 3. **When it speaks.** At every prompt of the pane's own session with open asks; at `compact`, `resume` and `fork`
    with the full list (the conversation came back without it); never at `startup`. It is silent for a prompt the
    bridge typed itself: when the bridge types an "Answers to your asks" message it records the hash of the typed
@@ -84,7 +86,8 @@ carries no answer, no body, no file and nothing of another session.
 ## Consequences
 
 - Cost: one process start per prompt and per session start, and no model step. The tokens of the text only when the
-  session has open asks; the short form is one line.
+  session has open asks: the full form once per ask (and after `compact`, `resume` and `fork`), then one line of
+  ids.
 - Codex and the other harnesses get no reminder. Their asks read `fresh` or `unchecked`, never `carried`.
 - A running Claude reloads its hooks from the settings files, so an install reaches running sessions. One with hooks
   turned off gets no reminder.
