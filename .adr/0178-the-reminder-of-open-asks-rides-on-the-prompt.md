@@ -97,9 +97,17 @@ carries no answer, no body, no file and nothing of another session.
   - Self-settled asks. An agent that settles an ask mid-turn, forgets the cancel and gets no new prompt leaves the
     ask reading `fresh` and stale. Nothing here catches it.
   - Crew members. The reminder does not reach a member's session, and its asks never read `carried`.
-- Still to measure with real sessions before the feature leaves the dev lane: whether agents close what a prompt
-  settles (go at 9 of 10 and no wrong close), whether the cache prefix holds, that the context makes no visible
-  transcript entry, and whether the short form works.
+- Measured with real Claude Code sessions (Sonnet), 2026-11-23. The bar was 9 of 10 closed and no wrong close.
+  - The full form on the prompt that settles the ask, on the dev lane: 10 of 10 closed; 10 prompts that settle
+    nothing closed nothing.
+  - The trimmed forms, in a closed lab (a hook that prints the text, a stand-in for `collie`, no skill text in the
+    sessions): the full form once, then the short form. The prompt that settles the ask came on the first or the
+    third short-form prompt: 10 of 10 closed, each with `walky cancel <id> --answered`; 10 prompts that settle nothing
+    closed nothing; with two open asks only the settled one closed.
+  - Tokens, equal on Sonnet and Opus: Claude Code's wrapper 16; the full form with one ask about 130 with the bare
+    command name and about 150 with a 60-character path, about 35 more per further ask; the short form 39 with one
+    id and 55 with two. These counts include the wrapper.
+- Still to measure: whether the cache prefix holds, and that the context makes no visible transcript entry.
 
 ## What we tried before
 
