@@ -204,6 +204,7 @@ Write for a reader who knows nothing of this session. Explain each name a strang
 The body holds what you found and what can go wrong. Link a file with --file path#heading, do not paste it.
 Put no open question in a file or in your reply. Then go on with the work that does not need the answer.
 The answers come back together, as one message.
+An ask that is still true at the end of a turn: /opt/collie/bin/collie walky keep <id>. One that changed: --replaces <id>.
 A dialog that blocks a command, such as a permission prompt, is not an ask.
 Rules and flags: /opt/collie/bin/collie walky ask --help
 
