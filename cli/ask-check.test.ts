@@ -11,6 +11,7 @@ import { HillStore } from "../bridge/hill/store.ts";
 import { HillSwitch, writeHillSwitch } from "../bridge/hill/switch.ts";
 import { walkyPlace } from "../bridge/hill/walky.ts";
 import { HOST } from "../bridge/host.ts";
+import { unknownOp } from "../bridge/walky/refusals.ts";
 import type { WalkyHost, WalkyPane } from "../bridge/walky/deliver.ts";
 import { WalkyLog } from "../bridge/walky/log.ts";
 import { WalkyService } from "../bridge/walky/service.ts";
@@ -171,6 +172,58 @@ describe("what it prints", () => {
     expect(f.printed).toHaveLength(1);
     expect(f.asked.map((line) => line.split(" ")[0])).toEqual(["/s/one", "/s/two"]);
     expect(JSON.parse(f.asked[0]!.slice("/s/one ".length))).toEqual({ v: 1, markers: [{ namespace: "tmux", pane: "%1", scope: "/tmp/tmux-1/default" }], op: "ask.check" });
+  });
+
+  test("a bridge that does not know the op, or answers none, sends it to the next (several releases on one machine)", async () => {
+    const check = JSON.stringify(CHECK);
+    const first: Array<[string, string]> = [
+      ["a bare refusal of an older bridge", JSON.stringify({ ok: false, error: "bad request" })],
+      ["the unknown-op sentence", JSON.stringify({ ok: false, error: unknownOp("ask.check") })],
+      ["none: no asks here, or the switch is off", JSON.stringify({ ok: true, check: "none" })],
+    ];
+    for (const [, answer] of first) {
+      const f = fake({ answers: { "/s/one": answer, "/s/two": check } });
+      expect(await cmdBeaconCheck(f.deps)).toBe(EXIT.OK);
+      expect(f.printed).toHaveLength(1);
+      expect(JSON.parse(f.printed[0]!).reason).toContain("ak_aaaaaaaaaaaa");
+      expect(f.asked.map((line) => line.split(" ")[0])).toEqual(["/s/one", "/s/two"]);
+    }
+  });
+
+  test("a malformed check list goes on, and a second bridge's none ends in silence", async () => {
+    const bad = JSON.stringify({ ok: true, check: "check", asks: [{ id: "../../x", title: "x", at: 0 }] });
+    const f = fake({ answers: { "/s/one": bad, "/s/two": JSON.stringify({ ok: true, check: "none" }) } });
+    await silent(f);
+    expect(f.asked.map((line) => line.split(" ")[0])).toEqual(["/s/one", "/s/two"]);
+  });
+
+  test("every bridge answers none: silence, and every one was asked", async () => {
+    const none = JSON.stringify({ ok: true, check: "none" });
+    const f = fake({ answers: { "/s/one": none, "/s/two": none, "/s/three": none } });
+    await silent(f);
+    expect(f.asked.map((line) => line.split(" ")[0])).toEqual(["/s/one", "/s/two", "/s/three"]);
+  });
+
+  test("slow bridges that together pass the one deadline: the walk ends, silent, within the limit", async () => {
+    const f = fake({ answers: { "/s/one": JSON.stringify({ ok: false, error: "bad request" }), "/s/two": JSON.stringify({ ok: true, check: "none" }), "/s/three": JSON.stringify(CHECK) } });
+    let clock = 0;
+    const budgets: number[] = [];
+    const inner = f.deps.ask;
+    const deps: BeaconCheckDeps = {
+      ...f.deps,
+      now: () => clock,
+      ask: (path, line, ms) => {
+        budgets.push(ms);
+        clock += CHECK_LIMIT_MS / 2;
+        return inner(path, line, ms);
+      },
+    };
+    expect(await cmdBeaconCheck(deps)).toBe(EXIT.OK);
+    expect(f.printed).toEqual([]);
+    // The deadline is one for the whole verb: the second bridge got what was left, the third was never asked.
+    expect(budgets).toEqual([CHECK_LIMIT_MS, CHECK_LIMIT_MS / 2]);
+    expect(f.asked.map((line) => line.split(" ")[0])).toEqual(["/s/one", "/s/two"]);
+    expect(clock).toBe(CHECK_LIMIT_MS);
   });
 
   test("the question is cleaned and cut; five asks stay under 1,200 bytes", () => {
