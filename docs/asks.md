@@ -17,7 +17,8 @@ question, and tap Send. Your answers come back to the agent's session as one mes
 starts its next turn.
 
 Asks is an experiment. It is off until you switch it on, so no agent or trick can ask before that. See
-[Turn Asks on or off](#turn-asks-on-or-off).
+[Turn Asks on or off](#turn-asks-on-or-off). A Collie that updates from a release with the same list under
+its old name starts with Asks off and empty ([After an update](#after-an-update)).
 
 ## Turn Asks on or off
 
@@ -27,8 +28,8 @@ turn Asks on or off. If a question waits, the row says how many, and the first t
 you to tap again before it turns off.
 
 A tap on the row's name opens the Asks page of Settings, with the switch at the top. The page says what
-Asks is, who can ask, what to do when nothing arrives, and where Asks comes from. It also has the
-button **Send a test ask** ([Send a test ask](#send-a-test-ask)).
+Asks is, who can ask, what to do when nothing arrives, and where Asks comes from, and it links to this
+page.
 
 On the machine, run:
 
@@ -38,7 +39,7 @@ collie asks off
 ```
 
 The commands move the same switch, for every phone of this Collie, and the bridge reads it with no
-restart.
+restart. `collie asks on` refuses in a pane where an agent works: switching Asks on is your choice.
 
 With Asks off:
 
@@ -48,7 +49,7 @@ With Asks off:
 - The open asks stay stored. They show again when you turn Asks on.
 - An agent can still run `collie walky asks`, `collie walky status` and `collie walky cancel`, so it can
   clean up.
-- The crew state and "Tell all sessions now" are off too.
+- The Crew state control is not shown, and "Tell all sessions now" is refused.
 
 The installed WalkyTalky skill names asks only while Asks is on. Each change of the switch writes the
 skill again, as `collie skill sync` does. A session that started before you turned Asks on may not know
@@ -61,8 +62,9 @@ that machine's own switch, not the lead's. To give the agents on a member the As
 
 Collie's own cards about a trick are not asks of an agent, so they need no switch. A proposed trick, a
 new version, a trick's changed rights and a carried trick still get their card with Asks off. They wait
-under **Waiting for your yes** in Settings → Tricks, and the Dashboard shows "A trick waits for your
-yes." with a button to the oldest card.
+under **Waiting for your yes** in Settings → Tricks. While Asks is off, the Dashboard also shows a line
+about the card, such as "An agent proposes a trick: `<name>`.", with the button **Review**, which opens
+the oldest card.
 
 ## What an ask is
 
@@ -71,7 +73,7 @@ An ask is one question with its answers. The agent writes all of it, and only tw
 | Part | Needed | What the phone shows |
 | --- | --- | --- |
 | The question | yes | The question, in the content font. At most 90 characters, and it ends with `?` |
-| Options | yes, 2 to 5, or `--words` | One answer card for each. A label starts with a verb, at most 60 characters |
+| Options | yes, 2 to 5, or `--words` | One answer card for each. A label should start with a verb, at most 60 characters. A bare Yes, No, OK or Cancel is refused |
 | `--fact` | no | The situation, under the question. At most 240 characters |
 | `--does <id>=<text>` | no | "Then": what happens when you pick that answer. At most 300 characters |
 | `--cost <id>=<text>` | no | "Cost": what that answer costs or risks. At most 300 characters |
@@ -99,6 +101,10 @@ An ask is in one of these states. A closed one keeps its state and shows it.
 | replaced | "The agent sent a newer ask in its place." |
 | cleared | "The conversation was cleared. This ask is closed." |
 | gone | "The session that asked has ended." |
+
+An answered ask, and one you answered in the session, stay under **Answered** until you clear them. An
+ask that closed without you, because it was taken back, replaced, cleared or gone, leaves by itself after
+about a minute. The agent can still read its state with `collie walky status`.
 
 Three kinds of sender ask. **An agent** asks with `collie walky ask`, and the bridge names the agent from
 its pane. **A trick** asks with its `asks` list ([An ask from a trick](#an-ask-from-a-trick)). **Collie
@@ -133,16 +139,20 @@ when it runs it. Add `--dry-run` to print the card the person would see and send
 
 The agent writes for a reader who knows nothing of its session. The rules it gets:
 
-1. One ask holds one question. A second question is a second ask.
+1. One ask holds one decision. A second question in the body is a second ask.
 2. Write for a stranger to your session. Explain each name they would not know.
-3. The background adds what you found and what can go wrong. Do not repeat the options in it.
-4. Send the ask when you meet the question, not as a group at the end of the turn.
+3. The body adds what you found and what can go wrong. Do not repeat the options in it.
+4. Send the ask when you meet the decision, not as a group at the end of the turn.
 5. Put no open question in a file or in your reply. Point to the ask id.
 6. Do not wait for the answer. Go on with the work that does not need it.
-7. A dialog that blocks a command, such as a permission prompt, is not an ask.
+7. A dialog that blocks a command is not an ask. A permission prompt is such a dialog.
 
-The skill an agent has installed holds a short Asks section while Asks is on: one example, the same
-rules, and the line that tells it how to close an ask ([Install the skill](walky-talky.md#install-the-skill)).
+The help calls the background the body: `--body <file.md>`, or text after `--`. After the rules it says
+how an ask stays open and how to close it.
+
+The skill an agent has installed holds a short Asks section while Asks is on: one example, a few of these
+rules in prose, how to close an ask, and a pointer to `collie walky ask --help`
+([Install the skill](walky-talky.md#install-the-skill)).
 
 A refusal prints one line on stderr and gives an exit code.
 
@@ -151,9 +161,9 @@ A refusal prints one line on stderr and gives an exit code.
 | 0 | Done |
 | 1 | It failed in a way no other code names |
 | 2 | A usage error: a flag is wrong or missing, or an old `collie hill` verb. The line names the new verb |
-| 3 | A state of the machine. Asks is off, or no bridge on this machine knows this pane. A retry can pass once that changes |
+| 3 | A state of the machine. Asks is off, no bridge on this machine knows this pane, or the machine has no socket (Windows). With several ids, `cancel` also exits 3 when one id failed. A retry can pass once that changes |
 | 4 | The bridge refused the ask for a reason it names, such as too many open asks |
-| 5 | No running Collie answered, or the bridge took the ask and did not answer in time, or a crew member's lead did not answer. The ask may still arrive. Send it again with the same `--request-id <uuid>`, and Asks keeps one ask |
+| 5 | No running Collie answered, or the bridge took the ask and did not answer in time, or a crew member's lead did not answer. The ask may or may not have arrived. Send it again with the same `--request-id <uuid>`, and Asks keeps one ask |
 
 A session holds at most five open asks. `--request-id <uuid>` makes a retry safe: the same id sends once,
 and the same id with other content is refused.
@@ -190,7 +200,7 @@ the answer by default.
 **Mark an answer.** Tap a card, or press the key `1` to `9`. A sheet opens with your answer, a fold
 **Add a note**, **Confirm** and **Cancel**. Enter confirms and Escape cancels. A confirmed card stays
 marked on the ask's screen, and you can tap **Change answer**. Nothing goes to the agent yet, and the
-screen does not move on by itself: tap **Next** for the next ask.
+screen does not move on by itself: tap **Previous** or **Next** to move between asks.
 
 **Ask back.** When the question is not clear to you, tap **Ask back** in the bottom bar and write what
 is missing. The agent gets "I need more context" with your words, and sends the ask again with a better
@@ -199,9 +209,10 @@ background and `--replaces`.
 **Send.** The line above the bottom bar says "No answers yet", or "2 of 4 answered", with **Send 2**.
 A Send belongs to one session, so one Send answers every marked ask of that session in one message.
 A partial Send is allowed: an ask with no answer stays open, and the message says so. Send opens a sheet
-with the exact message the agent gets, and one line about the cache. A warm session takes it as one cheap
-turn. A working session gets it when its turn ends. A cold session starts a turn at full price. Tap
-**Hold** to wait.
+with the message the agent gets, its length against the limit of 4,000 characters, and one line about the
+cache. Under Quiet or Away the message ends with the line "Crew state: quiet." or "Crew state: away."
+([Here, Quiet and Away](#here-quiet-and-away)). A warm session takes it as one cheap turn. A working
+session gets it when its turn ends. A cold session starts a turn at full price. Tap **Hold** to wait.
 
 The message is one line for each ask, with the id first:
 
@@ -261,13 +272,8 @@ prompt only when the session has open asks.
 ## Other cards
 
 Cards that are not asks of an agent stand in a last group under **Other cards**: an ask from a trick,
-and Collie's own cards. Each card sits in a group by how soon it needs you.
-
-| Group | Meaning |
-| --- | --- |
-| Now | Needs you now. A card marked `now` also sends a notification |
-| Today | The default |
-| Later | Can wait |
+and Collie's own cards. No card has a priority, so the cards stand in one list, the oldest first. The
+heading "Other cards" shows when asks of agents are open too. No card sends a notification.
 
 A card holds, from top to bottom: who asked, with the machine and the card's age; the title and the
 summary; the pictures, as one sideways row; facts from the sender in a quiet frame; the recommendation,
@@ -295,7 +301,7 @@ Go ahead, then tell me.
 
 That message goes to the session that asked. When the answer goes to another session, because a trick
 named a `replyTo`, the message does not quote the title or the label. It holds only the id, the option's
-word, your words and the line "Read the answer with: collie walky status `<id>`". Another session must
+word, your words and the line "Read the ask with: collie walky status `<id>`". Another session must
 not carry the sender's own words with your authority.
 
 ## Receipts
@@ -331,20 +337,23 @@ The same record is in `collie walky status` as `delivery`: `typed`, `held`, `unk
 never closed because a crew machine went away. Dismiss still closes a card, and the phone then says the
 session was not told ([Asks from any machine](crew.md#asks-from-any-machine)).
 
-A card of a trick or of Collie closes on a fact Collie read, never on a guess. The bridge looks at the
-open cards every 15 seconds.
+An ask or a card closes on a fact Collie read, never on a guess. The bridge looks at the open ones every
+15 seconds.
 
 | What it read | The card closes as |
 | --- | --- |
 | The card's expiry passed | expired |
 | The session the answer goes to is gone, at two looks in a row | could not be delivered |
 | The machine the answer goes to was removed from the crew | could not be delivered |
-| Your message from the phone started that session's next turn | "You wrote in the session" |
 
 A session counts as gone only when the multiplexer answered the look and did not list it. A look that
-failed, a bridge that just started, and a crew machine that does not answer close nothing. A card that
-closed without you, because it expired, was taken back or replaced, or could not be delivered, stays for
-one minute with its state, and then leaves by itself.
+failed, a bridge that just started, and a crew machine that does not answer close nothing. An ask or a
+card of a trick that closed without you, because it expired, was taken back or replaced, or could not be
+delivered, stays for about a minute with its state, and then leaves by itself. Collie's own cards stay
+until you clear them.
+
+Writing in the session does not close an ask. An ask stays open until you answer it, the agent takes it
+back or replaces it, or the session is gone.
 
 ## Clear
 
@@ -357,7 +366,9 @@ Clear removes the asks and cards that are closed.
 
 A second Clear, "Clear cards you answered in the session", handles the open cards marked "You wrote to
 this session after it asked." It takes them back and clears them, and types nothing. In a terminal it is
-`collie asks clear --spoken`, which refuses in a pane where an agent works.
+`collie asks clear --spoken`, which refuses in a pane where an agent works. An ask never takes that mark,
+because writing in the session leaves an ask as it is. The mark and this Clear apply only to a plain card
+that an agent sent with an older Collie on the same machine.
 
 `collie asks clear` without `--spoken` never touches an open ask, and it works with Asks off. Collie keeps
 a small marker of each cleared ask, so a repeated ask with the same request id is refused and not sent
@@ -368,35 +379,40 @@ example, "ak_k3f9x2m8q1a0 is withdrawn; it has left Asks".
 
 ## Here, Quiet and Away
 
-The crew state tells your agents how much you want to hear now. Only you set it.
+The crew state tells your agents how much you want to hear now. Only you set it. It has one effect: a
+line of words that your agents read.
 
 ```sh
 collie asks state
 collie asks state quiet
 ```
 
-The Crew state control sits at the top of Asks. It has three states:
+`collie asks state` prints the state and since when it holds. The Crew state control sits at the top of
+Asks. It has three states, and under each one the control says in words what the agents do:
 
-| State | The phone says | What changes |
-| --- | --- | --- |
-| Here | "Agents ask as usual." | Nothing. This is the default |
-| Quiet | "Agents ask but do not wait for an answer." | A card marked `now` from a trick sends no notification |
-| Away | "Agents keep back questions that need an answer now." | A card marked `now` from a trick sends no notification |
+| State | The phone says |
+| --- | --- |
+| Here | "Agents ask as usual." |
+| Quiet | "Agents ask, but do not wait for your answer." |
+| Away | "Agents keep back questions that need an answer now." |
 
-An ask never sends a notification, so the state changes nothing there. What it does change is the line
-"Crew state: away." (or "quiet"). Collie adds that line to the end of the result of each ask and to each
-answer you send, so the agent knows. The bridge refuses no ask because of the state. Under Quiet and Away
-the control says who set it and when. It stays until you tap Here, or run `collie asks state here`.
+Here is the default. Under Quiet and Away, Collie adds the line "Crew state: quiet." or "Crew state: away."
+to the end of the result of each `collie walky ask`, and to the end of each answer you send. Collie does
+nothing more with the state: the bridge refuses no ask, holds none back, and sends no notification. The
+agent reads the line and decides. The result of `collie walky ask` has no such line under Here.
+
+Under Quiet and Away the control also says who set the state and when ("Set by `<device>` at `<time>`.", or
+"Set from a terminal at `<time>`."). The state stays until you tap Here, or run `collie asks state here`.
 
 `collie asks state` with a word refuses in a pane where an agent works. On a crew member it is refused
 too: the state lives on the lead.
 
 **Tell all sessions now.** Under Quiet or Away, the control shows this button. One tap types the line
 "Crew state: away." (or "quiet") into each agent session that waits on Asks, as a message from you. Those
-are the sessions with an open ask, or one asked in the last hour, at most 20 of them, newest first. A busy
-session gets the line when its turn ends. The button then says "Told 3 sessions", or "No session was
-waiting", and stays off until the state changes again. It uses a budget of its own, so it never uses up
-the messages that carry your answers.
+are the sessions of the lead's own machine with an open ask, or one asked in the last hour, at most 20 of
+them, newest first. A busy session gets the line when its turn ends. The button then says "Told 3
+sessions", or "No session was waiting", and stays off until the state changes again. It uses a budget of
+its own, so it never uses up the messages that carry your answers.
 
 ## An ask from a trick
 
@@ -454,41 +470,16 @@ cannot be proposed by an agent. Ask your person to add it on the machine." The l
 many proposals wait are in
 [A proposal from an agent](tricks-reference.md#a-proposal-from-an-agent) of the Tricks reference.
 
-## Send a test ask
-
-To see the whole loop once, send a test ask. Turn Asks on, then open Settings → Tricks → Asks. The group
-**Try it** has the button **Send a test ask**. It works only while Asks is on, and only on a device that
-may write.
-
-Collie sends one card of its own, marked `now`, 20 seconds after you tap. The card is called "Do asks
-reach you?" and has one button, "It works". Tap it and the card closes. Collie sends a notification for
-it, as for any card marked `now`, so your phone shows the notification. A second test replaces the open
-one, and an unanswered card expires after ten minutes.
-
-The card waits 20 seconds because the app does not send a notification to a phone that has the app open:
-the app shows the card itself. The wait gives you time to leave the app or lock the phone. A press while a
-test waits starts no second test; the sentence under the button says how many seconds remain.
-
-The sentence under the button says when the card arrives. When no notification would be sent, it says
-why, the first reason that holds:
-
-- Notifications are not set up on this Collie.
-- No device has notifications switched on.
-- The notification for an ask marked Now is switched off, in Settings → Notifications.
-- Notifications are snoozed.
-- This machine is a crew member, and the lead sends the notifications.
-- Your crew state is Quiet, or Away ([Here, Quiet and Away](#here-quiet-and-away)).
-- Too many notifications from Asks went out in the last hour: one sender may send three an hour.
-
-The card still arrives in each of these cases. A restart of the bridge within the 20 seconds drops the
-test.
-
 ## Asks in a crew
 
 A crew has one Asks list, on the lead. An agent on any machine can ask with `collie walky ask`. The phone
 shows every ask, with the machine it came from. Your answer goes back through the lead
 ([Asks from any machine](crew.md#asks-from-any-machine)). The lead keeps a copy of its open asks on its
 deputy ([Open asks come along](crew.md#open-asks-come-along)).
+
+The lead must be a Collie that takes asks from other machines. An ask from a member also takes no
+`--file`, and its session gets no reminder. [Asks from any machine](crew.md#asks-from-any-machine) has
+the refusals in words.
 
 ## What is not there
 
@@ -497,10 +488,26 @@ This build does not do these things:
 - Question cards of durable agents do not show in the list. They stay on their own pages
   ([Durable agents](durable-agents.md#what-the-phone-shows)).
 - One answer does not settle the same question asked by two sessions. Each ask is answered on its own.
-- Files linked from an ask of a crew member are not opened on the phone.
+- An ask of a crew member's session takes no `--file`.
 - An answer does not reach a session in the middle of its turn. A working session gets your answers when
   its turn ends.
-- An ask has no priority, no expiry and no notification.
+- An ask has no priority and sends no notification. An ask of an agent never expires: it stays open until
+  you answer it or the agent takes it back. A trick's ask and Collie's own cards can expire.
+- Asks has no test button. It has no card that Collie sends to show you how it works.
+
+## After an update
+
+Asks keeps nothing from the list that earlier releases showed under another name. Nothing carries over
+at the update:
+
+- Asks is off. Switch it on again ([Turn Asks on or off](#turn-asks-on-or-off)).
+- Here, Quiet and Away is at Here.
+- The old open cards and the old closed list are gone, and so are their pictures and the answer
+  receipts. A late retry of an old answer reads "gone".
+- A trick posts its asks again on its next run, as new asks.
+- The old folder stays in the state folder, untouched and never read.
+- A trick that still writes the old names is refused or loses its asks until its author moves it
+  ([Names that changed](tricks-authoring.md#names-that-changed)).
 
 ## Where to go next
 
