@@ -107,7 +107,7 @@ describe("walky ask over the socket", () => {
     expect(d.io.stdout[0]).toBe("ak_sock00000001");
     expect(d.io.stdout).toContain("  docs/a.md#A");
     const stored = b.hill.list().open[0]!;
-    expect(stored.ask).toEqual({ words: false, files: [{ path: "docs/a.md", heading: "A" }], root: "%1" });
+    expect(stored.ask).toEqual({ words: false, files: [{ path: "docs/a.md", heading: "A" }], root: "%1", mark: "fresh" });
     const listed = deps(b.socket, workspace);
     expect(await cmdWalkyAsks(listed, [])).toBe(EXIT.OK);
     expect(listed.io.stdout).toEqual(["ak_sock00000001 Ship the fix on Edge first?"]);

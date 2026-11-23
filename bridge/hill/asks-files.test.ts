@@ -95,11 +95,23 @@ describe("the ask on the wire", () => {
     expect(fields({ files: [] })).toMatchObject({ ok: false });
   });
 
+  test("a stored ask keeps its mark; one from before the mark reads by its confirmedAt; an unknown word reads unchecked", () => {
+    const r = askRig();
+    const ask = posted(r.hill.post({ kind: "agent", address: ADDRESS, memberId: null, harness: "claude", label: "x", host: "desk" }, askInput(1)));
+    expect(ask.ask?.mark).toBe("fresh");
+    const markOf = (extra: { mark?: string; confirmedAt?: number }) => readDecision(JSON.parse(JSON.stringify({ ...ask, ask: { words: false, files: [], root: null, ...extra } })))?.ask?.mark;
+    expect(markOf({ mark: "carried", confirmedAt: 9 })).toBe("carried");
+    expect(markOf({ mark: "unchecked" })).toBe("unchecked");
+    expect(markOf({})).toBe("fresh");
+    expect(markOf({ confirmedAt: 9 })).toBe("carried");
+    expect(markOf({ mark: "seen" })).toBe("unchecked");
+  });
+
   test("a stored ask with a path the Files routes would not take fails, and so does the decision", () => {
     const r = askRig();
     const ask = posted(r.hill.post({ kind: "agent", address: ADDRESS, memberId: null, harness: "claude", label: "x", host: "desk" }, askInput(1)));
     const row = (files: unknown[]) => JSON.parse(JSON.stringify({ ...ask, ask: { words: false, files, root: "%1" } }));
-    expect(readDecision(row([{ path: "docs/hill.md", line: 4 }]))?.ask).toEqual({ words: false, files: [{ path: "docs/hill.md", line: 4 }], root: "%1" });
+    expect(readDecision(row([{ path: "docs/hill.md", line: 4 }]))?.ask).toEqual({ words: false, files: [{ path: "docs/hill.md", line: 4 }], root: "%1", mark: "fresh" });
     expect(readDecision(row([{ path: "../out.md" }]))).toBeNull();
     expect(readDecision(row([{ path: "/abs.md" }]))).toBeNull();
     expect(readDecision(row([{ path: ".git/config" }]))).toBeNull();

@@ -1358,7 +1358,7 @@ A trend as a small line with no axes. The last point is marked.
 | clock | `ago`, `elapsed`, `left`, `time` |
 | style | `bold`, `dim`, `italic`, `underline`, `inverse`, `strike`, `box`, `fg-<colour>`, `bg-<colour>` and the syntax inks `syn-keyword`, `syn-string`, `syn-comment`, `syn-number`, `syn-type`, `syn-func`, `syn-const`, `syn-punct`. The colours are `black`, `red`, `green`, `yellow`, `blue`, `magenta`, `cyan`, `white`, `bright-black`, `bright-red`, `bright-green`, `bright-yellow`, `bright-blue`, `bright-magenta`, `bright-cyan`, `bright-white` |
 | button intent | 1 to 48 of `a-z`, `0-9`, `.`, `_` and `-`, starting with a letter or a digit |
-| Decision option intent | 1 to 32 of `a-z`, `0-9` and `-`, starting with a letter, never `answer`, `dismiss` or `more-context` |
+| Decision option intent | 1 to 32 of `a-z`, `0-9` and `-`, starting with a letter, never `answer`, `dismiss`, `more-context` or `own` |
 
 ## Manifest keys
 

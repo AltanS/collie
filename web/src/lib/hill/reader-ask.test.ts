@@ -15,13 +15,29 @@ function wire(ask: JsonValue): JsonObject {
 }
 
 describe("readHillDecision, the ask field", () => {
-  it("reads an ask with its files, its root and the time of its keep", () => {
-    const read = readHillDecision(wire({ words: false, files: [{ path: "docs/plan.md", heading: "Risks" }, { path: "src/a.ts", line: 40 }], root: "w6:p3", confirmedAt: 1_762_000_000_000 }));
-    expect(read?.ask).toEqual({ words: false, files: [{ path: "docs/plan.md", heading: "Risks" }, { path: "src/a.ts", line: 40 }], root: "w6:p3", confirmedAt: 1_762_000_000_000 });
+  it("reads an ask with its files, its root, its mark and the time of its confirmation", () => {
+    const read = readHillDecision(wire({ words: false, files: [{ path: "docs/plan.md", heading: "Risks" }, { path: "src/a.ts", line: 40 }], root: "w6:p3", mark: "carried", confirmedAt: 1_762_000_000_000 }));
+    expect(read?.ask).toEqual({ words: false, files: [{ path: "docs/plan.md", heading: "Risks" }, { path: "src/a.ts", line: 40 }], root: "w6:p3", mark: "carried", confirmedAt: 1_762_000_000_000 });
+  });
+
+  it("reads each mark, an old record with no mark by its confirmedAt, and an unknown mark as unchecked", () => {
+    const markOf = (ask: JsonObject) => readHillDecision(wire({ words: false, files: [], root: null, ...ask }))?.ask?.mark;
+    expect(markOf({ mark: "fresh" })).toBe("fresh");
+    expect(markOf({ mark: "unchecked", confirmedAt: 5 })).toBe("unchecked");
+    expect(markOf({})).toBe("fresh");
+    expect(markOf({ confirmedAt: 5 })).toBe("carried");
+    expect(markOf({ mark: "seen" })).toBe("unchecked");
+  });
+
+  it("reads an option's cost, and leaves an empty one out", () => {
+    // SAFETY: a HillDecision is plain JSON.
+    const base = JSON.parse(JSON.stringify(hillDecision({ id: "ak_aaaaaaaaaaaa" }))) as JsonObject;
+    const read = readHillDecision({ ...base, options: [{ intent: "a", label: "A", cost: "One more day" }, { intent: "b", label: "B", cost: "" }], ask: { words: false, files: [], root: null, mark: "fresh" } });
+    expect(read?.options).toEqual([{ intent: "a", label: "A", cost: "One more day" }, { intent: "b", label: "B" }]);
   });
 
   it("reads a null root, and no ask field as a plain Decision", () => {
-    expect(readHillDecision(wire({ words: true, files: [], root: null }))?.ask).toEqual({ words: true, files: [], root: null });
+    expect(readHillDecision(wire({ words: true, files: [], root: null }))?.ask).toEqual({ words: true, files: [], root: null, mark: "fresh" });
     // SAFETY: JSON.
     const plain = JSON.parse(JSON.stringify(hillDecision())) as JsonObject;
     expect(readHillDecision(plain)?.ask).toBeUndefined();
