@@ -54,8 +54,10 @@ async function world(page: Page, answers?: (body: Sent) => { status: number; bod
 
 async function openFirstAsk(page: Page) {
   await page.goto("/asks");
-  await page.getByRole("button", { name: "Answer next" }).click();
+  await page.getByRole("button", { name: "Answer", exact: true }).click();
   await expect(page.getByRole("heading", { name: FIRST.title })).toBeVisible();
+  // The board leaves with the screen change; a key pressed while its button still holds the focus is not the ask screen's.
+  await expect(page.locator('[data-slot="asks-board"]')).toHaveCount(0);
 }
 
 const card = (page: Page, intent: string) => page.locator(`[data-slot="ask-card"][data-intent="${intent}"]`);
@@ -257,7 +259,7 @@ for (const { width, height } of SHEET_WINDOWS) {
   }
 }
 
-test("a session card on the board says its cache in words when the phone knows it", async ({ page }) => {
+test("a session card on the board says its cache in words and a bar when the phone knows it", async ({ page }) => {
   const control = await world(page);
   control.body = () =>
     richSnapshot(1, (agents) =>
@@ -273,6 +275,6 @@ test("a session card on the board says its cache in words when the phone knows i
   await page.goto("/asks");
   const cards = page.locator('[data-slot="asks-session"]');
   await expect(cards).toHaveCount(2);
-  await expect(cards.nth(0).locator('[data-slot="asks-session-cache"]')).toHaveText("warm, 38 min left");
-  await expect(cards.nth(1).locator('[data-slot="asks-session-cache"]')).toHaveText("cold");
+  await expect(cards.nth(0).locator('[data-slot="asks-clock-words"]')).toHaveText("38 min left");
+  await expect(cards.nth(1).locator('[data-slot="asks-clock-words"]')).toHaveText("cold");
 });

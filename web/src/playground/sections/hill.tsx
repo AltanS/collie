@@ -13,7 +13,7 @@ import { AgentList } from "@/components/agent-list";
 import { AppHeaderHost, RouteHeader } from "@/components/app-header";
 import { DecisionCard } from "@/components/decision-card";
 import { DashboardTabBar } from "@/components/dashboard-tab-bar";
-import { HillCrewStateBar } from "@/components/hill-crew-state";
+import { HillCrewStateMenu } from "@/components/hill-crew-state";
 import { HillHeader, HillOff, HillView } from "@/components/hill-view";
 import { ChatApprovalCard } from "@/components/session-trick-card";
 import { TrickDashboardStrip } from "@/components/trick-place-items";
@@ -307,24 +307,29 @@ function CrewStateBody({ initial, told: firstTold }: { initial: HillCrewState; t
   const [told, setTold] = useState<number | null>(firstTold);
   return (
     <AppHeaderHost bridge="connected" error={false}>
-      <HillHeader count={quietOpen.length} onBack={noSend} />
+      <HillHeader
+        count={quietOpen.length}
+        onBack={noSend}
+        mode={
+          <HillCrewStateMenu
+            value={value}
+            saved={value}
+            told={told}
+            setBy={{ by: "Pixel 9", at: Date.now() - 12 * 60 * 1000 }}
+            canWrite
+            busy={false}
+            failed={false}
+            telling={false}
+            tellFailed={false}
+            onChange={(next) => {
+              setValue(next);
+              setTold(null);
+            }}
+            onTell={() => setTold(3)}
+          />
+        }
+      />
       <div data-pg-scroll className="min-h-0 flex-1 overflow-y-auto p-4">
-        <HillCrewStateBar
-          value={value}
-          saved={value}
-          told={told}
-          setBy={{ by: "Pixel 9", at: Date.now() - 12 * 60 * 1000 }}
-          canWrite
-          busy={false}
-          failed={false}
-          telling={false}
-          tellFailed={false}
-          onChange={(next) => {
-            setValue(next);
-            setTold(null);
-          }}
-          onTell={() => setTold(3)}
-        />
         <HillView open={sortOpenDecisions([...quietOpen])} closed={[]} kept={NO_KEPT} renderCard={(decision) => <PlaygroundCard key={decision.id} decision={decision} />} />
       </div>
     </AppHeaderHost>
@@ -332,12 +337,20 @@ function CrewStateBody({ initial, told: firstTold }: { initial: HillCrewState; t
 }
 
 function CrewStatePhone({ initial, told = null }: { initial: HillCrewState; told?: number | null }) {
+  const root = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    // The menu is the state's whole picture here: it stands open once mounted, as a tap on the bell opens it.
+    const id = window.setTimeout(() => root.current?.querySelector<HTMLButtonElement>('[data-slot="hill-crew-state-button"]')?.click(), 400);
+    return () => window.clearTimeout(id);
+  }, []);
   return (
-    <Phone height={620}>
-      <RootRouter data={homeSolo}>
-        <CrewStateBody initial={initial} told={told} />
-      </RootRouter>
-    </Phone>
+    <div ref={root}>
+      <Phone height={620}>
+        <RootRouter data={homeSolo}>
+          <CrewStateBody initial={initial} told={told} />
+        </RootRouter>
+      </Phone>
+    </div>
   );
 }
 
@@ -1023,15 +1036,15 @@ export function HillSection() {
 
       <Group title="The crew state">
         <Card state="hill-crew-here" label="59: crew state, here">
-          <CardHead n={59} title="Here: agents post as usual" />
+          <CardHead n={59} title="Here: the bell alone, and its menu with Here chosen" />
           <CrewStatePhone initial="here" />
         </Card>
         <Card state="hill-crew-quiet" label="60: crew state, quiet">
-          <CardHead n={60} title="Quiet, Tell all sessions now offered" />
+          <CardHead n={60} title="Quiet: the crossed bell and the word, Tell all sessions now offered" />
           <CrewStatePhone initial="quiet" />
         </Card>
         <Card state="hill-crew-away" label="61: crew state, away">
-          <CardHead n={61} title="Away, Tell all sessions now offered" />
+          <CardHead n={61} title="Away: the crossed bell and the word, Tell all sessions now offered" />
           <CrewStatePhone initial="away" />
         </Card>
         <Card state="hill-crew-told" label="62: crew state, told">

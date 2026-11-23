@@ -444,6 +444,12 @@ the recommended option's button (`decision-card.tsx`), the Hill header's ring an
 (`hill-view.tsx`), and the Hill item's snow-capped mountain in the Dashboard's bar (`dashboard-tab-bar.tsx`,
 option A5). The priority word and glyph for `now` already wore it. Nothing else on the Hill takes it.
 
+The Asks list's cache clock (`components/asks-clock.tsx`, on the Next up card and on each session card) is not warm
+in this sense: it uses `--status-info`, the blue of a fact that is no warning (`lib/status.ts`). "12 min left" is
+semibold, the 56 x 4 px bar is filled by the minutes left out of 60 on `--muted`, and a cold session draws the word
+"cold" in muted ink with an empty dashed bar. The words carry the meaning and the bar is `aria-hidden`. The same
+page draws a session's status mark with `StatusDot` and a marked answer as `Badge ok`.
+
 ### Red marks harm, never emphasis
 
 Red comes from two tokens, and each has one job.

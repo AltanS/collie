@@ -101,6 +101,7 @@ is written `prefix+<key>`. A key inside a mode is a bare key.
 | `open_shortcuts` | - | General | Shows every shortcut, as the Settings row does. | [Shortcut list](terminology.md#shortcut-list) |
 | `open_crew` | - | General | Opens Crew, while a crew is set up. | [Crew](terminology.md#crew) |
 | `open_files` | - | General | Opens Files for the pane you are in. | - |
+| `answer_next_ask` | `prefix+a` | General | Opens the next ask that waits for your answer, or, when every ask has an answer marked, the Send sheet of the first session with marks. It works on every screen while Asks is on and an ask is open. | [Asks](terminology.md#asks) |
 | `switch_pane` | - | Navigation | Opens the list of panes to switch to. On a narrow screen that is the Switch pane sheet, on a large screen the sidebar. | [Pane](terminology.md#pane) |
 | `open_dashboard` | `prefix+q` | Navigation | Goes to the dashboard. | - |
 | `new_space` | `prefix+shift+n` | Navigation | Opens the New page, to start a new space. | [Space](terminology.md#space) |

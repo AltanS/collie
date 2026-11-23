@@ -6,8 +6,8 @@ import { installApiStub } from "./fixtures/api";
 import { installWorld } from "./hitbox/world";
 
 // THE POINTER ON THE ASKS PAGES (Asks build 5, 2026-11-23). A mouse on a large screen gets the house hover on the answer
-// cards and, from the shared `Segmented` (ui/segmented.tsx), on every segmented control, Here / Quiet / Away and Settings'
-// Large-screen layout among them: `--state-hover` of the plane (HOVER_FILL), colour only, so no box moves. A
+// cards, on the rows of the Mode menu, and, from the shared `Segmented` (ui/segmented.tsx), on every segmented control,
+// Settings' Large-screen layout among them: `--state-hover` of the plane (HOVER_FILL), colour only, so no box moves. A
 // chosen card keeps its border and its tint and only deepens the tint, so it never reads as a hovered unchosen card. A
 // finger leaves nothing behind. The fill is read as the computed colour in a real engine, on the shipped bundle: jsdom has no
 // cascade and no `(hover: hover)`.
@@ -134,20 +134,21 @@ test.describe("a mouse on a large screen", () => {
     await expect.poll(() => target.evaluate((el) => `${getComputedStyle(el).outlineWidth} ${getComputedStyle(el).outlineStyle}`)).toBe("2px solid");
   });
 
-  test("an unchosen segment of Here / Quiet / Away takes the hover token, the chosen one does not", async ({ page }) => {
+  test("an unchosen row of the Mode menu takes the hover token, the pointer moving off gives it back", async ({ page }) => {
     await world(page, { state: "here", at: null, by: null, told: null });
     await page.goto("/asks");
-    const group = page.locator('[data-slot="hill-crew-state"] [role="radiogroup"]');
-    await expect(group).toBeVisible();
-    const quiet = group.getByRole("radio", { name: "Quiet" });
-    const here = group.getByRole("radio", { name: "Here" });
+    await page.getByRole("button", { name: "Mode: Here" }).click();
+    const menu = page.getByRole("menu", { name: "How agents ask you" });
+    await expect(menu).toBeVisible();
+    const quiet = menu.getByRole("menuitemradio", { name: /^Quiet/ });
+    const here = menu.getByRole("menuitemradio", { name: /^Here/ });
     const token = await hoverToken(quiet);
     const rest = await background(quiet);
     expect(token).not.toBe(rest);
     await quiet.hover();
     await expect.poll(() => background(quiet)).toBe(token);
     await here.hover();
-    await expect.poll(() => background(here)).toBe(rest);
+    await expect.poll(() => background(quiet)).toBe(rest);
   });
 
   test("a second segmented control, Settings' Large-screen layout, takes the same hover, and the chosen segment does not change", async ({ page }) => {

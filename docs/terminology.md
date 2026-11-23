@@ -573,8 +573,8 @@ needs Asks on ([How an agent is reminded](asks.md#how-an-agent-is-reminded)).
 
 ## Crew state
 
-Here, Quiet or Away: how much you want to hear now. Only you set it, in the control at the top of
-[Asks](#asks) or with `collie asks state`. It never refuses an ask
+Here, Quiet or Away: how much you want to hear now. Only you set it, in the Mode menu under the bell in the
+header of [Asks](#asks) or with `collie asks state`. It never refuses an ask
 ([Here, Quiet and Away](asks.md#here-quiet-and-away)).
 
 ## Choice block

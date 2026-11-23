@@ -15,6 +15,7 @@ import { useNavTrail } from "@/hooks/use-nav";
 import { useSlotMemory } from "@/hooks/use-slot-memory";
 import { useShortcuts } from "@/hooks/use-shortcuts";
 import { ActionsPaletteDoor } from "@/components/actions-palette";
+import { AsksAnswerDoor } from "@/components/asks-answer-door";
 import { readAgentLaunch } from "@/lib/agent-startup";
 import { usePolling } from "@/hooks/use-polling";
 import { usePollBusy } from "@/hooks/use-poll-busy";
@@ -294,6 +295,8 @@ export function RootLayout() {
       {/* The Actions palette (ADR 0165): one searchable list of this screen's commands and the panes to go
           to, opened by the Belt's Actions button, the header buttons and `prefix+g`. */}
       <ActionsPaletteDoor scope={pane?.scope ?? data.scope} openPane={openPane} />
+      {/* The action "Answer the next ask" (components/asks-answer-door.tsx): offered on every screen while an ask is open. */}
+      <AsksAnswerDoor />
       {/* The one-time hint for a device that has shown a hardware key press: a card at the top right,
           below the header (components/keyboard-hint-card.tsx). */}
       <KeyboardHintCard />
