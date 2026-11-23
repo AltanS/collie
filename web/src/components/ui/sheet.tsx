@@ -446,7 +446,11 @@ function SheetLayer({
       const t = e.touches[0];
       if (!t) return;
       const inTextarea = e.target instanceof Element && e.target.closest("textarea") !== null;
-      drag.current = { startY: t.clientY, atTop: !inTextarea && panel.scrollTop <= 0, engaged: false, dy: 0 };
+      // A scroll area inside the sheet (`data-sheet-scroll`, a long selectable text) that is scrolled owns a pull down: it
+      // scrolls back up, and only from its top does the pull close the sheet.
+      const scroller = e.target instanceof Element ? e.target.closest("[data-sheet-scroll]") : null;
+      const scrolled = scroller !== null && scroller.scrollTop > 0;
+      drag.current = { startY: t.clientY, atTop: !inTextarea && !scrolled && panel.scrollTop <= 0, engaged: false, dy: 0 };
     };
     const onMove = (e: TouchEvent) => {
       const d = drag.current;

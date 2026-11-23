@@ -3200,7 +3200,6 @@ export const zh: Dictionary = {
   "pins.action.unpin": "取消固定",
   "pins.action.copy": "复制文本",
   "pins.action.selectText": "选择文本",
-  "pins.selectText.hint": "长按文本即可选择。点按消息外部即可结束。",
   "pins.action.more": "消息操作",
   "pins.mark": "已固定",
   "pins.sheet.kind.user": "您的消息",

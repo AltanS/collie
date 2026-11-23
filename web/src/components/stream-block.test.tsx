@@ -3,7 +3,6 @@ import { useState } from "react";
 
 import { HOLD_FEEDBACK_DELAY_MS } from "@/hooks/use-long-press";
 
-import { endSelectText, selectTextIn } from "@/lib/block-select";
 import type { ChatItem } from "@/lib/chat-items";
 import { BlockActionsSheet } from "./block-actions-sheet";
 import { BLOCK_HOLD_MS, chipShift, PinnedMark, REVEAL_MS, StreamBlock } from "./stream-block";
@@ -93,7 +92,6 @@ describe("StreamBlock at rest", () => {
     // index.css turns selection and the callout off for `data-pinnable` under `pointer: coarse` only; no class does it,
     // so a mouse and a desk keep selection.
     expect(el).toHaveAttribute("data-pinnable");
-    expect(el).not.toHaveAttribute("data-selectable");
     expect(el.className).not.toContain("select-none");
     // No spacer and no wrapper: the block's first child is the content itself.
     expect(container.querySelector("[data-slot='block-more-spacer']")).toBeNull();
@@ -422,77 +420,6 @@ describe("StreamBlock tint", () => {
     fireEvent.click(pin);
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(a).not.toHaveAttribute("data-active");
-  });
-});
-
-describe("StreamBlock select mode (the sheet's Select text)", () => {
-  it("marks the block selectable, and its own hold, tap and contextmenu stand down", () => {
-    const onActions = vi.fn();
-    const { container } = block({ onActions });
-    const el = blockEl(container);
-    act(() => selectTextIn(item.id));
-    expect(el).toHaveAttribute("data-selectable");
-    tap(screen.getByText("done"));
-    expect(el).not.toHaveAttribute("data-revealed");
-    fireEvent.pointerDown(el, { button: 0, clientX: 10, clientY: 10, pointerType: "touch" });
-    act(() => vi.advanceTimersByTime(BLOCK_HOLD_MS * 2));
-    const menu = createEvent.contextMenu(el);
-    fireEvent(el, menu);
-    expect(menu.defaultPrevented).toBe(false);
-    expect(onActions).not.toHaveBeenCalled();
-  });
-
-  it("keeps a tap in the selectable block from Tap to type, and lets a link's click through", () => {
-    const readingArea = listenAbove();
-    block({ onActions: vi.fn() });
-    act(() => selectTextIn(item.id));
-    fireEvent.click(screen.getByText("done"));
-    expect(readingArea).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByText("a link"));
-    expect(readingArea).toHaveBeenCalledOnce();
-  });
-
-  it("ends on a press outside the block, and not on a press inside it", () => {
-    const { container } = block({ onActions: vi.fn() });
-    const el = blockEl(container);
-    act(() => selectTextIn(item.id));
-    fireEvent.pointerDown(screen.getByText("done"), { button: 0, pointerType: "touch" });
-    expect(el).toHaveAttribute("data-selectable");
-    fireEvent.pointerDown(document.body, { button: 0, pointerType: "touch" });
-    expect(el).not.toHaveAttribute("data-selectable");
-  });
-
-  it("ends when the block opens its sheet again, and holds one block at a time", () => {
-    const onActions = vi.fn();
-    const { container } = render(
-      <>
-        <StreamBlock n={1} item={item} pinned={false} onActions={onActions} className={BLOCK}>
-          <p>done</p>
-        </StreamBlock>
-        <StreamBlock n={1} item={other} pinned={false} onActions={onActions} className={BLOCK}>
-          <p>other</p>
-        </StreamBlock>
-      </>,
-    );
-    const [a, b] = container.querySelectorAll<HTMLElement>("[data-block]");
-    act(() => selectTextIn(item.id));
-    act(() => selectTextIn(other.id));
-    expect(a).not.toHaveAttribute("data-selectable");
-    expect(b).toHaveAttribute("data-selectable");
-    act(() => endSelectText());
-    tap(screen.getByText("other"));
-    act(() => selectTextIn(other.id));
-    fireEvent.click(within(b!).getByRole("button", { name: "Message actions" }));
-    expect(onActions).toHaveBeenCalledOnce();
-    expect(b).not.toHaveAttribute("data-selectable");
-  });
-
-  it("ends when the block leaves the stream", () => {
-    const view = block({ onActions: vi.fn() });
-    act(() => selectTextIn(item.id));
-    view.unmount();
-    const again = block({ onActions: vi.fn() });
-    expect(blockEl(again.container)).not.toHaveAttribute("data-selectable");
   });
 });
 

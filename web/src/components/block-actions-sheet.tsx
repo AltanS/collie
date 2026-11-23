@@ -1,11 +1,13 @@
-import { useLayoutEffect } from "react";
+import { useLayoutEffect, useState } from "react";
 
 import { ActionRow } from "@/components/action-sheet-rows";
 import { BottomSheet } from "@/components/ui/sheet";
 import { useLocale } from "@/hooks/use-locale";
-import { activateBlock, deactivateBlock, endSelectText, selectTextIn } from "@/lib/block-select";
+import { BlockTextSheet } from "@/components/block-text-sheet";
+import { activateBlock, blockElement, deactivateBlock } from "@/lib/block-select";
 import type { ChatItem } from "@/lib/chat-items";
 import { canCopyText, copyText } from "@/lib/clipboard";
+import { flashCopied } from "@/lib/copied-flash";
 import { t } from "@/lib/i18n";
 import { itemCopyText, itemTitle } from "@/lib/message-pins";
 import { setStatus } from "@/lib/status";
@@ -23,10 +25,13 @@ import { Icon } from "@/components/icons/icon";
 // THE BLOCK IS TINTED WHILE ITS SHEET IS OPEN (2026-11-06): the sheet covers the lower half of the stream, so the
 // block it is about carries `data-active` (lib/block-select.ts) and the hold's tint until the sheet closes.
 //
-// SELECT TEXT (2026-11-06). On a touch screen a pinnable block takes no selection at rest, so that its hold opens
-// this sheet every time (index.css). The row gives that one block's text back to the native selection
-// (lib/block-select.ts) and says how in a status line; a press outside the block ends it, and so does this sheet
-// opening again. On a desk the block was selectable already, and the row makes it so all the same: one sheet.
+// SELECT TEXT (2026-11-23). On a touch screen a pinnable block takes no selection at rest, so that its hold opens
+// this sheet every time (index.css). The row closes this sheet and opens a second one with the block's text, where the
+// native selection works (components/block-text-sheet.tsx). The block itself never goes into a select mode. On a desk
+// the block is selectable at rest, and the row opens the same sheet: one way.
+//
+// A COPY SHOWS WHAT IT COPIED. Copy text flashes the block it copied (lib/copied-flash.ts) once the clipboard took it;
+// the sheet is gone by then, so the block is found by its item id (lib/block-select.ts).
 
 interface BlockActionsSheetProps {
   /** The block the sheet is for; `null` is closed. */
@@ -42,14 +47,32 @@ interface BlockActionsSheetProps {
 
 const ROW_ICON = "size-4 shrink-0 text-muted-foreground";
 
-export function BlockActionsSheet({ item, pinned, pinning = false, onClose, onPin, onUnpin }: BlockActionsSheetProps) {
+/** The actions sheet, and the text sheet its Select text row opens. The second lives here, so no caller wires it. */
+export function BlockActionsSheet(props: BlockActionsSheetProps) {
+  const [textOf, setTextOf] = useState<ChatItem | null>(null);
+  return (
+    <>
+      <BlockActions {...props} onSelectText={setTextOf} />
+      <BlockTextSheet item={textOf} onClose={() => setTextOf(null)} />
+    </>
+  );
+}
+
+function BlockActions({
+  item,
+  pinned,
+  pinning = false,
+  onClose,
+  onPin,
+  onUnpin,
+  onSelectText,
+}: BlockActionsSheetProps & { onSelectText: (item: ChatItem) => void }) {
   useLocale();
   // While open, its block is marked (`data-active`, a tint), set before paint so the hold's tint flows into it with no
-  // frame between. Opening again ends a select mode it started.
+  // frame between.
   const itemId = item?.id ?? null;
   useLayoutEffect(() => {
     if (itemId === null) return;
-    endSelectText();
     activateBlock(itemId);
     return () => deactivateBlock(itemId);
   }, [itemId]);
@@ -57,6 +80,7 @@ export function BlockActionsSheet({ item, pinned, pinning = false, onClose, onPi
   const copy = async () => {
     try {
       await copyText(itemCopyText(item));
+      flashCopied(blockElement(item.id));
       setStatus(t("copyable.done"), "success");
     } catch {
       setStatus(t("copyable.failed"), "error");
@@ -91,8 +115,7 @@ export function BlockActionsSheet({ item, pinned, pinning = false, onClose, onPi
           label={t("pins.action.selectText")}
           onClick={() => {
             onClose();
-            selectTextIn(item.id);
-            setStatus(t("pins.selectText.hint"), "info", 6000);
+            onSelectText(item);
           }}
         />
       </div>

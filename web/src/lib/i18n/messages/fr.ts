@@ -3064,7 +3064,6 @@ export const fr: Dictionary = {
   "pins.action.unpin": "Désépingler",
   "pins.action.copy": "Copier le texte",
   "pins.action.selectText": "Sélectionner le texte",
-  "pins.selectText.hint": "Maintenez le texte appuyé pour le sélectionner. Appuyez en dehors du message pour terminer.",
   "pins.action.more": "Actions du message",
   "pins.mark": "Épinglé",
   "pins.sheet.kind.user": "Votre message",

@@ -11,6 +11,7 @@ import { createContext, useContext, useEffect, useMemo, useRef, useState, type C
 import { createMemoryRouter, RouterProvider } from "react-router";
 
 import { BlockActionsSheet } from "@/components/block-actions-sheet";
+import { BlockTextSheet } from "@/components/block-text-sheet";
 import { ItemView } from "@/components/chat-cards";
 import { Composer } from "@/components/composer";
 import { PinsSheet } from "@/components/pins-sheet";
@@ -75,7 +76,7 @@ function Phone({ width = 390, height, children }: { width?: number; height?: str
   );
 }
 
-function CardHead({ n, title }: { n: number; title: string }) {
+function CardHead({ n, title }: { n: number | string; title: string }) {
   return (
     <CardControls className="flex items-center gap-3">
       <span aria-hidden className="flex size-9 shrink-0 items-center justify-center rounded-full bg-foreground text-lg font-bold leading-none text-background">
@@ -110,6 +111,8 @@ const TWO_ITEMS: readonly ChatItem[] = [USER_ITEM, REPLY_ITEM];
  * so a card that opens on the reply must not share its id with the reply every other card draws, or all of them tint.
  */
 const SHEET_ITEMS: readonly ChatItem[] = TWO_ITEMS.map((item) => ({ ...item, id: `pg-sheet-${item.id}` }));
+/** Card 4b's own copies of the blocks, so a copy there flashes only that card's block. */
+const TEXT_ITEMS: readonly ChatItem[] = TWO_ITEMS.map((item) => ({ ...item, id: `pg-text-${item.id}` }));
 const RUN_ITEM: ChatItem = {
   id: "pg-tool-run:0",
   kind: "tool",
@@ -168,6 +171,17 @@ function ActionsSheetCard() {
     <Phone height="520px">
       <Blocks items={SHEET_ITEMS} pinned={pinned} onActions={setOpen} />
       <BlockActionsSheet item={open} pinned={open !== null && pinned.has(open.id)} onClose={() => setOpen(null)} onPin={(item) => flip(item, true)} onUnpin={(item) => flip(item, false)} />
+    </Phone>
+  );
+}
+
+/** Card 4b: the sheet Select text opens, on the reply: its words as plain text to select, and Copy all in the foot. */
+function TextSheetCard() {
+  const [open, setOpen] = useState<ChatItem | null>(TEXT_ITEMS[1]!);
+  return (
+    <Phone height="520px">
+      <Blocks items={TEXT_ITEMS} pinned={new Set()} onActions={setOpen} />
+      <BlockTextSheet item={open} onClose={() => setOpen(null)} />
     </Phone>
   );
 }
@@ -347,11 +361,21 @@ export function PinsSection() {
         <Card
           state="pins-block-actions"
           label="4: actions sheet"
-          reach="Tap a block, then its ⋯, or hold the block. A right click on a desk opens the sheet at once. The block is tinted while its sheet is open. The title says what the block is; Pin becomes Unpin on a pinned block. Select text gives the block's text back to the selection."
+          reach="Tap a block, then its ⋯, or hold the block. A right click on a desk opens the sheet at once. The block is tinted while its sheet is open. The title says what the block is; Pin becomes Unpin on a pinned block. Select text opens a second sheet with the block's text (card 4b)."
           note="A tap on Pin or Unpin flips the mark, as the pane view's hook does. Nothing is sent."
         >
           <CardHead n={4} title="Actions sheet" />
           <ActionsSheetCard />
+        </Card>
+
+        <Card
+          state="pins-block-text"
+          label="4b: block text sheet"
+          reach="Choose Select text in a block's actions sheet. The block's words open as plain text, and the system's own selection works there. Copy all copies the whole text and flashes it."
+          note="A long reply scrolls inside the sheet. A ⋯ in this card opens that block's text again."
+        >
+          <CardHead n="4b" title="Block text sheet" />
+          <TextSheetCard />
         </Card>
 
         <Card

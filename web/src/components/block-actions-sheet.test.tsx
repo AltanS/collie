@@ -1,7 +1,6 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-import { endSelectText, selectTextIn, useSelectable } from "@/lib/block-select";
 import type { ChatItem } from "@/lib/chat-items";
 import { clearStatus, useStatus } from "@/lib/status";
 import { BlockActionsSheet } from "./block-actions-sheet";
@@ -114,40 +113,5 @@ describe("BlockActionsSheet", () => {
     sheet();
     expect(screen.queryByRole("button", { name: "Copy text" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Pin" })).toBeInTheDocument();
-  });
-});
-
-function Selectable({ id }: { id: string }) {
-  return <p data-testid="selectable">{useSelectable(id) ? "yes" : "no"}</p>;
-}
-
-describe("BlockActionsSheet, Select text", () => {
-  afterEach(() => endSelectText());
-
-  it("closes the sheet, makes that block selectable and says how in a status line", async () => {
-    const props = { item: reply, pinned: false, onClose: vi.fn(), onPin: vi.fn(), onUnpin: vi.fn() };
-    render(
-      <>
-        <BlockActionsSheet {...props} />
-        <Status />
-        <Selectable id={reply.id} />
-      </>,
-    );
-    expect(screen.getByTestId("selectable")).toHaveTextContent("no");
-    await userEvent.setup().click(screen.getByRole("button", { name: "Select text" }));
-    expect(props.onClose).toHaveBeenCalledOnce();
-    expect(screen.getByTestId("selectable")).toHaveTextContent("yes");
-    expect(screen.getByTestId("status")).toHaveTextContent("Hold the text to select it. Tap outside the message to end.");
-  });
-
-  it("ends a select mode when the sheet opens again", () => {
-    selectTextIn(reply.id);
-    render(
-      <>
-        <BlockActionsSheet item={reply} pinned={false} onClose={vi.fn()} onPin={vi.fn()} onUnpin={vi.fn()} />
-        <Selectable id={reply.id} />
-      </>,
-    );
-    expect(screen.getByTestId("selectable")).toHaveTextContent("no");
   });
 });

@@ -119,13 +119,14 @@ test("on a phone, the tap that shows a block's ⋯ raises no keyboard and moves 
   await expect.poll(focused).toBe("TEXTAREA");
 });
 
-// ON A PHONE THE HOLD OPENS THE SHEET, AND SELECT TEXT TURNS SELECTION ON (2026-11-06, Altan's Android phone). The
+// ON A PHONE THE HOLD OPENS THE SHEET, AND SELECT TEXT OPENS ITS TEXT (2026-11-06, Altan's Android phone; the text sheet
+// 2026-11-23, e2e/copy-select.spec.ts has its own cases). The
 // hold shows as a tint with no scale, and the block stays tinted while its sheet is open. A
 // phone's browser started a selection at its own long-press mark and cancelled the pointer, so the block's hold did
 // nothing. Under `pointer: coarse` a pinnable block takes no selection at rest, and the hold opens its sheet. The hold
 // is a real touch, sent through the DevTools protocol (`Input.dispatchTouchEvent`, as `sheet-drag.spec.ts` does), so
 // Chromium runs its own long-press on it; `locator.tap()` is a tap and could not show this.
-test("on a phone, a hold on a block opens its sheet, and Select text lets that block's text be selected", async ({ page }, testInfo) => {
+test("on a phone, a hold on a block opens its sheet, and Select text opens the block's text in a sheet", async ({ page }, testInfo) => {
   test.skip(!testInfo.project.name.startsWith("app-phone"), "a phone case");
   test.skip(testInfo.project.name.includes("webkit"), "the touch is sent through Chromium's DevTools protocol");
   await page.goto(PANE_URL);
@@ -159,15 +160,9 @@ test("on a phone, a hold on a block opens its sheet, and Select text lets that b
 
   // When: Select text is chosen.
   await sheet.getByRole("button", { name: en["pins.action.selectText"], exact: true }).click();
-  // Then: the sheet closes, the hint shows and the block takes a selection.
-  await expect(page.getByRole("dialog")).toHaveCount(0);
+  // Then: the actions sheet gives way to the text sheet; the block takes no selection and is in no select mode.
+  const textSheet = page.getByRole("dialog", { name: en["pins.sheet.kind.reply"] });
+  await expect(textSheet.getByRole("region", { name: en["pins.textSheet.aria"] })).toHaveText(ANSWER);
   await expect(answerBlock(page)).not.toHaveAttribute("data-active");
-  await expect(page.getByText(en["pins.selectText.hint"], { exact: true })).toBeVisible();
-  await expect(answerBlock(page)).toHaveAttribute("data-selectable", "");
-  expect(await userSelect()).toBe("text");
-
-  // When: a tap lands outside the block. Then: the block takes no selection again.
-  await page.getByText(en["history.startOfConversation"], { exact: true }).tap();
-  await expect(answerBlock(page)).not.toHaveAttribute("data-selectable");
   expect(await userSelect()).toBe("none");
 });

@@ -1659,7 +1659,9 @@ The **Short form of long replies** switch, in the pane's Display sheet and in **
 hold on the block opens the same sheet at once. The **⋯** hides again after 4 seconds or on a tap elsewhere.
 
 On a phone a Chat block does not select text, so that the hold always opens the sheet. To select part of a
-block, choose **Select text** in its sheet, then hold the text. A tap outside the block ends it. On a desktop the
+block, choose **Select text** in its sheet. A second sheet opens with the block's text, where the system's own
+selection works. Its **Copy all** button copies the whole text. **Copy text** and every Copy button in Chat
+flash the text they copied for a moment. On a desktop the
 **⋯** shows while the pointer is over the block, and a right click opens the sheet at once. A pinned block
 carries a small pin mark. A pin is a
 copy: the machine that owns the pane keeps the text in a file under its state folder, one file for each

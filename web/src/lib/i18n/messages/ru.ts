@@ -3200,7 +3200,6 @@ export const ru: Dictionary = {
   "pins.action.unpin": "Открепить",
   "pins.action.copy": "Копировать текст",
   "pins.action.selectText": "Выделить текст",
-  "pins.selectText.hint": "Удерживайте текст, чтобы выделить его. Коснитесь вне сообщения, чтобы закончить.",
   "pins.action.more": "Действия с сообщением",
   "pins.mark": "Закреплено",
   "pins.sheet.kind.user": "Ваше сообщение",
