@@ -67,9 +67,9 @@ const LOG_AFTER_FIRST_REPLY_AGENTS: ReadonlySet<string> = new Set(["omp", "pi"])
 
 /** The agents whose session is reported at start but whose log file is written only when the first
  *  prompt is submitted: Claude Code. Its hook names the session id at once, and the transcript
- *  appears with the first prompt, so a pane with a session and no log yet may simply be new. Kept
- *  apart from the set above because the moment differs (first prompt, not first reply). Not on the
- *  wire, so named here by hand. */
+ *  appears with the first prompt. Kept apart from the set above because the moment differs (first
+ *  prompt, not first reply), and because its excuse needs one more fact: the bridge must KNOW that no
+ *  prompt reached the session (`noPromptYet`, set from Collie's hooks). Not on the wire, so named here by hand. */
 const LOG_AFTER_FIRST_PROMPT_AGENTS: ReadonlySet<string> = new Set(["claude"]);
 
 /** The agents that draw a picture the mirror cannot see, because a direct Kitty placement leaves
@@ -111,19 +111,21 @@ export function hasJournalAdapter(agent: string | undefined): boolean {
  *
  * - an agent that reports its session on the first prompt (Codex) has no session before one,
  * - an agent that writes its log after the first reply (pi) has a session and no log, and
- * - an agent that writes its log at the first prompt (Claude Code) has a session and no log.
+ * - an agent that writes its log at the first prompt (Claude Code) has a session and no log, but only
+ *   when the bridge says so: `noPromptYet` is true when Collie's hooks saw the session begin and no
+ *   prompt reach it.
  *
  * Any other agent, or any of these showing the other half (Codex with a session, pi or Claude without
  * one), has no such excuse: an idle pane with nothing to read may have a long past Chat cannot show
- * (the hook is missing, Codex declined trust, the transcript was cleaned up), so its terminal stays.
+ * (the hook is missing, Codex declined trust, the transcript was cleaned up, a log outside the folders
+ * Collie reads), so its terminal stays.
  *
- * The cost of the Claude excuse: a Claude session whose transcript was cleaned up opens on the empty
- * Chat ("Send a message to start") until an event shows the terminal, which is a question from the
- * pane, the end of a turn whose log is still missing, or the 60 second last resort for a pane that
- * works and sends no event (lib/chat-gate.ts).
+ * Without Collie's hooks, or after a restart that lost the fact, `noPromptYet` is absent and a new
+ * Claude Code session keeps the old behaviour: its terminal.
  */
-export function mayBeNewWithNothingToRead(agent: string | undefined, hasSession: boolean): boolean {
+export function mayBeNewWithNothingToRead(agent: string | undefined, hasSession: boolean, noPromptYet = false): boolean {
   if (agent === undefined) return false;
   if (FIRST_PROMPT_AGENTS.has(agent)) return !hasSession;
-  return (LOG_AFTER_FIRST_REPLY_AGENTS.has(agent) || LOG_AFTER_FIRST_PROMPT_AGENTS.has(agent)) && hasSession;
+  if (LOG_AFTER_FIRST_PROMPT_AGENTS.has(agent)) return hasSession && noPromptYet;
+  return LOG_AFTER_FIRST_REPLY_AGENTS.has(agent) && hasSession;
 }

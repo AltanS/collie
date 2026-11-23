@@ -161,7 +161,7 @@ describe("the gate over a stale saved copy", () => {
 // A new Claude Code session has a session id at start and no log until its first prompt. The body
 // must be the same on the first open and on every later one, so this runs the gate over what the
 // start record makes of a pane met idle, then over a second record made from nothing (a remount).
-describe("an idle Claude session with a session and no log, first met idle", () => {
+describe("an idle Claude session with a session and no log, first met idle, that the bridge says had no prompt", () => {
   const bodyOf = (record: typeof NO_RECORD) =>
     paneBody({
       chat: true,
@@ -171,18 +171,26 @@ describe("an idle Claude session with a session and no log, first met idle", () 
       activity: activityOf(record),
       settled: false,
     });
-  const meet = () => nextRecord(NO_RECORD, "p", "claude", false, "idle", 0, true);
+  const meet = () => nextRecord(NO_RECORD, "p", "claude", false, "idle", 0, true, true);
 
   it("draws Chat, the empty start state", () => {
     expect(bodyOf(meet())).toBe("start");
   });
 
   it("draws the same body after a remount, which drops the record", () => {
-    expect(bodyOf(meet())).toBe(bodyOf(nextRecord(NO_RECORD, "p", "claude", false, "idle", 0, true)));
+    expect(bodyOf(meet())).toBe(bodyOf(nextRecord(NO_RECORD, "p", "claude", false, "idle", 0, true, true)));
   });
 
   it("still takes the terminal when the pane asks for input", () => {
-    expect(bodyOf(nextRecord(meet(), "p", "claude", false, "blocked", 0, true))).toBe("terminal");
+    expect(bodyOf(nextRecord(meet(), "p", "claude", false, "blocked", 0, true, true))).toBe("terminal");
+  });
+
+  it("keeps the terminal for the same pane without that word: a long past with no log Collie can find", () => {
+    for (const status of ["idle", "done"] as const) {
+      const record = nextRecord(NO_RECORD, "p", "claude", false, status, 0, true);
+      expect(bodyOf(record)).toBe("terminal");
+      expect(bodyOf(nextRecord(NO_RECORD, "p", "claude", false, status, 0, true, false))).toBe("terminal");
+    }
   });
 
   it("keeps the terminal for a Claude pane with no session", () => {

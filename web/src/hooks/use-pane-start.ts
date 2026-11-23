@@ -11,8 +11,8 @@ import type { AgentStatus, AgentView } from "@/lib/types";
 //
 //   history   `fresh` when this view watched the pane turn from a shell into the agent, or first saw
 //             an agent idle that has an excuse for having nothing to read yet (Codex with no session,
-//             pi or Claude Code with a session and no log: lib/journal-agents.ts
-//             `mayBeNewWithNothingToRead`).
+//             pi with a session and no log, Claude Code with a session and the bridge's word that no
+//             prompt reached it: lib/journal-agents.ts `mayBeNewWithNothingToRead`).
 //             `unknown` otherwise: first sight already busy, done or unknown, or idle with nothing
 //             to read and no such excuse, which may be a long conversation Chat cannot show.
 //   activity  the EVENTS seen since the agent began: it worked, it asked for input, its first turn
@@ -56,6 +56,7 @@ export function nextSeen(
   isShell: boolean,
   status: AgentStatus | undefined,
   hasSession: boolean,
+  noPromptYet = false,
 ): Seen | null {
   // The pane is not in the snapshot this beat. Not evidence of anything, so the record stands, unless
   // this is another pane, whose record we do not have.
@@ -68,7 +69,7 @@ export function nextSeen(
     paneId,
     harness,
     kind,
-    history: watchedStart || (status === "idle" && mayBeNewWithNothingToRead(harness, hasSession)) ? "fresh" : "unknown",
+    history: watchedStart || (status === "idle" && mayBeNewWithNothingToRead(harness, hasSession, noPromptYet)) ? "fresh" : "unknown",
   };
 }
 
@@ -111,8 +112,9 @@ export function nextRecord(
   status: AgentStatus | undefined,
   asked: number,
   hasSession: boolean,
+  noPromptYet = false,
 ): StartRecord {
-  const seen = nextSeen(prev.seen, paneId, harness, isShell, status, hasSession);
+  const seen = nextSeen(prev.seen, paneId, harness, isShell, status, hasSession, noPromptYet);
   const base = seen === prev.seen ? prev : { ...NO_RECORD, seen };
   if (seen === null || seen.kind !== "agent" || harness === undefined) return base;
   const worked = base.worked || status === "working" || status === "blocked" || status === "done";
@@ -161,6 +163,8 @@ export interface JournalReads {
  * @param readable the pane has a session and its log is not known to be missing. While it is, the
  *   last resort is never armed.
  * @param hasSession the pane reported a session. Read at first sight only, with the harness.
+ * @param noPromptYet the bridge knows no prompt reached the pane's session (`AgentView.noPromptYet`).
+ *   Read at first sight only, like `hasSession`.
  */
 export function usePaneStart(
   paneId: string,
@@ -170,13 +174,14 @@ export function usePaneStart(
   reads: JournalReads,
   readable: boolean,
   hasSession: boolean,
+  noPromptYet: boolean,
 ): PaneStart {
   const [record, setRecord] = useState<StartRecord>(NO_RECORD);
 
   // Taken in the render that sees it (the adjust-state-in-render pattern), so the first frame of a
   // new agent already has its record, and the render that brings the turn's end is the one whose
   // `asked` becomes the mark.
-  const next = nextRecord(record, paneId, harness, isShell, status, reads.asked, hasSession);
+  const next = nextRecord(record, paneId, harness, isShell, status, reads.asked, hasSession, noPromptYet);
   if (next !== record) setRecord(next);
 
   const activity = activityOf(next);

@@ -14,27 +14,42 @@ describe("Kiro journal support", () => {
 // Which agents may be new when an idle pane has nothing to read: each set is a fact about when the
 // agent names its session and writes its log, and the answer depends on the session being there.
 describe("mayBeNewWithNothingToRead", () => {
-  it("excuses an agent that reports its session on the first prompt only while it has no session", () => {
+  const cases = [
+    // agent, hasSession, noPromptYet, answer
+    ["codex", false, false, true],
+    ["codex", false, true, true],
+    ["codex", true, false, false],
+    ["codex", true, true, false],
+    ["pi", true, false, true],
+    ["pi", true, true, true],
+    ["pi", false, false, false],
+    ["pi", false, true, false],
+    ["omp", true, false, true],
+    ["omp", true, true, true],
+    ["omp", false, false, false],
+    ["omp", false, true, false],
+    // Claude Code: a session AND the bridge's word that no prompt reached it, and nothing less.
+    ["claude", true, true, true],
+    ["claude", true, false, false],
+    ["claude", false, true, false],
+    ["claude", false, false, false],
+  ] as const;
+
+  it.each(cases)("%s with session %s and noPromptYet %s answers %s", (agent, hasSession, noPromptYet, answer) => {
+    expect(mayBeNewWithNothingToRead(agent, hasSession, noPromptYet)).toBe(answer);
+  });
+
+  it("reads an absent noPromptYet as false, the way a bridge with no Collie hooks leaves it", () => {
+    expect(mayBeNewWithNothingToRead("claude", true)).toBe(false);
+    expect(mayBeNewWithNothingToRead("pi", true)).toBe(true);
     expect(mayBeNewWithNothingToRead("codex", false)).toBe(true);
-    expect(mayBeNewWithNothingToRead("codex", true)).toBe(false);
   });
 
-  it("excuses an agent that writes its log after the first reply only once it has a session", () => {
-    for (const agent of ["pi", "omp"]) {
-      expect(mayBeNewWithNothingToRead(agent, true)).toBe(true);
-      expect(mayBeNewWithNothingToRead(agent, false)).toBe(false);
-    }
-  });
-
-  it("excuses an agent that writes its log at the first prompt only once it has a session", () => {
-    expect(mayBeNewWithNothingToRead("claude", true)).toBe(true);
-    expect(mayBeNewWithNothingToRead("claude", false)).toBe(false);
-  });
-
-  it("excuses no other agent, and no pane that names none", () => {
+  it("excuses no other agent, and no pane that names none, whatever the bridge says", () => {
     for (const agent of ["opencode", "grok", "claude-code", "shell", undefined]) {
-      expect(mayBeNewWithNothingToRead(agent, true)).toBe(false);
-      expect(mayBeNewWithNothingToRead(agent, false)).toBe(false);
+      for (const hasSession of [true, false]) {
+        for (const noPromptYet of [true, false]) expect(mayBeNewWithNothingToRead(agent, hasSession, noPromptYet)).toBe(false);
+      }
     }
   });
 });
