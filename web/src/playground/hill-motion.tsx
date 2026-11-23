@@ -53,7 +53,7 @@ function tenOpen(): HillDecision[] {
     [later, { priority: "later" }],
     [twoOptions, { priority: "later", title: "Rename the dev lane's unit?", summary: "collie-next becomes collie-dev. The old name stays as an alias." }],
   ];
-  return base.map(([decision, over], i) => Object.assign({}, decision, over, { id: `dc_motion${String(i + 1).padStart(5, "0")}` }));
+  return base.map(([decision, over], i) => Object.assign({}, decision, over, { id: `ak_motion${String(i + 1).padStart(5, "0")}` }));
 }
 
 function receiptFor(intent: string): HillReceipt {

@@ -37,7 +37,7 @@ export interface AskOver {
   decision?: Partial<HillDecision>;
 }
 
-/** One open ask. `id` defaults to the builder's own `dc_test...`; pass one to name it. */
+/** One open ask. `id` defaults to the builder's own `ak_test...`; pass one to name it. */
 export function askDecision(over: AskOver = {}): AskDecision {
   const fields: Partial<HillDecision> = {
     title: over.title ?? "Keep the old answer route beside the new Send?",

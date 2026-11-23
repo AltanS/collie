@@ -95,7 +95,7 @@ describe("the armed second tap on the tricks switch", () => {
     fireEvent.click(sw);
     expect(onToggle).not.toHaveBeenCalled();
     expect(sw).toBeChecked();
-    expect(screen.getByRole("status")).toHaveTextContent("3 questions from tricks wait on the Hill. You cannot answer them while tricks are off.");
+    expect(screen.getByRole("status")).toHaveTextContent("3 questions from tricks wait in Asks. You cannot answer them while tricks are off.");
     // The same touch landing twice is not the second tap.
     clock.mockReturnValue(t0 + 100);
     fireEvent.click(sw);
@@ -109,7 +109,7 @@ describe("the armed second tap on the tricks switch", () => {
   it("says one question in the singular", () => {
     render(<TricksSwitchCard {...props} waiting={1} onToggle={() => {}} />);
     fireEvent.click(screen.getByRole("switch", { name: LABEL }));
-    expect(screen.getByRole("status")).toHaveTextContent("1 question from a trick waits on the Hill. You cannot answer it while tricks are off.");
+    expect(screen.getByRole("status")).toHaveTextContent("1 question from a trick waits in Asks. You cannot answer it while tricks are off.");
   });
 
   it("reserves the note's slot before the tap, so arming moves nothing", () => {
@@ -183,7 +183,7 @@ describe("the tricks switch over the snapshot and the Hill's list", () => {
     expect(await screen.findByRole("switch", { name: LABEL })).toBeDisabled();
   });
 
-  it("counts only the Decisions a trick posted: an agent's question does not arm it", async () => {
+  it("counts only the asks a trick posted: an agent's question does not arm it", async () => {
     const requests: string[] = [];
     server.events.on("request:start", ({ request }) => requests.push(`${request.method} ${new URL(request.url).pathname}`));
     server.use(
@@ -217,7 +217,7 @@ describe("the tricks switch over the snapshot and the Hill's list", () => {
     const t0 = Date.now();
     const clock = vi.spyOn(Date, "now").mockReturnValue(t0);
     fireEvent.click(sw);
-    expect(screen.getByRole("status")).toHaveTextContent("2 questions from tricks wait on the Hill. You cannot answer them while tricks are off.");
+    expect(screen.getByRole("status")).toHaveTextContent("2 questions from tricks wait in Asks. You cannot answer them while tricks are off.");
     expect(requests).toEqual([]);
     clock.mockReturnValue(t0 + ARM_DWELL_MS + 200);
     await act(async () => fireEvent.click(sw));

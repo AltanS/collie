@@ -82,12 +82,15 @@ export const routes: RouteObject[] = [
       // The New page (M48), a page since 1.19.0 and a bottom sheet before. No loader: it reads the root
       // snapshot (for a pane's folder and branch) and asks the chosen machine's bridge for its own lists.
       // Where it was opened from rides in the query (`?machine=`, `?pane=`, `?s=`), so a reload keeps it.
-      // The hill (M96): the Decisions agents posted, one level below the Dashboard. No loader: its
-      // lists live in lib/hill/store.ts, kept current by the root loader.
-      { path: "hill", lazy: lazyScreen(() => import("@/routes/hill"), (m) => m.HillRoute) },
+      // Asks (M96, `/hill` before ADR 0179): the asks agents and tricks sent, one level below the Dashboard.
+      // No loader: its lists live in lib/hill/store.ts, kept current by the root loader.
+      { path: "asks", lazy: lazyScreen(() => import("@/routes/hill"), (m) => m.HillRoute) },
       // One ask, and the page of its context (Asks build 2): children of the board, one level each.
-      { path: "hill/ask/:id", lazy: lazyScreen(() => import("@/routes/ask"), (m) => m.AskRoute) },
-      { path: "hill/ask/:id/context", lazy: lazyScreen(() => import("@/routes/ask-context"), (m) => m.AskContextRoute) },
+      { path: "asks/ask/:id", lazy: lazyScreen(() => import("@/routes/ask"), (m) => m.AskRoute) },
+      { path: "asks/ask/:id/context", lazy: lazyScreen(() => import("@/routes/ask-context"), (m) => m.AskContextRoute) },
+      // THE ONE ALIAS OF ADR 0179: an old `/hill...` link (a bookmark is the person's own data) opens the board,
+      // with its query kept. `replace`, as for `/pack` below, so Back does not bounce. An old ask id is gone anyway.
+      { path: "hill/*", loader: ({ request }) => replace(`/asks${new URL(request.url).search}`) },
       // One card of Collie's own about a trick (M96 spec 14), with the Hill on or off. No loader: the card
       // lives in lib/hill/store.ts, kept current by the root loader.
       { path: "trick-card/:decisionId", lazy: lazyScreen(() => import("@/routes/trick-card"), (m) => m.TrickCardRoute) },

@@ -48,14 +48,14 @@ describe("the address settings/tricks/hill", () => {
   });
 
   it("draws it with tricks switched off as a whole, with no redirect", async () => {
-    const router = renderTricksPages({ store: await storeWith([LEGS]), loader: () => ({ tricksOff: true }), entries: ["/settings/tricks/hill"] });
+    const router = renderTricksPages({ store: await storeWith([LEGS]), loader: () => ({ tricksOff: true }), entries: ["/settings/tricks/asks"] });
     expect(await screen.findByRole("heading", { name: "Asks" })).toBeInTheDocument();
-    expect(router.state.location.pathname).toBe("/settings/tricks/hill");
+    expect(router.state.location.pathname).toBe("/settings/tricks/asks");
   });
 
   it("draws it where the phone holds no tricks reply yet", async () => {
     const store = createTricksStore({ fetchTricks: async () => ({ rev: 1, tricks: [], parts: [], present: [] }), tapTrick: async () => Promise.reject(new Error("no tap")), mintRequestId: () => "r" });
-    renderTricksPages({ store, entries: ["/settings/tricks/hill"] });
+    renderTricksPages({ store, entries: ["/settings/tricks/asks"] });
     expect(await screen.findByRole("heading", { name: "Asks" })).toBeInTheDocument();
   });
 
@@ -68,7 +68,7 @@ describe("the address settings/tricks/hill", () => {
   });
 
   it("Back goes up to the Tricks page", async () => {
-    const router = renderTricksPages({ store: await storeWith([LEGS]), entries: ["/settings/tricks", "/settings/tricks/hill"] });
+    const router = renderTricksPages({ store: await storeWith([LEGS]), entries: ["/settings/tricks", "/settings/tricks/asks"] });
     await screen.findByRole("heading", { name: "Asks" });
     await userEvent.click(screen.getByRole("button", { name: "Back" }));
     await vi.waitFor(() => expect(router.state.location.pathname).toBe("/settings/tricks"));
@@ -107,7 +107,7 @@ describe("the page's words", () => {
     const who = section("who");
     expect(within(who).getByText("Who can ask")).toBeInTheDocument();
     const agent = who.querySelector('[data-line="who-agent"]')!;
-    expect(agent.textContent).toBe("An agent posts with the command collie hill post. It learns that command from Collie's skill, and the skill holds the Hill's lines only while the Hill is on.");
+    expect(agent.textContent).toBe("An agent asks with the command collie walky ask. It learns that command from Collie's skill, and the skill holds the lines for Asks only while Asks is on.");
     expect(agent.querySelector('[data-slot="trick-value"]')?.textContent).toBe(HILL_POST_COMMAND);
     expect(who.querySelector('[data-line="who-trick"]')).toHaveTextContent("A trick posts when its code does.");
     expect(who.querySelector('[data-line="who-collie"]')).toHaveTextContent("Collie posts its own cards: a trick that an agent proposes, and a new version of a trick's code.");
@@ -117,7 +117,7 @@ describe("the page's words", () => {
     page({});
     const rings = section("rings");
     expect(within(rings).getByText("When you get a notification")).toBeInTheDocument();
-    expect(rings.querySelector('[data-line="rings-now"]')).toHaveTextContent("Only a Decision marked Now sends a notification.");
+    expect(rings.querySelector('[data-line="rings-now"]')).toHaveTextContent("Only an ask marked Now sends a notification.");
     expect(rings.querySelector('[data-line="rings-state"]')).toHaveTextContent("While your crew state is Quiet or Away, no notification is sent.");
     // The page's name and the row's label are the catalog's own, so the sentence never drifts from the page it points at.
     expect(rings.querySelector('[data-line="rings-setting"]')?.textContent).toBe(`The notification has its own switch in Settings, ${en["settings.page.notifications.title"]}: ${en["settings.notify.decisionNow.label"]}.`);
@@ -128,7 +128,7 @@ describe("the page's words", () => {
     page({});
     const quiet = section("quiet");
     expect(within(quiet).getByText("If nothing arrives")).toBeInTheDocument();
-    expect(quiet.querySelector('[data-line="quiet-choice"]')).toHaveTextContent("An agent decides by itself when to post.");
+    expect(quiet.querySelector('[data-line="quiet-choice"]')).toHaveTextContent("An agent chooses by itself when to ask.");
     expect(quiet.querySelector('[data-line="quiet-tell"]')?.textContent).toBe("To get more questions here, tell your agents to post them to Asks, for example in your project's AGENTS.md or CLAUDE.md.");
     expect(quiet.querySelector('[data-line="quiet-fresh"]')).toHaveTextContent("Start a new session.");
     expect(quiet.querySelector('[data-line="quiet-skill"]')?.textContent).toBe("Collie's skill must be installed for your agent. Check with collie skill status.");
@@ -139,11 +139,11 @@ describe("the page's words", () => {
     page({});
     const from = section("from");
     expect(within(from).getByText("Where it comes from")).toBeInTheDocument();
-    expect(from.querySelector('[data-line="from"]')).toHaveTextContent("The Hill ships with Collie. There is nothing to add or to update.");
+    expect(from.querySelector('[data-line="from"]')).toHaveTextContent("Asks ships with Collie. There is nothing to add or to update.");
     expect(from.querySelector('[data-line="experiment"]')).toHaveTextContent("An experiment: it may change, lose settings, or be withdrawn in a patch release.");
     const docs = screen.getByRole("link", { name: "Read more in the docs" });
     expect(docs.getAttribute("href")).toBe(HILL_DOCS_URL);
-    expect(HILL_DOCS_URL).toBe("https://colliepwa.dev/docs/hill");
+    expect(HILL_DOCS_URL).toBe("https://colliepwa.dev/docs/asks");
     expect(docs.getAttribute("target")).toBe("_blank");
     expect(docs.getAttribute("rel")).toBe("noopener noreferrer");
   });
@@ -172,7 +172,7 @@ describe("the head's switch", () => {
     expect(onToggle).toHaveBeenCalledExactlyOnceWith(false);
   });
 
-  it("arms the first tap off while Decisions wait, shows the row's warning line, and the second tap switches off", () => {
+  it("arms the first tap off while asks wait, shows the row's warning line, and the second tap switches off", () => {
     const onToggle = vi.fn();
     page({ waiting: 3, onToggle });
     const sw = screen.getByRole("switch", { name: "Asks" });
@@ -183,7 +183,7 @@ describe("the head's switch", () => {
     fireEvent.click(sw);
     expect(onToggle).not.toHaveBeenCalled();
     expect(sw).toBeChecked();
-    expect(screen.getByRole("status")).toHaveTextContent("3 questions wait on the Hill. You cannot answer them while it is off.");
+    expect(screen.getByRole("status")).toHaveTextContent("3 questions wait in Asks. You cannot answer them while it is off.");
     clock.mockReturnValue(t0 + ARM_DWELL_MS + 200);
     act(() => fireEvent.click(sw));
     expect(onToggle).toHaveBeenCalledExactlyOnceWith(false);

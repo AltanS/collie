@@ -177,14 +177,14 @@ These keys are solid in every set: `Icon` fills the lucide and iconoir glyph, an
 | `archived` | an archived item | `Archive` | `archive` | `archive` |
 | `back` | go back | `ArrowLeft` | `arrow-left` | `arrow-left` |
 | `crew` | the crew of machines | `Network` | `network` | `network` |
-| `decision-dismissed` | a Decision that was dismissed | `X` | `x` | `xmark` |
-| `decision-superseded` | a Decision a newer one replaced | `RefreshCw` | `arrows-clockwise` | `refresh-double` |
-| `decision-withdrawn` | a Decision its poster took back | `ArrowLeft` | `arrow-left` | `arrow-left` |
+| `decision-dismissed` | an ask that was dismissed | `X` | `x` | `xmark` |
+| `decision-superseded` | an ask a newer one replaced | `RefreshCw` | `arrows-clockwise` | `refresh-double` |
+| `decision-withdrawn` | an ask its sender took back | `ArrowLeft` | `arrow-left` | `arrow-left` |
 | `empty-state` | nothing to show here | `Inbox` | `tray` | `drawer` |
 | `files` | files | `ListTree` | `tree-view` | `view-structure-down` |
 | `hand` | which hand holds the phone | `Hand` | `hand` | `drag-hand-gesture` |
-| `hill` | the Hill, where Decisions wait | `Mountain` | `mountains` | (lucide) |
-| `hill-now` | the Hill while a `now` Decision is open | `MountainSnow` | `mountains` | (lucide) |
+| `hill` | Asks, where asks wait | `Mountain` | `mountains` | (lucide) |
+| `hill-now` | Asks while a `now` ask is open | `MountainSnow` | `mountains` | (lucide) |
 | `launch` | launch an agent | `Play` | `play` | `play` |
 | `messages` | messages | `MessagesSquare` | `chats` | `multi-bubble` |
 | `needs-you` | only panes that need me | `CircleDot` | `radio-button` | `one-point-circle` |

@@ -91,7 +91,7 @@ export const SCREENS: readonly Screen[] = [
   { id: "hill", route: "hill", path: "/hill", title: "Asks, the board", wide: "column", setup: "rich" },
   { id: "ask", route: "hill/ask/:id", path: "/hill/ask/ak_screens00001", title: "Asks, one ask", wide: "same", note: "one centred column on purpose in Asks build 2: no master-detail yet, the keys work on a large screen", setup: "askScreen" },
   // The context page follows the card entry, not the ask: with no ask held, both of them draw the closed screen, and the offline case needs each screen to differ from the one before.
-  { id: "trick-card", route: "trick-card/:decisionId", path: "/trick-card/dc_screens0001", title: "A card of Collie's own", wide: "column", setup: "hillCard" },
+  { id: "trick-card", route: "trick-card/:decisionId", path: "/trick-card/ak_screens0001", title: "A card of Collie's own", wide: "column", setup: "hillCard" },
   { id: "ask-context", route: "hill/ask/:id/context", path: "/hill/ask/ak_screens00001/context", title: "Asks, context of an ask", wide: "same", note: "one centred column on purpose in Asks build 2: a reading page, no second pane yet", setup: "askScreen" },
 
   // ── New ──────────────────────────────────────────────────────────────────

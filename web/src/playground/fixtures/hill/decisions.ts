@@ -26,7 +26,7 @@ let next = 0;
 /** A decision id of the contract's shape, unique per fixture. */
 function id(): string {
   next += 1;
-  return `dc_k3m9x2p7q${String(next).padStart(3, "0")}`;
+  return `ak_k3m9x2p7q${String(next).padStart(3, "0")}`;
 }
 
 /** What a fixture says: the fields it sets, who sent it and how many minutes ago. */

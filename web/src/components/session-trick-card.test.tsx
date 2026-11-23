@@ -387,7 +387,7 @@ describe("a trick proposal in its session's chat view", () => {
     await waitFor(() => expect(chat()).toBeEmptyDOMElement());
     // A yes that still reached a member-scoped answer route is refused with the bridge's sentence, never silently.
     server.use(http.post("/api/hill/answer", () => new HttpResponse("the hill reads this machine only for now; ask the machine itself", { status: 400 })));
-    const receipt = await postHillAnswer({ rid: "7c2a7a3e-6a42-4f5e-9d2b-3a0a6e7a1b11", node: "hill/dc_test0000001", intent: "on", value: { text: null } });
+    const receipt = await postHillAnswer({ rid: "7c2a7a3e-6a42-4f5e-9d2b-3a0a6e7a1b11", node: "hill/ak_test0000001", intent: "on", value: { text: null } });
     expect(receipt.code).toBe("rejected");
     expect(receipt.reason).toBe("the hill reads this machine only for now; ask the machine itself");
   });

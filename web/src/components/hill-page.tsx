@@ -29,10 +29,10 @@ import { t } from "@/lib/i18n";
 // warning line, drawn below the switch only while armed (so nothing moves under the thumb; the content below moves down). The page does not depend on the Tricks switch, and it never redirects.
 
 /** Where "Read more in the docs" opens. */
-export const HILL_DOCS_URL = "https://colliepwa.dev/docs/hill";
+export const HILL_DOCS_URL = "https://colliepwa.dev/docs/asks";
 
 /** The command an agent posts with, and the one that shows whether Collie's skill is installed (read-only). */
-export const HILL_POST_COMMAND = "collie hill post";
+export const HILL_POST_COMMAND = "collie walky ask";
 export const SKILL_STATUS_COMMAND = "collie skill status";
 
 /** The page, every value handed in, so a test and the playground draw the real markup. */

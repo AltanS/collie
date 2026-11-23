@@ -55,9 +55,9 @@ export const ICONOIR = {
   "copy": "copy", // copy · lucide Copy
   "copy-failed": "xmark", // the copy failed · lucide X
   "crew": "network", // the crew of machines · lucide Network
-  "decision-dismissed": "xmark", // a Decision that was dismissed · lucide X
-  "decision-superseded": "refresh-double", // a Decision a newer one replaced · lucide RefreshCw
-  "decision-withdrawn": "arrow-left", // a Decision its poster took back · lucide ArrowLeft
+  "decision-dismissed": "xmark", // an ask that was dismissed · lucide X
+  "decision-superseded": "refresh-double", // an ask a newer one replaced · lucide RefreshCw
+  "decision-withdrawn": "arrow-left", // an ask its sender took back · lucide ArrowLeft
   "delete": "trash", // delete · lucide Trash2
   "detached-head": "git-commit", // HEAD is on a commit, not a branch · lucide GitCommitHorizontal
   "direct-typing": "dialpad", // keystrokes go straight to the terminal · lucide Keyboard
@@ -106,8 +106,8 @@ export const ICONOIR = {
   "harness-tree": "view-structure-down", // session tree (agent command) · lucide ListTree
   "harnesses": "sparks", // harnesses · lucide Bot
   "hide-ignored": "eye-closed", // ignored files are hidden · lucide EyeOff
-  "hill": null, // the Hill, where Decisions wait · lucide Mountain
-  "hill-now": null, // the Hill while a `now` Decision is open · lucide MountainSnow
+  "hill": null, // Asks, where asks wait · lucide Mountain
+  "hill-now": null, // Asks while a `now` ask is open · lucide MountainSnow
   "history-screen": "journal-page", // the scrollback history screen · lucide ScrollText
   "image": "media-image", // an image · lucide Image
   "image-next": "nav-arrow-right", // the next picture in the picture sheet · lucide ChevronRight

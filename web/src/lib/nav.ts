@@ -327,11 +327,11 @@ export function trickDetailPath(key: string, scope?: Scope): string {
 }
 
 /**
- * The details page key of the Hill (`/settings/tricks/hill`). The Hill is Collie's own page and no trick, but it stands in
- * the trick list and opens a details page like one. `hill` is in `RESERVED_TRICK_IDS`, so no trick can take the key and
- * the page never shadows one; an official entry cannot be named `hill` either.
+ * The details page key of Asks (`/settings/tricks/asks`, `hill` before ADR 0179). Asks is Collie's own page and no trick,
+ * but it stands in the trick list and opens a details page like one. `asks` is in `RESERVED_TRICK_IDS`, so no trick can
+ * take the key and the page never shadows one; an official entry cannot be named `asks` either.
  */
-export const HILL_DETAIL_KEY = "hill";
+export const HILL_DETAIL_KEY = "asks";
 
 /** The details page key of a trick on a machine: `<host>:<id>`. */
 export function trickDetailKey(host: string, id: string): string {
@@ -365,24 +365,24 @@ export function crewPath(scope?: Scope): string {
 }
 
 /**
- * The hill (M96): the Decisions agents posted. A CHILD of the Dashboard, opened from the bottom bar. Carries the
+ * Asks (M96): the asks agents and tricks sent. A CHILD of the Dashboard, opened from the bottom bar. Carries the
  * scope like the others, so Back returns to the machine and session the Dashboard was showing.
  */
 export function hillPath(scope?: Scope): string {
-  return `/hill${scopeSearch(scope)}`;
+  return `/asks${scopeSearch(scope)}`;
 }
 
 /**
- * One ask (Asks build 2): a CHILD of the board (`/hill`). Moving between asks replaces the entry, so Back from any ask goes up
+ * One ask (Asks build 2): a CHILD of the board (`/asks`). Moving between asks replaces the entry, so Back from any ask goes up
  * to the board in one step. Carries the scope like the others.
  */
 export function askPath(id: string, scope?: Scope): string {
-  return `/hill/ask/${encodeURIComponent(id)}${scopeSearch(scope)}`;
+  return `/asks/ask/${encodeURIComponent(id)}${scopeSearch(scope)}`;
 }
 
 /** The context page of an ask (Asks build 2): a CHILD of the ask, so Back goes up to the answers. */
 export function askContextPath(id: string, scope?: Scope): string {
-  return `/hill/ask/${encodeURIComponent(id)}/context${scopeSearch(scope)}`;
+  return `/asks/ask/${encodeURIComponent(id)}/context${scopeSearch(scope)}`;
 }
 
 /**
@@ -560,8 +560,8 @@ const ANY_TRICK = "/trick/*";
  * Every pathname that may legitimately sit above `pathname` in the level tree, nearest first.
  *
  *   L0 `/`
- *   L1 `/space/:id`, `/settings` (opened from the screen it was left, ADR 0163), `/crew`, `/hill`, `/new` (from the dashboard, a space or a pane)
- *   L2 `/hill/ask/:id` (an ask, below the board), L3 `/hill/ask/:id/context` (its context page)
+ *   L1 `/space/:id`, `/settings` (opened from the screen it was left, ADR 0163), `/crew`, `/asks`, `/new` (from the dashboard, a space or a pane)
+ *   L2 `/asks/ask/:id` (an ask, below the board), L3 `/asks/ask/:id/context` (its context page)
  *   L1 `/trick/:id`, a trick session (M94 slice 03)
  *   L2 `/pane/:id`, `/new/add` (below the New page), `/space/:id/changes`, `/settings/:section`, `/settings/updates`, `/machines`
  *   L3 `/settings/accounts/add`, `/settings/accounts/:id`, `/settings/tricks/:key` (also below `/trick/:id`), `/settings/voice/host`, `/settings/voice/model`, `/settings/system/install-count`, `/settings/appearance/character`, `/pane/:id/history`, `/pane/:id/zoom`, `/pane/:id/changes` (a file view is the same path with `?repo=&path=`),
@@ -604,14 +604,14 @@ export function ancestorsOf(pathname: string): string[] {
   // Settings is opened from the Dashboard's and a space's gear and from the large screen's sidebar, which
   // stands beside a pane, and a person may arrive from Crew, the Hill, New or Conversations too. It goes
   // back to whichever opened it (ADR 0163); a cold open has no entry behind and goes to the Dashboard.
-  if (head === "settings" && seg.length === 1) return ["/", ANY_SPACE, ANY_PANE, "/crew", "/hill", "/new", "/conversations"];
-  // The hill is opened from the bottom bar's fixed Hill item (M96): down from the Dashboard, or sideways
+  if (head === "settings" && seg.length === 1) return ["/", ANY_SPACE, ANY_PANE, "/crew", "/asks", "/new", "/conversations"];
+  // Asks is opened from the bottom bar's fixed Asks item (M96): down from the Dashboard, or sideways
   // from a trick's Session, where the bar stays too (amended 2026-11-10). A sideways move carries `from`,
   // so the Dashboard is its only parent either way.
-  if (head === "hill" && seg.length === 1) return ["/"];
+  if (head === "asks" && seg.length === 1) return ["/"];
   // An ask is a child of the board, and its context page a child of the ask (Asks build 2).
-  if (head === "hill" && id === "ask" && seg.length === 3) return ["/hill", "/"];
-  if (head === "hill" && id === "ask" && seg.length === 4 && seg[3] === "context") return [`/hill/ask/${seg[2]}`, "/hill", "/"];
+  if (head === "asks" && id === "ask" && seg.length === 3) return ["/asks", "/"];
+  if (head === "asks" && id === "ask" && seg.length === 4 && seg[3] === "context") return [`/asks/ask/${seg[2]}`, "/asks", "/"];
   // A trick's card (M96 spec 14) is opened from Settings, Tricks and from the Dashboard's line.
   if (head === "trick-card" && seg.length === 2) return ["/", "/settings/tricks"];
   // The approver's page (ADR 0139) is opened from a QR, from outside the app: the Dashboard is its parent.
@@ -907,9 +907,9 @@ export function parentChain(pathname: string, search: string): string[] {
     return file ? [home, pane, `/pane/${id}/changes${q}`] : [home, pane];
   }
   if (head === "settings" && seg.length === 1) return [home];
-  if (head === "hill" && seg.length === 1) return [home];
-  if (head === "hill" && id === "ask" && seg.length === 3) return [home, `/hill${q}`];
-  if (head === "hill" && id === "ask" && seg.length === 4 && seg[3] === "context") return [home, `/hill${q}`, `/hill/ask/${seg[2]}${q}`];
+  if (head === "asks" && seg.length === 1) return [home];
+  if (head === "asks" && id === "ask" && seg.length === 3) return [home, `/asks${q}`];
+  if (head === "asks" && id === "ask" && seg.length === 4 && seg[3] === "context") return [home, `/asks${q}`, `/asks/ask/${seg[2]}${q}`];
   // A trick's card from its notification or a bookmark: the Dashboard behind it.
   if (head === "trick-card" && seg.length === 2) return [home];
   if (head === "pair" && seg.length === 2 && id === "approve") return [home];

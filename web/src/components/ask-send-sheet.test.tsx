@@ -10,11 +10,11 @@ import type { SessionClock } from "@/lib/hill/asks-board";
 
 import { AskSendSheet } from "./ask-send-sheet";
 
-const A = askDecision({ id: "dc_a", title: "Keep the route?" });
-const B = askDecision({ id: "dc_b", title: "Drop the flag?" });
+const A = askDecision({ id: "ak_a", title: "Keep the route?" });
+const B = askDecision({ id: "ak_b", title: "Drop the flag?" });
 
 function sheet(over: { clock?: SessionClock; state?: AsksSendState; marked?: boolean } = {}) {
-  const drafts = new Map(over.marked === false ? [] : [["dc_a", { intent: "keep", text: "for now" }]]);
+  const drafts = new Map(over.marked === false ? [] : [["ak_a", { intent: "keep", text: "for now" }]]);
   const onSend = vi.fn();
   const onClose = vi.fn();
   render(<AskSendSheet open onClose={onClose} name="collie lead" review={reviewOf([A, B], drafts)} clock={over.clock ?? { kind: "warm", msLeft: 600_000 }} state={over.state ?? { phase: "idle" }} onSend={onSend} />);
@@ -25,8 +25,8 @@ describe("the send sheet", () => {
   it("shows the very message the bridge types, its length and the cheap turn of a warm session", async () => {
     const { onSend } = sheet();
     const dialog = await screen.findByRole("dialog", { name: "Send to collie lead" });
-    expect(dialog.querySelector('[data-slot="ask-send-message"]')).toHaveTextContent('dc_a "Keep the route?": keep (Keep both routes). Note: for now');
-    expect(dialog.querySelector('[data-slot="ask-send-message"]')).toHaveTextContent('dc_b "Drop the flag?"');
+    expect(dialog.querySelector('[data-slot="ask-send-message"]')).toHaveTextContent('ak_a "Keep the route?": keep (Keep both routes). Note: for now');
+    expect(dialog.querySelector('[data-slot="ask-send-message"]')).toHaveTextContent('ak_b "Drop the flag?"');
     expect(dialog.querySelector('[data-slot="ask-send-count"]')).toHaveTextContent(/characters$/u);
     expect(dialog).toHaveTextContent("The session is warm. This send is one cheap turn.");
     await userEvent.click(screen.getByRole("button", { name: "Send 1" }));

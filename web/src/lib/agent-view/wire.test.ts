@@ -182,8 +182,8 @@ describe("pictures by ref", () => {
 
   it("serves a view with its set, its pictures and a picture placed by ref", () => {
     const media = [{ id: "im_aaaaaaaaaaaaaaaa", kind: "image", mime: "image/png", bytes: 120, width: 390, height: 844, caption: "Now" }];
-    const read = readViewScreen({ rev: 2, at: "2026-11-10T10:00:00.000Z", set: "dc_aaaaaaaaaaaa", media, view: [{ kind: "image", attrs: { ref: "0" } }] });
-    expect(read?.set).toBe("dc_aaaaaaaaaaaa");
+    const read = readViewScreen({ rev: 2, at: "2026-11-10T10:00:00.000Z", set: "ak_aaaaaaaaaaaa", media, view: [{ kind: "image", attrs: { ref: "0" } }] });
+    expect(read?.set).toBe("ak_aaaaaaaaaaaa");
     expect(read?.media).toHaveLength(1);
     expect(readViewScreen({ rev: 2, at: "2026-11-10T10:00:00.000Z", view: [{ kind: "image", attrs: { ref: "0" } }] })).toBeNull();
     expect(readViewScreen({ rev: 2, at: "2026-11-10T10:00:00.000Z", set: "../etc", media, view: [{ kind: "para", text: "x" }] })).toBeNull();

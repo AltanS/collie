@@ -213,7 +213,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Docs
 
-- **Three new pages cover tricks and the Hill.** [Tricks](docs/tricks.md) is for a person who runs Collie: where a trick draws, `collie trick add`, switching it on and off, what it may do and the About sheet. [Writing a trick](docs/tricks-authoring.md) lists every `trick.toml` key, what a program receives and prints, every node kind and the limits, with a worked example that passes `collie trick check`. [The Hill](docs/hill.md) covers Decisions, `collie hill post`, how you answer, receipts and Clear. The terminology page gains Trick, Place, Part, Power, About sheet, Decision and Hill.
+- **Three new pages cover tricks and the Hill.** [Tricks](docs/tricks.md) is for a person who runs Collie: where a trick draws, `collie trick add`, switching it on and off, what it may do and the About sheet. [Writing a trick](docs/tricks-authoring.md) lists every `trick.toml` key, what a program receives and prints, every node kind and the limits, with a worked example that passes `collie trick check`. [The Hill](docs/asks.md) covers Decisions, `collie hill post`, how you answer, receipts and Clear. The terminology page gains Trick, Place, Part, Power, About sheet, Decision and Hill.
 
 ## [1.28.1] - 2026-11-10
 

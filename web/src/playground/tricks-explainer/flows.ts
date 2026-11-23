@@ -29,12 +29,12 @@ export const PROGRAM_FLOW: readonly MapFocus[] = [
   { lit: ["bridge", "phone"], arrow: "link", payload: "2 parts", hue: "trick", back: true },
 ];
 
-/** A trick asks on the Hill: its program lists a Decision, you answer, the program gets your tap. */
+/** A trick asks in Asks: its program lists an ask, you answer, the program gets your tap. */
 export const HILL_FLOW: readonly MapFocus[] = [
   { lit: ["bridge", "trick"], arrow: "run", payload: "facts", hue: "bridge" },
-  { lit: ["bridge", "trick"], arrow: "run", payload: "decisions", hue: "trick", back: true },
+  { lit: ["bridge", "trick"], arrow: "run", payload: "asks", hue: "trick", back: true },
   { lit: ["bridge"] },
-  { lit: ["bridge", "phone"], arrow: "link", payload: "Decision", hue: "trick", back: true },
+  { lit: ["bridge", "phone"], arrow: "link", payload: "ask", hue: "trick", back: true },
   { lit: ["you", "phone"], arrow: "tap", payload: "Rerun", hue: "you" },
   { lit: ["bridge", "trick"], arrow: "run", payload: "tap", hue: "you" },
   { lit: ["trick"] },

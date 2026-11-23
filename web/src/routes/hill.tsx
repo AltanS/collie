@@ -135,7 +135,7 @@ function HillCrewStateHold() {
 /** Scroll the open card the URL's hash names into view, once per hash, as soon as the list holds it. */
 function useScrollToDecision(open: readonly HillDecision[]): void {
   const { hash } = useLocation();
-  const id = hash.startsWith("#dc_") ? hash.slice(1) : null;
+  const id = hash.startsWith("#ak_") ? hash.slice(1) : null;
   const listed = id !== null && open.some((decision) => decision.id === id);
   const done = useRef<string | null>(null);
   useEffect(() => {

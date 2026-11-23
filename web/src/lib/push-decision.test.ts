@@ -255,16 +255,16 @@ describe("notificationPath — where a tap lands", () => {
     expect(notificationPath({ target: "machine", host: "box2" })).toBe("/machines");
   });
 
-  // A `now` Decision (bridge/hill/push.ts) opens the Hill at its card, unscoped: the Hill is the lead's.
-  test("a Decision push opens the Hill at its card; an id of another shape opens the Hill", () => {
-    expect(notificationPath({ target: "hill", decision: "dc_aaaaaaaaaaaa", host: "box2" })).toBe("/hill#dc_aaaaaaaaaaaa");
-    expect(notificationPath({ target: "hill", decision: "../settings" })).toBe("/hill");
-    expect(notificationPath({ target: "hill" })).toBe("/hill");
+  // An ask marked `now` (bridge/hill/push.ts) opens Asks at its card, unscoped: Asks is the lead's.
+  test("an ask push opens Asks at its card; an id of another shape opens Asks", () => {
+    expect(notificationPath({ target: "hill", decision: "ak_aaaaaaaaaaaa", host: "box2" })).toBe("/asks#ak_aaaaaaaaaaaa");
+    expect(notificationPath({ target: "hill", decision: "../settings" })).toBe("/asks");
+    expect(notificationPath({ target: "hill" })).toBe("/asks");
   });
 
   test("a Decision push is shown with its id, and a visible tab stands in for it as for an agent", () => {
-    const payload = { title: "Ship 1.28.1 now?", body: "It moves the pill.", tag: "collie:hill:dc_aaaaaaaaaaaa", data: { target: "hill", decision: "dc_aaaaaaaaaaaa" } };
-    expect(decidePush(payload, false)).toMatchObject({ kind: "show", title: "Ship 1.28.1 now?", tag: "collie:hill:dc_aaaaaaaaaaaa", target: "hill", decision: "dc_aaaaaaaaaaaa" });
+    const payload = { title: "Ship 1.28.1 now?", body: "It moves the pill.", tag: "collie:hill:ak_aaaaaaaaaaaa", data: { target: "hill", decision: "ak_aaaaaaaaaaaa" } };
+    expect(decidePush(payload, false)).toMatchObject({ kind: "show", title: "Ship 1.28.1 now?", tag: "collie:hill:ak_aaaaaaaaaaaa", target: "hill", decision: "ak_aaaaaaaaaaaa" });
     expect(decidePush(payload, true)).toEqual({ kind: "suppress" });
   });
 

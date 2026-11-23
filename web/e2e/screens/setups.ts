@@ -482,7 +482,7 @@ export const SETUPS = {
   /** The decision a card of Collie's own asks about. */
   hillCard: async (page, screen) => {
     await installWorld(page);
-    const card = collieCard("proposal", "legs", { id: "dc_screens0001" });
+    const card = collieCard("proposal", "legs", { id: "ak_screens0001" });
     await page.route("**/api/hill", (route) => json(route, { rev: 1, open: [card], closed: [] }));
     await visit(page, screen);
   },

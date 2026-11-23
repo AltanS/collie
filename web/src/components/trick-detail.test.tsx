@@ -151,7 +151,7 @@ describe("TrickDetail", () => {
   });
 
   it("says the level of access in its one plain line, none for none, and never calls it a permission", () => {
-    const see = "It reads your machines, sessions, usage and the Hill.";
+    const see = "It reads your machines, sessions, usage and Asks.";
     const read = "It reads your sessions' screens.";
     const runsAsYou = "This trick runs as you on this machine. It can do there what you can do.";
     const rowsFor = (access: WireTrickInfo["access"]): (string | null)[] => {
@@ -496,7 +496,7 @@ describe("why a trick uses agent tokens: the first row of What it does (2026-11-
   it("says the sentence of its reason first, and draws the chip in the head only, never in What it does", () => {
     const rows: [WireTrickInfo, string][] = [
       [{ ...PROGRAM, rules: { file: "rules.md", text: "Draw one screen.\n" } }, "Your agent reads this trick's instructions. That uses tokens."],
-      [{ ...PROGRAM, decidesReply: true }, "Your answers to its Decisions go to an agent as messages. That uses tokens."],
+      [{ ...PROGRAM, decidesReply: true }, "Your answers to its asks go to an agent as messages. That uses tokens."],
     ];
     for (const [trick, sentence] of rows) {
       render(<TrickDetail trick={trick} />);
@@ -507,7 +507,7 @@ describe("why a trick uses agent tokens: the first row of What it does (2026-11-
     }
   });
 
-  it("says nothing of tokens for a program trick, even one whose last run listed Decisions", () => {
+  it("says nothing of tokens for a program trick, even one whose last run listed asks", () => {
     render(<TrickDetail trick={{ ...PROGRAM, decides: true }} />);
     expect(firstRow()).toBe("It shows in: the end of the Belt in each session.");
     expect(detail().textContent).not.toContain("tokens");
@@ -515,7 +515,7 @@ describe("why a trick uses agent tokens: the first row of What it does (2026-11-
 
   it("an official entry says it before Add, from the pin alone", () => {
     render(<OfficialTrickDetail entry={{ ...ENTRY, decidesReply: true }} busy={false} canWrite onAdd={vi.fn()} />);
-    expect(firstRow()).toBe("Your answers to its Decisions go to an agent as messages. That uses tokens.");
+    expect(firstRow()).toBe("Your answers to its asks go to an agent as messages. That uses tokens.");
     cleanup();
     render(<OfficialTrickDetail entry={{ ...ENTRY, givesRules: true, agentView: true }} busy={false} canWrite onAdd={vi.fn()} />);
     expect([...screen.getByRole("list", { name: "What it does" }).querySelectorAll("li")].map((li) => li.textContent)).toEqual([

@@ -465,7 +465,7 @@ describe("pictures and the decision block", () => {
   function pictured(choice: ViewScreen["choice"]): ViewScreen {
     const parsed = parseAgentView([{ kind: "para", text: "The header" }, { kind: "image", attrs: { ref: "0" } }], "/view", { images: MEDIA.length });
     if (parsed.view === undefined) throw new Error(JSON.stringify(parsed.refusals));
-    const out: ViewScreen = { rev: 4, at: AT, view: parsed.view, set: "dc_aaaaaaaaaaaa", media: MEDIA };
+    const out: ViewScreen = { rev: 4, at: AT, view: parsed.view, set: "ak_aaaaaaaaaaaa", media: MEDIA };
     if (choice !== undefined) out.choice = choice;
     return out;
   }
@@ -667,7 +667,7 @@ describe("the receipt of a pick, and a settled choice", () => {
   ];
   const CHOICE = { question: "Which header?", options: [{ label: "Compact", preview: 0 }, { label: "Tall", preview: 1 }] };
   const picked = (phase: ViewRequest["phase"], reason: string | null = null) => mine(phase, { text: 'picked "Compact"', reason, about: "Which header?" });
-  const asked: ViewScreen = { ...screenOf([{ kind: "para", text: "Two headers" }]), set: "dc_aaaaaaaaaaaa", media: MEDIA, choice: CHOICE, choiceAt: AT };
+  const asked: ViewScreen = { ...screenOf([{ kind: "para", text: "Two headers" }]), set: "ak_aaaaaaaaaaaa", media: MEDIA, choice: CHOICE, choiceAt: AT };
 
   it("stands in for the request bubble: the question, the label, the preview, and Sending… then the Answered badge", () => {
     const { container, rerender, props } = draw({ view: asked, request: picked("sending") });

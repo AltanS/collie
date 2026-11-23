@@ -33,7 +33,7 @@ export const HOST_SLOT: ReadonlyMap<string, number> = new Map([
 let next = 0;
 function id(): string {
   next += 1;
-  return `dc_hl00look${String(next).padStart(4, "0")}`.slice(0, 15);
+  return `ak_hl00look${String(next).padStart(4, "0")}`.slice(0, 15);
 }
 
 type Fixture = Partial<HillDecision> & Pick<HillDecision, "title" | "summary"> & { sender?: Sender; ago?: number; prio?: HillPriority };
