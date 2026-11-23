@@ -46,7 +46,7 @@ import { approveFolder, copyListing, FOLDER_GONE_LINE, forgetLeftovers, fileCoun
 import { sweepGone } from "./aside.ts";
 import { fieldsChanged } from "./version-card.ts";
 import { codeHashOfFiles, diskTrickFs, unsafeText } from "./code-hash.ts";
-import { createTrickScanner, scanTrickDir, SCAN_TIMEOUT_MS, within, type FoundTrick, type TricksScan } from "./discover.ts";
+import { createTrickScanner, readEarlierManifest, scanTrickDir, SCAN_TIMEOUT_MS, within, type FoundTrick, type TricksScan } from "./discover.ts";
 import { envPath, scrubEnv, type ProgramEnv } from "./env.ts";
 import { HOST, hostFor, type Host } from "../host.ts";
 import { buildFacts, type FactsWorld } from "./facts.ts";
@@ -558,6 +558,12 @@ interface ApprovedRun {
   found: FoundTrick;
   /** The copy's code listing when it was last verified (approved.ts `copyListing`). */
   listing: string;
+  /**
+   * The copy's manifest as the build before the rename read it (discover.ts `readEarlierManifest`), only while
+   * this build refuses it for the earlier key `decides`. For comparing a new version's rights with it, nothing
+   * else: it never runs and never lets `auto` take a version.
+   */
+  earlier?: TrickManifest;
 }
 
 /** A snapshot of a changed folder, waiting for a yes. */
@@ -1385,6 +1391,7 @@ export class TricksService implements TricksSurface {
       await syncConfig(rt.found.dir, dir);
       const found = await scanTrickDir(diskTrickFs, dir, id);
       const run: ApprovedRun = { hash: want, dir, found, listing: check.listing };
+      await this.readEarlier(run);
       if (this.rightsMovedOf(rt, run) !== null) return this.stopForRights(rt, run, approval);
       rt.approved = run;
       rt.copyProblem = null;
@@ -1402,8 +1409,16 @@ export class TricksService implements TricksSurface {
     if (rt.found.configHash === run.found.configHash) return;
     if (!(await syncConfig(rt.found.dir, run.dir))) return;
     run.found = await scanTrickDir(diskTrickFs, run.dir, rt.found.id);
+    await this.readEarlier(run);
     this.restart(rt);
     this.publish(rt.found.id);
+  }
+
+  /** Read the approved copy's manifest with the earlier key name, when this build refuses it for that key alone. */
+  private async readEarlier(run: ApprovedRun): Promise<void> {
+    const earlier = run.found.manifest === undefined ? await readEarlierManifest(diskTrickFs, run.dir, run.found.id, run.found.refusals) : undefined;
+    if (earlier === undefined) delete run.earlier;
+    else run.earlier = earlier;
   }
 
   /**
@@ -1491,8 +1506,9 @@ export class TricksService implements TricksSurface {
       rt.pending = { hash, dir: snap.dir, ...(await this.pendingInfo(rt, snap.dir, hash)) };
       this.publish(rt.found.id);
       // Auto takes a version only when its rights did not move AND it does nothing new (security re-review B5),
-      // and never for a trick that gives agents instructions, before or after (contract 2, agent views).
-      if (entry.auto && rt.approved !== null && rt.copyProblem === null && !rt.pending.info.powersChanged && !rt.pending.doesMore && !hasRules(rt) && rt.pending.manifest?.rules === undefined) {
+      // and never for a trick that gives agents instructions, before or after (contract 2, agent views). Only
+      // from an approved copy whose manifest this build reads: one read with the earlier key name always asks.
+      if (entry.auto && rt.approved !== null && rt.approved.found.manifest !== undefined && rt.copyProblem === null && !rt.pending.info.powersChanged && !rt.pending.doesMore && !hasRules(rt) && rt.pending.manifest?.rules === undefined) {
         const took = await this.promote(rt, hash, "auto");
         if (took.ok) this.warn(`${rt.found.id}: took the new version ${hash.slice(0, 16)} without asking (auto); undo restores ${entry.hash?.slice(0, 16) ?? "nothing"}`);
       }
@@ -1517,7 +1533,9 @@ export class TricksService implements TricksSurface {
     const next = await scanTrickDir(diskTrickFs, dir, rt.found.id);
     const base = rt.approved !== null && rt.copyProblem === null ? rt.approved : null;
     const files = await fileCounts(base?.dir ?? null, dir);
-    const was = base?.found.manifest;
+    // The rights the person said yes to: the copy's manifest, or, while this build refuses it for the earlier
+    // key `decides` alone, that manifest read with the earlier key name. One that does not read is none.
+    const was = base?.found.manifest ?? base?.earlier;
     const now = next.manifest;
     const powersChanged = was === undefined || now === undefined || powersOf(was) !== powersOf(now);
     // A read that fails counts against the new version: a failed read of the approved copy makes every
@@ -1590,7 +1608,8 @@ export class TricksService implements TricksSurface {
       if (!rt.on || entry === undefined) continue;
       const hash = rt.found.codeHash;
       const waiting = rt.found.manifest !== undefined && hash !== undefined && hash !== entry.hash && hash !== entry.declined;
-      const base = rt.approved !== null && rt.copyProblem === null ? { dir: rt.approved.dir, manifest: rt.approved.found.manifest } : null;
+      // The card compares with the rights approved: the copy's manifest, or the earlier key's read of it (readEarlier).
+      const base = rt.approved !== null && rt.copyProblem === null ? { dir: rt.approved.dir, manifest: rt.approved.found.manifest ?? rt.approved.earlier } : null;
       const pending = rt.pending === null ? null : { hash: rt.pending.hash, dir: rt.pending.dir, info: rt.pending.info, manifest: rt.pending.manifest };
       subjects.push({ id: rt.found.id, name: this.shownOf(rt).manifest?.name ?? rt.found.id, waiting, pending, base });
     }
