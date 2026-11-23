@@ -114,8 +114,8 @@ const USAGE = {
     `  A placeholder block for one still in work: the phone shows the label (at most ${String(VIEW_PENDING_MAX)} characters) until \`trick view <trick> set\` fills it.`,
   ],
   remove: [`usage: collie trick view <trick> remove ${SESSION_USAGE} <id> [--json]   (one block goes; \`trick view <trick> clear\` takes the whole screen)`],
-  choice: [`usage: collie trick view <trick> choice ${SESSION_USAGE} <file.json | -> | --clear [--json]   (set or drop the decision block alone; the file holds the choice object)`],
-  keep: [`usage: collie trick view <trick> keep ${SESSION_USAGE} <id>... | --all [--json]   (these blocks still hold for the new request; \`choice\` names the decision block)`],
+  choice: [`usage: collie trick view <trick> choice ${SESSION_USAGE} <file.json | -> | --clear [--json]   (set or drop the choice block alone; the file holds the choice object)`],
+  keep: [`usage: collie trick view <trick> keep ${SESSION_USAGE} <id>... | --all [--json]   (these blocks still hold for the new request; \`choice\` names the choice block)`],
   clear: [`usage: collie trick view <trick> clear ${SESSION_USAGE} [--json]   (the screen goes; the switch stays)`],
   status: [`usage: collie trick view <trick> status ${SESSION_USAGE} [--json]   (the session, the switch, the screen, and the tail line)`],
   help: [`usage: collie trick view <trick> help ${SESSION_USAGE}   (Collie's view help; while your session's view of the trick is on, the trick's own rules after it)`],
@@ -206,10 +206,10 @@ export function viewRules(trick: string): string[] {
     `- Copy the session from the request's head (the address after [view:${trick}), never invent one. A command that names another session than yours is refused.`,
     "- One screen per answer, made of blocks. A top-level node may carry \"id\" (1 to 32 of a-z, 0-9 and -); a node without one is named b1, b2 and so on. A new show replaces the whole screen.",
     `- Draw the outline first: \`${cmd} show\` with the blocks you know, or \`${cmd} pending <id> "<label>"\` for the ones in work. Then fill block by block with \`${cmd} set\`. Change one block when the operator asks for a change; do not redraw the whole screen.`,
-    `- When a new request arrives, the operator's screen is cleared of your old blocks. Send what the answer needs: \`${cmd} show\` for a new screen, or \`${cmd} set\` for changed blocks and \`${cmd} keep <id>\` for the ones that still hold (\`${cmd} keep choice\` for the decision block, \`--all\` for every one).`,
+    `- When a new request arrives, the operator's screen is cleared of your old blocks. Send what the answer needs: \`${cmd} show\` for a new screen, or \`${cmd} set\` for changed blocks and \`${cmd} keep <id>\` for the ones that still hold (\`${cmd} keep choice\` for the choice block, \`--all\` for every one).`,
     "- Keep the question's block when you draw the next step; Collie marks the pick.",
     `- To show a picture, pass it with --image <path> (at most ${String(VIEW_MEDIA_MAX)} on a screen; the first is ref "0"; \`${cmd} set --image\` adds to the screen's pictures, so its ref counts on from them) and place it with {"kind":"image","attrs":{"ref":"0"}}. "focus": "<x> <y> [zoom]" crops to a point in percent; {"kind":"compare","kids":[two images by ref]} shows before and after. A picture you do not place is shown in a row under the title. Use "ref", never "src".`,
-    `- A decision is a "choice": {"question"?, "options": [1 to ${String(VIEW_OPTIONS_MAX)} of {"label", "detail"?, "confirm"?, "preview"?}], "recommends"?: {"option": <index>, "why"?}}. The pick reaches you as picked "<label>". An option takes no "value".`,
+    `- A choice block is a "choice": {"question"?, "options": [1 to ${String(VIEW_OPTIONS_MAX)} of {"label", "detail"?, "confirm"?, "preview"?}], "recommends"?: {"option": <index>, "why"?}}. The pick reaches you as picked "<label>". An option takes no "value".`,
     `- A button needs the attrs "label" (one line, at most ${String(VIEW_TAP_LABEL_MAX)} characters) and "intent" (use "intent": "reply"). The tap sends its label only, and the label of its group when the group has one (at most ${String(VIEW_TAP_GROUP_MAX)} characters). A button takes no "value", no "text" and no "does".`,
     '- Give a button "confirm" (a short second label) for anything risky: deleting, pushing, spending, anything you cannot undo.',
     "- A link's visible text never reads as another address than its href. Its host is shown beside it.",
@@ -321,7 +321,7 @@ export const VIEW_EXAMPLE: JsonValue = [
   },
 ];
 
-/** A screen with a picture and a decision block: the object form, as `trick view <trick> show <file> --image ...` takes it. */
+/** A screen with a picture and a choice block: the object form, as `trick view <trick> show <file> --image ...` takes it. */
 export const VIEW_CHOICE_EXAMPLE: JsonValue = {
   title: "Pick a header",
   view: [
@@ -907,7 +907,7 @@ export async function cmdViewRemove(deps: ViewCall, args: readonly string[]): Pr
   return blockOp(deps, { op: "trick.view.remove", parsed, fields: { id }, lead: (view) => `removed: block ${shown(id)}, rev ${String(view.rev)}` });
 }
 
-/** `trick view <trick> choice <file | -> | --clear`: set or drop the decision block alone. */
+/** `trick view <trick> choice <file | -> | --clear`: set or drop the choice block alone. */
 export async function cmdViewChoice(deps: ViewCall, args: readonly string[]): Promise<number> {
   if (windows(deps)) return EXIT.STATE;
   const parsed = parseBlockArgs(args, { clear: true });

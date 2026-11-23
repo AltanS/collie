@@ -54,9 +54,9 @@ function tempDir(prefix: string): string {
 
 describe("where the person finds a proposal (M96 spec 14)", () => {
   test("the guide and the propose output name the Hill and Settings, Tricks, and never ask for the Hill to be switched on", () => {
-    expect(PROPOSE_WHERE).toBe("on the Hill, or in Settings, Tricks, while the Hill is off");
+    expect(PROPOSE_WHERE).toBe("in Asks, or in Settings, Tricks, while Asks is off");
     const guide = trickGuide().join("\n");
-    expect(guide).toContain("in this session on the phone, and in Settings, Tricks (on the Hill too, while it is on)");
+    expect(guide).toContain("in this session on the phone, and in Settings, Tricks (in Asks too, while it is on)");
     for (const text of [guide, PROPOSE_WHERE]) {
       expect(text).not.toMatch(/switch(es)? the Hill on/iu);
       expect(text).not.toContain("Experiments");
@@ -67,8 +67,8 @@ describe("where the person finds a proposal (M96 spec 14)", () => {
 describe("where the card is, from the bridge's answer (package I)", () => {
   test("the session first while the card is tied to it, the Hill only while it is on, Settings, Tricks always; no answer of where keeps the old words", () => {
     expect(proposeWhere({ session: true, hill: false })).toBe("in this session on the phone, and in Settings, Tricks");
-    expect(proposeWhere({ session: true, hill: true })).toBe("in this session on the phone, on the Hill, and in Settings, Tricks");
-    expect(proposeWhere({ session: false, hill: true })).toBe("on the Hill, and in Settings, Tricks");
+    expect(proposeWhere({ session: true, hill: true })).toBe("in this session on the phone, in Asks, and in Settings, Tricks");
+    expect(proposeWhere({ session: false, hill: true })).toBe("in Asks, and in Settings, Tricks");
     expect(proposeWhere({ session: false, hill: false })).toBe("in Settings, Tricks, on the phone");
     expect(proposeWhere(undefined)).toBe(PROPOSE_WHERE);
     for (const where of [{ session: true, hill: false }, { session: false, hill: false }]) expect(proposeWhere(where)).not.toContain("on the Hill");
@@ -299,7 +299,7 @@ interface ProposeBridge {
 }
 
 /** A bridge on a real socket whose proposals door records each call and answers `answer`. */
-async function bridge(answer: (fields: JsonObject) => Promise<ProposeAnswer> = async () => ({ ok: true, kind: "proposal", id: "legs", hash: "h", decision: "dc_k3m9x2p7q1ab", replaced: null }), withPropose = true, proposeLineMs?: number): Promise<ProposeBridge> {
+async function bridge(answer: (fields: JsonObject) => Promise<ProposeAnswer> = async () => ({ ok: true, kind: "proposal", id: "legs", hash: "h", decision: "ak_k3m9x2p7q1ab", replaced: null }), withPropose = true, proposeLineMs?: number): Promise<ProposeBridge> {
   const stateDir = tempDir("propose-bridge-");
   const host: WalkyHost = { panes: () => panes, send: async () => ({ outcome: "sent" }), sendState: () => ({ outcome: "sent" }), cancelHeld: () => undefined };
   const walky = new WalkyService({ log: new WalkyLog(join(stateDir, "walky")), host, memberId: null, enabled: () => true, machine: "desk", keyPem: () => null });
@@ -392,8 +392,8 @@ describe("collie trick propose, over the walky socket", () => {
     expect(Array.isArray(files) ? files.map((f) => asJsonObject(f)?.rel) : []).toEqual(["program.ts", "trick.toml"]);
     expect(d.io.stdout).toEqual([
       "Sent 2 files. Left behind: 1 (dot files, node_modules, logs, inputs/, config.toml, and any file in media/ or captures/ that is not a picture).",
-      "Proposed legs. Your person sees it as dc_k3m9x2p7q1ab on the Hill, or in Settings, Tricks, while the Hill is off. Nothing runs before their yes.",
-      "Read the answer with: collie hill status dc_k3m9x2p7q1ab",
+      "Proposed legs. Your person sees it as ak_k3m9x2p7q1ab in Asks, or in Settings, Tricks, while Asks is off. Nothing runs before their yes.",
+      "Read the answer with: collie walky status ak_k3m9x2p7q1ab",
     ]);
     // A draft that init made in an agent's work folder proposes with nothing registered for its id.
     const work = tempDir("propose-work-");
@@ -421,10 +421,10 @@ describe("collie trick propose, over the walky socket", () => {
   });
 
   socketTest("a session's proposal with the Hill off names the session and Settings, Tricks, never the Hill", async () => {
-    const b = await bridge(async () => ({ ok: true, kind: "proposal", id: "legs", hash: "h", decision: "dc_k3m9x2p7q1ab", replaced: null, where: { session: true, hill: false } }));
+    const b = await bridge(async () => ({ ok: true, kind: "proposal", id: "legs", hash: "h", decision: "ak_k3m9x2p7q1ab", replaced: null, where: { session: true, hill: false } }));
     const d = deps([walkySocketPath(b.stateDir)]);
     expect(await cmdTrickPropose(d, [trickFolder()])).toBe(EXIT.OK);
-    expect(d.io.stdout).toContain("Proposed legs. Your person sees it as dc_k3m9x2p7q1ab in this session on the phone, and in Settings, Tricks. Nothing runs before their yes.");
+    expect(d.io.stdout).toContain("Proposed legs. Your person sees it as ak_k3m9x2p7q1ab in this session on the phone, and in Settings, Tricks. Nothing runs before their yes.");
   });
 
   socketTest("the pictures go on the line beside the code, and the CLI names what stayed behind", async () => {

@@ -3,18 +3,20 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { hillHelp, HILL_SUBCOMMANDS } from "../cli/hill.ts";
+import { ASK_HELP } from "../cli/ask.ts";
+import { ASKS_SUBCOMMANDS, asksHelp } from "../cli/hill.ts";
 import { HILL_SUMMARY_SOFT_MAX, HILL_SUMMARY_SOFT_SENTENCES, HILL_TITLE_SOFT_MAX, hillWordingWarnings } from "../cli/hill-rules.ts";
 import * as helper from "../cli/trick-kit/trick.ts";
 import { TRICK_SUBCOMMANDS } from "../cli/trick.ts";
 import { VIEW_SUBCOMMANDS, viewUsageLines } from "../cli/trick-view.ts";
 import { TRICKS_SUBCOMMANDS } from "../cli/tricks-switch.ts";
+import { WALKY_SUBCOMMANDS } from "../cli/walky.ts";
 import { REASK_AFTER_MS } from "../bridge/tricks/hill.ts";
 import { WATCH_WINDOW_MS } from "../bridge/tricks/service.ts";
 import { REACT_FLOOR_MS } from "../bridge/tricks/triggers.ts";
 import { TRICKS_CREW_FIRST_VERSION } from "../bridge/hill/crew.ts";
 import { parseAgentView } from "../web/src/lib/agent-view/wire.ts";
-import { HILL_NODE_PREFIX, HILL_STATES } from "../web/src/lib/hill/wire.ts";
+import { ASKS_NODE_PREFIX, HILL_STATES } from "../web/src/lib/hill/wire.ts";
 import {
   COMMANDS,
   HILL,
@@ -67,12 +69,12 @@ import { helperNumber, programNumbers, REFERENCE_COMMAND, REFERENCE_PAGE, render
 // the code in five ways:
 //   1. the page on disk is exactly what the generator writes (a stale page fails, with the command);
 //   2. every example in the catalogue passes the real parser it is an example of;
-//   3. the page names every place, part kind, node attribute, manifest key, Decision key, later word and
+//   3. the page names every place, part kind, node attribute, manifest key, ask key, later word and
 //      verb that the code has, and the catalogue names nothing the code lacks;
 //   4. the commands list equals the CLI's own verb lists, and every flag it names is in the CLI's usage;
 //   5. the words stay plain: no em dash, no private path;
-//   6. the program's tables (what it receives, what it prints, the helper, the input globs, the Hill's
-//      list rules) have an entry for every field, key, trigger kind and state the schema lists, and each
+//   6. the program's tables (what it receives, what it prints, the helper, the input globs, the list
+//      rules of Asks) have an entry for every field, key, trigger kind and state the schema lists, and each
 //      sentence about how Collie reads or runs a thing is held to the code that does it.
 // It lives in scripts/, which `bun test ./scripts` runs in CI (the `check` job and the Windows job).
 
@@ -133,7 +135,7 @@ function checkExample(example: Example, label: string): void {
       return;
     }
     case "decision": {
-      const parsed = parseTrickDocument({ v: 1, parts: [], decisions: [example.json] });
+      const parsed = parseTrickDocument({ v: 1, parts: [], asks: [example.json] });
       expect(parsed.refusals, label).toEqual([]);
       expect(parsed.decisions.length, label).toBe(1);
       return;
@@ -144,7 +146,7 @@ function checkExample(example: Example, label: string): void {
       return;
     }
     case "command": {
-      const help = hillHelp().join("\n");
+      const help = ASK_HELP.join("\n");
       for (const flag of example.text.match(/--[a-z-]+/gu) ?? []) expect(help, `${label} ${flag}`).toContain(flag);
       return;
     }
@@ -201,7 +203,7 @@ describe("every example passes the real parser", () => {
   }
 
   HILL.examples.forEach((example, i) => {
-    test(`the Hill, example ${String(i + 1)}`, () => checkExample(example, "hill"));
+    test(`Asks, example ${String(i + 1)}`, () => checkExample(example, "asks"));
   });
 
   test("the manifest example", () => checkExample(MANIFEST_EXAMPLE, "manifest example"));
@@ -258,7 +260,7 @@ describe("the page names everything the code has", () => {
     for (const key of MANIFEST_KEYS) expect(PAGE, key).toContain(`| \`${key}\` |`);
   });
 
-  test("every key of a Decision", () => {
+  test("every key of an ask", () => {
     expect(HILL.keys.map((entry) => entry.key)).toEqual([...DECISION_KEYS]);
     for (const key of DECISION_KEYS) expect(PAGE, key).toContain(`| \`${key}\` |`);
   });
@@ -270,11 +272,15 @@ describe("the page names everything the code has", () => {
     for (const word of later) expect(PAGE, word).toContain(`| \`${word}\` |`);
   });
 
-  test("every verb of collie trick, collie trick view and collie hill", () => {
+  test("every verb of collie trick, collie trick view, collie asks and the ask verbs of collie walky", () => {
     expect(COMMANDS.filter((entry) => entry.group === "trick").map((entry) => entry.verb)).toEqual([...TRICK_SUBCOMMANDS]);
     expect(COMMANDS.filter((entry) => entry.group === "tricks").map((entry) => entry.verb)).toEqual([...TRICKS_SUBCOMMANDS]);
     expect(COMMANDS.filter((entry) => entry.group === "trick view").map((entry) => entry.verb)).toEqual([...VIEW_SUBCOMMANDS]);
-    expect(COMMANDS.filter((entry) => entry.group === "hill").map((entry) => entry.verb)).toEqual([...HILL_SUBCOMMANDS]);
+    expect(COMMANDS.filter((entry) => entry.group === "asks").map((entry) => entry.verb)).toEqual([...ASKS_SUBCOMMANDS]);
+    const walkyAsk = COMMANDS.filter((entry) => entry.group === "walky ask").map((entry) => entry.verb);
+    expect(walkyAsk).toEqual(["ask", "asks", "status", "cancel"]);
+    const walkyVerbs: readonly string[] = WALKY_SUBCOMMANDS;
+    for (const verb of walkyAsk) expect(walkyVerbs, verb).toContain(verb);
     for (const entry of COMMANDS) expect(PAGE, `${entry.group} ${entry.verb}`).toContain(`\`collie ${entry.usage.replaceAll("|", "\\|")}\``);
   });
 });
@@ -316,19 +322,36 @@ describe("the commands match the CLI's own usage", () => {
     for (const flag of flagsIn(usage)) expect(listed.has(flag), `${flag} is in a usage line but not in the catalogue`).toBe(true);
   });
 
-  test("the hill verbs and flags are exactly collie hill's own help", () => {
-    const help = hillHelp().join("\n");
-    const listed = new Set(COMMANDS.filter((entry) => entry.group === "hill").flatMap((entry) => entry.flags.map((flag) => flag.flag)));
+  test("the asks verbs and flags are exactly collie asks's own help", () => {
+    const help = asksHelp().join("\n");
+    const listed = new Set(COMMANDS.filter((entry) => entry.group === "asks").flatMap((entry) => entry.flags.map((flag) => flag.flag)));
     for (const flag of listed) expect(help, flag).toContain(flag);
-    const usageOnly = hillHelp().filter((line) => /^ {2}\S/u.test(line) || line.startsWith("usage:")).join("\n");
+    const usageOnly = asksHelp().filter((line) => /^ {2}\S/u.test(line) || line.startsWith("usage:")).join("\n");
     for (const flag of flagsIn(usageOnly)) {
       if (flag === "--help") continue;
-      expect(listed.has(flag), `${flag} is in collie hill's usage but not in the catalogue`).toBe(true);
+      expect(listed.has(flag), `${flag} is in collie asks's usage but not in the catalogue`).toBe(true);
     }
+  });
+
+  test("the flags of collie walky ask are the ones cli/ask.ts parses, and its help names each but --json and --request-id", () => {
+    const askSource = read("cli/ask.ts");
+    const help = ASK_HELP.join("\n");
+    const listed = new Set(COMMANDS.filter((entry) => entry.group === "walky ask" && entry.verb === "ask").flatMap((entry) => entry.flags.map((flag) => flag.flag)));
+    for (const flag of listed) {
+      expect(askSource, flag).toContain(`"${flag}"`);
+      if (flag !== "--json" && flag !== "--request-id") expect(help, flag).toContain(flag);
+    }
+    const listedAll = new Set(COMMANDS.filter((entry) => entry.group === "walky ask").flatMap((entry) => entry.flags.map((flag) => flag.flag)));
+    for (const flag of flagsIn(help)) {
+      if (flag === "--help") continue;
+      expect(listedAll.has(flag), `${flag} is in collie walky ask's help but not in the catalogue`).toBe(true);
+    }
+    const cancel = COMMANDS.find((entry) => entry.group === "walky ask" && entry.verb === "cancel");
+    for (const flag of cancel?.flags ?? []) expect(askSource, `cancel ${flag.flag}`).toContain(`"${flag.flag}"`);
   });
 });
 
-// ── The program, the helper, the input globs and the Hill's list rules ───────────────────────────
+// ── The program, the helper, the input globs and the list rules of Asks ──────────────────────────
 
 const NUMBERS = programNumbers();
 const PROGRAM = programOf(NUMBERS);
@@ -410,7 +433,7 @@ describe("the program section", () => {
       expect(row.fields, row.kind).toBe(other.length === 0 ? "none" : other.map((key) => `\`${key}\``).join(", "));
     }
     for (const kind of PROGRAM.triggersLater) expect(receives, kind).toContain(`\`${kind}\``);
-    expect(receives).toContain(`\`${HILL_NODE_PREFIX}<key>\``);
+    expect(receives).toContain(`\`${ASKS_NODE_PREFIX}<key>\``);
   });
 
   test("the timer runs only while a phone has watched, for as long as the bridge says", () => {
@@ -515,12 +538,12 @@ describe("the reading rules are what the parser does", () => {
     expect(PAGE).toContain("`from.session` is not proof of who tapped");
   });
 
-  test("a bad value refuses its part alone, a bad Decision refuses itself alone, and a bad asOf leaves the parts", () => {
+  test("a bad value refuses its part alone, a bad ask refuses itself alone, and a bad asOf leaves the parts", () => {
     const part = parseTrickDocument(parts(ok, { at: "dashboard", id: "d", item: { label: "" } }));
     expect(part.refusedParts).toEqual(["d"]);
     expect(part.parts.map((p) => p.place)).toEqual(["status"]);
     expect(part.documentRefused).toBe(false);
-    const decision = parseTrickDocument({ v: 1, parts: [ok], decisions: [{ key: "a" }] });
+    const decision = parseTrickDocument({ v: 1, parts: [ok], asks: [{ key: "a" }] });
     expect(decision.refusedDecisions).toEqual(["a"]);
     expect(decision.parts.length).toBe(1);
     const asOf = parseTrickDocument({ v: 1, parts: [ok], asOf: "yesterday" });
@@ -535,8 +558,8 @@ describe("the reading rules are what the parser does", () => {
     expect(parseTrickDocumentText(`{"v":1,"parts":[],"pad":"${"x".repeat(70_000)}"}`).documentRefused).toBe(true);
   });
 
-  test("a Decision, like a manifest, is read strictly: an unknown key refuses it", () => {
-    const strict = parseTrickDocument({ v: 1, parts: [], decisions: [{ key: "a", title: "Rerun it?", summary: "It failed.", zzz: 1 }] });
+  test("an ask, like a manifest, is read strictly: an unknown key refuses it", () => {
+    const strict = parseTrickDocument({ v: 1, parts: [], asks: [{ key: "a", title: "Rerun it?", summary: "It failed.", zzz: 1 }] });
     expect(strict.refusedDecisions).toEqual(["a"]);
     expect(parseManifestToml('id = "legs"\nname = "Legs"\nrun = "program.ts"\nplaces = ["belt"]\nzzz = 1\n').refusals.length).toBeGreaterThan(0);
   });
@@ -586,14 +609,14 @@ describe("the helper table names real calls", () => {
     expect((table.kids ?? []).map((kid) => kid.kind)).toEqual(["col", "cell"]);
   });
 
-  test("a run that calls neither t.decide nor t.keepDecisions prints decisions [], and t.keepDecisions leaves the key out even after t.decide", () => {
-    expect(new helper.Trick(facts).document().decisions).toEqual([]);
+  test("a run that calls neither t.ask nor t.keepAsks prints asks [], and t.keepAsks leaves the key out even after t.ask", () => {
+    expect(new helper.Trick(facts).document().asks).toEqual([]);
     const asked = new helper.Trick(facts);
-    asked.decide({ key: "a", title: "Rerun it?", summary: "It failed." });
-    expect(asked.document().decisions?.length).toBe(1);
-    asked.keepDecisions();
-    expect("decisions" in asked.document()).toBe(false);
-    expect(PROGRAM.helperAfter.join("\n")).toContain('prints `"decisions": []`');
+    asked.ask({ key: "a", title: "Rerun it?", summary: "It failed." });
+    expect(asked.document().asks?.length).toBe(1);
+    asked.keepAsks();
+    expect("asks" in asked.document()).toBe(false);
+    expect(PROGRAM.helperAfter.join("\n")).toContain('prints `"asks": []`');
   });
 
   test("the helper prints the contract of its facts as v, and the fresh and asOf calls set their keys", () => {
@@ -675,8 +698,8 @@ describe("the input globs are the schema's rules", () => {
   });
 });
 
-describe("the Hill's list rules and the wording of a card", () => {
-  test("the re-ask wait is the bridge's, and the states that may ask again are states the Hill has", () => {
+describe("the list rules of Asks and the wording of a card", () => {
+  test("the re-ask wait is the bridge's, and the states that may ask again are states Asks has", () => {
     expect(NUMBERS.reaskAfterMs).toBe(REASK_AFTER_MS);
     const row = RULES.list.find((entry) => entry.case.includes("closed without the person"));
     expect(row?.result).toContain("at most once every 10 minutes");
@@ -689,7 +712,7 @@ describe("the Hill's list rules and the wording of a card", () => {
 
   test("the rules cover a new key, changed content, a dropped key, an answered key, a re-ask, no key, an empty list and a failed run", () => {
     const cases = RULES.list.map((row) => row.case);
-    for (const wanted of ["A new `key`", "A listed `key` with changed content", "A `key` the list no longer holds", "A `key` the person answered or dismissed", "A document with no `decisions` key", "`decisions` is `[]`", "A failed or timed-out run"]) expect(cases, wanted).toContain(wanted);
+    for (const wanted of ["A new `key`", "A listed `key` with changed content", "A `key` the list no longer holds", "A `key` the person answered or dismissed", "A document with no `asks` key", "`asks` is `[]`", "A failed or timed-out run"]) expect(cases, wanted).toContain(wanted);
     const section = sectionOf("### The list is the truth");
     for (const row of RULES.list) expect(section, row.case).toContain(`| ${row.case} | ${row.result} |`);
     expect(section).toContain(RULES.listAfter);
@@ -711,7 +734,7 @@ describe("the Hill's list rules and the wording of a card", () => {
     expect(hillWordingWarnings({ ...good, options: [{ intent: "yes", label: "Yes" }] }).length).toBeGreaterThan(0);
   });
 
-  test("the Hill section points at the rules and does not repeat them in its own words", () => {
+  test("the Asks section points at the rules and does not repeat them in its own words", () => {
     expect(HILL.program).toContain("#the-list-is-the-truth");
   });
 });

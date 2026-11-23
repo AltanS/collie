@@ -8,7 +8,7 @@ import { payloadDigest } from "../worktree-receipts.ts";
 import { asJsonObject, parseJson } from "../../web/src/lib/json.ts";
 import {
   freshWindowMs,
-  HILL_NODE_PREFIX,
+  ASKS_NODE_PREFIX,
   INPUTS_CONTRACT,
   parseTrickDocumentText,
   parseTapRequest,
@@ -360,7 +360,7 @@ export interface TrickVersionsPort {
 }
 
 /** The phone's words when it taps a decision's node directly: answers go through the hill. */
-export const HILL_NODE_TAP_REFUSED = "A decision is answered on the Hill, not with a tap.";
+export const HILL_NODE_TAP_REFUSED = "An ask is answered in Asks, not with a tap.";
 
 /**
  * N5 (review 11): a refused tap writes its audit line at most once a minute per trick and reason, the
@@ -1198,7 +1198,7 @@ export class TricksService implements TricksSurface {
       try {
         await this.deps.forgetTrick(found.id);
       } catch (err) {
-        this.warn(`the views and Hill keys of a new trick "${found.id}" could not be forgotten: ${err instanceof Error ? err.message : String(err)}`);
+        this.warn(`the views and ask keys of a new trick "${found.id}" could not be forgotten: ${err instanceof Error ? err.message : String(err)}`);
       }
     }
   }
@@ -1216,7 +1216,7 @@ export class TricksService implements TricksSurface {
     try {
       this.deps.pruneTrickStores(present);
     } catch (err) {
-      this.warn(`the views and Hill keys of removed tricks could not be dropped: ${err instanceof Error ? err.message : String(err)}`);
+      this.warn(`the views and ask keys of removed tricks could not be dropped: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
@@ -2334,7 +2334,7 @@ export class TricksService implements TricksSurface {
       parsed = parseTrickDocumentText(text, { declared: manifest.places, contract: manifest.contract, decidesReply: manifest.decides === "reply", draftsSession: manifest.drafts === "session" });
       if (parsed.documentRefused) problem = `The output was refused: ${parsed.refusals[0]?.reason ?? "not a document"}`;
       // An absent `decisions` key means "unchanged"; an empty list withdraws them all.
-      decisionsListed = asJsonObject(parseJson(text))?.decisions !== undefined;
+      decisionsListed = asJsonObject(parseJson(text))?.asks !== undefined;
     }
     if (problem !== null || parsed === null || parsed.documentRefused) {
       const line = problemLine(problem ?? "The run failed.");
@@ -2357,7 +2357,7 @@ export class TricksService implements TricksSurface {
     // The decisions reach the hill only from a run that succeeded and listed them. A list refused as a
     // whole (over the cap) changes nothing there either: the last good decisions stay, as the last good
     // parts do.
-    const listRefused = parsed.refusals.some((refusal) => refusal.path === "/decisions" && refusal.decision === undefined);
+    const listRefused = parsed.refusals.some((refusal) => refusal.path === "/asks" && refusal.decision === undefined);
     const posted = listRefused || !decisionsListed ? [] : (this.deps.decisions?.sync({ ...this.hillTrick(rt), name: manifest.name }, { decisions: parsed.decisions, refusedKeys: parsed.refusedDecisions, sessions: new Set(facts.sessions.map((session) => session.id)) }) ?? []);
     // An absent `decisions` key leaves the trick's Decisions as they were, so it leaves this as it was too.
     if (!listRefused && decisionsListed) rt.decides = parsed.decisions.length > 0;
@@ -2400,8 +2400,8 @@ export class TricksService implements TricksSurface {
     if (!this.isOwn(host)) return { status: 404, body: { error: "unknown-host" } };
     const parsed = parseTapRequest(body);
     if (parsed.request === undefined) return { status: 400, body: { error: "tap-invalid", refusals: parsed.refusals } };
-    // A decision's answer comes from the hill only (`tapFromHill`), so it is closed and receipted there.
-    if (parsed.request.node.startsWith(HILL_NODE_PREFIX)) return { status: 200, body: { rid: parsed.request.rid, code: "rejected", message: HILL_NODE_TAP_REFUSED } };
+    // An ask's answer comes from Asks only (`tapFromHill`), so it is closed and receipted there.
+    if (parsed.request.node.startsWith(ASKS_NODE_PREFIX)) return { status: 200, body: { rid: parsed.request.rid, code: "rejected", message: HILL_NODE_TAP_REFUSED } };
     // The rev is the phone's claim of what it drew. It is checked here and never reaches the program.
     const answer = await this.runTap(host, id, parsed.request, undefined, { rev: parsed.rev });
     return opts?.bound === true ? answer : this.withoutBound(answer);
@@ -2556,7 +2556,7 @@ export class TricksService implements TricksSurface {
     if (rt.approved.found.manifest.run === undefined) return refuse(NO_PROGRAM_LINE);
     const refused = phone === undefined ? null : this.tapRefusal(id, request, phone.rev);
     if (refused !== null) return this.refuseTap(id, request, refused);
-    const answer = request.node.startsWith(HILL_NODE_PREFIX);
+    const answer = request.node.startsWith(ASKS_NODE_PREFIX);
     // A decision's answer waits in its own queue; a phone tap queues one deep.
     if (answer && rt.hillQueue.length >= HILL_QUEUE_MAX) return refuse("The trick has too many answers waiting. Try again in a moment.");
     if (!answer && rt.queued !== null) return refuse("The trick is busy. Try again in a moment.");

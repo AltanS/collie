@@ -20,7 +20,7 @@ type RightKey = { [K in keyof typeof PROPOSAL_KEY_RIGHTS]: (typeof PROPOSAL_KEY_
 const SAMPLES = {
   places: { set: { places: ["status"] }, words: "the status line" },
   env: { set: { env: ["GITHUB_TOKEN"] }, words: "GITHUB_TOKEN" },
-  decides: { set: { decides: "reply" }, words: DECIDES_REPLY_CHIP },
+  asks: { set: { decides: "reply" }, words: DECIDES_REPLY_CHIP },
   drafts: { set: { drafts: "session" }, words: DRAFTS_SESSION_LINE },
   access: { set: { access: "see" }, words: ACCESS_LINES.see },
   inputs: { set: { inputs: ["TODO.md"] }, words: "TODO.md" },

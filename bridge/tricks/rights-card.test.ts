@@ -86,7 +86,7 @@ function life(f: Folders, hillOn = true): Life {
     memberId: "lodge",
     machine: "lodge",
     now: () => clock.t,
-    mintId: () => `dc_rig${String(clock.t).slice(-6)}${String((n += 1)).padStart(3, "0")}`,
+    mintId: () => `ak_rig${String(clock.t).slice(-6)}${String((n += 1)).padStart(3, "0")}`,
     onCollieAnswer: (ref, intent) => Promise.resolve(ref.type === "rights" ? answerRights(intent) : { ok: false, reason: "no" }),
   });
   const service = new TricksService({

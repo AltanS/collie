@@ -45,7 +45,7 @@ export const PROPOSE_NOT_HERE = "No Collie bridge on this machine knows this pan
  * Where the person finds a proposal's card (M96 spec 14): it needs no Hill, so the words never tell anyone
  * to switch the Hill on. The words of a bridge that does not say where the card is (before package I).
  */
-export const PROPOSE_WHERE = "on the Hill, or in Settings, Tricks, while the Hill is off";
+export const PROPOSE_WHERE = "in Asks, or in Settings, Tricks, while Asks is off";
 
 /**
  * Where the card really is (package I, 2026-11-17), from the bridge's `where`: in the proposer's session on
@@ -57,9 +57,9 @@ export function proposeWhere(where: JsonValue | undefined): string {
   const session = asJsonBoolean(row?.session);
   const hill = asJsonBoolean(row?.hill);
   if (session === undefined || hill === undefined) return PROPOSE_WHERE;
-  if (session && hill) return "in this session on the phone, on the Hill, and in Settings, Tricks";
+  if (session && hill) return "in this session on the phone, in Asks, and in Settings, Tricks";
   if (session) return "in this session on the phone, and in Settings, Tricks";
-  if (hill) return "on the Hill, and in Settings, Tricks";
+  if (hill) return "in Asks, and in Settings, Tricks";
   return "in Settings, Tricks, on the phone";
 }
 
@@ -141,7 +141,7 @@ async function ask(deps: ProposeDeps, line: string, requestId: string): Promise<
     );
     // The bridge took the proposal and did not answer in time: asking the next one could propose twice.
     if (late) {
-      return { ok: false, error: `The bridge took the proposal and did not answer within ${String(PROPOSE_ASK_MS / 1000)} s. It may still reach the Hill. Propose again with --request-id ${requestId}: it is proposed once.`, code: "lead_unreachable", exit: EXIT.UNREACHABLE };
+      return { ok: false, error: `The bridge took the proposal and did not answer within ${String(PROPOSE_ASK_MS / 1000)} s. It may still reach Asks. Propose again with --request-id ${requestId}: it is proposed once.`, code: "lead_unreachable", exit: EXIT.UNREACHABLE };
     }
     const answer = raw === null ? undefined : parseJsonObject(raw);
     if (answer === undefined) continue;
@@ -260,7 +260,7 @@ export async function cmdTrickPropose(deps: ProposeDeps, args: readonly string[]
   const replaced = asJsonString(body.replaced) ?? null;
   const place = proposeWhere(body.where);
   if (json) {
-    deps.io.out(JSON.stringify({ ok: true, kind, id, hash: checked.proposal.hash, decision, replaced, requestId: rid, files: read.files.length, pictures: read.pictures.map((p) => p.rel), left: read.left, leftPictures: read.leftPictures, warnings: report.warnings.map((w) => w.kind), needsConfig: settings, where: place }));
+    deps.io.out(JSON.stringify({ ok: true, kind, id, hash: checked.proposal.hash, ask: decision, replaced, requestId: rid, files: read.files.length, pictures: read.pictures.map((p) => p.rel), left: read.left, leftPictures: read.leftPictures, warnings: report.warnings.map((w) => w.kind), needsConfig: settings, where: place }));
     return EXIT.OK;
   }
   deps.io.out(`${sentLine(read.files.length, read.pictures.length)} Left behind: ${String(read.left)} (${PROPOSE_LEFT_KINDS}).`);
@@ -269,6 +269,6 @@ export async function cmdTrickPropose(deps: ProposeDeps, args: readonly string[]
   if (kind === "version") deps.io.out(`Proposed a new version of ${id}. Your person sees it as ${decision ?? "a card"} ${place}. Nothing of it is written or runs before their yes.`);
   else deps.io.out(`Proposed ${id}. Your person sees it as ${decision ?? "a card"} ${place}. Nothing runs before their yes.`);
   if (replaced !== null) deps.io.out(`It replaces your earlier proposal ${replaced}.`);
-  if (decision !== null) deps.io.out(`Read the answer with: collie hill status ${decision}`);
+  if (decision !== null) deps.io.out(`Read the answer with: collie walky status ${decision}`);
   return EXIT.OK;
 }

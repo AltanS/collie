@@ -20,7 +20,9 @@
 
 import type { JsonValue } from "../json";
 import {
+  ASKS_NODE_PREFIX,
   HILL_ANSWER_TEXT_MAX,
+  HILL_ASK_CANCEL_MAX,
   HILL_BODY_MAX,
   HILL_CLOSED_SERVED,
   HILL_LINK_HREF_MAX,
@@ -29,7 +31,6 @@ import {
   HILL_MEDIA_BYTES_MAX,
   HILL_MEDIA_CAPTION_MAX,
   HILL_MEDIA_MAX,
-  HILL_NODE_PREFIX,
   HILL_NOW_MAX,
   HILL_OPEN_MAX,
   HILL_OPTION_CONFIRM_MAX,
@@ -293,7 +294,7 @@ export interface Limit {
 /**
  * An example the real parser accepts. `document` is a program's whole output, `node` one node of a view
  * (the test puts it in a session part), `screen` the list of nodes an agent view's `show` takes,
- * `manifest` a `trick.toml` fragment, `decision` one Decision as a program lists it, `tap` the trigger of
+ * `manifest` a `trick.toml` fragment, `decision` one ask as a program lists it, `tap` the trigger of
  * an answer, and `command` a command line (held to the CLI's own usage text by the test).
  */
 export type Example =
@@ -437,7 +438,7 @@ export const PLACES = {
   tabbar: {
     id: "tabbar",
     name: "Bottom bar item",
-    where: "An item in the Dashboard's bottom bar, after the Hill. On a large screen there is no bar: the item stands after the views, in the control of the Dashboard's header.",
+    where: "An item in the Dashboard's bottom bar, after Asks. On a large screen there is no bar: the item stands after the views, in the control of the Dashboard's header.",
     shows: "One item: an icon over a short name, with a `badge` and a `tone`. It takes no view.",
     tap: "A tap opens the trick's Page when it has one. Without a Page the item is drawn and takes no tap.",
     limits: [
@@ -553,8 +554,8 @@ export const PLACES = {
     id: "agent-view",
     name: "Agent view",
     where: "A view of one agent session, beside Terminal and Chat. The session's own agent draws it, and the person switches it on per session.",
-    shows: "One screen: a list of nodes in the Parts table's kinds (held tighter, see Parts), up to four pictures, and one decision block with a question and up to five options.",
-    tap: "A tap on a button, or a pick in the decision block, sends a message in the person's name to that one session. It carries the label only: a button holds no hidden value. Collie marks the pick on the screen afterwards. The agent cannot: a button's `pressed` and a choice's `picked` are refused.",
+    shows: "One screen: a list of nodes in the Parts table's kinds (held tighter, see Parts), up to four pictures, and one choice block with a question and up to five options.",
+    tap: "A tap on a button, or a pick in the choice block, sends a message in the person's name to that one session. It carries the label only: a button holds no hidden value. Collie marks the pick on the screen afterwards. The agent cannot: a button's `pressed` and a choice's `picked` are refused.",
     limits: [
       { what: "Contract", value: `${String(AGENT_VIEW_CONTRACT)}, and the manifest needs \`rules\`` },
       { what: "Screen title", value: `at most ${String(VIEW_TITLE_MAX)} characters` },
@@ -563,11 +564,11 @@ export const PLACES = {
       { what: "A group's label", value: `one line, at most ${String(VIEW_TAP_GROUP_MAX)} characters` },
       { what: "The view, as compact JSON", value: `at most ${sizeWords(PART_MAX_BYTES)}, and the view limits of a part` },
       { what: "Pictures", value: `at most ${String(VIEW_MEDIA_MAX)} on a screen, ${sizeWords(VIEW_MEDIA_BYTES_MAX)} each, ${sizeWords(VIEW_SET_BYTES_MAX)} together, caption at most ${String(VIEW_CAPTION_MAX)} characters` },
-      { what: "Decision block", value: `a question of at most ${String(VIEW_QUESTION_MAX)} characters, 1 to ${String(VIEW_OPTIONS_MAX)} options` },
+      { what: "Choice block", value: `a question of at most ${String(VIEW_QUESTION_MAX)} characters, 1 to ${String(VIEW_OPTIONS_MAX)} options` },
       { what: "A pending block's label", value: `at most ${String(VIEW_PENDING_MAX)} characters` },
       { what: "Writes by the agent", value: `${String(VIEW_WRITES_PER_MINUTE)} a minute for one trick and session` },
       { what: "Sends from the view", value: `${String(VIEW_SENDS_PER_MINUTE)} a minute for one session, one in flight at a time` },
-      { what: "Marks of a pick", value: "Collie's, never the agent's. A redraw keeps a mark while a block of the same id holds a button at the same steps, and the decision block's while it asks the same question with the same options" },
+      { what: "Marks of a pick", value: "Collie's, never the agent's. A redraw keeps a mark while a block of the same id holds a button at the same steps, and the choice block's while it asks the same question with the same options" },
       { what: "Links", value: "a web address only. A session `href` is refused. The phone shows the host after each link, whole" },
       { what: "Collie's own words", value: `no text of the agent's may say ${VIEW_COLLIE_PHRASES.map((phrase) => `"${phrase}"`).join(", ")}. A text is read as whole words, in any case, with look-alike letters and hidden characters folded. Collie's bare name passes` },
       { what: "The rules file", value: `see Limits: the rules file` },
@@ -585,7 +586,7 @@ export const PLACE_ORDER: readonly PlaceId[] = [...PLACE_KINDS, AGENT_VIEW_PLACE
 
 // ── Parts: the node kinds ────────────────────────────────────────────────────────────────────
 
-/** The kinds a program's view, a Decision's view and an agent view may hold, and what each is for. */
+/** The kinds a program's view, an ask's view and an agent view may hold, and what each is for. */
 export interface PartAttr {
   readonly name: string;
   readonly type: string;
@@ -605,7 +606,7 @@ export interface PartEntry {
   /** What its `text` is, or empty when it takes none. */
   readonly text: string;
   readonly attrs: readonly PartAttr[];
-  /** Whether a Decision's view takes it. */
+  /** Whether an ask's view takes it. */
   readonly inDecision: boolean;
   /** What differs in an agent view, or empty when nothing does. */
   readonly agentView: string;
@@ -635,7 +636,7 @@ const PART_WORDS = {
   code: { what: "A block of code. Its kids are `line` nodes. It scrolls on its own past `max` lines.", example: { kind: "code", attrs: { lang: "ts" }, kids: [{ kind: "line", text: "const total = 3;" }] } },
   link: { what: "A link that opens a web page, or one agent session of the crew.", example: { kind: "group", attrs: { label: "More" }, kids: [{ kind: "link", text: "Open the run", attrs: { href: "https://example.com/run/1" } }] } },
   image: {
-    what: "A picture. In a program's part it is a file of the trick's `media/` folder. In a Decision's view or an agent view it names one of the pictures that came with it, by `ref`.",
+    what: "A picture. In a program's part it is a file of the trick's `media/` folder. In an ask's view or an agent view it names one of the pictures that came with it, by `ref`.",
     example: { kind: "image", attrs: { src: "media/chart.png", alt: "Latency chart", w: "640", h: "360" } },
   },
   meter: { what: "An amount, or the progress of a task. With `role` `progress` and no `value` it is indeterminate.", example: { kind: "meter", attrs: { value: "68", max: "100", label: "Disk", tone: "warn" } } },
@@ -702,7 +703,7 @@ const ATTR_WORDS = {
     alt: "What the picture shows, in words.",
     w: "The picture's width in pixels. It reserves the box.",
     h: "The picture's height in pixels. It reserves the box.",
-    ref: "The place of one of the Decision's or the screen's own pictures, counted from 0. Used in a Decision's view and an agent view.",
+    ref: "The place of one of the ask's or the screen's own pictures, counted from 0. Used in an ask's view and an agent view.",
     caption: "A line of words under the picture. In a `compare` it labels the frame.",
     fit: "`contain` shows the whole picture. `cover` fills the frame and cuts the edges.",
     focus: "The point of the picture to keep in the middle of its frame, and how far to zoom in on it.",
@@ -722,7 +723,7 @@ const ATTR_WORDS = {
 const ATTR_NEEDS = {
   button: { intent: "yes, unless `does` is `copy` or `draft`", value: "yes, when `does` is `copy` or `draft`" },
   meter: { value: "yes, unless `role` is `progress`" },
-  image: { src: "in a program's part", alt: "in a program's part", w: "in a program's part", h: "in a program's part", ref: "in a Decision's view and an agent view" },
+  image: { src: "in a program's part", alt: "in a program's part", w: "in a program's part", h: "in a program's part", ref: "in an ask's view and an agent view" },
 } as const satisfies { readonly [K in NodeKind]?: { readonly [A in (typeof NODE_ATTRS)[K][number]]?: string } };
 
 /** What a kind's text needs besides the cap that `NODE_TEXT` holds. */
@@ -750,11 +751,11 @@ const AGENT_VIEW_NOTES = {
   compare: "Two images named by `ref`.",
 } as const satisfies { readonly [K in NodeKind]?: string };
 
-/** What a Decision's view does differently for a kind. */
+/** What an ask's view does differently for a kind. */
 const DECISION_VIEW_NOTES = {
   row: "A row opens a web page at most. It takes no button.",
   link: "A link opens a web page only.",
-  image: "Names one of the Decision's own pictures by `ref`.",
+  image: "Names one of the ask's own pictures by `ref`.",
   compare: "Two images named by `ref`.",
 } as const satisfies { readonly [K in NodeKind]?: string };
 
@@ -888,11 +889,11 @@ export const PARTS: readonly PartEntry[] = NODE_KINDS.map((kind) => ({
 /** What the views have in common, in words: the three places a view of nodes shows. */
 export const VIEW_KINDS_OF = {
   program: "A program's view, on its Page (a `session` part): every kind.",
-  decision: `A Decision's view, under its summary: display only. It takes ${orList(DECISION_VIEW_KINDS)}. At most ${sizeWords(DECISION_VIEW_LIMITS.bytes)}, ${String(DECISION_VIEW_LIMITS.nodes)} nodes and ${String(DECISION_VIEW_LIMITS.depth)} levels.`,
+  decision: `An ask's view, under its summary: display only. It takes ${orList(DECISION_VIEW_KINDS)}. At most ${sizeWords(DECISION_VIEW_LIMITS.bytes)}, ${String(DECISION_VIEW_LIMITS.nodes)} nodes and ${String(DECISION_VIEW_LIMITS.depth)} levels.`,
   agentView: "An agent view: every kind, read strictly. A kind or an attribute that a program's part would only leave out is refused.",
 } as const;
 
-/** What a Decision's view does differently for one kind, or empty. */
+/** What an ask's view does differently for one kind, or empty. */
 export function decisionViewNote(kind: NodeKind): string {
   return DECISION_VIEW_NOTE_OF.get(kind) ?? "";
 }
@@ -913,10 +914,10 @@ export const SHARED_VALUES: readonly SharedValue[] = [
   { name: "clock", values: codeList(CLOCKS) },
   { name: "style", values: `${code("bold")}, ${code("dim")}, ${code("italic")}, ${code("underline")}, ${code("inverse")}, ${code("strike")}, ${code("box")}, ${code("fg-<colour>")}, ${code("bg-<colour>")} and the syntax inks ${codeList(STYLE_WORDS.filter((word) => word.startsWith("syn-")))}. The colours are ${codeList(ANSI_NAMES)}` },
   { name: "button intent", values: "1 to 48 of `a-z`, `0-9`, `.`, `_` and `-`, starting with a letter or a digit" },
-  { name: "Decision option intent", values: `1 to 32 of \`a-z\`, \`0-9\` and \`-\`, starting with a letter, never ${orList(HILL_RESERVED_INTENTS)}` },
+  { name: "Ask option intent", values: `1 to 32 of \`a-z\`, \`0-9\` and \`-\`, starting with a letter, never ${orList(HILL_RESERVED_INTENTS)}` },
 ];
 
-// ── The Hill ─────────────────────────────────────────────────────────────────────────────────
+// ── Asks ─────────────────────────────────────────────────────────────────────────────────
 
 export interface DecisionKeyEntry {
   readonly key: string;
@@ -926,22 +927,22 @@ export interface DecisionKeyEntry {
   readonly what: string;
 }
 
-/** One entry per key of a Decision a program lists. A new key in `DECISION_KEYS` is a compile error until it is here. */
+/** One entry per key of an ask a program lists. A new key in `DECISION_KEYS` is a compile error until it is here. */
 const DECISION_KEY_WORDS = {
-  key: { type: "text", required: "yes", limit: `1 to ${String(DECISION_KEY_MAX)} of \`a-z\`, \`0-9\` and \`-\`, unique in the document`, what: "The trick's own name for the Decision. The answer comes back with it." },
+  key: { type: "text", required: "yes", limit: `1 to ${String(DECISION_KEY_MAX)} of \`a-z\`, \`0-9\` and \`-\`, unique in the document`, what: "The trick's own name for the ask. The answer comes back with it." },
   title: { type: "text", required: "yes", limit: `at most ${String(HILL_TITLE_MAX)} characters`, what: "The question, as a sentence the options answer." },
   summary: { type: "text", required: "yes", limit: `at most ${String(HILL_SUMMARY_MAX)} characters`, what: "What the recommended option does, and the one fact that decides it." },
   body: { type: "text", required: "no", limit: `at most ${String(HILL_BODY_MAX)} characters`, what: "Longer text, shown behind More." },
   options: { type: "list", required: "no", limit: `at most ${String(HILL_OPTIONS_MAX)}; each \`intent\`, \`label\` (at most ${String(HILL_OPTION_LABEL_MAX)}), and optionally \`detail\` (at most ${String(HILL_OPTION_DETAIL_MAX)}) and \`confirm\` (at most ${String(HILL_OPTION_CONFIRM_MAX)})`, what: "The choices. A tap on one sends its `intent` back." },
   recommends: { type: "object or null", required: "no", limit: `\`{ intent, why }\`, \`why\` at most ${String(HILL_WHY_MAX)} characters`, what: "The trick's pick, one of the options. Shown as Recommended, never pre-selected." },
-  priority: { type: "word", required: "no", limit: `one of ${codeList(HILL_PRIORITIES)}. Default \`${DEFAULT_DECISION_PRIORITY}\``, what: `A request, not a fact. Only \`now\` sends a notification, and one sender holds at most ${String(HILL_NOW_MAX)} open \`now\` Decisions.` },
+  priority: { type: "word", required: "no", limit: `one of ${codeList(HILL_PRIORITIES)}. Default \`${DEFAULT_DECISION_PRIORITY}\``, what: `A request, not a fact. Only \`now\` sends a notification, and one sender holds at most ${String(HILL_NOW_MAX)} open \`now\` asks.` },
   text: { type: "word", required: "no", limit: `one of ${codeList(HILL_TEXT_MODES)}. Default \`${DEFAULT_DECISION_TEXT}\``, what: "Whether the person may, must, or may not add words to the answer. `none` needs at least one option." },
   about: { type: "session id", required: "no", limit: "an `id` from the facts' sessions, `memberId:paneId`", what: "The session the card is about. The card opens its Chat." },
-  replyTo: { type: "session id", required: "no", limit: "an `id` from the facts' sessions. Only for a trick whose `trick.toml` says `decides = \"reply\"`", what: "The session that gets the person's words, as the person's own WalkyTalky message. Without `decides = \"reply\"` the Decision is refused." },
+  replyTo: { type: "session id", required: "no", limit: "an `id` from the facts' sessions. Only for a trick whose `trick.toml` says `asks = \"reply\"`", what: "The session that gets the person's words, as the person's own WalkyTalky message. Without `asks = \"reply\"` the ask is refused." },
   media: { type: "list", required: "no", limit: `at most ${String(HILL_MEDIA_MAX)}; each \`file\` (a PNG, JPEG or WebP in the trick's folder, ${sizeWords(HILL_MEDIA_BYTES_MAX)} at most) and optionally \`caption\` (at most ${String(HILL_MEDIA_CAPTION_MAX)} characters)`, what: "Pictures on the card." },
   links: { type: "list", required: "no", limit: `at most ${String(HILL_LINKS_MAX)}; each \`label\` (at most ${String(HILL_LINK_LABEL_MAX)}) and \`href\` (an https or http address, at most ${String(HILL_LINK_HREF_MAX)} characters)`, what: "Web pages that give more." },
-  expiresAt: { type: "instant", required: "no", limit: `epoch milliseconds. Left out, ${String(HILL_DEFAULT_EXPIRY_DAYS)} days; never more than ${String(HILL_MAX_EXPIRY_DAYS)} days`, what: "When the Decision closes by itself, as expired." },
-  view: { type: "list of nodes", required: "no", limit: "see Parts: a Decision's view", what: "A small display-only view under the summary: facts to read, never a control." },
+  expiresAt: { type: "instant", required: "no", limit: `epoch milliseconds. Left out, ${String(HILL_DEFAULT_EXPIRY_DAYS)} days; never more than ${String(HILL_MAX_EXPIRY_DAYS)} days`, what: "When the ask closes by itself, as expired." },
+  view: { type: "list of nodes", required: "no", limit: "see Parts: an ask's view", what: "A small display-only view under the summary: facts to read, never a control." },
 } as const satisfies { readonly [K in (typeof DECISION_KEYS)[number]]: Omit<DecisionKeyEntry, "key"> };
 
 export interface HillEntry {
@@ -958,22 +959,22 @@ export interface HillEntry {
   readonly examples: readonly Example[];
 }
 
-/** The Hill: the place a program or an agent asks the person one question. It is not a `place` word. */
+/** Asks: the place a program or an agent asks the person one question. It is not a `place` word. */
 export const HILL: HillEntry = {
-  name: "The Hill",
-  what: "A page of Decisions: questions that a program or an agent asks the person, each answered with one tap. It ships with Collie as an experiment, off until the person switches it on in Settings → Tricks. A trick does not list it in `places`.",
-  program: `A program lists Decisions in the \`decisions\` key of its output (the helper's \`t.decide\`). The list is declarative: after each run that succeeded, Collie makes the Hill agree with it, as [The list is the truth](#the-list-is-the-truth) says below. A document lists at most ${String(DECISIONS_MAX)}.`,
-  agent: "An agent posts one with `collie hill post` and reads the answer with `collie hill status <id>`. The answer also reaches the agent as a WalkyTalky message.",
+  name: "Asks",
+  what: "A page of asks: questions that a program or an agent asks the person, each answered with one tap. It ships with Collie as an experiment, off until the person switches it on in Settings → Tricks. A trick does not list it in `places`.",
+  program: `A program lists asks in the \`asks\` key of its output (the helper's \`t.ask\`). The list is declarative: after each run that succeeded, Collie makes Asks agree with it, as [The list is the truth](#the-list-is-the-truth) says below. A document lists at most ${String(DECISIONS_MAX)}.`,
+  agent: "An agent sends one with `collie walky ask` and reads the answer with `collie walky status <id>`. The answer also reaches the agent as a WalkyTalky message.",
   keys: DECISION_KEYS.map((key) => Object.assign({ key }, DECISION_KEY_WORDS[key])),
   limits: [
-    { what: "Open Decisions per sender", value: String(HILL_OPEN_MAX) },
-    { what: "Open `now` Decisions per sender", value: `${String(HILL_NOW_MAX)}. A further one shows as \`${DEFAULT_DECISION_PRIORITY}\`` },
-    { what: "Closed Decisions served", value: `${String(HILL_CLOSED_SERVED)}, newest first` },
+    { what: "Open asks per sender", value: String(HILL_OPEN_MAX) },
+    { what: "Open `now` asks per sender", value: `${String(HILL_NOW_MAX)}. A further one shows as \`${DEFAULT_DECISION_PRIORITY}\`` },
+    { what: "Closed asks served", value: `${String(HILL_CLOSED_SERVED)}, newest first` },
     { what: "The person's words in an answer", value: `at most ${String(HILL_ANSWER_TEXT_MAX)} characters` },
     { what: "Expiry", value: `${String(HILL_DEFAULT_EXPIRY_DAYS)} days when left out, at most ${String(HILL_MAX_EXPIRY_DAYS)}` },
     { what: "Answers waiting for one trick", value: `${String(HILL_QUEUE_MAX)}. One more is refused as busy` },
   ],
-  answer: `When the person answers, the program runs once with a \`tap\` trigger. Its \`node\` is \`${HILL_NODE_PREFIX}<key>\`. Its \`intent\` is the chosen option's, \`answer\` for words alone, or \`dismiss\`. Its \`value\` is \`{ "text": ... }\`, the person's words or \`null\`. Its \`seen\` is the hash of the version the person saw, so the trick can tell an answer to old words from one to new.`,
+  answer: `When the person answers, the program runs once with a \`tap\` trigger. Its \`node\` is \`${ASKS_NODE_PREFIX}<key>\`. Its \`intent\` is the chosen option's, \`answer\` for words alone, or \`dismiss\`. Its \`value\` is \`{ "text": ... }\`, the person's words or \`null\`. Its \`seen\` is the hash of the version the person saw, so the trick can tell an answer to old words from one to new.`,
   examples: [
     {
       kind: "decision",
@@ -990,9 +991,9 @@ export const HILL: HillEntry = {
     },
     {
       kind: "tap",
-      json: { kind: "tap", rid: "0b9e8d7c-3a41-4c52-9d5e-1f2a3b4c5d6e", node: "hill/case-24", intent: "rerun", value: { text: "Rerun it, then tell me." }, seen: "944a71314b332828" },
+      json: { kind: "tap", rid: "0b9e8d7c-3a41-4c52-9d5e-1f2a3b4c5d6e", node: "asks/case-24", intent: "rerun", value: { text: "Rerun it, then tell me." }, seen: "944a71314b332828" },
     },
-    { kind: "command", text: 'collie hill post --title "Rerun the failed check?" --summary "Check 24 failed on a timeout." --option rerun="Rerun it" --option skip="Skip it" --recommend rerun --why "It was a timeout."' },
+    { kind: "command", text: 'collie walky ask "Rerun the failed check?" --fact "Check 24 failed on a timeout." --option rerun="Rerun it" --option skip="Skip it" --recommend rerun --why "It was a timeout."' },
   ],
 };
 
@@ -1134,7 +1135,7 @@ const FACTS_WORDS = {
 } as const satisfies { readonly [K in (typeof FACTS_KEYS)[number]]: Omit<FieldRow, "field"> };
 
 const SESSION_WORDS = {
-  id: { present: "always", what: "The scope key `<memberId>:<paneId>`. Pass it back in a Decision's `about` and `replyTo`, or as the `href` of a `link` or a `row`." },
+  id: { present: "always", what: "The scope key `<memberId>:<paneId>`. Pass it back in an ask's `about` and `replyTo`, or as the `href` of a `link` or a `row`." },
   memberId: { present: "always", what: "The bridge the session runs on. Read it, and do not parse `id`." },
   sessionId: { present: "always", what: "An opaque id. Never parse it: it can change." },
   paneId: { present: "always", what: "The multiplexer pane the session is in now." },
@@ -1169,7 +1170,7 @@ const INPUTS_FIELD_WORDS = {
 const TRIGGER_WORDS = {
   start: { sent: true, when: () => "The first run after the trick loads, is switched on, a new version is approved or its `config.toml` changes." },
   timer: { sent: true, when: (n: ProgramNumbers) => `Every \`every\` after the last run, while a phone has looked in the last ${spanWords(n.watchWindowMs)}. A trick with no \`every\` gets none.` },
-  tap: { sent: true, when: () => "A person tapped a control of the trick, or answered one of its Decisions." },
+  tap: { sent: true, when: () => "A person tapped a control of the trick, or answered one of its asks." },
   watch: { sent: true, when: () => "A file of the manifest's `watch` changed. `path` is the path as the manifest wrote it, and `count` is how many files changed in the same burst." },
   event: { sent: true, when: () => "An event of the manifest's `on` reached the trick. `session` is the `id` of the newest event's session, and `count` is how many events were folded into this run." },
 } as const satisfies { readonly [K in (typeof TRIGGER_KINDS)[number]]: { readonly sent: boolean; readonly when: (n: ProgramNumbers) => string } };
@@ -1182,7 +1183,7 @@ function outputWords() {
   return {
     v: { required: "yes", what: `The contract number of the document: a whole number from 1 to ${String(DOCUMENT_VERSION)}, this Collie's own. The helper prints the contract of the facts.` },
     parts: { required: "yes", what: `The parts, at most ${String(PARTS_MAX)}, each at most ${sizeWords(PART_MAX_BYTES)}. \`[]\` is allowed. See [Places](#places).` },
-    decisions: { required: "no", what: `The Decisions to ask, at most ${String(DECISIONS_MAX)}. Left out, the open Decisions stay as they are. \`[]\` withdraws them all. See [The Hill](#the-hill).` },
+    asks: { required: "no", what: `The asks to send, at most ${String(DECISIONS_MAX)}. Left out, the open asks stay as they are. \`[]\` withdraws them all. See [Asks](#asks).` },
     asOf: { required: "no", what: "When the data was true, as an ISO 8601 time with a zone, such as `2026-11-08T09:41:00Z`. Give it when the data is older than the run." },
     fresh: {
       required: "no",
@@ -1211,15 +1212,15 @@ const INPUT_STATE_WORDS = {
 /** The helper's calls, by the names a program writes. `names` are the words a test finds in the helper's source. */
 function helperRows(n: ProgramNumbers): HelperRow[] {
   return [
-    { call: "`t.facts`, `t.config`, `t.tap`", names: ["t.facts", "t.config", "t.tap"], what: "The facts, `config.toml` parsed (`{}` when there is none), and the tap that started the run or `null`. A tap has `rid`, `node`, `intent`, `value`, `decision` (the key of the Decision it answers, or `null`), `text`, `from` and `seen`." },
+    { call: "`t.facts`, `t.config`, `t.tap`", names: ["t.facts", "t.config", "t.tap"], what: "The facts, `config.toml` parsed (`{}` when there is none), and the tap that started the run or `null`. A tap has `rid`, `node`, `intent`, `value`, `ask` (the key of the ask it answers, or `null`), `text`, `from` and `seen`." },
     { call: "`t.status({ text, icon?, tone? })`", names: ["t.status"], what: `The chip in the status line. \`text\` is at most ${String(STATUS_TEXT_MAX)} characters.` },
     { call: "`t.belt({ label, icon?, tone?, badge?, intent?, sessions?, id? })`", names: ["t.belt"], what: "The mark at the end of the Belt. With `sessions` (contract 2) it shows only in those sessions; a bound mark without an `id` is numbered `belt-1`, `belt-2`." },
     { call: "`t.menu(rows, { sessions?, id? })`", names: ["t.menu"], what: "Rows in a session's settings (contract 2): buttons `{ kind: \"button\", id, label, intent, icon?, confirm? }` and switches `{ kind: \"switch\", id, label, intent, on, icon? }`. The phone shows a switch's `on` from your next document, never a guess." },
     { call: "`t.dashboard(item)`, `t.tabbar(item)`", names: ["t.dashboard", "t.tabbar"], what: "The Dashboard tile and the bottom bar item: `{ label, icon?, badge?, tone? }`." },
     { call: "`t.session({ id?, name?, icon?, tone?, subtitle?, badge?, progress?, actions?, view })`", names: ["t.session"], what: "The trick's own Page. Keep the default id `main`." },
     { call: "`v.card`, `v.list`, `v.row`, and one builder for each other kind in Parts", names: ["v.card", "v.list", "v.row", "v.table", "v.checks", "v.stat", "v.beforeAfter"], what: "Build a view. `v.table` makes the `col` and `cell` kids, so those two have no builder. `v.checks`, `v.stat` and `v.beforeAfter` put kinds together." },
-    { call: "`t.decide({ key, title, summary, options, ... })`", names: ["t.decide"], what: "Ask the person on the Hill." },
-    { call: "`t.keepDecisions()`", names: ["t.keepDecisions"], what: "Leave the `decisions` key out, so the open Decisions stay. It wins over `t.decide`." },
+    { call: "`t.ask({ key, title, summary, options, ... })`", names: ["t.ask"], what: "Ask the person in Asks." },
+    { call: "`t.keepAsks()`", names: ["t.keepAsks"], what: "Leave the `asks` key out, so the open asks stay. It wins over `t.ask`." },
     { call: "`t.state.get(name, fallback)`, `t.state.set(name, value)`", names: ["t.state"], what: "JSON files in the state folder. A name may hold folders, such as `cache/ci`: plain names, none starting with a dot." },
     { call: "`t.log(name)`", names: ["t.log"], what: "An append-only JSON-lines file in the state folder, with `.append`, `.all`, `.last(n)`, `.has(rid)` and `.once(rid, entry)`. `.once` writes once for one `rid` and answers `false` when it is there already." },
     { call: "`t.cached(name, ttlMs, loader)`", names: ["t.cached"], what: "A read kept with its time. A loader that throws serves the old value, marked stale." },
@@ -1268,9 +1269,9 @@ function reactingOf(n: ProgramNumbers): ReactingEntry {
       { rule: "One at a time", value: "A trick runs once at a time and has at most one run waiting. Events that arrive meanwhile fold into that run. Its `trigger` names the newest event, and `count` is how many were folded." },
       { rule: "Lost events", value: "When Collie's queue overflows, it adds the events it lost to `count`, because it cannot know their types." },
       { rule: "The same road as the timer", value: `A run has the same limits of time and size, the same slots and the same backoff. No run starts for a trick that has not had its start run, that is stopped, or that is backing off after a failure, or on a machine that does not schedule tricks. Collie drops such a request. It never keeps one. A run that already waited when a backoff began keeps waiting, and runs with the next request or after the next tap.` },
-      { rule: "No phone needed", value: `An event run or a file run happens also when no phone is open, so a trick can ask a Decision while you are away. Only the timer waits for a phone: it runs only while a phone has looked in the last ${spanWords(n.watchWindowMs)}.` },
-      { rule: "Spacing", value: `Two runs of one trick that an event or a file started begin at least ${seconds(n.reactFloorMs)} apart. A request inside that time is the one waiting run, or folds into it, and starts when the time ends. A tap, an answer to a Decision and a timer run neither wait for it nor count toward it.` },
-      { rule: "Taps first", value: "A tap, or an answer to a Decision, goes before a waiting run of an event or a file." },
+      { rule: "No phone needed", value: `An event run or a file run happens also when no phone is open, so a trick can send an ask while you are away. Only the timer waits for a phone: it runs only while a phone has looked in the last ${spanWords(n.watchWindowMs)}.` },
+      { rule: "Spacing", value: `Two runs of one trick that an event or a file started begin at least ${seconds(n.reactFloorMs)} apart. A request inside that time is the one waiting run, or folds into it, and starts when the time ends. A tap, an answer to an ask and a timer run neither wait for it nor count toward it.` },
+      { rule: "Taps first", value: "A tap, or an answer to an ask, goes before a waiting run of an event or a file." },
     ],
     watchRules: [
       { rule: "Paths", value: `At most ${String(WATCH_MAX)}. Each starts with \`/\` or \`~/\`, and \`~\` is the home folder of the user Collie runs as.` },
@@ -1288,10 +1289,10 @@ function reactingOf(n: ProgramNumbers): ReactingEntry {
 
 function accessOf(): AccessEntry {
   return {
-    intro: `A trick reads live facts of Collie (its machines, its sessions, your usage, the Hill) through Collie's local API, with no list of surfaces in its manifest. Your yes to the trick is the grant. The manifest says how much with \`access\`, which needs \`contract = ${String(ACCESS_CONTRACT)}\`, and the program calls \`t.api\`. Each run gets its own token in its facts, and the local API answers only a connection that names a live one, at the level the trick declares.`,
+    intro: `A trick reads live facts of Collie (its machines, its sessions, your usage, Asks) through Collie's local API, with no list of surfaces in its manifest. Your yes to the trick is the grant. The manifest says how much with \`access\`, which needs \`contract = ${String(ACCESS_CONTRACT)}\`, and the program calls \`t.api\`. Each run gets its own token in its facts, and the local API answers only a connection that names a live one, at the level the trick declares.`,
     levels: [
       { level: "`none`", what: "The default, also when `access` is left out. No `api` in the facts, and `t.api` answers an error.", operations: "none" },
-      { level: "`see`", what: "Lists and states: your machines, your sessions and their states, your usage and the Hill. Never the text of a screen. One field is text an agent wrote: the title of each card in `hill.list`.", operations: "`hello`, `sessions`, `brief`, `accounts`, `hill.list`, `events`, `machines`" },
+      { level: "`see`", what: "Lists and states: your machines, your sessions and their states, your usage and Asks. Never the text of a screen. One field is text an agent wrote: the title of each card in `asks.list`.", operations: "`hello`, `sessions`, `brief`, `accounts`, `asks.list`, `events`, `machines`" },
       { level: "`read`", what: "Everything in `see`, and the text of a session's screen, masked as the phone's own read is.", operations: "all of `see`, and `read`" },
     ],
     experimental: "> **Experimental.** `access` and `t.api` are new, and their words may still change.",
@@ -1311,7 +1312,7 @@ export function programOf(n: ProgramNumbers): ProgramEntry {
     tap: [
       "A tap on a control of the trick's own part has `node` set to the part's id (`belt` for the Belt mark). Its `intent` is the control's, its `value` the control's one fixed text, and its `from` the session open on the phone, as `{ \"session\": ... }`, when there is one.",
       "A tap on a row in a session's settings (contract 2) always has `from`: the session whose sheet it was. For a bound part, a belt mark or a menu part with `sessions`, it is one of the part's sessions, at the pane it was bound to; Collie refuses the rest before the program runs.",
-      `An answer to a Decision is a tap too: its \`node\` is \`${HILL_NODE_PREFIX}<key>\`, and its \`seen\` is the hash of the version the person saw. See [The Hill](#the-hill).`,
+      `An answer to an ask is a tap too: its \`node\` is \`${ASKS_NODE_PREFIX}<key>\`, and its \`seen\` is the hash of the version the person saw. See [Asks](#asks).`,
       "`rid` is a UUID. A retried tap has the same `rid`, and Collie runs nothing twice for one `rid`: it answers with the first receipt. A program that records an answer keys the record on `rid`. The same `rid` with a different tap is refused.",
     ],
     tapRefusals: TAP_REFUSALS.map((refused) => ({ refused, receipt: refused === "changed" ? "changed" : "rejected", line: TAP_REFUSED_LINES[refused], when: TAP_REFUSAL_WORDS[refused] })),
@@ -1323,17 +1324,17 @@ export function programOf(n: ProgramNumbers): ProgramEntry {
       { case: "A part in a place this Collie does not know", result: "Left out whole, with a `dropped` note. The other parts draw." },
       { case: `A key or an attribute this Collie does not know, inside a part, at contract ${String(TRICK_CONTRACT_DEFAULT)}`, result: "Ignored, with an `ignored` note. A node with only such attributes draws as if it had none." },
       { case: `A key or an attribute this Collie does not know, at any depth of a part, at contract 2 or newer`, result: `That part is refused alone, with an \`unknown-key\` refusal that names the key and ends: "${CLOSED_KEY_LINE}" Collie keeps no last good version of it.` },
-      { case: "A key this Collie does not know at the top of the document, beside `v`, `parts`, `asOf`, `fresh` and `decisions`", result: "Ignored, with an `ignored` note, at every contract. Every part draws. A key that changes how a part draws or what a tap does goes in the part, never at the top." },
+      { case: "A key this Collie does not know at the top of the document, beside `v`, `parts`, `asOf`, `fresh` and `asks`", result: "Ignored, with an `ignored` note, at every contract. Every part draws. A key that changes how a part draws or what a tap does goes in the part, never at the top." },
       { case: "A bad value of a known field", result: "That part is refused alone, and the other parts draw. The last good version of the part stays on the phone, marked old." },
       { case: "A button with `does` set to `draft` in a trick whose `trick.toml` does not say `drafts = \"session\"`", result: `That part is refused alone with "${DRAFTS_SESSION_REFUSAL}" The other parts draw.` },
-      { case: "A bad Decision", result: "That Decision is refused alone. Its open card stays as it is." },
+      { case: "A bad ask", result: "That ask is refused alone. Its open card stays as it is." },
       { case: "A bad `asOf` or `fresh`", result: "Refused alone. The parts still draw." },
       { case: "A document that is too big, not JSON, not an object, with no usable `v`, or with `parts` that is not a list", result: "The whole document is refused. The run counts as failed, and the last good parts stay, marked old." },
     ],
     helper: helperRows(n),
     helperAfter: [
-      "A run that calls neither `t.decide` nor `t.keepDecisions` prints `\"decisions\": []`, so it withdraws the open ones.",
-      "A thrown error prints one warning card on the trick's Page and exits 0, when the trick has a Page. The document has no `decisions` key, so the open Decisions stay. A trick with no Page exits 1, so the failure rules apply.",
+      "A run that calls neither `t.ask` nor `t.keepAsks` prints `\"asks\": []`, so it withdraws the open ones.",
+      "A thrown error prints one warning card on the trick's Page and exits 0, when the trick has a Page. The document has no `asks` key, so the open asks stay. A trick with no Page exits 1, so the failure rules apply.",
       "Stop your timers before the end. The run ends a second after its document is written, and a timer that still prints to stdout in that second spoils the document, so the run fails.",
       "`collie trick helper <id>` rewrites `trick.ts` with the newest helper. The helper is part of the trick's code, so a trick that is on keeps running the approved copy, and the new helper waits for a yes.",
     ],
@@ -1352,10 +1353,10 @@ export function programOf(n: ProgramNumbers): ProgramEntry {
   };
 }
 
-// ── The Hill: the list is the truth, and how to word a card ──────────────────────────────────
+// ── Asks: the list is the truth, and how to word a card ──────────────────────────────────
 
 export interface HillRulesEntry {
-  /** What a run's list does to the Hill, one case per row. */
+  /** What a run's list does to Asks, one case per row. */
   readonly list: readonly ReadingRow[];
   readonly listAfter: string;
   /** How to word a card, one part per row. */
@@ -1363,10 +1364,10 @@ export interface HillRulesEntry {
   readonly warnings: string;
 }
 
-/** The states a Decision reaches without the person: its key may ask again. Typed against the Hill's own states. */
+/** The states an ask reaches without the person: its key may ask again. Typed against Asks' own states. */
 const REASKABLE_STATES = ["undeliverable", "expired", "withdrawn"] as const satisfies readonly HillState[];
 
-/** The rules by which a trick's list of Decisions becomes cards, and how to word one. */
+/** The rules by which a trick's list of asks becomes cards, and how to word one. */
 export function hillRulesOf(n: ProgramNumbers): HillRulesEntry {
   return {
     list: [
@@ -1375,15 +1376,15 @@ export function hillRulesOf(n: ProgramNumbers): HillRulesEntry {
       { case: "A `key` the list no longer holds", result: 'The card is withdrawn, "by the trick".' },
       { case: "A `key` the person answered or dismissed", result: "Stays closed while its content is unchanged. To ask again, change the content, or drop the key for one run and list it again." },
       { case: `A \`key\` that closed without the person: ${orList(REASKABLE_STATES)}, a withdrawal by anyone but the trick`, result: `Posts again on a later run that still lists it, at most once every ${spanWords(n.reaskAfterMs)} for that key. A new post of this kind never sends a notification.` },
-      { case: "A document with no `decisions` key", result: "Changes nothing." },
-      { case: "`decisions` is `[]`", result: "Withdraws every open card of the trick." },
-      { case: "A Decision the parser or the Hill refuses, or that names a session that is not there", result: "Changes nothing for its key: the version on the Hill stays. It shows as a refusal." },
-      { case: "A Decision with `replyTo` from a trick whose `trick.toml` does not say `decides = \"reply\"`", result: `Refused with "${DECIDES_REPLY_LINE}" An open card of its key is withdrawn, so no answer reaches a session.` },
+      { case: "A document with no `asks` key", result: "Changes nothing." },
+      { case: "`asks` is `[]`", result: "Withdraws every open card of the trick." },
+      { case: "An ask the parser or Asks refuses, or that names a session that is not there", result: "Changes nothing for its key: the version in Asks stays. It shows as a refusal." },
+      { case: "An ask with `replyTo` from a trick whose `trick.toml` does not say `asks = \"reply\"`", result: `Refused with "${DECIDES_REPLY_LINE}" An open card of its key is withdrawn, so no answer reaches a session.` },
       { case: "A failed or timed-out run", result: "Changes nothing." },
       { case: "The trick switched off or removed", result: 'Every open card of the trick is withdrawn at once, "the trick is off".' },
-      { case: "The Hill switched off", result: "No post, replace or withdraw happens, and the trick still runs. Its row says its Decisions are not shown." },
+      { case: "Asks switched off", result: "No post, replace or withdraw happens, and the trick still runs. Its row says its asks are not shown." },
     ],
-    listAfter: "So list every Decision you still want on every run, and keep the words stable. Words that change on each run, such as an age in minutes, post a new version every time and ask again.",
+    listAfter: "So list every ask you still want on every run, and keep the words stable. Words that change on each run, such as an age in minutes, post a new version every time and ask again.",
     wording: [
       { case: "Title", result: `The decision as a short question that the options answer, at most ${String(n.titleSoftMax)} characters. "Ship 1.28.1 to Stable now?" is good. "Are the new kinds right?" is not.` },
       { case: "Summary", result: `At most ${String(n.summarySoftSentences)} sentences and ${String(n.summarySoftMax)} characters. The first says what the recommended option does. The second gives the one fact that decides it. The evidence goes in the view or the body.` },
@@ -1426,7 +1427,7 @@ const MANIFEST_WORDS = {
   version: { type: "text", required: "no", limit: `1 to ${String(VERSION_MAX)} characters: letters, digits, \`.\`, \`+\` and \`-\`, such as \`1.2.0\``, contract: TRICK_CONTRACT_DEFAULT, what: "The trick's own version. The details page shows it. Collie never compares it and reads no tag." },
   rules: { type: "file name", required: `yes, with \`${AGENT_VIEW_PLACE}\`; refused without it`, limit: `a file in the trick's folder of at most ${String(RULES_NAME_MAX)} characters ending in \`.md\`, such as \`rules.md\``, contract: AGENT_VIEW_CONTRACT, what: "The instructions the agent of a session reads. The person reads them whole before they switch the trick on." },
   access: { type: "word", required: "no", limit: `${orList(ACCESS_WORDS)}. Default \`${ACCESS_WORDS[0]}\``, contract: ACCESS_CONTRACT, what: "How much of Collie's local API the trick reads through `t.api`. `see` reads lists and states, `read` adds the text of a screen. A right: a version that raises it asks again. See [Reading Collie through the local API](#reading-collie-through-the-local-api). Experimental." },
-  decides: { type: "word", required: "no", limit: `${orList(DECIDES_WORDS)}. Refused on a trick that is only an agent view`, contract: TRICK_CONTRACT_DEFAULT, what: "Whether its Decisions answer into a session. `reply` lets a Decision name `replyTo`, and the person's answer is typed into that session as their own message. Without it, a Decision with `replyTo` is refused. It is a right: a version that adds it asks again." },
+  asks: { type: "word", required: "no", limit: `${orList(DECIDES_WORDS)}. Refused on a trick that is only an agent view`, contract: TRICK_CONTRACT_DEFAULT, what: "Whether its asks answer into a session. `reply` lets an ask name `replyTo`, and the person's answer is typed into that session as their own message. Without it, an ask with `replyTo` is refused. It is a right: a version that adds it asks again." },
   drafts: { type: "word", required: "no", limit: `${orList(DRAFTS_WORDS)}. Refused on a trick that is only an agent view`, contract: TRICK_CONTRACT_DEFAULT, what: `Whether its buttons may put text into a reply box. \`session\` lets a button set \`does\` to \`draft\`: a tap puts its \`value\` into the reply box of the session the page is open for, only when that box is empty, and never sends. Without it, a part with such a button is refused. The card says: "${DRAFTS_SESSION_LINE}" It is a right: a version that adds it asks again.` },
   field: { type: "list of tables", required: "no", limit: `at most ${String(FIELDS_MAX)} \`[[field]]\` tables. Each has \`key\` (spelled like a trick id, each once), \`kind\` (${orList(FIELD_KINDS)}), \`label\` (at most ${String(FIELD_LABEL_MAX)} characters) and may have \`hint\` (at most ${String(FIELD_HINT_MAX)}), \`default\` and \`required\`. A \`choice\` lists ${String(FIELD_OPTIONS_MIN)} to ${String(FIELD_OPTIONS_MAX)} \`options\` of at most ${String(FIELD_OPTION_MAX)} characters; a \`number\` names whole \`min\` and \`max\` within ${String(FIELD_NUMBER_ABS_MAX)} either way; a \`text\` value is one line of at most ${String(FIELD_TEXT_MAX)} characters; a \`switch\` is never \`required\`` , contract: FIELDS_CONTRACT, what: "Settings the person keeps for the trick, set on its details page on the phone. The program reads them in its facts as `values`. A value is the person's data and untrusted for the program: show it, never run it. A setting is never a secret: a key comes through `env`. A new or changed field is a new version and asks again; a changed value does not ask, and runs the trick once." },
 } as const satisfies { readonly [K in (typeof MANIFEST_KEYS)[number]]: Omit<ManifestEntry, "key"> };
@@ -1487,7 +1488,7 @@ export const LIMITS: readonly LimitGroup[] = [
     limits: [
       { what: "The document", value: `at most ${sizeWords(DOCUMENT_MAX_BYTES)}` },
       { what: "Parts", value: `at most ${String(PARTS_MAX)}, each at most ${sizeWords(PART_MAX_BYTES)}` },
-      { what: "Decisions", value: `at most ${String(DECISIONS_MAX)}` },
+      { what: "Asks", value: `at most ${String(DECISIONS_MAX)}` },
       { what: "A view", value: `${rangeWords(VIEW_LIMITS.root)} nodes at the top, ${String(VIEW_LIMITS.depth.max)} levels, ${String(VIEW_LIMITS.nodes.max)} nodes in all` },
       { what: "Kids of a card, group or row", value: `at most ${String(VIEW_LIMITS.kids.max)}` },
       { what: "Kids of a list", value: `at most ${String(VIEW_LIMITS.listKids.max)}` },
@@ -1603,8 +1604,8 @@ export const LATER: readonly LaterEntry[] = [
 
 // ── Commands ─────────────────────────────────────────────────────────────────────────────────
 
-/** The three verb trees: `collie trick`, `collie trick view` and `collie hill`. */
-export type CommandGroup = "trick" | "tricks" | "trick view" | "hill";
+/** The verb trees: `collie trick`, `collie tricks`, `collie trick view`, the agent's asks (`collie walky ask`, `asks`, `status`, `cancel`) and `collie asks`. */
+export type CommandGroup = "trick" | "tricks" | "trick view" | "walky ask" | "asks";
 
 export interface CommandFlag {
   readonly flag: string;
@@ -1622,7 +1623,7 @@ export interface CommandEntry {
 
 const JSON_FLAG: CommandFlag = { flag: "--json", what: "Print one JSON document instead of text." };
 
-/** Every verb of `collie trick`, `collie tricks`, `collie trick view` and `collie hill`. The test holds this list to the CLI's own verb lists. */
+/** Every verb of `collie trick`, `collie tricks` and `collie trick view`, the ask verbs of `collie walky`, and every verb of `collie asks`. The test holds this list to the CLI's own verb lists. */
 export const COMMANDS: readonly CommandEntry[] = [
   { group: "trick", verb: "list", usage: "trick list [--json] [--official]", what: "Lists every trick folder with its switch, state, last run and last error.", flags: [JSON_FLAG, { flag: "--official", what: "List the official tricks this Collie can add from the phone." }] },
   { group: "trick", verb: "add", usage: "trick add [<name> | <https-url>[//<folder>][#<ref>]]", what: "Copies a trick from a git repository into the tricks folder, off. With no source, or a repository's `collie-tricks.json` and no `//<folder>`, it lists and adds nothing.", flags: [] },
@@ -1639,7 +1640,7 @@ export const COMMANDS: readonly CommandEntry[] = [
     what: "Runs a trick once with fixture facts and prints what the phone would get. It never talks to the bridge.",
     flags: [
       { flag: "--tap", what: "Run it as a tap with this intent." },
-      { flag: "--text", what: "The person's words for a Decision answer, with `--tap`." },
+      { flag: "--text", what: "The person's words for an ask's answer, with `--tap`." },
       { flag: "--node", what: "The node the tap names. Default `main`." },
       { flag: "--rid", what: "The tap's request id, a UUID, with `--tap`." },
       { flag: "--facts", what: "Run on the facts in this file instead of the fixture's." },
@@ -1653,7 +1654,7 @@ export const COMMANDS: readonly CommandEntry[] = [
   { group: "trick", verb: "helper", usage: "trick helper <id|folder>", what: "Rewrites a trick's `trick.ts` with the helper this Collie carries.", flags: [] },
   { group: "trick", verb: "skill", usage: "trick skill [<id>]", what: "Prints what a trick that is on asks of an agent. With no id, prints how to write a trick.", flags: [] },
   { group: "trick", verb: "guide", usage: "trick guide [--json]", what: "Prints how to write a trick and hand it to the person, as plain text for an agent.", flags: [JSON_FLAG] },
-  { group: "trick", verb: "propose", usage: "trick propose <folder> [--request-id <uuid>] [--json]", what: "Hands a trick folder to the person as a card of Collie's own on the lead: in the proposing session on the phone and in Settings, Tricks, and on the Hill while it is on. Nothing runs before their yes. It brings the code and the pictures of `media/` and `captures/`; `config.toml` stays behind.", flags: [{ flag: "--request-id", what: "The proposal's request id, a UUID. The same sender, id and files get the same answer." }, JSON_FLAG] },
+  { group: "trick", verb: "propose", usage: "trick propose <folder> [--request-id <uuid>] [--json]", what: "Hands a trick folder to the person as a card of Collie's own on the lead: in the proposing session on the phone and in Settings, Tricks, and on Asks while it is on. Nothing runs before their yes. It brings the code and the pictures of `media/` and `captures/`; `config.toml` stays behind.", flags: [{ flag: "--request-id", what: "The proposal's request id, a UUID. The same sender, id and files get the same answer." }, JSON_FLAG] },
   { group: "trick", verb: "view", usage: "trick view <trick> <verb> [args]", what: "Runs one verb of an agent view, from the agent's pane. The verbs are the `trick view` commands below.", flags: [] },
   { group: "tricks", verb: "on", usage: "tricks on [--json]", what: "Switches tricks on for this machine. They are an experiment and off until switched on. Each trick still has its own switch.", flags: [JSON_FLAG] },
   { group: "tricks", verb: "off", usage: "tricks off [--json]", what: "Switches tricks off for this machine: no trick runs or draws. Each trick keeps its own switch.", flags: [JSON_FLAG] },
@@ -1663,42 +1664,48 @@ export const COMMANDS: readonly CommandEntry[] = [
   { group: "trick view", verb: "set", usage: "trick view <trick> set [--session <address>] <id> <file.json | -> [--after <id> | --first] [--image <path>[=<caption>]]... [--json]", what: "Puts one block on the screen. A block with that id is replaced where it stands.", flags: [{ flag: "--session", what: "The session's address." }, { flag: "--after", what: "Put a new block after this one." }, { flag: "--first", what: "Put a new block first." }, { flag: "--image", what: "Add a picture to the screen's set." }, JSON_FLAG] },
   { group: "trick view", verb: "pending", usage: 'trick view <trick> pending [--session <address>] <id> "<label>" [--after <id> | --first] [--json]', what: "Puts a placeholder block for one still in work.", flags: [{ flag: "--session", what: "The session's address." }, { flag: "--after", what: "Put the block after this one." }, { flag: "--first", what: "Put the block first." }, JSON_FLAG] },
   { group: "trick view", verb: "remove", usage: "trick view <trick> remove [--session <address>] <id> [--json]", what: "Removes one block.", flags: [{ flag: "--session", what: "The session's address." }, JSON_FLAG] },
-  { group: "trick view", verb: "choice", usage: "trick view <trick> choice [--session <address>] <file.json | -> | --clear [--json]", what: "Sets or drops the decision block alone. It takes no `picked`: Collie marks the pick.", flags: [{ flag: "--session", what: "The session's address." }, { flag: "--clear", what: "Drop the decision block." }, JSON_FLAG] },
+  { group: "trick view", verb: "choice", usage: "trick view <trick> choice [--session <address>] <file.json | -> | --clear [--json]", what: "Sets or drops the choice block alone. It takes no `picked`: Collie marks the pick.", flags: [{ flag: "--session", what: "The session's address." }, { flag: "--clear", what: "Drop the choice block." }, JSON_FLAG] },
   { group: "trick view", verb: "keep", usage: "trick view <trick> keep [--session <address>] <id>... | --all [--json]", what: "Says these blocks still hold for the new request.", flags: [{ flag: "--session", what: "The session's address." }, { flag: "--all", what: "Keep every block." }, JSON_FLAG] },
   { group: "trick view", verb: "clear", usage: "trick view <trick> clear [--session <address>] [--json]", what: "Takes the whole screen away. The switch stays.", flags: [{ flag: "--session", what: "The session's address." }, JSON_FLAG] },
   { group: "trick view", verb: "status", usage: "trick view <trick> status [--session <address>] [--json]", what: "Shows the session, the switch, the screen and the tail line.", flags: [{ flag: "--session", what: "The session's address." }, JSON_FLAG] },
   { group: "trick view", verb: "help", usage: "trick view <trick> help [--session <address>]", what: "Prints Collie's view help and, while the view is on for the session, the trick's own rules after it.", flags: [{ flag: "--session", what: "The session's address." }] },
   {
-    group: "hill",
-    verb: "post",
-    usage: 'hill post --title "<question>" --summary "<plain words>" --option <intent>="<label>" ... --recommend <intent> --why "<reason>" [flags] [-- "<body>"]',
-    what: "Puts one Decision on the Hill. `collie hill post --help` prints every flag and the rules.",
+    group: "walky ask",
+    verb: "ask",
+    usage: 'walky ask "<question>" --option <id>=<label> ... [flags]',
+    what: "Sends one open question to the person, who reads it later without your session. `collie walky ask --help` prints every flag and the rules.",
     flags: [
-      { flag: "--title", what: "The question." },
-      { flag: "--summary", what: "The summary, in plain words." },
-      { flag: "--option", what: "One option, as `intent=label`. Repeat it." },
-      { flag: "--recommend", what: "The intent of the recommended option." },
-      { flag: "--why", what: "The reason for the recommendation." },
-      { flag: "--confirm", what: "A second label for an option, as `intent=word`." },
-      { flag: "--detail", what: "A line of detail for an option, as `intent=line`." },
-      { flag: "--priority", what: "`now`, `today` or `later`." },
-      { flag: "--text", what: "`none`, `optional` or `required`." },
-      { flag: "--link", what: 'A web page, as `"label=https://..."`.' },
-      { flag: "--about", what: "The session the card is about: `here` or an address." },
-      { flag: "--reply-to", what: "The session that gets the person's words." },
-      { flag: "--supersedes", what: "The id of an open Decision that this one replaces." },
-      { flag: "--expires", what: "When it closes by itself, such as `2h` or `3d`." },
-      { flag: "--request-id", what: "Post again with the same id and it posts once." },
+      { flag: "--option", what: "One option, as `id=label`. Give 2 to 5, or use `--words`." },
+      { flag: "--words", what: "The answer is the person's own words, with no options." },
+      { flag: "--fact", what: "What decides it, in plain words." },
+      { flag: "--does", what: "What an option does, as `id=text`. Repeat it." },
+      { flag: "--cost", what: "What an option costs, as `id=text`. Repeat it." },
+      { flag: "--recommend", what: "The id of the recommended option." },
+      { flag: "--why", what: "The reason for the recommendation. Given with `--recommend`." },
+      { flag: "--body", what: 'The background, as a Markdown file. Or give text after `--`.' },
+      { flag: "--file", what: "A file the ask points to, as `path`, `path#heading` or `path:line`. Repeat it." },
       { flag: "--image", what: "A picture, with an optional caption. Repeat it." },
-      { flag: "--view", what: "A JSON file with a small view under the summary." },
+      { flag: "--replaces", what: "The id of an open ask that this one replaces." },
+      { flag: "--request-id", what: "Send again with the same id and it is sent once." },
+      { flag: "--dry-run", what: "Print the card and send nothing." },
       JSON_FLAG,
     ],
   },
-  { group: "hill", verb: "status", usage: "hill status <dc_id> [--json]", what: "Reads a Decision's state and its answer.", flags: [JSON_FLAG] },
-  { group: "hill", verb: "withdraw", usage: "hill withdraw <dc_id> [--json]", what: "Withdraws a Decision that is open.", flags: [JSON_FLAG] },
-  { group: "hill", verb: "list", usage: "hill list [--json]", what: "Lists the sender's own Decisions, open first.", flags: [JSON_FLAG] },
-  { group: "hill", verb: "clear", usage: "hill clear [--json]", what: "Removes every closed Decision from the Hill. Open ones stay.", flags: [{ flag: "--spoken", what: "Withdraw and clear the open cards the person answered in the session. Not from an agent's pane." }, JSON_FLAG] },
-  { group: "hill", verb: "state", usage: "hill state [here|quiet|away] [--json]", what: "Reads the crew state. With a word, the person sets it.", flags: [JSON_FLAG] },
-  { group: "hill", verb: "on", usage: "hill on", what: "Switches the Hill on for this Collie.", flags: [] },
-  { group: "hill", verb: "off", usage: "hill off", what: "Switches the Hill off: every post is refused and the open Decisions stay.", flags: [] },
+  { group: "walky ask", verb: "asks", usage: "walky asks [--json]", what: "Lists this session's open asks, oldest first.", flags: [JSON_FLAG] },
+  { group: "walky ask", verb: "status", usage: "walky status <ak_id> [--json]", what: "Reads an ask's state and its answer. The same verb reads a message's receipt when it gets a `wt_` id.", flags: [JSON_FLAG] },
+  {
+    group: "walky ask",
+    verb: "cancel",
+    usage: 'walky cancel <ak_id>... [--answered | --because "<reason>"] [--json]',
+    what: `Closes 1 to ${String(HILL_ASK_CANCEL_MAX)} asks that are open, with one flag for all. The same verb cancels a held message when it gets a \`wt_\` id.`,
+    flags: [
+      { flag: "--answered", what: "The person answered it in the session." },
+      { flag: "--because", what: "The reason it is closed. Not with `--answered`." },
+      JSON_FLAG,
+    ],
+  },
+  { group: "asks", verb: "clear", usage: "asks clear [--spoken] [--json]", what: "Removes every closed ask from Asks. Open ones stay.", flags: [{ flag: "--spoken", what: "Withdraw and clear the open cards the person answered in the session. Not from an agent's pane." }, JSON_FLAG] },
+  { group: "asks", verb: "state", usage: "asks state [here|quiet|away] [--json]", what: "Reads the crew state. With a word, the person sets it.", flags: [JSON_FLAG] },
+  { group: "asks", verb: "on", usage: "asks on", what: "Switches Asks on for this Collie.", flags: [] },
+  { group: "asks", verb: "off", usage: "asks off", what: "Switches Asks off: agents and tricks cannot ask, and the open asks stay.", flags: [] },
 ];

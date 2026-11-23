@@ -28,11 +28,52 @@ export const NOTES_FILE = "AGENTS.md";
  * draft's last step names it so.
  * v10 (2026-11-22, ADR 0170 addendum): the page is named "Tricks" again, and the Hill is its first row. The draft's
  * last step says "Settings, Tricks", which are v8's bytes, so a draft that init wrote at v8 is named as v10 now.
+ * v11 (ADR 0179): the Hill and the Decision are Asks and an ask. `t.ask`, `t.keepAsks`, `t.tap.ask`, the document
+ * key `asks`, the tap node `asks/<key>`, `asks = "reply"` and `collie asks on`. Written as v10's text with
+ * {@link ASKS_WORDS} applied, so every older version keeps its bytes.
  */
-export const NOTES_VERSION = 10;
+export const NOTES_VERSION = 11;
 
 /** Every version of the notes a Collie shipped. A proposal names an older one byte for byte as that version. */
-const NOTES_VERSIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const;
+const NOTES_VERSIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] as const;
+
+/**
+ * How to word a Decision, as v1 to v10 wrote it (cli/hill-rules.ts `HILL_WRITING` before ADR 0179). Frozen:
+ * an older version's bytes name a draft that init wrote then.
+ */
+const WRITING_V10 = [
+  "Title: the decision as a question, about 8 words, no inner ids. Summary: one or two plain sentences; the first says what your recommendation does.",
+  'Options start with a verb ("Ship it", "Hold until CI"), never a bare Yes or No. Recommend one: --recommend <intent> --why "<reason>".',
+] as const;
+
+/**
+ * v11: the words of v10 that named the Hill or a Decision, and theirs now (ADR 0179). Each pair is found
+ * exactly once in a v10 text that has it; agents-notes.test.ts holds that no Hill or Decision word is left.
+ */
+export const ASKS_WORDS: readonly (readonly [string, string])[] = [
+  ["each part, each Decision, every refusal", "each part, each ask, every refusal"],
+  ["for an answer to a Decision `decision` (its key)", "for an answer to an ask `ask` (its key)"],
+  ["| `t.decide`, `t.keepDecisions` | ask the person on the Hill; leave the open Decisions as they are |", "| `t.ask`, `t.keepAsks` | ask the person in Asks; leave the open asks as they are |"],
+  ["such as a Decision held for a day", "such as an ask held for a day"],
+  ["A Decision may carry a `view`", "An ask may carry a `view`"],
+  ["A Decision with `replyTo` types the person's answer into that session: write\n`decides = \"reply\"`", "An ask with `replyTo` types the person's answer into that session: write\n`asks = \"reply\"`"],
+  ["When neither `t.decide` nor `t.keepDecisions` is called, the run wants no Decisions and the open ones", "When neither `t.ask` nor `t.keepAsks` is called, the run wants no asks and the open ones"],
+  ["(on the Hill too, while it is on)", "(in Asks too, while it is on)"],
+  ["`collie tricks on` or `collie hill on`", "`collie tricks on` or `collie asks on`"],
+  ["(the part id, or `hill/<key>` for a decision)", "(the part id, or `asks/<key>` for an ask)"],
+  ["(an item in the Dashboard's bottom bar, after the Hill)", "(an item in the Dashboard's bottom bar, after Asks)"],
+  ["- Optional: `decisions`, up to 20 questions", "- Optional: `asks`, up to 20 questions"],
+  ["one of the Decision's own `media` by `ref`). The\n  answer comes back as a tap on `hill/<key>`. Leave the `decisions` key out\n  and the open decisions stay as they are", "one of the ask's own `media` by `ref`). The\n  answer comes back as a tap on `asks/<key>`. Leave the `asks` key out\n  and the open asks stay as they are"],
+  ["`trick.toml` and a Decision stay strict", "`trick.toml` and an ask stay strict"],
+  ["## Wording a Decision", "## Wording an ask"],
+  ["warn when a Decision breaks one of these", "warn when an ask breaks one of these"],
+  ...WRITING_V10.map((line, i): readonly [string, string] => [line, HILL_WRITING[i] ?? line]),
+];
+
+/** v10's text as v11 says it: each pair of {@link ASKS_WORDS} applied once. */
+function inAsksWords(text: string): string {
+  return ASKS_WORDS.reduce((out, [from, to]) => out.replace(from, to), text);
+}
 type NotesVersion = (typeof NOTES_VERSIONS)[number];
 
 /**
@@ -139,6 +180,8 @@ absent: draw a part that says what to set. A new or changed field asks the perso
 
 /** The `AGENTS.md` `init` writes: the contract, in prose, for the agent that grows the trick. `draft`: the folder is outside the tricks folder. */
 export function sampleAgents(id: string, form: InitForm = "ts", draft = false, version: NotesVersion = NOTES_VERSION): string {
+  // v11 is v10's text in the words of ADR 0179; every older version keeps its own bytes.
+  if (version >= 11) return inAsksWords(sampleAgents(id, form, draft, 10));
   return `# The Collie trick "${id}"
 
 This folder is a Collie trick. Collie's bridge runs the program named by \`run\` in \`trick.toml\` and
@@ -218,7 +261,7 @@ One JSON document on stdout, at most 64 KiB, within 10 seconds. \`v\` is the con
 
 ## Wording a Decision
 
-${HILL_WRITING.map((line) => `- ${line}`).join("\n")}
+${WRITING_V10.map((line) => `- ${line}`).join("\n")}
 
 In a trick, \`recommends: { intent, why }\` is what \`--recommend\` and \`--why\` are on the command line.
 

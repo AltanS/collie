@@ -226,13 +226,13 @@ describe("help", () => {
     expect(rules[1]).toContain("trick view morph show");
   });
 
-  test("states the button's attrs, that a button takes no text, and how a decision is shaped", () => {
+  test("states the button's attrs, that a button takes no text, and how a choice block is shaped", () => {
     const text = viewHelp({ trick: T }).join("\n");
     expect(text).toContain('"label" (one line, at most');
     expect(text).toContain('"intent" (use "intent": "reply")');
     expect(text).toContain('no "text"');
     expect(text).toContain('place it with {"kind":"image","attrs":{"ref":"0"}}');
-    expect(text).toContain('A decision is a "choice"');
+    expect(text).toContain('A choice block is a "choice"');
   });
 
   test("the commands and the rules name the trick, and no line speaks of the old verb", () => {

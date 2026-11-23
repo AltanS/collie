@@ -199,7 +199,7 @@ describe("with no switch file, nothing of a trick runs or draws", () => {
     const off = await rig();
     await tick(off, T0);
     expect(await off.service.tap(HOST, "legs", { rid: RID, node: "belt", intent: "x", rev: 1 })).toEqual({ status: 200, body: { rid: RID, code: "rejected", message: TRICKS_OFF_LINE } });
-    expect(await off.service.tapFromHill(HOST, "legs", { rid: RID, node: "hill/ship", intent: "yes", value: { text: null } }, "dc_abcdefabcdef")).toBe(false);
+    expect(await off.service.tapFromHill(HOST, "legs", { rid: RID, node: "hill/ship", intent: "yes", value: { text: null } }, "ak_abcdefabcdef")).toBe(false);
     expect(off.specs).toEqual([]);
     expect(await readdir(join(off.stateDir, TRICKS_DIR))).not.toContain("receipts.json");
   });
@@ -307,7 +307,7 @@ describe("moving the switch", () => {
       expect(alive(child!)).toBe(true);
       // One phone tap and one answer from the Hill wait behind the running program.
       const tap = r.service.tap(HOST, "legs", { rid: RID, node: "belt", intent: "x", rev });
-      const answer = r.service.tapFromHill(HOST, "legs", { rid: "8a1d2e3f-4b5c-4d6e-8f70-8192a3b4c5d6", node: "hill/ship", intent: "yes", value: { text: null } }, "dc_abcdefabcdef");
+      const answer = r.service.tapFromHill(HOST, "legs", { rid: "8a1d2e3f-4b5c-4d6e-8f70-8192a3b4c5d6", node: "hill/ship", intent: "yes", value: { text: null } }, "ak_abcdefabcdef");
       await Bun.sleep(50);
       expect(r.specs).toHaveLength(2);
       expect(r.service.switchTo(false, "phone-a")).toBe(false);

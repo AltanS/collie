@@ -1336,14 +1336,14 @@ describe("consent tied to the code", () => {
     await switchOn(r.stateDir, "legs");
     await tickAt(r, T0);
     const runs = r.specs.length;
-    expect(await r.service.tapFromHill(HOST, "legs", { rid: REQ, node: "hill/a", intent: "rerun", value: { text: null } }, "dc_oldtrick000")).toBe(false);
+    expect(await r.service.tapFromHill(HOST, "legs", { rid: REQ, node: "asks/a", intent: "rerun", value: { text: null } }, "ak_oldtrick000")).toBe(false);
     expect(r.warnings.filter((line) => line.includes(STALE_CARD_LINE))).toHaveLength(1);
     expect(r.specs.length).toBe(runs);
   });
 
   test("an edited program keeps running its approved copy; a new version waits, and the switch approves it", async () => {
     const spy = hillSpy();
-    const r = await rig([exited(belt("1", { decisions: [ASK] }))], { decisions: spy.port });
+    const r = await rig([exited(belt("1", { asks: [ASK] }))], { decisions: spy.port });
     const dir = await makeTrick(r.configDir, "legs", MANIFEST, { "program.ts": "console.log(1)\n" });
     await switchOn(r.stateDir, "legs");
     await tickAt(r, T0);
@@ -1436,9 +1436,9 @@ describe("consent tied to the code", () => {
     expect((await r.service.reply(undefined)).tricks[0]?.changed).toBeUndefined();
   });
 
-  test("an absent decisions key leaves them as they are; an empty list withdraws them", async () => {
+  test("an absent asks key leaves them as they are; an empty list withdraws them", async () => {
     const spy = hillSpy();
-    const r = await rig([exited(belt("1", { decisions: [ASK] })), exited(belt("2")), exited(belt("3", { decisions: [] }))], { decisions: spy.port });
+    const r = await rig([exited(belt("1", { asks: [ASK] })), exited(belt("2")), exited(belt("3", { asks: [] }))], { decisions: spy.port });
     await makeTrick(r.configDir, "legs", MANIFEST);
     await switchOn(r.stateDir, "legs");
     await tickAt(r, T0);
@@ -1483,7 +1483,7 @@ describe("taps, answers and slots", () => {
     r.service.noteWatched();
     const timer = r.service.tick();
     await Bun.sleep(20);
-    const answers = [REQ, REQ2, REQ3].map((rid, i) => r.service.tapFromHill(HOST, "legs", { rid, node: "hill/a", intent: "rerun", value: { text: String(i) } }, "dc_x"));
+    const answers = [REQ, REQ2, REQ3].map((rid, i) => r.service.tapFromHill(HOST, "legs", { rid, node: "asks/a", intent: "rerun", value: { text: String(i) } }, "ak_x"));
     await Bun.sleep(20);
     expect(g.running()).toBe(1);
     g.releaseAll();
@@ -1934,18 +1934,18 @@ describe("the approved copy (crew slice 2)", () => {
   test("decides = reply is a right: a version that adds it waits, auto or not; the approved copy refuses replyTo meanwhile, then takes it after the yes", async () => {
     const audits: string[] = [];
     const ask = { key: "ship", title: "Ship it?", summary: "One change.", options: [{ intent: "ship", label: "Ship it" }], replyTo: `${HOST}:w6X:3` };
-    const r = await rig([exited(belt("1", { decisions: [ask] }))], { audit: (e) => audits.push(`${e.action} ${e.detail.by ?? ""}`.trim()) });
+    const r = await rig([exited(belt("1", { asks: [ask] }))], { audit: (e) => audits.push(`${e.action} ${e.detail.by ?? ""}`.trim()) });
     const dir = await makeTrick(r.configDir, "legs", MANIFEST, { "legs.sh": "#!/bin/sh\necho 1\n" });
     await switchOn(r.stateDir, "legs");
     await tickAt(r, T0);
     const legs = async () => (await r.service.reply(undefined)).tricks.find((trick) => trick.id === "legs");
     // An old version without the key: its Decision with replyTo is refused with the plain line, the rest draws.
-    expect((await legs())?.refusals?.map((refusal) => [refusal.code, refusal.path, refusal.reason])).toEqual([["undeclared", "/decisions/0/replyTo", DECIDES_REPLY_LINE]]);
+    expect((await legs())?.refusals?.map((refusal) => [refusal.code, refusal.path, refusal.reason])).toEqual([["undeclared", "/asks/0/replyTo", DECIDES_REPLY_LINE]]);
     expect((await legs())?.decidesReply).toBeUndefined();
     await updateSwitches(r.stateDir, (now) => withEntry(now, "legs", { ...now.on.get("legs")!, auto: true }));
     const v1 = await codeHashOf(dir);
     // The folder adds the key: a new code hash and new powers, so it waits for a person, auto or not.
-    await writeFile(join(dir, "trick.toml"), `${MANIFEST}decides = "reply"\n`);
+    await writeFile(join(dir, "trick.toml"), `${MANIFEST}asks = "reply"\n`);
     const v2 = await newVersion(r, dir, T0 + 1000, "#!/bin/sh\necho 1\n");
     const file = JSON.parse(await readFile(join(r.stateDir, TRICKS_DIR, "switches.json"), "utf8"));
     expect(file.on.legs.hash).toBe(v1);

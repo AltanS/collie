@@ -93,7 +93,7 @@ skipfile=""
 [ -n "$state" ] && [ -d "$state" ] && skipfile="$state/skipped"
 if [ "$kind" = tap ] && [ "$intent" = skip ]; then
   case "$node" in
-    hill/case-[0-9]*) [ -n "$skipfile" ] && printf '%s %s\n' "${node#hill/}" "$logbase" > "$skipfile" ;;
+    asks/case-[0-9]*) [ -n "$skipfile" ] && printf '%s %s\n' "${node#asks/}" "$logbase" > "$skipfile" ;;
   esac
 fi
 skipped=""
@@ -227,7 +227,7 @@ END {
   # One decision for the first red case, once the leg stopped and a skip did not close it.
   if (isred && !running && skipped != ("case-" firstred " " logbase)) {
     sum = nm[firstred] (firsterr != "" ? ": " firsterr : "")
-    out = out ",\"decisions\":[{\"key\":\"case-" firstred "\",\"title\":" jstr(clip("Leg red: case " firstred ". Rerun it?", 120))
+    out = out ",\"asks\":[{\"key\":\"case-" firstred "\",\"title\":" jstr(clip("Leg red: case " firstred ". Rerun it?", 120))
     out = out ",\"summary\":" jstr(clip("Case " firstred " failed, " ok " passed. " sum, 280))
     out = out ",\"options\":[{\"intent\":\"rerun\",\"label\":\"Rerun\"},{\"intent\":\"skip\",\"label\":\"Skip\"}]"
     out = out ",\"recommends\":{\"intent\":\"rerun\",\"why\":\"A red case in a replay leg is often a timeout, and a rerun shows it.\"}"

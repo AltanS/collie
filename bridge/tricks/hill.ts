@@ -60,7 +60,7 @@ import { holdStat, statFactsOf, stillHolds, type StatHeld } from "../stat-held.t
 // row in Settings says its Decisions are not shown (the phone reads `decides` on the trick's entry
 // beside the snapshot's `hillOff`). The first run after the Hill is back on makes the hill agree again.
 //
-// THE MAP. `<stateDir>/hill/tricks.json` keeps, per trick, the generation and per key the decision id,
+// THE MAP. `<stateDir>/asks/tricks.json` keeps, per trick, the generation and per key the decision id,
 // the content hash and the state last seen:
 //   { "v": 1, "tricks": { "<trickId>": { "gen": 0, "keys": { "<key>": { "decisionId", "hash", "state", "seq", "at" } } } } }
 // Beside the hill's own files, not in the trick's state folder (that folder is its program's). Written
@@ -173,7 +173,7 @@ export function imageFileDigest(path: string, look: { now?: () => number; lstat?
     const oldest = fileDigests.keys().next().value;
     if (oldest !== undefined) fileDigests.delete(oldest);
   }
-  fileDigests.set(path, { held: holdStat(statFactsOf(st), readAt, { path, kind: "a Hill picture" }), digest });
+  fileDigests.set(path, { held: holdStat(statFactsOf(st), readAt, { path, kind: "a picture of an ask" }), digest });
   return digest;
 }
 
@@ -433,7 +433,7 @@ export class TrickHill {
       if (entry.state === "open") {
         const out = this.deps.hill.withdraw(this.sender(trick, key), entry.decisionId, BY_THE_TRICK);
         if (!out.ok && !out.missing) {
-          refusals.push({ code: "target", path: "/decisions", reason: `The decision "${key}" could not be withdrawn: ${out.error}.`, decision: key });
+          refusals.push({ code: "target", path: "/asks", reason: `The ask "${key}" could not be withdrawn: ${out.error}.`, decision: key });
           continue;
         }
       }
@@ -447,10 +447,10 @@ export class TrickHill {
     const root = run.decisions.some((decision) => (decision.media ?? []).length > 0) ? realFolder(trick.dir) : null;
     const listedSessions = run.sessions ?? NO_SESSIONS;
     run.decisions.forEach((decision, index) => {
-      const path = pointer("/decisions", index);
+      const path = pointer("/asks", index);
       const named = imageInputs(root, decision.media ?? []);
       if (!named.ok) {
-        refusals.push({ code: "target", path: pointer(path, "media"), reason: `${named.reason}, so the decision "${decision.key}" was not posted.`, decision: decision.key });
+        refusals.push({ code: "target", path: pointer(path, "media"), reason: `${named.reason}, so the ask "${decision.key}" was not posted.`, decision: decision.key });
         return;
       }
       const images = named.images;
@@ -511,7 +511,7 @@ export class TrickHill {
     if (scopeKey === undefined) return null;
     const address = this.deps.addressOf(scopeKey, listed);
     if (address !== null) return address;
-    refusals.push({ code: "target", path: pointer(path, field), reason: `"${scopeKey}" names no live agent session in this run's facts, so the decision "${key}" was not posted.`, decision: key });
+    refusals.push({ code: "target", path: pointer(path, field), reason: `"${scopeKey}" names no live agent session in this run's facts, so the ask "${key}" was not posted.`, decision: key });
     return undefined;
   }
 

@@ -50,7 +50,7 @@ export const OFFICIAL_ENTRIES_MAX = 32;
 /** The most earlier versions an entry keeps. */
 export const OFFICIAL_PREVIOUS_MAX = 8;
 /** The keys of an entry, no other: every one required but `decides`, which an entry writes only when its manifest has it. */
-const ENTRY_KEYS = ["id", "name", "description", "repo", "dir", "commit", "hash", "extras", "rules", "contract", "places", "previous", "decides", "posix"] as const;
+const ENTRY_KEYS = ["id", "name", "description", "repo", "dir", "commit", "hash", "extras", "rules", "contract", "places", "previous", "asks", "posix"] as const;
 
 /** One version of an entry: a commit and the code hash its folder has there. */
 export interface OfficialVersion {
@@ -188,10 +188,10 @@ function readEntry(raw: JsonValue, at: number): EntryRead {
   const entry: OfficialEntry = { id, name, description, repo, dir, commit, hash, extras, rules, contract, places, previous: previous.versions };
   if (doc.posix !== undefined && doc.posix !== true) return refuse(`${id}: posix is true or absent`);
   if (doc.posix === true) entry.posix = true;
-  if (doc.decides === undefined) return { ok: true, entry };
-  const decides = DECIDES_WORDS.find((word) => word === doc.decides);
-  if (decides === undefined) return refuse(`${id}: decides is not one of ${DECIDES_WORDS.join(", ")}`);
-  if (places.length === 1 && places[0] === AGENT_VIEW_PLACE) return refuse(`${id}: a trick that is only an agent view posts no Decision`);
+  if (doc.asks === undefined) return { ok: true, entry };
+  const decides = DECIDES_WORDS.find((word) => word === doc.asks);
+  if (decides === undefined) return refuse(`${id}: asks is not one of ${DECIDES_WORDS.join(", ")}`);
+  if (places.length === 1 && places[0] === AGENT_VIEW_PLACE) return refuse(`${id}: a trick that is only an agent view sends no ask`);
   entry.decides = decides;
   return { ok: true, entry };
 }
@@ -263,9 +263,9 @@ export function renderOfficialList(entries: readonly OfficialEntry[]): string {
   const tricks = entries.map((e) => {
     const head = { id: e.id, name: e.name, description: e.description, repo: e.repo, dir: e.dir, commit: e.commit, hash: e.hash, extras: e.extras, rules: e.rules, contract: e.contract, places: [...e.places] };
     const previous = e.previous.map((v) => ({ commit: v.commit, hash: v.hash }));
-    // `decides` and `posix` only when they are set, after the places, so every other entry keeps its text.
-    const out: typeof head & { decides?: DecidesWord; posix?: true; previous?: OfficialVersion[] } = { ...head };
-    if (e.decides !== undefined) out.decides = e.decides;
+    // `asks` and `posix` only when they are set, after the places, so every other entry keeps its text.
+    const out: typeof head & { asks?: DecidesWord; posix?: true; previous?: OfficialVersion[] } = { ...head };
+    if (e.decides !== undefined) out.asks = e.decides;
     if (e.posix === true) out.posix = true;
     out.previous = previous;
     return out;

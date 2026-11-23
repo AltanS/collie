@@ -305,7 +305,7 @@ describe("access: the level a version raises (M105 spec 04)", () => {
 
   test("the words of each level, exactly, and none for `none`", () => {
     // Plain since M105 spec 05 (decision 10): the bridge holds the level for the local API.
-    expect(ACCESS_LINES.see).toBe("It reads your machines, sessions, usage and the Hill.");
+    expect(ACCESS_LINES.see).toBe("It reads your machines, sessions, usage and Asks.");
     expect(ACCESS_LINES.read).toBe("It reads your sessions' screens.");
     expect(ACCESS_CHIPS.see).toBe("the state of your machines and sessions");
     expect(ACCESS_CHIPS.read).toBe("your sessions' screens");
@@ -651,7 +651,7 @@ async function life(): Promise<Life> {
     memberId: "lodge",
     machine: "lodge",
     now: () => clock.t,
-    mintId: () => `dc_ver${String((n += 1)).padStart(9, "0")}`,
+    mintId: () => `ak_ver${String((n += 1)).padStart(9, "0")}`,
     onCollieAnswer: (ref, intent) => cards?.answer(ref, intent) ?? Promise.resolve({ ok: false, reason: "no cards" }),
   });
   cards = new VersionCards({ hill, tricks: () => service, diff: (base, next) => versionDiff({ base, next, git: "/fake/git", run: wholeFileDiff }) });
@@ -773,7 +773,7 @@ describe("the card's life", () => {
     expect(card?.options.map((option) => option.intent)).toEqual(["use", "keep"]);
     expect(card?.recommends).toBeNull();
     expect(card?.summary).toBe("2 files changed. It now also asks for GH_TOKEN.");
-    expect(await tap(l, card!, 1, "always")).toMatchObject({ code: "rejected", reason: "not an option of this decision" });
+    expect(await tap(l, card!, 1, "always")).toMatchObject({ code: "rejected", reason: "not an option of this ask" });
     expect(await l.cards.answer(card!.from.ref!, "always")).toEqual({ ok: false, reason: VERSION_NEW_RIGHTS });
   });
 

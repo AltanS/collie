@@ -99,9 +99,9 @@ describe("the pictures a run names", () => {
 describe("the flags", () => {
   test("a folder, --tap with its --text and --node, --json and --watch", () => {
     expect(parseDevArgs(["."])).toEqual({ target: ".", tap: null, json: false, watch: false, facts: null, state: null, rid: null, inputs: null });
-    expect(parseDevArgs(["look", "--tap", "rerun", "--text", "go on", "--node", "hill/case-24", "--json", "--watch"])).toEqual({
+    expect(parseDevArgs(["look", "--tap", "rerun", "--text", "go on", "--node", "asks/case-24", "--json", "--watch"])).toEqual({
       target: "look",
-      tap: { intent: "rerun", text: "go on", node: "hill/case-24" },
+      tap: { intent: "rerun", text: "go on", node: "asks/case-24" },
       json: true,
       watch: true,
       facts: null,
@@ -116,8 +116,8 @@ describe("the flags", () => {
   });
 
   test("a tap on a hill node carries { text }; on a part, the text as its value", () => {
-    expect(devTrigger({ intent: "rerun", text: "go", node: "hill/case-24" })).toMatchObject({ kind: "tap", node: "hill/case-24", intent: "rerun", value: { text: "go" } });
-    expect(devTrigger({ intent: "skip", text: null, node: "hill/case-24" })).toMatchObject({ value: { text: null } });
+    expect(devTrigger({ intent: "rerun", text: "go", node: "asks/case-24" })).toMatchObject({ kind: "tap", node: "asks/case-24", intent: "rerun", value: { text: "go" } });
+    expect(devTrigger({ intent: "skip", text: null, node: "asks/case-24" })).toMatchObject({ value: { text: null } });
     expect(devTrigger({ intent: "rerun", text: "3", node: "belt" })).toMatchObject({ node: "belt", value: "3" });
     expect(devTrigger({ intent: "rerun", text: null, node: "main" })).not.toHaveProperty("value");
   });
@@ -343,7 +343,7 @@ describe("one run", () => {
     expect(text).toMatch(/status\s+status\s+"\d+ busy"\s+icon plug\s+tone (accent|muted)/u);
     expect(text).toMatch(/dashboard\s+dashboard\s+"legs"\s+badge \d+/u);
     expect(text).toMatch(/session\s+main\s+\(the manifest's name\)\s+subtitle ".+"\s+view \d+ nodes \(list\)/u);
-    expect(text).toContain("decisions: none, so the open ones are withdrawn");
+    expect(text).toContain("asks: none, so the open ones are withdrawn");
     expect(text).toMatch(/ran in \d+ ms of 10 s, exit 0, stdout [\d.]+ (B|KiB) of 64\.0 KiB/u);
   });
 
@@ -355,34 +355,34 @@ describe("one run", () => {
       `import { run } from "./trick.ts";
 run((t) => {
   t.belt({ label: "far too long a face word" });
-  t.status({ text: t.tap?.decision == null ? "asking" : "got " + t.tap.intent });
-  t.decide({ key: "case-24", title: "Rerun case 24?", summary: "It failed twice.", options: [{ intent: "rerun", label: "Rerun" }, { intent: "skip", label: "Skip" }], recommends: { intent: "rerun", why: "It passed yesterday." }, media: [{ file: "media/a.png" }] });
+  t.status({ text: t.tap?.ask == null ? "asking" : "got " + t.tap.intent });
+  t.ask({ key: "case-24", title: "Rerun case 24?", summary: "It failed twice.", options: [{ intent: "rerun", label: "Rerun" }, { intent: "skip", label: "Skip" }], recommends: { intent: "rerun", why: "It passed yesterday." }, media: [{ file: "media/a.png" }] });
 });
 `,
     );
     expect(await cmdTrickDev(d, [dir])).toBe(EXIT.FAIL);
     const text = d.out.join("\n");
-    expect(text).toContain('decision  case-24  "Rerun case 24?"  options rerun, skip  recommends rerun  images 1');
+    expect(text).toContain('ask  case-24  "Rerun case 24?"  options rerun, skip  recommends rerun  images 1');
     expect(text).toMatch(/refused {2}\/parts\/0\/mark\/label {2}/u);
     d.out.length = 0;
-    expect(await cmdTrickDev(d, [dir, "--tap", "skip", "--node", "hill/case-24", "--json"])).toBe(EXIT.FAIL);
+    expect(await cmdTrickDev(d, [dir, "--tap", "skip", "--node", "asks/case-24", "--json"])).toBe(EXIT.FAIL);
     const body = JSON.parse(d.out.join("\n"));
     expect(body.trigger).toBe("tap");
     expect(body.parts.map((p: { part: { id: string } }) => p.part.id)).toEqual(["status"]);
     expect(body.parts[0].part.chip.text).toBe("got skip");
-    expect(body.decisions[0].key).toBe("case-24");
+    expect(body.asks[0].key).toBe("case-24");
     expect(body.refusals[0].path).toBe("/parts/0/mark/label");
   });
 
   test("a Decision worded against HILL_WRITING gets a warn line under it and a wording list in --json, never a failure", async () => {
     const d = await deps();
-    const doc = { v: 1, parts: [], decisions: [{ key: "look", title: "Yes by name: the composer ring", summary: "One. Two. Three.", options: [{ intent: "yes", label: "Yes" }] }] };
+    const doc = { v: 1, parts: [], asks: [{ key: "look", title: "Yes by name: the composer ring", summary: "One. Two. Three.", options: [{ intent: "yes", label: "Yes" }] }] };
     const dir = await trickWith(d, "worded", `console.log(${JSON.stringify(JSON.stringify(doc))});\n`, '["belt"]');
     expect(await cmdTrickDev(d, [dir])).toBe(EXIT.OK);
     const lines = d.out.join("\n").split("\n");
-    const at = lines.findIndex((line) => line.startsWith("  decision  look"));
+    const at = lines.findIndex((line) => line.startsWith("  ask  look"));
     expect(lines.slice(at + 1, at + 4)).toEqual([
-      "    warn  the title asks no question. Write the decision as a question the options answer.",
+      "    warn  the title asks no question. Write the ask as a question the options answer.",
       "    warn  the summary has 3 sentences. Keep it to two: what the recommended option does, then the fact that decides it.",
       '    warn  option "yes" says only "Yes". Start it with a verb that says what happens, such as "Ship it".',
     ]);
@@ -410,15 +410,15 @@ run((t) => {
     expect(body.parts.map((p: { part: { id: string } }) => p.part.id)).toEqual(["belt"]);
   });
 
-  test("a failed run prints the problem and the stderr tail; keepDecisions says they stay", async () => {
+  test("a failed run prints the problem and the stderr tail; keepAsks says they stay", async () => {
     const d = await deps();
     const dir = await trickWith(d, "boom", `import { run } from "./trick.ts";\nrun(() => { throw new Error("no gh on PATH"); });\n`, '["belt"]');
     expect(await cmdTrickDev(d, [dir])).toBe(EXIT.FAIL);
     expect(d.out.join("\n")).toContain("problem: The program exited with 1: error: no gh on PATH");
     const e = await deps();
-    const kept = await trickWith(e, "keep", `import { run } from "./trick.ts";\nrun((t) => { t.belt({ label: "ok" }); t.keepDecisions(); });\n`, '["belt"]');
+    const kept = await trickWith(e, "keep", `import { run } from "./trick.ts";\nrun((t) => { t.belt({ label: "ok" }); t.keepAsks(); });\n`, '["belt"]');
     expect(await cmdTrickDev(e, [kept])).toBe(EXIT.OK);
-    expect(e.out.join("\n")).toContain("decisions: none listed, so the open ones stay as they are");
+    expect(e.out.join("\n")).toContain("asks: none listed, so the open ones stay as they are");
   });
 
   test("a folder that is not a trick, or a refused manifest, runs nothing", async () => {

@@ -49,7 +49,7 @@ export { PROPOSE_LIMITS, PROPOSE_PICTURES };
  * Trick ids a proposal may not take, though they are valid ids: they read as Collie's own words on a card. They
  * hold every id no trick may take at all (schema.ts `RESERVED_TRICK_IDS`), so a proposal hears it first.
  */
-export const RESERVED_PROPOSAL_IDS: readonly string[] = [...new Set(["collie", "trick", "tricks", "hill", "settings", ...RESERVED_TRICK_IDS])];
+export const RESERVED_PROPOSAL_IDS: readonly string[] = [...new Set(["collie", "trick", "tricks", "asks", "hill", "settings", ...RESERVED_TRICK_IDS])];
 
 /**
  * The refusal of a proposal whose manifest names `rules` or the place `agent-view` (contract 2): its author's

@@ -88,7 +88,7 @@ function rig(stateDir = join(tempDir(), "state"), hillAt = 1000): Rig {
   mkdirSync(trick.dir, { recursive: true });
   // The media folder denies the state and the config folders, as bridge/index.ts makes it.
   const media = new HillMediaStore(hillDir(stateDir), deniedFoldersSync([stateDir, configDir]), () => undefined);
-  const store = new HillStore(join(stateDir, "hill"), () => 1000, undefined, (ids) => {
+  const store = new HillStore(hillDir(stateDir), () => 1000, undefined, (ids) => {
     for (const id of ids) media.remove(id);
   });
   const taps: Rig["taps"] = [];
@@ -109,7 +109,7 @@ function rig(stateDir = join(tempDir(), "state"), hillAt = 1000): Rig {
     memberId: HOST,
     machine: "lodge.lan",
     now: () => hillAt,
-    mintId: () => `dc_trk${String((n += 1)).padStart(9, "0")}`,
+    mintId: () => `ak_trk${String((n += 1)).padStart(9, "0")}`,
     mintMediaId: () => `im_trk${String((m += 1)).padStart(13, "0")}`,
     media,
     tap: async (host, trickId, tap, decisionId) => {
@@ -161,12 +161,12 @@ describe("the diff by key", () => {
     expect(again.store.all()).toHaveLength(1);
   });
 
-  test("the map is <stateDir>/hill/tricks.json, owner only, and written only when something changed", () => {
+  test("the map is <stateDir>/asks/tricks.json, owner only, and written only when something changed", () => {
     const r = rig();
     sync(r, []);
-    expect(existsSync(join(r.stateDir, "hill", TRICKS_MAP_FILE))).toBe(false);
+    expect(existsSync(join(hillDir(r.stateDir), TRICKS_MAP_FILE))).toBe(false);
     sync(r, [decision("case-8")]);
-    const path = join(r.stateDir, "hill", TRICKS_MAP_FILE);
+    const path = join(hillDir(r.stateDir), TRICKS_MAP_FILE);
     if (process.platform !== "win32") expect(statSync(path).mode & 0o777).toBe(0o600);
     const file = parseJsonObject(readFileSync(path, "utf8"));
     const held = open(r)[0]!;
@@ -366,7 +366,7 @@ describe("the diff by key", () => {
     r.store.put({ ...first, state: "undeliverable", closedAt: 1100, closedReason: "undeliverable" });
     r.hill.sweep(1100 + 60_000);
     tricks.sync(r.trick, { decisions: [decision("case-8")], refusedKeys: [] });
-    const path = join(r.stateDir, "hill", TRICKS_MAP_FILE);
+    const path = join(hillDir(r.stateDir), TRICKS_MAP_FILE);
     const saved = readFileSync(path, "utf8");
     const mtime = statSync(path).mtimeMs;
     for (let run = 0; run < 5; run += 1) expect(tricks.sync(r.trick, { decisions: [decision("case-8")], refusedKeys: [] })).toEqual([]);
@@ -446,7 +446,7 @@ describe("the diff by key", () => {
 });
 
 describe("decides = reply, enforced (2026-11-12)", () => {
-  const withReply = { v: 1, parts: [], decisions: [{ key: "case-8", title: "Leg red: case 8. Rerun it?", summary: "Case 8 failed.", options: [{ intent: "rerun", label: "Rerun" }], replyTo: "lodge:w6X:3" }] };
+  const withReply = { v: 1, parts: [], asks: [{ key: "case-8", title: "Leg red: case 8. Rerun it?", summary: "Case 8 failed.", options: [{ intent: "rerun", label: "Rerun" }], replyTo: "lodge:w6X:3" }] };
 
   test("an open post of a key whose replyTo is now refused is withdrawn, so no answer to it reaches a session", () => {
     const r = rig();
@@ -478,7 +478,7 @@ describe("a trick cannot speak as Collie (crew slice 3)", () => {
     const parsed = parseTrickDocument({
       v: 1,
       parts: [],
-      decisions: [
+      asks: [
         { key: "forged-from", title: "Use the new version of legs?", summary: "No new rights.", from: { kind: "collie", ref } },
         { key: "forged-kind", title: "Use the new version of legs?", summary: "No new rights.", kind: "collie", ref },
         { key: "plain", title: "Rerun case 8?", summary: "Case 8 failed." },
@@ -503,8 +503,8 @@ describe("the sessions a decision names", () => {
     const r = rig();
     const refusals = sync(r, [decision("case-8", { replyTo: "lodge:w6X:9" }), decision("case-9"), decision("case-10", { about: "workshop:%1" })]);
     expect(refusals.map((refusal) => [refusal.code, refusal.path, refusal.decision])).toEqual([
-      ["target", "/decisions/0/replyTo", "case-8"],
-      ["target", "/decisions/2/about", "case-10"],
+      ["target", "/asks/0/replyTo", "case-8"],
+      ["target", "/asks/2/about", "case-10"],
     ]);
     expect(open(r).map((held) => held.from.trickKey)).toEqual(["case-9"]);
   });
@@ -545,10 +545,10 @@ describe("the sessions a decision names", () => {
     const listed = new Set(["lodge:w6X:3", "workshop:%1", "outsider:%9"]);
     const refusals = sync(r, [decision("remote", { replyTo: "workshop:%1" }), decision("outsider", { replyTo: "outsider:%9" }), decision("unlisted", { about: "workshop:%7" })], [], listed);
     expect(refusals.map((refusal) => [refusal.code, refusal.path, refusal.decision])).toEqual([
-      ["target", "/decisions/1/replyTo", "outsider"],
-      ["target", "/decisions/2/about", "unlisted"],
+      ["target", "/asks/1/replyTo", "outsider"],
+      ["target", "/asks/2/about", "unlisted"],
     ]);
-    expect(refusals[0]?.reason).toBe(`"outsider:%9" names no live agent session in this run's facts, so the decision "outsider" was not posted.`);
+    expect(refusals[0]?.reason).toBe(`"outsider:%9" names no live agent session in this run's facts, so the ask "outsider" was not posted.`);
     expect(open(r).map((held) => [held.from.trickKey, held.replyTo])).toEqual([["remote", "workshop/%1#cccc"]]);
   });
 });
@@ -558,7 +558,7 @@ describe("refusals and notes", () => {
     const r = rig();
     const many = Array.from({ length: 21 }, (_, i) => decision(`d${String(i)}`));
     const refusals = sync(r, many);
-    expect(refusals.map((refusal) => [refusal.code, refusal.path, refusal.decision])).toEqual([["count", "/decisions/20", "d20"]]);
+    expect(refusals.map((refusal) => [refusal.code, refusal.path, refusal.decision])).toEqual([["count", "/asks/20", "d20"]]);
     expect(refusals[0]?.reason).toStartWith("The hill refused it: this session has 20 open decisions");
     expect(open(r)).toHaveLength(20);
   });
@@ -638,7 +638,7 @@ describe("images", () => {
     expect(refusals).toEqual([
       {
         code: "target",
-        path: "/decisions/0/media/1",
+        path: "/asks/0/media/1",
         reason: 'The hill refused the image "page.png": is not a PNG, JPEG or WebP image (read from its first bytes, not its name).',
         decision: "case-8",
       },
@@ -651,8 +651,8 @@ describe("images", () => {
     shot(r, "big.png", big);
     const more = sync(r, [decision("case-8", { media: [{ file: "big.png" }] }), decision("case-9", { media: [{ file: "gone.png" }] })]);
     expect(more.map((one) => [one.code, one.path, one.decision])).toEqual([
-      ["size", "/decisions/0/media/0", "case-8"],
-      ["target", "/decisions/1/media/0", "case-9"],
+      ["size", "/asks/0/media/0", "case-8"],
+      ["target", "/asks/1/media/0", "case-9"],
     ]);
     expect(more[1]?.reason).toContain('"gone.png": no such file');
     expect(r.store.get(held.id)?.state).toBe("open");
@@ -669,8 +669,8 @@ describe("images", () => {
     symlinkSync(otherTrick, join(r.trick.dir, "other"));
     const refusals = sync(r, [decision("a", { media: [{ file: "away.png" }] }), decision("b", { media: [{ file: "other/shot.png" }] })]);
     expect(refusals.map((one) => [one.path, one.reason])).toEqual([
-      ["/decisions/0/media/0", 'The hill refused the image "away.png": is a symlink; name the file itself.'],
-      ["/decisions/1/media/0", 'The hill refused the image "other/shot.png": goes through a symlinked folder; name the real path.'],
+      ["/asks/0/media/0", 'The hill refused the image "away.png": is a symlink; name the file itself.'],
+      ["/asks/1/media/0", 'The hill refused the image "other/shot.png": goes through a symlinked folder; name the real path.'],
     ]);
     expect(open(r)).toEqual([]);
   });
@@ -687,7 +687,7 @@ describe("images", () => {
     const r = rig();
     writeFileSync(join(r.configDir, TRICKS_DIR, "x.png"), png());
     const refusals = sync(r, [decision("a", { media: [{ file: "../x.png" }] })]);
-    expect(refusals).toEqual([{ code: "target", path: "/decisions/0/media", reason: '"../x.png" is not inside the trick folder, so the decision "a" was not posted.', decision: "a" }]);
+    expect(refusals).toEqual([{ code: "target", path: "/asks/0/media", reason: '"../x.png" is not inside the trick folder, so the ask "a" was not posted.', decision: "a" }]);
     expect(open(r)).toEqual([]);
   });
 
@@ -732,7 +732,7 @@ describe("images", () => {
 
 /** One trick's saved record in the map file: its generation and its keys, or undefined. */
 function recordOf(stateDir: string, id: string): { gen: number | undefined; keys: JsonObject | undefined } | undefined {
-  const tricks = asJsonObject(parseJsonObject(readFileSync(join(stateDir, "hill", TRICKS_MAP_FILE), "utf8"))?.tricks);
+  const tricks = asJsonObject(parseJsonObject(readFileSync(join(hillDir(stateDir), TRICKS_MAP_FILE), "utf8"))?.tricks);
   const row = asJsonObject(tricks?.[id]);
   return row === undefined ? undefined : { gen: asJsonNumber(row.gen), keys: asJsonObject(row.keys) };
 }
@@ -798,7 +798,7 @@ describe("switched off", () => {
     const r = rig();
     forgetMapRecord(r.stateDir, "legs");
     sync(r, [decision("a")]);
-    const path = join(r.stateDir, "hill", TRICKS_MAP_FILE);
+    const path = join(hillDir(r.stateDir), TRICKS_MAP_FILE);
     const before = recordOf(r.stateDir, LEGS.id);
     expect(Object.keys(before?.keys ?? {})).toEqual(["a"]);
     const tricks = asJsonObject(parseJsonObject(readFileSync(path, "utf8"))?.tricks) ?? {};
@@ -837,13 +837,13 @@ describe("the Hill switched off", () => {
   test("a run posts nothing, withdraws nothing and leaves the map; back on, the next run makes the hill agree", () => {
     const r = rig();
     sync(r, [decision("a"), decision("b")]);
-    const before = readFileSync(join(r.stateDir, "hill", TRICKS_MAP_FILE), "utf8");
+    const before = readFileSync(join(hillDir(r.stateDir), TRICKS_MAP_FILE), "utf8");
     const [a, b] = open(r);
     r.hillOn = false;
     // Dropped b, changed a, added c: none of it reaches the hill, and no refusal reaches the trick's row.
     expect(sync(r, [decision("a", { summary: "Case 8 failed again." }), decision("c")])).toEqual([]);
     expect(open(r).map((held) => held.id)).toEqual([a!.id, b!.id]);
-    expect(readFileSync(join(r.stateDir, "hill", TRICKS_MAP_FILE), "utf8")).toBe(before);
+    expect(readFileSync(join(hillDir(r.stateDir), TRICKS_MAP_FILE), "utf8")).toBe(before);
     expect(r.pushes).toEqual([]);
     r.hillOn = true;
     expect(sync(r, [decision("a", { summary: "Case 8 failed again." }), decision("c")])).toEqual([]);
@@ -861,7 +861,7 @@ describe("seen", () => {
     sync(r, [decision("a")]);
     const held = open(r)[0]!;
     expect(r.tricks.seenOf("legs", held.id)).toBe(decisionContentHash(decision("a")));
-    expect(r.tricks.seenOf("legs", "dc_nonexistent1")).toBeUndefined();
+    expect(r.tricks.seenOf("legs", "ak_nonexistent1")).toBeUndefined();
   });
 });
 
@@ -898,11 +898,11 @@ function makeLegs(configDir: string, manifest = 'id = "legs"\nname = "Browser le
 }
 
 const exited = (doc: JsonObject): RunOutcome => ({ kind: "exited", code: 0, stdout: JSON.stringify(doc), stderr: "", ms: 5 });
-const doc = (decisions: JsonObject[]): JsonObject => ({ v: 1, parts: [{ at: "belt", id: "belt", mark: { label: "10/12", intent: "x" } }], decisions });
+const doc = (decisions: JsonObject[]): JsonObject => ({ v: 1, parts: [{ at: "belt", id: "belt", mark: { label: "10/12", intent: "x" } }], asks: decisions });
 const RED: JsonObject = { key: "case-8", title: "Leg red: case 8. Rerun it?", summary: "Case 8 failed.", options: [{ intent: "rerun", label: "Rerun" }, { intent: "skip", label: "Skip" }] };
 
-/** The legs manifest that declares `decides = "reply"`: its Decisions may answer into a session. */
-const LEGS_REPLIES = 'id = "legs"\nname = "Browser leg"\nrun = "./legs.sh"\nplaces = ["belt"]\ndecides = "reply"\n';
+/** The legs manifest that declares `asks = "reply"`: its Decisions may answer into a session. */
+const LEGS_REPLIES = 'id = "legs"\nname = "Browser leg"\nrun = "./legs.sh"\nplaces = ["belt"]\nasks = "reply"\n';
 
 async function serviceRig(manifest?: string): Promise<ServiceRig> {
   const root = tempDir();
@@ -988,7 +988,7 @@ describe("the runner posts", () => {
     r.outcome = exited(doc([{ ...RED, replyTo: "lodge:w6X:9" }]));
     await runNow(r);
     const info = (await r.service.reply(undefined)).tricks.find((trick) => trick.id === "legs");
-    expect(info?.refusals?.map((refusal) => [refusal.code, refusal.path, refusal.decision])).toEqual([["target", "/decisions/0/replyTo", "case-8"]]);
+    expect(info?.refusals?.map((refusal) => [refusal.code, refusal.path, refusal.decision])).toEqual([["target", "/asks/0/replyTo", "case-8"]]);
   });
 
   test("decides = reply declared: a Decision with replyTo posts, and the answer is typed into that session", async () => {
@@ -1011,7 +1011,7 @@ describe("the runner posts", () => {
     r.outcome = exited(doc([{ ...RED, replyTo: "lodge:w6X:3" }, { ...RED, key: "case-9" }]));
     await runNow(r);
     const info = (await r.service.reply(undefined)).tricks.find((trick) => trick.id === "legs");
-    expect(info?.refusals?.map((refusal) => [refusal.code, refusal.path, refusal.decision, refusal.reason])).toEqual([["undeclared", "/decisions/0/replyTo", "case-8", DECIDES_REPLY_LINE]]);
+    expect(info?.refusals?.map((refusal) => [refusal.code, refusal.path, refusal.decision, refusal.reason])).toEqual([["undeclared", "/asks/0/replyTo", "case-8", DECIDES_REPLY_LINE]]);
     expect(info?.decidesReply).toBeUndefined();
     // The trick still runs: the refusal is a line on its row, not a failure.
     expect(info?.state).toBe("ok");
@@ -1031,7 +1031,7 @@ describe("the runner posts", () => {
     expect(open(r)).toEqual([]);
     expect(await legs()).toMatchObject({ state: "ok" });
     expect((await legs())?.refusals).toBeUndefined();
-    // A document with no `decisions` key leaves it; an empty list clears it.
+    // A document with no `asks` key leaves it; an empty list clears it.
     r.outcome = exited({ v: 1, parts: [{ at: "belt", id: "belt", mark: { label: "10/12", intent: "x" } }] });
     expect(ok200(await beltTap(r, uuid(1))).refused).toBeUndefined();
     expect((await legs())?.decides).toBe(true);
@@ -1066,8 +1066,8 @@ describe("the runner posts", () => {
     // The old trick's card, still open on the Hill, but the new trick's map forgot it.
     r.tricks.forget(LEGS);
     const runs = r.specs.length;
-    expect(await r.service.tapFromHill(HOST, "legs", { rid: uuid(11), node: "hill/case-8", intent: "skip", value: { text: "flaky" } }, held.id)).toBe(false);
-    expect(await r.service.tapFromHill(HOST, "legs", { rid: uuid(12), node: "hill/case-8", intent: "skip", value: { text: null } }, "dc_nonexistent1")).toBe(false);
+    expect(await r.service.tapFromHill(HOST, "legs", { rid: uuid(11), node: "asks/case-8", intent: "skip", value: { text: "flaky" } }, held.id)).toBe(false);
+    expect(await r.service.tapFromHill(HOST, "legs", { rid: uuid(12), node: "asks/case-8", intent: "skip", value: { text: null } }, "ak_nonexistent1")).toBe(false);
     expect(r.specs.length).toBe(runs);
   });
 
@@ -1076,13 +1076,13 @@ describe("the runner posts", () => {
     await switches(r.stateDir, true);
     await runNow(r);
     const held = open(r)[0]!;
-    const ran = await r.service.tapFromHill(HOST, "legs", { rid: uuid(7), node: "hill/case-8", intent: "skip", value: { text: "flaky" } }, held.id);
+    const ran = await r.service.tapFromHill(HOST, "legs", { rid: uuid(7), node: "asks/case-8", intent: "skip", value: { text: "flaky" } }, held.id);
     expect(ran).toBe(true);
-    expect(factsOf(r.specs.at(-1)).trigger).toEqual({ kind: "tap", rid: uuid(7), node: "hill/case-8", intent: "skip", value: { text: "flaky" }, seen: r.tricks.seenOf("legs", held.id)! });
-    const direct: TapAnswer = await r.service.tap(HOST, "legs", { rid: uuid(8), node: "hill/case-8", intent: "skip", value: { text: null } });
+    expect(factsOf(r.specs.at(-1)).trigger).toEqual({ kind: "tap", rid: uuid(7), node: "asks/case-8", intent: "skip", value: { text: "flaky" }, seen: r.tricks.seenOf("legs", held.id)! });
+    const direct: TapAnswer = await r.service.tap(HOST, "legs", { rid: uuid(8), node: "asks/case-8", intent: "skip", value: { text: null } });
     expect(direct).toEqual({ status: 200, body: { rid: uuid(8), code: "rejected", message: HILL_NODE_TAP_REFUSED } satisfies TrickTapReply });
     r.outcome = { kind: "exited", code: 1, stdout: "", stderr: "", ms: 1 };
-    expect(await r.service.tapFromHill(HOST, "legs", { rid: uuid(9), node: "hill/case-8", intent: "skip", value: { text: null } }, held.id)).toBe(false);
+    expect(await r.service.tapFromHill(HOST, "legs", { rid: uuid(9), node: "asks/case-8", intent: "skip", value: { text: null } }, held.id)).toBe(false);
   });
 });
 
@@ -1163,7 +1163,7 @@ describe.skipIf(process.platform === "win32")("end to end with the legs trick", 
       .trim()
       .split("\n")
       .map((line) => parseFacts(JSON.parse(line)).facts);
-    expect(facts.at(-1)?.trigger).toEqual({ kind: "tap", rid: uuid(42), node: "hill/case-8", intent: "skip", value: { text: null }, seen });
+    expect(facts.at(-1)?.trigger).toEqual({ kind: "tap", rid: uuid(42), node: "asks/case-8", intent: "skip", value: { text: null }, seen });
     // The program kept the skip in its own state folder, and its next document lists no decision.
     expect(readFileSync(join(stateDir, TRICKS_DIR, "legs", "skipped"), "utf8")).toStartWith("case-8 ");
     expect(hill.list().open).toEqual([]);

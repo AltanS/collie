@@ -15,9 +15,9 @@ const doc = JSON.parse(text);
 const belt = doc.parts[0].mark;
 if (want.label !== undefined && belt.label !== want.label) fail(`belt label ${belt.label}, want ${want.label}`);
 if (want.tone !== undefined && belt.tone !== want.tone) fail(`belt tone ${belt.tone}, want ${want.tone}`);
-const keys = (doc.decisions ?? []).map((d: { key: string }) => d.key);
+const keys = (doc.asks ?? []).map((d: { key: string }) => d.key);
 if (want.decisions !== undefined && JSON.stringify(keys) !== JSON.stringify(want.decisions)) fail(`decisions ${keys}, want ${want.decisions}`);
-const d = (doc.decisions ?? [])[0];
+const d = (doc.asks ?? [])[0];
 if (want.about !== undefined && want.about !== null && d?.about !== want.about) fail(`about ${d?.about}, want ${want.about}`);
 if (want.about === null && (d?.about !== undefined || d?.replyTo !== undefined)) fail("about or replyTo set");
 if (want.chips !== undefined) {

@@ -26,12 +26,15 @@ import {
   ACTION_ICONS,
   BUTTON_LABEL_MAX,
   COUNT_MAX,
+  ASKS_NODE_PREFIX,
+  DECIDES_IS_ASKS,
   DECIDES_REPLY_LINE,
   ACCESS_CONTRACT,
   ACCESS_NEEDS_CONTRACT,
   ACCESS_WORDS,
   FIELDS_CONTRACT,
   DECIDES_WORDS,
+  oldNodeLine,
   DRAFT_VALUE_MAX,
   DRAFTS_SESSION_LINE,
   DRAFTS_SESSION_REFUSAL,
@@ -58,6 +61,7 @@ import {
   REFUSALS_MAX,
   REFUSAL_CODES,
   REMOVED_KINDS,
+  RESERVED_TRICK_IDS,
   SESSION_FACT_KEYS,
   STATUS_TEXT_MAX,
   SUB_KEYS,
@@ -322,10 +326,10 @@ describe("valid fixtures", () => {
   it("keeps the parts and the decisions as written, so the wire round-trips and the runner's content hash is stable", () => {
     const result = parseTrickDocument(LEGS_DOCUMENT);
     expect(result.parts.map((p) => p.part)).toEqual(LEGS_DOCUMENT.parts);
-    expect(result.decisions).toEqual(LEGS_DOCUMENT.decisions);
+    expect(result.decisions).toEqual(LEGS_DOCUMENT.asks);
     const decisions = parseTrickDocument(DECISION_DOCUMENT);
     expect(decisions.refusals).toEqual([]);
-    expect(decisions.decisions).toEqual(DECISION_DOCUMENT.decisions);
+    expect(decisions.decisions).toEqual(DECISION_DOCUMENT.asks);
   });
 });
 
@@ -625,18 +629,50 @@ describe("caps at the boundary", () => {
   });
 });
 
+describe("the document key asks (ADR 0179; decisions before)", () => {
+  const ask = { key: "k", title: "T", summary: "S" };
+
+  it("reads asks, and DOCUMENT_KEYS names asks, not decisions", () => {
+    expect(DOCUMENT_KEYS).toContain("asks");
+    expect(DOCUMENT_KEYS).not.toContain("decisions");
+    const read = parseTrickDocument({ v: 1, parts: [], asks: [ask] });
+    expect(read.refusals).toEqual([]);
+    expect(read.decisions.map((d) => d.key)).toEqual(["k"]);
+  });
+
+  it("refuses the old key decisions with its one sentence, and reads no ask from it", () => {
+    const read = parseTrickDocument({ v: 1, parts: [], decisions: [ask] });
+    expect(read.decisions).toEqual([]);
+    // A tolerant read: the top level's unknown key is a note that says it is ignored, not a refusal of the document.
+    expect(read.refusals).toEqual([]);
+    expect(read.documentRefused).toBe(false);
+    expect(read.notes.map((r) => [r.code, r.path, r.reason])).toEqual([
+      ["ignored", "/decisions", '"decisions" is "asks" now (ADR 0179). Update the helper with: collie trick helper <id>. This Collie ignores it.'],
+    ]);
+  });
+
+  it("keeps asks and hill as ids no trick takes, and the manifest of a trick named asks is refused", () => {
+    expect(RESERVED_TRICK_IDS).toEqual(["walky-talky", "asks", "hill", "collie", "view"]);
+    for (const id of ["asks", "hill"]) {
+      const read = parseManifest({ id, name: "N", run: "./n.ts", places: ["belt"] });
+      expect(read.manifest, id).toBeUndefined();
+      expect(read.refusals.map((r) => [r.code, r.path, r.reason]), id).toEqual([["id", "/id", `"${id}" is a name Collie keeps for itself. Give the trick another id.`]]);
+    }
+  });
+});
+
 describe("decisions", () => {
-  const d = (extra: JsonObject) => ({ v: 1, parts: [], decisions: [{ key: "k", title: "T", summary: "S", ...extra }] });
+  const d = (extra: JsonObject) => ({ v: 1, parts: [], asks: [{ key: "k", title: "T", summary: "S", ...extra }] });
 
   it("a key of 1 to 64 of a-z, 0-9 and -, a title of 120, a summary of 280 (required), a body of 4000", () => {
     expect(parse(d({}))).toEqual([]);
     expect(parse(d({ key: "x".repeat(64) }))).toEqual([]);
-    for (const key of ["", "x".repeat(65), "Case", "a_b", "a b"]) expect(parse(d({ key })), key).toEqual(["/decisions/0/key"]);
+    for (const key of ["", "x".repeat(65), "Case", "a_b", "a b"]) expect(parse(d({ key })), key).toEqual(["/asks/0/key"]);
     expect(parse(d({ title: "x".repeat(120), summary: "x".repeat(280), body: `${"x".repeat(3990)}\n\nend.` }))).toEqual([]);
-    expect(parse(d({ title: "x".repeat(121) }))).toEqual(["/decisions/0/title"]);
-    expect(parse(d({ summary: "x".repeat(281) }))).toEqual(["/decisions/0/summary"]);
-    expect(parse(d({ body: "x".repeat(4001) }))).toEqual(["/decisions/0/body"]);
-    expect(parse({ v: 1, parts: [], decisions: [{ key: "k", title: "T" }] })).toEqual(["/decisions/0/summary"]);
+    expect(parse(d({ title: "x".repeat(121) }))).toEqual(["/asks/0/title"]);
+    expect(parse(d({ summary: "x".repeat(281) }))).toEqual(["/asks/0/summary"]);
+    expect(parse(d({ body: "x".repeat(4001) }))).toEqual(["/asks/0/body"]);
+    expect(parse({ v: 1, parts: [], asks: [{ key: "k", title: "T" }] })).toEqual(["/asks/0/summary"]);
   });
 
   it("an option's confirm is the button's second label: read as written, up to 24 characters, never empty", () => {
@@ -646,9 +682,9 @@ describe("decisions", () => {
     expect(read.decisions[0]?.options).toEqual([{ intent: "skip", label: "Skip", confirm: "Skip it for sure" }]);
     expect(parseTrickDocument(d({ options: [{ intent: "skip", label: "Skip" }] })).decisions[0]?.options).toEqual([{ intent: "skip", label: "Skip" }]);
     expect(parse(d({ options: [option("x".repeat(24))] }))).toEqual([]);
-    expect(parse(d({ options: [option("x".repeat(25))] }))).toEqual(["/decisions/0/options/0/confirm"]);
-    expect(parse(d({ options: [option("")] }))).toEqual(["/decisions/0/options/0/confirm"]);
-    expect(parse(d({ options: [option("   ")] }))).toEqual(["/decisions/0/options/0/confirm"]);
+    expect(parse(d({ options: [option("x".repeat(25))] }))).toEqual(["/asks/0/options/0/confirm"]);
+    expect(parse(d({ options: [option("")] }))).toEqual(["/asks/0/options/0/confirm"]);
+    expect(parse(d({ options: [option("   ")] }))).toEqual(["/asks/0/options/0/confirm"]);
     expect(DECISION_OPTION_KEYS).toEqual(["intent", "label", "detail", "confirm"]);
     expect(HILL_OPTION_CONFIRM_MAX).toBe(BUTTON_LABEL_MAX);
   });
@@ -657,73 +693,73 @@ describe("decisions", () => {
     const option = (label: string, detail?: string) => (detail === undefined ? { intent: "go", label } : { intent: "go", label, detail });
     expect(HILL_OPTION_LABEL_MAX).toBe(40);
     expect(parse(d({ options: [option("x".repeat(40))] }))).toEqual([]);
-    expect(parse(d({ options: [option("x".repeat(41))] }))).toEqual(["/decisions/0/options/0/label"]);
+    expect(parse(d({ options: [option("x".repeat(41))] }))).toEqual(["/asks/0/options/0/label"]);
     expect(parse(d({ options: [option("Go", "x".repeat(120))] }))).toEqual([]);
-    expect(parse(d({ options: [option("Go", "x".repeat(121))] }))).toEqual(["/decisions/0/options/0/detail"]);
+    expect(parse(d({ options: [option("Go", "x".repeat(121))] }))).toEqual(["/asks/0/options/0/detail"]);
     const linkOf = (label: string, href = "https://example.com/") => ({ links: [{ label, href }] });
     expect(parse(d(linkOf("x".repeat(40))))).toEqual([]);
-    expect(parse(d(linkOf("x".repeat(41))))).toEqual(["/decisions/0/links/0/label"]);
+    expect(parse(d(linkOf("x".repeat(41))))).toEqual(["/asks/0/links/0/label"]);
     expect(parse(d(linkOf("L", `https://example.com/${"x".repeat(500 - 20)}`)))).toEqual([]);
-    expect(parse(d(linkOf("L", `https://example.com/${"x".repeat(500 - 19)}`)))).toEqual(["/decisions/0/links/0/href"]);
+    expect(parse(d(linkOf("L", `https://example.com/${"x".repeat(500 - 19)}`)))).toEqual(["/asks/0/links/0/href"]);
   });
 
   it("an option's intent keeps the hill's rule: a lower-case word of up to 32, starting with a letter", () => {
     const option = (intent: string) => ({ intent, label: "O" });
     for (const intent of ["go", "re-run", "a".repeat(32), "v2"]) expect(parse(d({ options: [option(intent)] })), intent).toEqual([]);
-    for (const intent of ["a".repeat(33), "2go", "re.run", "re_run"]) expect(parse(d({ options: [option(intent)] })), intent).toEqual(["/decisions/0/options/0/intent"]);
+    for (const intent of ["a".repeat(33), "2go", "re.run", "re_run"]) expect(parse(d({ options: [option(intent)] })), intent).toEqual(["/asks/0/options/0/intent"]);
   });
 
   it("text none, optional or required, the hill's default optional; none with no option is refused", () => {
     for (const text of ["none", "optional", "required"]) expect(parse(d({ text, options: [{ intent: "go", label: "Go" }] })), text).toEqual([]);
     expect(parseTrickDocument(d({ text: "required" })).decisions[0]?.text).toBe("required");
     expect(parseTrickDocument(d({})).decisions[0]?.text).toBeUndefined();
-    expect(parse(d({ text: "maybe" }))).toEqual(["/decisions/0/text"]);
-    expect(parse(d({ text: "none" }))).toEqual(["/decisions/0/text"]);
+    expect(parse(d({ text: "maybe" }))).toEqual(["/asks/0/text"]);
+    expect(parse(d({ text: "none" }))).toEqual(["/asks/0/text"]);
   });
 
   it("0 to 5 options with unique intents, never the Hill's answer or dismiss; recommends names one, or is null", () => {
     const option = (intent: string) => ({ intent, label: "O" });
     expect(parse(d({ options: [] }))).toEqual([]);
     expect(parse(d({ options: ["a", "b", "c", "d", "e"].map(option) }))).toEqual([]);
-    expect(parse(d({ options: ["a", "b", "c", "d", "e", "f"].map(option) }))).toEqual(["/decisions/0/options"]);
-    expect(parse(d({ options: [option("a"), option("a")] }))).toEqual(["/decisions/0/options/1/intent"]);
-    expect(parse(d({ options: [option("answer")] }))).toEqual(["/decisions/0/options/0/intent"]);
+    expect(parse(d({ options: ["a", "b", "c", "d", "e", "f"].map(option) }))).toEqual(["/asks/0/options"]);
+    expect(parse(d({ options: [option("a"), option("a")] }))).toEqual(["/asks/0/options/1/intent"]);
+    expect(parse(d({ options: [option("answer")] }))).toEqual(["/asks/0/options/0/intent"]);
     expect(parse(d({ options: [option("a")], recommends: { intent: "a", why: "x".repeat(200) } }))).toEqual([]);
-    expect(parse(d({ options: [option("a")], recommends: { intent: "a", why: "x".repeat(201) } }))).toEqual(["/decisions/0/recommends/why"]);
-    expect(parse(d({ options: [option("a")], recommends: { intent: "b", why: "x" } }))).toEqual(["/decisions/0/recommends/intent"]);
-    expect(parse(d({ recommends: { intent: "a", why: "x" } }))).toEqual(["/decisions/0/recommends/intent"]);
+    expect(parse(d({ options: [option("a")], recommends: { intent: "a", why: "x".repeat(201) } }))).toEqual(["/asks/0/recommends/why"]);
+    expect(parse(d({ options: [option("a")], recommends: { intent: "b", why: "x" } }))).toEqual(["/asks/0/recommends/intent"]);
+    expect(parse(d({ recommends: { intent: "a", why: "x" } }))).toEqual(["/asks/0/recommends/intent"]);
     expect(parse(d({ recommends: null }))).toEqual([]);
   });
 
   it("priority now, today or later; about and replyTo a session's scope key; expiresAt epoch ms", () => {
     for (const priority of ["now", "today", "later"]) expect(parse(d({ priority }))).toEqual([]);
-    expect(parse(d({ priority: "urgent" }))).toEqual(["/decisions/0/priority"]);
+    expect(parse(d({ priority: "urgent" }))).toEqual(["/asks/0/priority"]);
     expect(parse(d({ about: "lodge:w6X:3", replyTo: "workshop:%0" }))).toEqual([]);
-    expect(parse(d({ about: "trick:lodge:legs" }))).toEqual(["/decisions/0/about"]);
-    expect(parse(d({ replyTo: "composer" }))).toEqual(["/decisions/0/replyTo"]);
+    expect(parse(d({ about: "trick:lodge:legs" }))).toEqual(["/asks/0/about"]);
+    expect(parse(d({ replyTo: "composer" }))).toEqual(["/asks/0/replyTo"]);
     expect(parse(d({ expiresAt: 1_794_200_000_000 }))).toEqual([]);
-    expect(parse(d({ expiresAt: "2026-11-09T00:00:00Z" }))).toEqual(["/decisions/0/expiresAt"]);
+    expect(parse(d({ expiresAt: "2026-11-09T00:00:00Z" }))).toEqual(["/asks/0/expiresAt"]);
   });
 
   it("up to 4 images of the trick folder and 5 links", () => {
     expect(parse(d({ media: [{ file: "a.png", caption: "the step" }, { file: "b.jpg" }] }))).toEqual([]);
-    expect(parse(d({ media: [{ file: "a.svg" }] }))).toEqual(["/decisions/0/media/0/file"]);
-    expect(parse(d({ media: [{ file: "../a.png" }] }))).toEqual(["/decisions/0/media/0/file"]);
+    expect(parse(d({ media: [{ file: "a.svg" }] }))).toEqual(["/asks/0/media/0/file"]);
+    expect(parse(d({ media: [{ file: "../a.png" }] }))).toEqual(["/asks/0/media/0/file"]);
     // The hill's own caps: WebP too, four images, a caption of 80.
     expect(parse(d({ media: [{ file: "shots/c.webp" }] }))).toEqual([]);
-    expect(parse(d({ media: [{ file: "/abs/a.png" }] }))).toEqual(["/decisions/0/media/0/file"]);
-    expect(parse(d({ media: Array.from({ length: 5 }, () => ({ file: "a.png" })) }))).toEqual(["/decisions/0/media"]);
+    expect(parse(d({ media: [{ file: "/abs/a.png" }] }))).toEqual(["/asks/0/media/0/file"]);
+    expect(parse(d({ media: Array.from({ length: 5 }, () => ({ file: "a.png" })) }))).toEqual(["/asks/0/media"]);
     expect(parse(d({ media: [{ file: "a.png", caption: "x".repeat(80) }] }))).toEqual([]);
-    expect(parse(d({ media: [{ file: "a.png", caption: "x".repeat(81) }] }))).toEqual(["/decisions/0/media/0/caption"]);
+    expect(parse(d({ media: [{ file: "a.png", caption: "x".repeat(81) }] }))).toEqual(["/asks/0/media/0/caption"]);
     expect(parse(d({ links: [{ label: "the report", href: "http://lodge:8832/legs/24" }] }))).toEqual([]);
-    expect(parse(d({ links: [{ label: "x", href: "file:///etc/passwd" }] }))).toEqual(["/decisions/0/links/0/href"]);
+    expect(parse(d({ links: [{ label: "x", href: "file:///etc/passwd" }] }))).toEqual(["/asks/0/links/0/href"]);
   });
 
   it("at most 20 per document; over that the list is refused, the parts still draw", () => {
     const list = (n: number) => Array.from({ length: n }, (_, i) => ({ key: `d${i}`, title: "T", summary: "S" }));
-    expect(parse({ v: 1, parts: [], decisions: list(DECISIONS_MAX) })).toEqual([]);
-    const over = parseTrickDocument({ v: 1, parts: [{ at: "belt", id: "belt", mark: { label: "ok" } }], decisions: list(DECISIONS_MAX + 1) });
-    expect(paths(over)).toEqual(["/decisions"]);
+    expect(parse({ v: 1, parts: [], asks: list(DECISIONS_MAX) })).toEqual([]);
+    const over = parseTrickDocument({ v: 1, parts: [{ at: "belt", id: "belt", mark: { label: "ok" } }], asks: list(DECISIONS_MAX + 1) });
+    expect(paths(over)).toEqual(["/asks"]);
     expect(over.parts).toHaveLength(1);
     expect(over.documentRefused).toBe(false);
   });
@@ -808,7 +844,7 @@ describe("a Decision's view (M96)", () => {
     const doc = {
       v: 1,
       parts: [{ at: "belt", id: "belt", mark: { label: "ok" } }],
-      decisions: [
+      asks: [
         { key: "good", title: "T", summary: "S", view: [{ kind: "para", text: "fine" }] },
         { key: "bad", title: "T", summary: "S", view: [{ kind: "button", text: "Go", attrs: { intent: "go" } }] },
       ],
@@ -816,7 +852,7 @@ describe("a Decision's view (M96)", () => {
     const read = parseTrickDocument(doc);
     expect(read.decisions.map((x) => x.key)).toEqual(["good"]);
     expect(read.decisions[0]?.view).toEqual([{ kind: "para", text: "fine" }]);
-    expect(paths(read)).toEqual(["/decisions/1/view/0/kind"]);
+    expect(paths(read)).toEqual(["/asks/1/view/0/kind"]);
     expect(read.parts).toHaveLength(1);
   });
 });
@@ -920,7 +956,7 @@ describe("the display kinds of 2026-11-10: image, compare, table, diff, spark", 
     const doc = {
       v: 1,
       parts: [],
-      decisions: [
+      asks: [
         { key: "one", title: "T", summary: "S", media: [{ file: "shots/a.png" }], view: [img({ ref: "0" })] },
         { key: "two", title: "T", summary: "S", media: [{ file: "shots/a.png" }], view: [img({ ref: "1" })] },
         { key: "none", title: "T", summary: "S", view: [img({ ref: "0" })] },
@@ -928,7 +964,7 @@ describe("the display kinds of 2026-11-10: image, compare, table, diff, spark", 
     };
     const read = parseTrickDocument(doc);
     expect(read.decisions.map((x) => x.key)).toEqual(["one"]);
-    expect(paths(read)).toEqual(["/decisions/1/view/0/attrs/ref", "/decisions/2/view/0/attrs/ref"]);
+    expect(paths(read)).toEqual(["/asks/1/view/0/attrs/ref", "/asks/2/view/0/attrs/ref"]);
   });
 });
 
@@ -1111,7 +1147,7 @@ describe("strict at write, tolerant at read", () => {
   });
 
   it("keeps a Decision strict: an unknown key, an unknown kind or an unknown attribute in its view refuses it", () => {
-    const decision = (extra: JsonObject) => ({ v: 1, parts: [belt], decisions: [{ key: "d", title: "T", summary: "S", ...extra }] });
+    const decision = (extra: JsonObject) => ({ v: 1, parts: [belt], asks: [{ key: "d", title: "T", summary: "S", ...extra }] });
     expect(parseTrickDocument(decision({})).refusals).toEqual([]);
     for (const extra of [{ color: "red" }, { view: [{ kind: "chart" }] }, { view: [{ kind: "para", text: "x", attrs: { glow: "1" } }] }]) {
       const result = parseTrickDocument(decision(extra));
@@ -1376,9 +1412,10 @@ describe("ids and keys", () => {
     for (const bad of ["lodge/legs", "lodge/legs/belt/x", "trick/legs/belt", "lodge/Legs/belt"]) expect(parsePartKey(bad), bad).toBeUndefined();
   });
 
-  it("names a tap's node: a part id or hill/<key>", () => {
-    for (const node of ["legs", "belt", "hill/case-24", "hill/x"]) expect(isTapNode(node), node).toBe(true);
-    for (const node of ["", "Legs", "hill/", "hill/Case", "legs/belt", "other/x"]) expect(isTapNode(node), node).toBe(false);
+  it("names a tap's node: a part id or asks/<key>; the old hill/<key> is no node now", () => {
+    expect(ASKS_NODE_PREFIX).toBe("asks/");
+    for (const node of ["legs", "belt", "asks/case-24", "asks/x"]) expect(isTapNode(node), node).toBe(true);
+    for (const node of ["", "Legs", "asks/", "asks/Case", "legs/belt", "other/x", "hill/case-24", "hill/x", "hill/"]) expect(isTapNode(node), node).toBe(false);
   });
 
   it("escapes a JSON pointer step", () => {
@@ -1419,7 +1456,7 @@ describe("parseTrickDocumentText", () => {
       { v: 1 },
       { v: 1, parts: [null, 1, "a", [], {}] },
       { v: 1, parts: [{ at: 1, id: 2 }] },
-      { v: 1, parts: [], decisions: [null, 1, {}, { options: [null] }] },
+      { v: 1, parts: [], asks: [null, 1, {}, { options: [null] }] },
       { v: 1, parts: [{ at: "session", id: "s", view: [null, { kind: "row" }, { kind: "card", kids: {} }, { kind: "para", attrs: [] }] }] },
     ];
     for (const value of junk) {
@@ -1586,32 +1623,42 @@ describe("the manifest's description and about", () => {
   });
 });
 
-describe("the manifest's decides (2026-11-12)", () => {
+describe("the manifest's asks (ADR 0179; decides before)", () => {
   const base = { id: "review", name: "Design Review", run: "./review.ts", places: ["belt"] };
   const asked = { key: "ship", title: "Ship it?", summary: "One change.", options: [{ intent: "ship", label: "Ship it" }] };
-  const doc = (decision: JsonObject) => ({ v: 1, parts: [], decisions: [decision] });
+  const doc = (decision: JsonObject) => ({ v: 1, parts: [], asks: [decision] });
 
   it("takes one closed word, reply, in contract 1 and 2; absent is none", () => {
     expect(DECIDES_WORDS).toEqual(["reply"]);
-    expect(MANIFEST_KEYS).toContain("decides");
+    expect(MANIFEST_KEYS).toContain("asks");
+    expect(MANIFEST_KEYS).not.toContain("decides");
     expect(parseManifest(base).manifest?.decides).toBeUndefined();
     for (const contract of [1, 2]) {
-      const read = parseManifest({ ...base, contract, decides: "reply" });
+      const read = parseManifest({ ...base, contract, asks: "reply" });
       expect(read.refusals).toEqual([]);
       expect(read.manifest?.decides).toBe("reply");
     }
   });
 
+  it("refuses the old key decides with its one sentence, in contract 1 and 2", () => {
+    expect(DECIDES_IS_ASKS).toBe('"decides" is "asks" now: write asks = "reply".');
+    for (const contract of [1, 2]) {
+      const read = parseManifest({ ...base, contract, decides: "reply" });
+      expect(read.manifest).toBeUndefined();
+      expect(read.refusals.map((r) => [r.code, r.path, r.reason])).toEqual([["unknown-key", "/decides", DECIDES_IS_ASKS]]);
+    }
+  });
+
   it("refuses another word, a value that is not text, and the key on a trick that is only an agent view", () => {
     const wrongs: JsonValue[] = ["replies", "Reply", "", true, ["reply"]];
-    for (const decides of wrongs) {
-      const read = parseManifest({ ...base, decides });
-      expect(read.manifest, JSON.stringify(decides)).toBeUndefined();
-      expect(read.refusals.map((r) => [r.code, r.path])).toEqual([["word", "/decides"]]);
+    for (const asks of wrongs) {
+      const read = parseManifest({ ...base, asks });
+      expect(read.manifest, JSON.stringify(asks)).toBeUndefined();
+      expect(read.refusals.map((r) => [r.code, r.path])).toEqual([["word", "/asks"]]);
     }
-    const view = parseManifest({ id: "morph", name: "Morph", contract: 2, places: ["agent-view"], rules: "rules.md", decides: "reply" });
+    const view = parseManifest({ id: "morph", name: "Morph", contract: 2, places: ["agent-view"], rules: "rules.md", asks: "reply" });
     expect(view.manifest).toBeUndefined();
-    expect(view.refusals.map((r) => r.path)).toEqual(["/decides"]);
+    expect(view.refusals.map((r) => r.path)).toEqual(["/asks"]);
     // An agent view without the key is read as before.
     expect(parseManifest({ id: "morph", name: "Morph", contract: 2, places: ["agent-view"], rules: "rules.md" }).refusals).toEqual([]);
   });
@@ -1621,10 +1668,10 @@ describe("the manifest's decides (2026-11-12)", () => {
     expect(parseTrickDocument(replying, { decidesReply: true }).decisions.map((d) => d.replyTo)).toEqual(["lodge:w1:1"]);
     const refused = parseTrickDocument(replying, { decidesReply: false });
     expect(refused.decisions).toEqual([]);
-    expect(refused.refusals).toEqual([{ code: "undeclared", path: "/decisions/0/replyTo", reason: DECIDES_REPLY_LINE, decision: "ship" }]);
+    expect(refused.refusals).toEqual([{ code: "undeclared", path: "/asks/0/replyTo", reason: DECIDES_REPLY_LINE, decision: "ship" }]);
     // Not kept as refused: an open post of the key is withdrawn, not left standing.
     expect(refused.refusedDecisions).toEqual([]);
-    expect(DECIDES_REPLY_LINE).toBe("This trick did not say that its Decisions reply to a session.");
+    expect(DECIDES_REPLY_LINE).toBe("This trick did not say that its asks reply to a session.");
   });
 
   it("a Decision without replyTo passes either way, and a reader with no manifest checks nothing", () => {
@@ -1884,9 +1931,9 @@ describe("parseFacts", () => {
     expect(parseFacts({ ...FACTS.timer, memberId: "trick" }).refusals.map((r) => r.path)).toEqual(["/memberId"]);
   });
 
-  it("carries a decision's answer as a tap on hill/<key>, with the person's words", () => {
+  it("carries an ask's answer as a tap on asks/<key>, with the person's words", () => {
     const trigger = parseFacts(FACTS.answer).facts?.trigger;
-    expect(trigger).toEqual({ kind: "tap", rid: "0b9e8d7c-6f5a-4b3c-9d2e-1f0a9b8c7d6e", node: "hill/case-24", intent: "rerun", value: { text: "Rerun it, then tell me." } });
+    expect(trigger).toEqual({ kind: "tap", rid: "0b9e8d7c-6f5a-4b3c-9d2e-1f0a9b8c7d6e", node: "asks/case-24", intent: "rerun", value: { text: "Rerun it, then tell me." } });
   });
 });
 
@@ -1898,13 +1945,22 @@ describe("parseTapRequest", () => {
     expect(parseTapRequest({ rid: tap.rid, intent: "open", node: "belt" }).request).toEqual({ rid: tap.rid, intent: "open", node: "belt" });
   });
 
-  it("reads a decision's answer: a text, or null when only an option was tapped", () => {
-    const answer = { rid: tap.rid, node: "hill/case-24", intent: "rerun", value: { text: "and tell me" } };
+  it("reads an ask's answer: a text, or null when only an option was tapped", () => {
+    const answer = { rid: tap.rid, node: "asks/case-24", intent: "rerun", value: { text: "and tell me" } };
     expect(parseTapRequest(answer).request).toEqual(answer);
     expect(parseTapRequest({ ...answer, value: { text: null } }).request?.value).toEqual({ text: null });
     expect(parseTapRequest({ ...answer, value: { text: "x".repeat(4001) } }).refusals.map((r) => r.path)).toEqual(["/value/text"]);
     expect(parseTapRequest({ ...answer, value: "rerun" }).refusals.map((r) => r.path)).toEqual(["/value"]);
     expect(parseTapRequest({ ...tap, value: { text: "x" } }).refusals.map((r) => r.path)).toEqual(["/value"]);
+  });
+
+  it("refuses the old node hill/<key> with its one sentence, and the new node asks/<key> passes", () => {
+    const answer = { rid: tap.rid, node: "asks/case-24", intent: "rerun", value: { text: "and tell me" } };
+    expect(parseTapRequest(answer).refusals).toEqual([]);
+    const old = parseTapRequest({ ...answer, node: "hill/case-24", value: "rerun" });
+    expect(old.request).toBeUndefined();
+    expect(old.refusals.map((r) => [r.path, r.reason])).toEqual([["/node", "the node hill/case-24 is now asks/case-24"]]);
+    expect(oldNodeLine("hill/case-24")).toBe("the node hill/case-24 is now asks/case-24");
   });
 
   it("refuses a bad rid, a name as from, an unknown key, the first schema's keys and a big value", () => {

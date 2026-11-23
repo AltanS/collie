@@ -124,7 +124,7 @@ describe("windows gate", () => {
     const win = await rig("win32");
     await tick(win, T0);
     expect(await win.service.tap(HOST, "legs", { rid: RID, node: "belt", intent: "x", rev: 1 })).toEqual({ status: 200, body: { rid: RID, code: "rejected", message: TRICKS_WINDOWS_LINE } });
-    expect(await win.service.tapFromHill(HOST, "legs", { rid: RID, node: "hill:dc_abcdefabcdef", intent: "x", value: { text: "yes" } }, "dc_abcdefabcdef")).toBe(false);
+    expect(await win.service.tapFromHill(HOST, "legs", { rid: RID, node: "hill:ak_abcdefabcdef", intent: "x", value: { text: "yes" } }, "ak_abcdefabcdef")).toBe(false);
     expect(win.specs).toEqual([]);
   });
 

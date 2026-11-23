@@ -203,7 +203,7 @@ export const PROPOSAL_KEY_RIGHTS = {
   version: "text",
   places: "chip",
   env: "chip",
-  decides: "chip",
+  asks: "chip",
   drafts: "chip",
   access: "chip",
   inputs: "reads",

@@ -30,7 +30,7 @@ function recorder() {
   const proposals = {
     propose: async (_read: ProposalRead, proposer: Proposer): Promise<ProposeAnswer> => {
       seen.push(proposer);
-      return { ok: true, kind: "proposal", id: "legs", hash: "h", decision: "dc_k3m9x2p7q1ab", replaced: null };
+      return { ok: true, kind: "proposal", id: "legs", hash: "h", decision: "ak_k3m9x2p7q1ab", replaced: null };
     },
   } satisfies Pick<TrickProposals, "propose">;
   return { proposals, seen };
@@ -82,9 +82,9 @@ describe("the member's forward", () => {
   }
 
   test("sends the checked files and the session's address, never a label", async () => {
-    const { door, sent } = member({ kind: "answer", status: 200, body: { ok: true, kind: "proposal", id: "legs", hash: "h", decision: "dc_k3m9x2p7q1ab", replaced: null } });
+    const { door, sent } = member({ kind: "answer", status: 200, body: { ok: true, kind: "proposal", id: "legs", hash: "h", decision: "ak_k3m9x2p7q1ab", replaced: null } });
     const answer = await door.local(fields(), { kind: "agent", address: "laptop/%3#cccc", label: "made-up label" });
-    expect(answer).toEqual({ ok: true, kind: "proposal", id: "legs", hash: "h", decision: "dc_k3m9x2p7q1ab", replaced: null });
+    expect(answer).toEqual({ ok: true, kind: "proposal", id: "legs", hash: "h", decision: "ak_k3m9x2p7q1ab", replaced: null });
     expect(sent[0]?.route).toBe(CREW_TRICKS_PROPOSE_ROUTE);
     const body = parseJsonObject(sent[0]?.payload ?? "") ?? {};
     expect(Object.keys(body).toSorted()).toEqual(["files", "from", "requestId"]);

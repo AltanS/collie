@@ -54,7 +54,7 @@ import {
   HILL_LINKS_MAX,
   HILL_MEDIA_CAPTION_MAX,
   HILL_MEDIA_MAX,
-  HILL_NODE_PREFIX,
+  ASKS_NODE_PREFIX,
   HILL_OPEN_MAX,
   HILL_OPTION_CONFIRM_MAX,
   HILL_OPTION_DETAIL_MAX,
@@ -67,6 +67,8 @@ import {
   HILL_TITLE_MAX,
   HILL_WHY_MAX,
   isHillOptionIntent,
+  OLD_TRICK_NODE_PREFIX,
+  oldNodeLine,
   type HillPriority,
   type HillTextMode,
 } from "../hill/wire";
@@ -850,7 +852,7 @@ export const REMOVED_KINDS = {
   select: "selects are not in a trick's vocabulary yet",
   option: "selects are not in a trick's vocabulary yet",
   composer: 'the composer is Collie\'s own; a button with "does": "draft" may put text into its reply box, and the person sends it',
-  prompt: "a prompt is an agent's dialog; a trick asks the person through a decision",
+  prompt: "a prompt is an agent's dialog; a trick asks the person through an ask",
   tool: "tool calls are an agent's",
   turn: "turns are an agent's",
   chat: "Chat is Collie's own",
@@ -1317,7 +1319,7 @@ export const DEFAULT_DECISION_PRIORITY: DecisionPriority = "today";
 export const DECISION_TEXT_MODES = HILL_TEXT_MODES;
 export type DecisionTextMode = HillTextMode;
 export const DEFAULT_DECISION_TEXT: DecisionTextMode = "optional";
-export { HILL_NODE_PREFIX };
+export { ASKS_NODE_PREFIX, OLD_TRICK_NODE_PREFIX, oldNodeLine };
 
 /** An option: a named intent in the tree's shape. Collie runs none; it routes the chosen intent to the trick. */
 export interface DecisionOption {
@@ -2226,9 +2228,9 @@ export function isDecisionKey(text: string): boolean {
 export function isIntentName(text: string): boolean {
   return INTENT.test(text);
 }
-/** A tap's `node`: a part id, or `hill/<decision key>`. */
+/** A tap's `node`: a part id, or `asks/<ask key>` (`hill/<key>` before ADR 0179, refused with {@link oldNodeLine}). */
 export function isTapNode(text: string): boolean {
-  if (text.startsWith(HILL_NODE_PREFIX)) return isDecisionKey(text.slice(HILL_NODE_PREFIX.length));
+  if (text.startsWith(ASKS_NODE_PREFIX)) return isDecisionKey(text.slice(ASKS_NODE_PREFIX.length));
   return isPartId(text);
 }
 /**
@@ -3052,7 +3054,7 @@ function readNode(value: JsonValue | undefined, path: string, sink: Refusal[], c
   const kind: NodeKind = rawKind;
   const notShown = ctx.display ? reasonOf(DECISION_VIEW_REFUSED, kind) : undefined;
   if (notShown !== undefined) {
-    sink.push({ code: "removed", path: kindPath, reason: `A Decision's view takes no "${kind}": ${notShown}.` });
+    sink.push({ code: "removed", path: kindPath, reason: `An ask's view takes no "${kind}": ${notShown}.` });
     return undefined;
   }
   // A Decision's view names only the kinds it draws, so the hint never offers a card or a button.
@@ -3119,7 +3121,7 @@ function textHome(kind: NodeKind): string {
     case "button":
       return 'A button takes no "text"; its words are the "label" attribute.';
     case "image":
-      return 'An image takes no "text"; its words are the "alt" attribute in a part, and "caption" in a Decision\'s view.';
+      return 'An image takes no "text"; its words are the "alt" attribute in a part, and "caption" in an ask\'s view.';
     case "meter":
     case "spacer":
     case "spark":
@@ -3405,7 +3407,7 @@ function checkImage(f: Fields, push: (code: RefusalCode, name: string, reason: s
       "unknown-key",
       name,
       ctx.display
-        ? `A Decision's image takes no "${name}": it names one of the Decision's images with "ref" (0 is the first), and may add "caption", "fit" and "focus".`
+        ? `An ask's image takes no "${name}": it names one of the ask's images with "ref" (0 is the first), and may add "caption", "fit" and "focus".`
         : `A part's image takes no "${name}": it names a file of the trick folder with "src", "alt", "w" and "h", and may add "caption", "fit" and "focus".`,
     );
   }
@@ -3418,7 +3420,7 @@ function checkImage(f: Fields, push: (code: RefusalCode, name: string, reason: s
   if (!ctx.display || ref === undefined || ctx.images === undefined || !WHOLE.test(ref)) return;
   if (Number(ref) >= ctx.images) {
     const held = ctx.images === 0 ? "holds no images" : `holds ${String(ctx.images)} image${ctx.images === 1 ? "" : "s"}, "ref" 0 to ${String(ctx.images - 1)}`;
-    push("target", "ref", `"ref" is ${ref}, but the Decision ${held}.`);
+    push("target", "ref", `"ref" is ${ref}, but the ask ${held}.`);
   }
 }
 
@@ -3563,7 +3565,7 @@ export const DECISION_VIEW_LIMITS = { bytes: 8 * 1024, nodes: 100, depth: 4 } as
 /** The kinds a Decision's view refuses, each with what to write instead. */
 const DECISION_VIEW_REFUSED = {
   button: "no buttons, the options are the taps",
-  card: "the Decision's card is its frame; list the nodes without one",
+  card: "the ask's card is its frame; list the nodes without one",
 } as const satisfies Readonly<Record<string, string>>;
 
 /** The attributes that act. On a Decision's view a `link` and a `row` keep one, their `href`, as a web address. */
@@ -3591,12 +3593,12 @@ function checkDisplayOnly(kind: NodeKind, f: Fields): void {
     // An attribute the kind never takes is refused by its own rule already: one refusal per key.
     const takes: readonly string[] = NODE_ATTRS[kind];
     if (raw[name] === undefined || !takes.includes(name) || (keepsHref && name === "href")) continue;
-    refuse(name, `A Decision's view takes no "${name}" on a ${kind}: only a link or a row opens anything, and the options are the taps.`);
+    refuse(name, `An ask's view takes no "${name}" on a ${kind}: only a link or a row opens anything, and the options are the taps.`);
   }
   if (!keepsHref) return;
   const href = asJsonString(raw.href);
   if (asJsonString(raw.rel) === "pane" || (href !== undefined && !isTrickUrl(href))) {
-    refuse("href", `A ${kind} in a Decision's view opens a web page: an https:// or http:// address, never a session.`);
+    refuse("href", `A ${kind} in an ask's view opens a web page: an https:// or http:// address, never a session.`);
   }
 }
 
@@ -3621,7 +3623,7 @@ export function parseDecisionView(value: JsonValue | undefined, path = "/view", 
   const refusals: Refusal[] = [];
   const bytes = value === undefined ? 0 : utf8Bytes(JSON.stringify(value));
   if (bytes > DECISION_VIEW_LIMITS.bytes) {
-    refusals.push({ code: "size", path, reason: `The view is ${String(bytes)} bytes. A Decision's view holds at most ${String(DECISION_VIEW_LIMITS.bytes / 1024)} KiB.` });
+    refusals.push({ code: "size", path, reason: `The view is ${String(bytes)} bytes. An ask's view holds at most ${String(DECISION_VIEW_LIMITS.bytes / 1024)} KiB.` });
     return { refusals };
   }
   const caps: ViewCaps = { nodes: DECISION_VIEW_LIMITS.nodes, depth: DECISION_VIEW_LIMITS.depth, display: true };
@@ -3870,10 +3872,11 @@ export interface ParsedTrickDocument {
 }
 
 /** Every top-level key of a trick document. */
-export const DOCUMENT_KEYS = ["v", "parts", "asOf", "fresh", "decisions"] as const;
+export const DOCUMENT_KEYS = ["v", "parts", "asOf", "fresh", "asks"] as const;
 /** Top-level keys of the first schema, refused with what replaced them. */
 const REMOVED_DOCUMENT_KEYS = {
-  draft: '"draft" is gone as a key of the document. A button with "does": "draft" puts its "value" into the reply box of the session the page is open for, and the person sends it. Or post a decision with "replyTo", and the person\'s answer reaches the session as their own message.',
+  draft: '"draft" is gone as a key of the document. A button with "does": "draft" puts its "value" into the reply box of the session the page is open for, and the person sends it. Or post an ask with "replyTo", and the person\'s answer reaches the session as their own message.',
+  decisions: '"decisions" is "asks" now (ADR 0179). Update the helper with: collie trick helper <id>.',
   open: '"open" is gone: a tap moves nothing on the phone. Draw a "link", or a "row" with "href".',
 } as const satisfies Readonly<Record<string, string>>;
 
@@ -4467,25 +4470,25 @@ export const DECISION_LINK_KEYS = ["label", "href"] as const;
 
 /** The Hill's fields a trick does not write: the runner and the bridge set them. */
 const HILL_OWNED_KEYS = {
-  id: "the bridge mints a decision's id; a trick names its own with \"key\"",
+  id: "the bridge mints an ask's id; a trick names its own with \"key\"",
   requestId: "the runner derives the request id from the trick, the key and the content",
   from: "the runner stamps who posted it",
   supersedes: "the runner supersedes a key whose content changed",
-  channel: "the channel is the Hill's",
-  state: "the Hill holds a decision's state",
+  channel: "the channel is Collie's own",
+  state: "Collie holds an ask's state",
   at: "the bridge stamps when it took the post",
 } as const satisfies Readonly<Record<string, string>>;
 
 function readDecisions(top: Fields, out: ParsedTrickDocument, opts: ParseTrickDocumentOptions): void {
-  const list = top.array("decisions", { min: 0, max: DECISIONS_MAX, what: "decisions" });
+  const list = top.array("asks", { min: 0, max: DECISIONS_MAX, what: "asks" });
   if (list === undefined) return;
   const seen = new Set<string>();
   list.forEach((value, i) => {
-    const path = pointer("/decisions", i);
+    const path = pointer("/asks", i);
     const sink: Refusal[] = [];
     const reading = readDecision(value, path, sink);
     const key = reading.key;
-    if (key !== undefined && seen.has(key)) sink.push({ code: "duplicate", path: pointer(path, "key"), reason: `The decision key "${key}" is used twice. Each decision needs its own.` });
+    if (key !== undefined && seen.has(key)) sink.push({ code: "duplicate", path: pointer(path, "key"), reason: `The ask key "${key}" is used twice. Each ask needs its own.` });
     if (key !== undefined) seen.add(key);
     // `replyTo` types the person's answer into a session: only a trick whose manifest says so may name one.
     // Such a decision is not kept as refused, so an open post of its key (from a build before the check) is
@@ -4508,7 +4511,7 @@ interface DecisionReading {
 }
 
 function readDecision(value: JsonValue, path: string, sink: Refusal[]): DecisionReading {
-  const f = itemFields(value, path, sink, "a decision");
+  const f = itemFields(value, path, sink, "an ask");
   if (f === undefined) return {};
   f.keys(DECISION_KEYS, (key) => {
     const own = reasonOf(HILL_OWNED_KEYS, key);
@@ -4516,7 +4519,7 @@ function readDecision(value: JsonValue, path: string, sink: Refusal[]): Decision
   });
   const keyRaw = asJsonString(f.obj.key);
   const key = keyRaw !== undefined && isDecisionKey(keyRaw) ? keyRaw : undefined;
-  if (key === undefined) f.push("id", "key", `A decision needs a "key" of 1 to ${DECISION_KEY_MAX} lower-case letters, digits and hyphens.`);
+  if (key === undefined) f.push("id", "key", `An ask needs a "key" of 1 to ${DECISION_KEY_MAX} lower-case letters, digits and hyphens.`);
   const title = f.text("title", { max: HILL_TITLE_MAX, required: true });
   const summary = f.text("summary", { max: HILL_SUMMARY_MAX, required: true });
   const body = f.text("body", { max: HILL_BODY_MAX, multiline: true });
@@ -4525,7 +4528,7 @@ function readDecision(value: JsonValue, path: string, sink: Refusal[]): Decision
   const priority = f.word("priority", DECISION_PRIORITIES);
   const text = f.word("text", DECISION_TEXT_MODES);
   // The hill refuses a decision that takes no words and has no option: nothing could answer it.
-  if (text === "none" && (options ?? []).length === 0) f.push("target", "text", '"text": "none" needs at least one option, or nothing could answer the decision.');
+  if (text === "none" && (options ?? []).length === 0) f.push("target", "text", '"text": "none" needs at least one option, or nothing could answer the ask.');
   const about = readSessionKey(f, "about");
   const replyTo = readSessionKey(f, "replyTo");
   const media = readMedia(f);
@@ -4562,7 +4565,7 @@ function readOptions(f: Fields): DecisionOption[] | undefined {
     // The hill's rule for an option's intent, narrower than a button's: a lower-case word of up to 32.
     let intent = intentRaw;
     if (intentRaw !== undefined && HILL_RESERVED_INTENTS.includes(intentRaw)) {
-      o.push("id", "intent", `"${intentRaw}" is the Hill's own answer. Name the option's intent another way.`);
+      o.push("id", "intent", `"${intentRaw}" is an answer of Collie's own. Name the option's intent another way.`);
     } else if (intentRaw !== undefined && !isHillOptionIntent(intentRaw)) {
       o.push("id", "intent", `An option's "intent" is 1 to 32 of: lower-case letters, digits and "-", starting with a letter (${String(HILL_INTENT_RE)}).`);
       intent = undefined;
@@ -4589,7 +4592,7 @@ function readRecommends(f: Fields, options: DecisionOption[] | undefined): Decis
   const intent = r.intent("intent", true);
   const why = r.text("why", { max: HILL_WHY_MAX, required: true });
   if (intent !== undefined && !(options ?? []).some((o) => o.intent === intent)) {
-    r.push("target", "intent", `"recommends" names "${intent}", which is not one of the decision's options.`);
+    r.push("target", "intent", `"recommends" names "${intent}", which is not one of the ask's options.`);
     return undefined;
   }
   return intent === undefined || why === undefined ? undefined : { intent, why };
@@ -4646,7 +4649,7 @@ export const ENV_NAME_MAX = 64;
 const ENV_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 /** Every key `trick.toml` takes. */
-export const MANIFEST_KEYS = ["id", "name", "run", "every", "watch", "on", "mode", "contract", "icon", "places", "env", "inputs", "description", "about", "version", "rules", "decides", "drafts", "field", "access"] as const;
+export const MANIFEST_KEYS = ["id", "name", "run", "every", "watch", "on", "mode", "contract", "icon", "places", "env", "inputs", "description", "about", "version", "rules", "asks", "drafts", "field", "access"] as const;
 
 // ── `access`: how much of Collie's local API a trick reads (M105 spec 04) ───────────────────────────
 
@@ -4666,7 +4669,7 @@ export type TrickAccess = (typeof ACCESS_LEVELS)[number];
  * the trick reads, with no caveat.
  */
 export const ACCESS_LINES = {
-  see: "It reads your machines, sessions, usage and the Hill.",
+  see: "It reads your machines, sessions, usage and Asks.",
   read: "It reads your sessions' screens.",
 } as const satisfies Readonly<Record<TrickAccess, string>>;
 /** The phone's word for a level word it does not know (wire.ts): kept, so the row can say so, never dropped. */
@@ -4684,10 +4687,12 @@ export const ACCESS_NEEDS_CONTRACT = `"access" needs contract = ${String(ACCESS_
 export const DECIDES_WORDS = ["reply"] as const;
 export type DecidesWord = (typeof DECIDES_WORDS)[number];
 
-/** The refusal of a Decision with `replyTo` from a trick whose approved manifest does not say `decides = "reply"`. */
-export const DECIDES_REPLY_LINE = "This trick did not say that its Decisions reply to a session.";
+/** The one sentence the old manifest key `decides` is refused with (ADR 0179). */
+export const DECIDES_IS_ASKS = '"decides" is "asks" now: write asks = "reply".';
+/** The refusal of an ask with `replyTo` from a trick whose approved manifest does not say `asks = "reply"`. */
+export const DECIDES_REPLY_LINE = "This trick did not say that its asks reply to a session.";
 /** The right in a person's words: `collie trick check` and the version card's sentence. */
-export const DECIDES_REPLY_WORDS = "Your answers to its Decisions go to a session as your own message.";
+export const DECIDES_REPLY_WORDS = "Your answers to its asks go to a session as your own message.";
 
 // ── `drafts`: whether a trick's buttons may put text into a session's reply box ──────────────────────
 
@@ -4765,9 +4770,10 @@ export const RULES_NEVER_AUTO = "A trick that gives your agents instructions nev
 /**
  * Trick ids no trick may take: the words of the heads Collie writes into a session (`[view:<id> ...]`,
  * `[walky-talky ...]`) and Collie's own names, so no trick reads as Collie or as another door. `morph` is
- * not here: it is a trick's name.
+ * not here: it is a trick's name. `asks` is the view's name since ADR 0179; `hill`, its name before, stays kept,
+ * so no trick takes the old name of a Collie view.
  */
-export const RESERVED_TRICK_IDS: readonly string[] = ["walky-talky", "hill", "collie", "view"];
+export const RESERVED_TRICK_IDS: readonly string[] = ["walky-talky", "asks", "hill", "collie", "view"];
 
 /** The most bytes of a rules file. */
 export const RULES_MAX_BYTES = 8 * 1024;
@@ -4963,7 +4969,7 @@ export const INPUTS_NEED_CONTRACT = `"inputs" needs contract = ${String(INPUTS_C
 export const AGENT_VIEW_NEEDS_CONTRACT = `"agent-view" needs contract = ${String(AGENT_VIEW_CONTRACT)}. Add contract = ${String(AGENT_VIEW_CONTRACT)} to trick.toml.`;
 export const RULES_NEEDS_CONTRACT = `"rules" needs contract = ${String(AGENT_VIEW_CONTRACT)}. Add contract = ${String(AGENT_VIEW_CONTRACT)} to trick.toml.`;
 /** The keys a trick whose only place is `agent-view` may not name: it has no program. */
-export const VIEW_ONLY_REFUSED = ["run", "every", "inputs", "env", "decides", "drafts"] as const;
+export const VIEW_ONLY_REFUSED = ["run", "every", "inputs", "env", "asks", "drafts"] as const;
 export function viewOnlyRefusal(key: (typeof VIEW_ONLY_REFUSED)[number]): string {
   return `A trick whose only place is "agent-view" has no program, so it takes no "${key}". Remove it, or add a place it draws in.`;
 }
@@ -5323,7 +5329,11 @@ export function parseManifest(doc: JsonValue | undefined, opts: ParseManifestOpt
   if (contract !== undefined && contract > TRICK_CONTRACT) {
     return { refusals: [{ code: "version", path: "/contract", reason: newerContractReason(contract) }] };
   }
-  f.keys(MANIFEST_KEYS, (key) => (key === "facts" ? { code: "unknown-key", reason: '"facts" is "contract" now: the trick contract number, 1, or leave it out.' } : undefined));
+  f.keys(MANIFEST_KEYS, (key) => {
+    if (key === "facts") return { code: "unknown-key", reason: '"facts" is "contract" now: the trick contract number, 1, or leave it out.' };
+    if (key === "decides") return { code: "unknown-key", reason: DECIDES_IS_ASKS };
+    return undefined;
+  });
   const triggers = opts.triggers ?? [];
   const enabled = opts.places ?? NEAR_PLACES;
 
@@ -5458,7 +5468,9 @@ export function parseManifest(doc: JsonValue | undefined, opts: ParseManifestOpt
 
   // Whether its Decisions answer into a session: one closed word, at every contract (an optional key adds
   // inside contract 1). A view-only trick runs no program, so it is refused there with the other program keys.
-  const decides = f.word("decides", DECIDES_WORDS);
+  // The key is `asks` since ADR 0179 (`decides` is refused above); the manifest field keeps its name, so the
+  // approved powers hash (bridge/tricks/approved.ts `powersOf`) is the same for the same right.
+  const decides = f.word("asks", DECIDES_WORDS);
   // Whether its buttons may put text into a session's reply box: one closed word, at every contract, refused on a
   // view-only trick with the other program keys (it draws no part, so it has no button).
   const drafts = f.word("drafts", DRAFTS_WORDS);
@@ -5703,8 +5715,8 @@ export function parseTapRequest(raw: JsonValue | undefined): ParsedTapRequest {
   const f = new Fields(obj, "", refusals, "a tap");
   f.keys(TAP_KEYS, (key) => {
     if (key === "requestId") return { code: "unknown-key", reason: '"requestId" is "rid" now, as in the tree\'s intent.' };
-    if (key === "part") return { code: "unknown-key", reason: '"part" is "node" now: the part id, or hill/<key> for a decision.' };
-    if (key === "args") return { code: "unknown-key", reason: '"args" is "value" now: a button\'s fixed string, or a decision\'s answer.' };
+    if (key === "part") return { code: "unknown-key", reason: '"part" is "node" now: the part id, or asks/<key> for an ask.' };
+    if (key === "args") return { code: "unknown-key", reason: '"args" is "value" now: a button\'s fixed string, or an ask\'s answer.' };
     return undefined;
   });
   const rev = f.int("rev", { min: 0, max: Number.MAX_SAFE_INTEGER });
@@ -5719,9 +5731,10 @@ function readTapFields(f: Fields): TapRequest | undefined {
   const rid = f.text("rid", { max: 36, required: true });
   if (rid !== undefined && !isRequestId(rid)) f.push("id", "rid", '"rid" must be a UUID.');
   const intent = f.intent("intent", true);
-  const node = f.text("node", { max: HILL_NODE_PREFIX.length + DECISION_KEY_MAX, required: true });
-  if (node !== undefined && !isTapNode(node)) f.push("id", "node", '"node" must be a part id, or hill/<key> for a decision.');
-  const value = node === undefined ? undefined : readTapValue(f, node.startsWith(HILL_NODE_PREFIX));
+  const node = f.text("node", { max: ASKS_NODE_PREFIX.length + DECISION_KEY_MAX, required: true });
+  if (node !== undefined && node.startsWith(OLD_TRICK_NODE_PREFIX)) f.push("id", "node", oldNodeLine(node));
+  else if (node !== undefined && !isTapNode(node)) f.push("id", "node", '"node" must be a part id, or asks/<key> for an ask.');
+  const value = node === undefined ? undefined : readTapValue(f, node.startsWith(ASKS_NODE_PREFIX));
   const from = f.object("from", 'an object with "session"');
   let tapFrom: TapFrom | undefined;
   if (from !== undefined) {

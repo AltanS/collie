@@ -173,7 +173,7 @@ export async function removeTrick(opts: RemoveOptions): Promise<RemoveResult> {
     await opts.forget?.(id);
   } catch (err) {
     forgot = false;
-    warn(`the views and Hill keys of the removed trick ${id} could not be forgotten: ${err instanceof Error ? err.message : String(err)}`);
+    warn(`the views and ask keys of the removed trick ${id} could not be forgotten: ${err instanceof Error ? err.message : String(err)}`);
   }
   const leftovers = await finishAside({ stateDir, id, token, paths: moved.map((one) => one.to), warn });
   return { ok: true, folder: folder.path, state: rest[0]!.path, leftovers, forgot };

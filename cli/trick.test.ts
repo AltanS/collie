@@ -126,7 +126,7 @@ describe("collie trick init", () => {
       expect(text, form).not.toContain("Unknown keys are refused");
       expect(text, form).not.toMatch(/`v` \(1\)/u);
     }
-    expect(sampleAgents("legs")).toContain("`decision` (its key)");
+    expect(sampleAgents("legs")).toContain("`ask` (its key)");
     // How to word a Decision, from the one list `collie hill post --help` prints too.
     for (const form of ["ts", "sh"] as const) for (const line of HILL_WRITING) expect(sampleAgents("legs", form), form).toContain(line);
     // The output example in AGENTS.md parses clean.
@@ -792,13 +792,13 @@ describe("collie trick check, a script Collie's runtime runs", () => {
   });
 
   test("--run warns about a Decision's wording as `collie hill post` does, and the check still passes", async () => {
-    const doc = { v: 1, parts: [], decisions: [{ key: "kinds", title: "Are the new kinds right", summary: "Fine.", options: [{ intent: "yes", label: "Yes" }, { intent: "change", label: "Change them" }] }] };
+    const doc = { v: 1, parts: [], asks: [{ key: "kinds", title: "Are the new kinds right", summary: "Fine.", options: [{ intent: "yes", label: "Yes" }, { intent: "change", label: "Change them" }] }] };
     const dir = await scriptFolder({ "program.ts": `console.log(${JSON.stringify(JSON.stringify(doc))});\n` });
     const d = await deps();
     expect(await cmdTrickCheck(d, ["--run", dir])).toBe(EXIT.OK);
     const text = d.out.join("\n");
-    expect(text).toContain("  warn: decision kinds: the title asks no question. Write the decision as a question the options answer.");
-    expect(text).toContain('  warn: decision kinds: option "yes" says only "Yes". Start it with a verb that says what happens, such as "Ship it".');
+    expect(text).toContain("  warn: ask kinds: the title asks no question. Write the ask as a question the options answer.");
+    expect(text).toContain('  warn: ask kinds: option "yes" says only "Yes". Start it with a verb that says what happens, such as "Ship it".');
     expect(text).toContain("ok: no problems.");
     d.out.length = 0;
     expect(await cmdTrickCheck(d, ["--run", "--json", dir])).toBe(EXIT.OK);
