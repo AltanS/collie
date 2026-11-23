@@ -401,6 +401,17 @@ Trail: `bridge/surface/protocol.ts` (`belowCount`, `lostWordsOnly`, `excusedBelo
 `bridge/surface/protocol.codex-below-loses-text.test.ts` · `web/src/lib/surface/profile.below-loses-text.test.ts` ·
 `web/src/fixtures/panes/codex--v0171-goal-achieved-*--w120.txt`.
 
+## Note 2026-11-23: a bottom edge that wrapped (#838)
+
+A profile may say its bottom edge, a status row, wraps onto more rows on a narrow pane
+(`idle.frame.bottomWraps`, Codex: 1): when the row over the lowest edge-shaped row has the edge's shape
+too and is full where the lower one goes on, the box is tried one row up, every other check of the frame
+holds as written, and the modal cues still read the wrapped rows. The Codex adapter's composer, which
+decides the unread-dialog card, asks the frame module for the same wrap. Trail: `web/src/lib/surface/frame.ts`
+(`wrappedEdgeFrame`, `wrapsOnto`) · `web/src/lib/surface/cues.ts` (`belowRows`) ·
+`web/src/lib/harness/codex/chrome.ts` (`wrappedStatus`) · `web/src/lib/surface/frame.bottom-wraps.test.ts` ·
+`web/src/lib/harness/codex/status-wrap.test.ts` · `bridge/surface/protocol.codex-status-wrap.test.ts`.
+
 ## Addendum 2026-11-25: the last rows under the box may go to the box (#868)
 
 Claude Code in a pane under 16 rows gives the rows under its box to a draft that needs them, last row first: the mode row once the
