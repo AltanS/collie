@@ -48,6 +48,11 @@
 //           "Back in the box" card would offer to send it a second time. They leave when the journal
 //           shows them sent.
 //
+// A THROW AFTER THE KEY. Everything after the press is behind one guard: a reader that throws (the screen, the log,
+// the clear key) settles the request as `unknown`, pressed, so the receipt is kept, a replay answers it, and the
+// route writes its audit line. When the proof had shown the queue go back into the box, the receipt also carries
+// its texts (the words left the queue), and the audit line counts them. A throw before the key stays a throw.
+//
 // THE SPAN. Every press checks a deadline, the lock's span less a margin: no key leaves after it. Before
 // the dequeue key that refuses `busy`; during the clear it stops the clear, under the rule above.
 //
@@ -163,6 +168,20 @@ function refusal(requestId: string, reason: DequeueReason): Settled {
 
 function ended(requestId: string, outcome: "in_box" | "too_late" | "unknown", leftover = false): Settled {
   return { receipt: leftover ? { requestId, outcome, leftover: true } : { requestId, outcome }, pressed: true };
+}
+
+/** What a take-back knows of the words after its key, for the guard around everything that follows the key. */
+interface Progress {
+  /** The log showed the queue that was read go back into the box: its words left the queue. */
+  proved: boolean;
+}
+
+/**
+ * The answer of a take-back that threw after its key: `unknown`, pressed. The words that left the queue ride along when
+ * the proof had shown it (the same field a `taken` answer carries); the audit line counts them and never names them.
+ */
+function unknownAfterKey(requestId: string, texts: readonly string[] | null): Settled {
+  return { receipt: texts === null ? { requestId, outcome: "unknown" } : { requestId, outcome: "unknown", texts: [...texts] }, pressed: true };
 }
 
 /** What a clear did: the box read back empty, or it stopped, with whether a key left and the last box it read (null when the last read showed none). */
@@ -292,6 +311,26 @@ export class DequeueService {
     const sent: MuxAck = await this.deps.gate.press(paneId, [...ask.keys], "person_tap");
     // A key not confirmed in time may still land (M100 spec 03): it counts as pressed, and the proof decides.
     if (!sent.ok && sent.reason !== "unconfirmed") return refusal(requestId, "press_failed");
+    // Everything from here on is behind one guard: a key left, so a throw settles as `unknown` and is never a rejection.
+    const progress: Progress = { proved: false };
+    try {
+      return await this.afterKey(requestId, paneId, harness, match, { ask, before, texts, sleep, inTime }, progress);
+    } catch (err) {
+      // The name of a throw is the bridge's own; the texts never reach it.
+      console.warn(`[dequeue] the take-back on ${paneId} failed after its key: ${err instanceof Error ? err.name : "error"}`);
+      return unknownAfterKey(requestId, progress.proved ? texts : null);
+    }
+  }
+
+  /** What follows the key: the proof, the clear, and the answer. Throws are the caller's guard. */
+  private async afterKey(
+    requestId: string,
+    paneId: string,
+    harness: string,
+    match: ProfileMatch,
+    { ask, before, texts, sleep, inTime }: { readonly ask: DequeueAsk; readonly before: { readonly gen: number; readonly mark: QueueMark }; readonly texts: readonly string[]; readonly sleep: (ms: number) => Promise<void>; readonly inTime: () => boolean },
+    progress: Progress,
+  ): Promise<Settled> {
     // 3. The proof, from the log, on the Stop's clock.
     let proof: Proof = "none";
     let after: Awaited<ReturnType<DequeueJournal>> = null;
@@ -303,6 +342,7 @@ export class DequeueService {
     }
     // 4. Proved: the box must hold exactly the texts before a key empties it.
     if (proof === "proved") {
+      progress.proved = true;
       const shown = await this.boxHolding(paneId, harness, match, texts, sleep);
       if (shown === null) return ended(requestId, "in_box");
       const cleared = await this.empty(paneId, harness, match, shown, texts, sleep, inTime);
