@@ -245,6 +245,30 @@ export interface WalkyTarget {
 /** The longest session name or title a `who` row carries. The bridge already caps both at 80. */
 export const WALKY_NAME_MAX = 120;
 
+/**
+ * Who a send to one address reached, as the bridge that resolved the address lists that pane: the
+ * `who` row's NAME, SPACE and MACHINE. `name` is absent when nobody named the session (the CLI prints `-`).
+ * The answer of a send carries it as `recipient`, only for an agent's send to one pane that is no reply.
+ */
+export interface WalkyRecipient {
+  readonly name?: string;
+  readonly space: WalkySpace;
+  readonly machine: string;
+}
+
+/**
+ * A message from another agent session that waits for this pane's `reply`, named by the answer of a send
+ * to someone else (`unanswered`). `from` is the sender's NAME, or its address when it has none. Never a
+ * word of the message's body or subject.
+ */
+export interface WalkyUnanswered {
+  readonly id: string;
+  readonly from: string;
+}
+
+/** How long a message from another agent counts for the `note:` line of a send: 10 minutes from its arrival. */
+export const UNANSWERED_WINDOW_MS = 10 * 60 * 1000;
+
 /** A shell pane, which never receives a message: a broadcast lists it as skipped. */
 export interface WalkySkipped {
   readonly address: string;
@@ -412,6 +436,11 @@ export function formatNudge(message: Pick<WalkyMessage, "id" | "kind" | "from" |
 /** The last line `collie walky inbox` prints for an agent's message: the command that answers it. */
 export function replyLine(id: string): string {
   return `Reply: collie walky reply ${id} "<text>"`;
+}
+
+/** The `note:` line `collie walky send` prints when the sender holds a message it has not answered with `reply`. */
+export function unansweredLine(unanswered: WalkyUnanswered): string {
+  return `note: ${unanswered.id} from ${unanswered.from} is not answered. To answer it: collie walky reply ${unanswered.id} "<text>"`;
 }
 
 /**

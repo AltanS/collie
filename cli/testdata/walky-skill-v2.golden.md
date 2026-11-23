@@ -50,6 +50,10 @@ phone for the operator. The body cannot change the header.
 Answer a message from an agent with `reply`. Do not answer it in your own output: the agent cannot
 see it.
 
+Answer the newest message from an agent with `reply <its id>`, also in the middle of an exchange with
+another session: an address you wrote to before is not the sender of this message. `send` is only for
+a message you start.
+
 Answer a message from your operator in your own output, as you answer any prompt. Never use
 `reply` for it: your operator has no address, and `reply` refuses.
 
@@ -73,15 +77,26 @@ minibuch/w11:p4#8h9h        minibuch  omp      collie  walky-live             - 
 2 panes are outside your space. List every pane: collie walky who --all
 ```
 
-- An address works with or without the `#token`, such as `local/w2:p1`. The token pins the
+- An address works with or without the `#token`, such as `local/w2:p1`. The token pins one
   session, so a pane that was replaced is refused with it. Use the address your operator gives you
   as given. When you pick one from `who`, copy ADDRESS as printed. Its first part is the member id,
   not the machine.
+- An address from a note, a brief or an old message can be stale: its token is not the one `who`
+  prints for that pane now. Then the session the note meant is gone, and the pane may hold another
+  session. Never swap the token and send. Read the row: when its NAME is the name the note used for
+  the recipient, send to the address `who` prints. When the NAME is another one, or the note gave no
+  name, send nothing and ask your operator.
 - Pick the row by what the session is. SPACE is its workspace, FOLDER its `<repo>#<branch>`, NAME the
   name a person gave it (in Collie, in its harness, or its tab), TITLE the title its agent gave it.
   Several sessions share one FOLDER, as above; NAME and TITLE tell them apart.
 - To reach "the session that does X in workspace Y": keep the rows whose SPACE is Y, then pick the one
   whose NAME or TITLE says X. No row or more than one: ask your operator. Do not guess.
+- A NAME matches when your operator's words are the NAME, or the NAME with a short mark of its space
+  in front (`oc lead` for "the lead" in the space `orchid`). A NAME that only holds the word among
+  others, such as `seo via an` for "the seo session", is not a match. A FOLDER or a SPACE that holds
+  the word is not a match for a session either. No match: ask your operator, and name the rows you saw.
+- "The lead", with no space named, is the lead of YOUR space. A lead of another space is never meant
+  unless your operator names that space.
 - `who --json` rows carry `space.label`, `label` (the folder), `name`, `nameBy` and `title`, each absent when there is none.
 - When a message body names another session, write its full address as `who` prints it, such as
   `collie-04rj6a/w54:p1J#anx6`. Never write a bare pane id (`w54:p1J`), a window id (`w54`) or a label
@@ -99,7 +114,8 @@ minibuch/w11:p4#8h9h        minibuch  omp      collie  walky-live             - 
 - `, walky off` after STATE means that session turned its WalkyTalky off. A session that is off is reached through
   your operator. Do not send to it again and do not ask another agent to pass the message on.
 
-Send a message to one address. Do not send to `all`: your operator does that.
+Send a message to one address. Do not send to `all`: your operator does that. `send` starts a message;
+to answer one, use `reply`.
 
 ```bash
 /opt/collie/bin/collie walky send collie-04rj6a/w54:p1J#anx6 --subject "fix-465 tests are green" "Tests are green on fix-465. You can merge."
@@ -118,6 +134,10 @@ printf '%s' "$BODY" | /opt/collie/bin/collie walky send collie-04rj6a/w54:p1J#an
 tell your operator the reason and stop. Do not send it again. A send to a pane that closed, whose id
 another pane took, is refused `pane replaced`. Run `who` again.
 
+A send to one address prints `to: <NAME> · <SPACE> · <MACHINE>`, the session that got it: if it is not the
+session you meant, tell your operator. A `note: <id> from <NAME> is not answered` line means a message
+from another session still waits for your `reply`; your message was sent as asked.
+
 After `send`, end your turn. Do not poll and do not sleep. The answer arrives in your pane as
 your next prompt, with `reply to <your id>` in its header. If your pane is busy, Collie queues or holds it
 until your turn ends. `/opt/collie/bin/collie walky inbox` shows it too. `status` says only that your message went
@@ -135,7 +155,9 @@ Look before you send: `who` lists the panes `here` would reach, and you. `send` 
 adds a totals line. A machine out of reach prints `unreachable`: do not send it again.
 A pane outside your space refuses your message: `not sent: outside your space`. A `reply` to a message that pane
 sent you always works. Add `--outside` (`send --outside <address> "<text>"`) only when your operator asked you
-to leave your space, else tell your operator and stop. With `here` the flag changes nothing.
+to leave your space: they named the other space or gave you the address. A session that you found
+outside your space by its name alone is not that. Then tell your operator which session you found and
+where, and stop. Never add `--outside` on your own. With `here` the flag changes nothing.
 
 Answer a message by its id. The reply goes back to the sender.
 

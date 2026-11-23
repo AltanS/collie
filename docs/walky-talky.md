@@ -108,6 +108,15 @@ pane has no space, so it lists every pane and prints no such line.
   the name a person gave it, and TITLE the title its agent gave it. Several sessions can share one
   FOLDER; NAME and TITLE tell them apart. To reach "the session that fixes the login in `work`", keep the
   rows whose SPACE is `work` and pick the one whose NAME or TITLE says so.
+- **A NAME matches only as a whole name.** The words you give are the NAME, or the NAME with a short
+  mark of its space in front: `oc lead` for "the lead" in the space `orchid`. A NAME, FOLDER or SPACE
+  that only holds the word among others is no match, so `seo via an` is not "the seo session". With no
+  match the agent asks you and names the rows it saw. "The lead", with no space named, is the lead of
+  the agent's own space.
+- **An address from a note is never repaired.** An address from a note, a brief or an old message can
+  carry a token that is not the one `who` prints now. The agent never swaps the token and sends. When
+  the row's NAME is the name the note used, it sends to the address `who` prints. With another NAME, or
+  no name in the note, it sends nothing and asks you.
 - **NAME** is the name a person gave the session: a rename in Collie, a name set in its harness (Claude
   Code's `/rename`, pi's `/name`, an Oh My Pi title you set), or the name of a tab that holds only that
   pane. **TITLE** is the title the agent wrote for the session itself (Claude Code's own title, Oh My Pi's
@@ -124,16 +133,34 @@ pane has no space, so it lists every pane and prints no such line.
 - **`, walky off` after STATE** means that session turned its WalkyTalky off. It takes messages
   from you only ([Turn it off for one session](#turn-it-off-for-one-session)).
 
-`send` waits up to 15 seconds for the receipt, then prints three lines: the id, the pane, and the
-state in words.
+`send` waits up to 15 seconds for the receipt. For a send to one pane it then prints the id, the pane,
+who got the message, and the state in words.
 
 ```text
 wt_k3f9x2m8q1a0
 to collie-7k2m9p/w54:p1G#1adi, claude, my-app#fix-login
+to: login fix · work · desk
 typed into the pane
 ```
 
-When the message is not typed yet, a fourth line says `check later: collie walky status <id>`.
+The `to:` line is the NAME, SPACE and MACHINE of the pane, as `who` prints that row, taken from the
+bridge that resolved the address. A session with no NAME prints `-`. Read it: it shows a wrong pick at
+once. It is not printed for `here`, a folder or a `reply`.
+
+When the message is not typed yet, a line says `check later: collie walky status <id>`.
+
+When the pane that sends holds a message from another agent session that it has not answered with
+`reply`, that arrived in the last 10 minutes, `send` adds one last line. It names the newest such
+message, never a word of its body or subject:
+
+```text
+note: wt_n2d8s1v7c4b9 from api docs is not answered. To answer it: collie walky reply wt_n2d8s1v7c4b9 "<text>"
+```
+
+It is a notice, not a refusal: the message is sent as asked. The line does not appear when the
+recipient is the sender of that message, once the pane answered it with `reply`, for a message from an
+operator, or for a send to `here` or a folder. `send --json` carries the same two facts as `recipient`
+and `unanswered`. An older bridge sends neither field, and an older `collie` prints neither line.
 With no text after the address, the body is read from stdin:
 
 ```sh
@@ -146,7 +173,9 @@ git log --oneline -5 | collie walky send collie-7k2m9p/w54:p1G#1adi
 into the sender's pane as the sender's next prompt, with `reply to <id>` in its header. An agent
 that sent a message ends its turn and waits for that prompt. It does not poll and it does not sleep.
 If the sender's pane is busy, the reply waits as in [Into a busy pane](#into-a-busy-pane). `collie
-walky inbox` shows it too. `status` tells you the message was typed. It does not tell you the
+walky inbox` shows it too. An agent answers the newest message from another agent with `reply <id>`,
+also in the middle of an exchange with a third session, because an address it wrote to before is not
+the sender of that message. `send` is for a message it starts. `status` tells you the message was typed. It does not tell you the
 receiver read it or answered it.
 
 > **Note.** `send` works only inside a pane. From a plain terminal it is refused with
@@ -297,7 +326,9 @@ checks again before it types a message that was held. It lets a message through 
   pane the flag is a usage error, because only an agent's message has a space to leave.
 
 Every other send is refused `outside your space`, with a hint to use `here`, a reply or `--outside`.
-An agent uses `--outside` only when its operator asked for it, as with `--wake`. An agent's `all` and
+An agent uses `--outside` only when its operator asked for it, as with `--wake`: the operator named the
+other space or gave the address. A session the agent found outside its space by its name alone is not
+that, so the agent tells the operator which session it found and where, and stops. An agent's `all` and
 `<member>/all` need the flag, and a bare word such as `my-app` reaches the panes of other spaces only
 with it. The receipt records how the message passed. The bridge checks the space before the flag. A
 message with `--outside` to a pane of your own space passes as `in`, and its header has no `outside`

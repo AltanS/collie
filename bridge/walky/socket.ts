@@ -4,7 +4,11 @@
 // token: the socket's mode is the credential, as the hold socket's is.
 //
 // Requests (`v: 1`, plus `markers`: the raw multiplexer markers the CLI read from its environment):
-//   send    { id, to, body, replyTo, wake?, outside?, subject? }   → { ok, receipts, target?, subjectLeftOut? }
+//   send    { id, to, body, replyTo, wake?, outside?, subject? }   → { ok, receipts, target?, subjectLeftOut?, recipient?, unanswered? }
+//                                       (`recipient`: the one pane an agent's send reached, as `who` lists it; `unanswered`: the
+//                                        newest message from another session that this pane has not answered with `reply`, from
+//                                        the last 10 minutes. Both only for a send to one pane address that is no reply, and
+//                                        never in a refusal. The CLI prints them as the `to:` and `note:` lines.)
 //   inbox   { all, ack, id? }           → { ok, pane, messages }   (`id`: that one message)
 //   who     {}                          → { ok, self, ownSpace?, targets, note?, selfOff? }   (`ownSpace`: the asking pane's space, M98)
 //   status  { id }                      → { ok, receipts, message, elsewhere, deliveries?, totals? }
@@ -89,7 +93,7 @@ import { unknownOp } from "./refusals.ts";
 import type { WalkyDelivery, WalkyService } from "./service.ts";
 import type { TakeBack, WalkyPane } from "./deliver.ts";
 import type { WalkySpace } from "./space.ts";
-import type { WalkyEntry, WalkyMessage, WalkyReceipt, WalkyTarget } from "./types.ts";
+import type { WalkyEntry, WalkyMessage, WalkyReceipt, WalkyRecipient, WalkyTarget, WalkyUnanswered } from "./types.ts";
 
 /** What the socket answers a send that names no pane. */
 export const SEND_NEEDS_A_PANE = "run this inside a pane, or send from the phone";
@@ -177,10 +181,20 @@ export interface WalkyServerDeps {
   readonly propose?: ProposeSocket;
 }
 
+/** The answer of a send that was taken: `receipts`, and each optional field only when the service named it. */
+interface TakenSend {
+  ok: true;
+  receipts: readonly WalkyReceipt[];
+  target?: WalkyTarget;
+  subjectLeftOut?: true;
+  recipient?: WalkyRecipient;
+  unanswered?: WalkyUnanswered;
+}
+
 /** What one request is answered with. */
 export type WalkyAnswer =
   | { readonly ok: false; readonly error: string; readonly missing?: string }
-  | { readonly ok: true; readonly receipts: readonly WalkyReceipt[]; readonly target?: WalkyTarget; readonly subjectLeftOut?: true }
+  | { readonly ok: true; readonly receipts: readonly WalkyReceipt[]; readonly target?: WalkyTarget; readonly subjectLeftOut?: true; readonly recipient?: WalkyRecipient; readonly unanswered?: WalkyUnanswered }
   | {
       readonly ok: true;
       readonly receipts: readonly WalkyReceipt[];
@@ -256,9 +270,14 @@ export async function answerRequest(
       }
       const answer = await service.send({ id: request.id, to: request.to, body: request.body, replyTo: request.replyTo, wake: request.wake, outside: request.outside, subject: request.subject }, { kind: "agent", pane });
       if (!answer.ok) return answer;
-      const sent: WalkyAnswer = answer.target === undefined ? { ok: true, receipts: answer.receipts } : { ok: true, receipts: answer.receipts, target: answer.target };
-      // M98 spec 07: the CLI says so when the subject was left out. Absent otherwise, as from every older bridge.
-      return answer.subjectLeftOut === true ? { ...sent, subjectLeftOut: true } : sent;
+      // Each field after `receipts` rides only when the service gave it, as it is absent from every older bridge's
+      // answer: the subject left out (M98 spec 07), the recipient and the unanswered notice (the `to:` and `note:` lines).
+      const sent: TakenSend = { ok: true, receipts: answer.receipts };
+      if (answer.target !== undefined) sent.target = answer.target;
+      if (answer.subjectLeftOut === true) sent.subjectLeftOut = true;
+      if (answer.recipient !== undefined) sent.recipient = answer.recipient;
+      if (answer.unanswered !== undefined) sent.unanswered = answer.unanswered;
+      return sent;
     }
     case "who": {
       const self = pane === null ? null : service.addressOf(pane.paneId, pane.instance);

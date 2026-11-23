@@ -367,6 +367,27 @@ export class WalkyLog {
     return mergeRows(own, theirs, limit);
   }
 
+  /**
+   * The newest agent message that reached one pane instance, arrived at or after `since`, and that the pane
+   * has not answered with a `reply` (a message it sent with that id as `replyTo`), or null. A message from
+   * an operator, one refused, and one whose sender `fromSkipped` names (the recipient of the send that asks)
+   * never count. This bridge's own records only: a message another instance recorded is not seen.
+   */
+  newestUnanswered(pane: { readonly session: string; readonly paneId: string; readonly instance: string }, since: number, fromSkipped: (address: string) => boolean): LogRecord | null {
+    const at = (place: Placement | null): boolean => place !== null && place.session === pane.session && place.paneId === pane.paneId && sameInstance(place.instance, pane.instance);
+    const records = [...this.records.values()];
+    const answered = new Set<string>();
+    for (const record of records) if (record.message.replyTo !== null && at(record.sender)) answered.add(record.message.replyTo);
+    for (const record of records.toReversed()) {
+      const address = record.message.from.address;
+      if (!at(record) || record.message.kind !== "agent" || address === null) continue;
+      if (record.acceptedAt < since || record.receipt.state === "refused") continue;
+      if (answered.has(record.message.id) || fromSkipped(address)) continue;
+      return record;
+    }
+    return null;
+  }
+
   /** The newest messages on this bridge, any pane, newest first. */
   newest(limit: number): LogRecord[] {
     return [...this.records.values()].toReversed().slice(0, limit);
