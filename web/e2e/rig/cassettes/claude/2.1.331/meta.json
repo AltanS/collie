@@ -29,6 +29,22 @@
         "pi.walky-agents",
         "rig.before-first-case"
       ]
+    },
+    "crew": {
+      "model": "haiku",
+      "skill": "1b62724c3fd6484e",
+      "recordedAt": "2026-11-24T01:14:26.305Z",
+      "cases": [
+        "claude.walky-crew-agents",
+        "claude.walky-crew-broadcast",
+        "claude.walky-crew-member-to-lead",
+        "claude.walky-crew-off",
+        "claude.walky-crew-pair-limit",
+        "claude.walky-crew-space-here",
+        "claude.walky-crew-space-unnamed",
+        "claude.walky-crew-unreachable",
+        "rig.before-first-case"
+      ]
     }
   }
 }
