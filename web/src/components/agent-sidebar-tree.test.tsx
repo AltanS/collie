@@ -1,6 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 
 import { ThreadSidebar } from "./agent-sidebar";
+import { currentPins, setPinned } from "@/lib/pins";
 import type { AgentView, PaneTree } from "@/lib/types";
 
 // THE TREE ORDER in the switcher and the large screen's sidebar: the same layout as the dashboard's
@@ -51,5 +52,25 @@ describe("ThreadSidebar — the tree order", () => {
     const untagged = herd.map((a) => agent(a.paneId, a.workspaceNumber));
     rerender(<ThreadSidebar agents={untagged} currentPaneKey="" onSelect={vi.fn()} order="place" onOrderChange={vi.fn()} />);
     expect(screen.queryByRole("radio", { name: "Tree" })).toBeNull();
+  });
+});
+
+describe("ThreadSidebar — the tree order keeps pinned panes in the tree", () => {
+  afterEach(() => {
+    for (const a of herd) setPinned(a, false, herd);
+  });
+
+  it("a pinned child stays indented under its starter, and Pinned keeps it too", () => {
+    setPinned(herd[1]!, true, herd, 1);
+    render(
+      <ThreadSidebar agents={herd} currentPaneKey="" onSelect={vi.fn()} order="tree" onOrderChange={vi.fn()} pins={currentPins()} />,
+    );
+    // Pinned (bravo), then the tree: charlie > bravo, then alpha.
+    expect(names()).toEqual(["bravo", "charlie", "bravo", "alpha"]);
+    const all = rows();
+    expect(all[0]!.querySelector('[data-slot="tree-indent"]')).toBeNull();
+    expect(all[2]!.querySelector('[data-slot="tree-indent"]')).toHaveClass("w-4");
+    expect(all[0]!.id).not.toBe("");
+    expect(all[2]!.id).toBe("");
   });
 });

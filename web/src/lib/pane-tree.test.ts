@@ -1,5 +1,5 @@
 import { paneRowKey } from "./hosts";
-import { herdHasTree, paneRole, paneTree, treeLayout } from "./pane-tree";
+import { herdHasTree, paneRole, paneTree, treeLayout, treeRows } from "./pane-tree";
 import type { AgentView, PaneTree } from "./types";
 
 function pane(paneId: string, tree?: PaneTree, host?: string): AgentView {
@@ -76,5 +76,20 @@ describe("treeLayout", () => {
 
   it("keeps place order with no tree at all", () => {
     expect(ids(treeLayout([pane("b"), pane("a"), pane("c")]).rows)).toEqual(["b", "a", "c"]);
+  });
+});
+
+describe("treeRows", () => {
+  const a = pane("a", { id: "a" });
+  const b = pane("b", { parent: "a" });
+  const c = pane("c");
+
+  it("puts a pinned pane back in place order among the rows the filters left", () => {
+    expect(ids(treeRows([a, c], [b], [a, b, c]))).toEqual(["a", "b", "c"]);
+  });
+
+  it("is the shown rows when nothing pinned is missing from them", () => {
+    expect(ids(treeRows([a, b, c], [b], [a, b, c]))).toEqual(["a", "b", "c"]);
+    expect(ids(treeRows([c, a], [], [a, b, c]))).toEqual(["c", "a"]);
   });
 });

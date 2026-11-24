@@ -2,6 +2,7 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { AgentList } from "./agent-list";
+import { currentPins, setPinned } from "@/lib/pins";
 import type { AgentView, PaneTree } from "@/lib/types";
 
 // THE TREE ORDER on the dashboard (lib/pane-tree.ts): one list under one heading, each child under the
@@ -82,5 +83,43 @@ describe("AgentList — the tree order", () => {
     render(<AgentList agents={untagged} {...props} order="tree" />);
     expect(within(screen.getByRole("combobox", { name: "Pane order" })).getByRole("option", { name: "Tree" })).toBeInTheDocument();
     expect(names()).toEqual(["plain", "worker-a", "coord", "worker-b", "review"]);
+  });
+});
+
+describe("AgentList — the tree order keeps pinned panes in the tree", () => {
+  // The crew case that came back flat: both children of a coordinator pinned, and a worker under one of them.
+  const herd = [
+    agent("kilo", 1, { id: "c1", role: "coordinator" }),
+    agent("lima", 1, { id: "la", parent: "c1", role: "coordinator" }),
+    agent("mike", 1, { id: "lb", parent: "c1", role: "worker" }),
+    agent("november", 2, { parent: "la", role: "worker" }),
+    agent("oscar", 3),
+  ];
+  const pinned = (...ids: string[]) => {
+    let now = 0;
+    for (const id of ids) setPinned(herd.find((a) => a.paneId === id)!, true, herd, ++now);
+    return currentPins();
+  };
+  afterEach(() => {
+    for (const a of herd) setPinned(a, false, herd);
+  });
+
+  it("draws a pinned child in Pinned and again in its place under its starter", () => {
+    render(<AgentList agents={herd} onOpen={vi.fn()} order="tree" onOrderChange={vi.fn()} pins={pinned("lima", "mike")} />);
+    const tree = screen.getByRole("heading", { name: /who started whom/i }).closest("section")!;
+    const rows = within(tree).getAllByRole("button").filter((b) => b.closest("section") === tree);
+    const order = rows.map((b) => ["kilo", "lima", "mike", "november", "oscar"].find((n) => within(b).queryByText(n) !== null));
+    expect(order).toEqual(["kilo", "lima", "november", "mike", "oscar"]);
+    expect(rows[1]!.querySelector('[data-slot="tree-indent"]')).toHaveClass("w-4");
+    expect(rows[2]!.querySelector('[data-slot="tree-indent"]')).toHaveClass("w-8");
+    // The Pinned rows are plain rows, never indented, and they keep the DOM ids the jump reads.
+    const pinnedRegion = screen.getByRole("region", { name: "Pinned" });
+    for (const row of within(pinnedRegion).getAllByRole("button")) {
+      expect(row.querySelector('[data-slot="tree-indent"]')).toBeNull();
+    }
+    // One element per id: the copy in the tree carries none.
+    const ids = [...document.querySelectorAll("[id^=pane-row-]")].map((el) => el.id);
+    expect(ids.length).toBeGreaterThan(0);
+    expect(new Set(ids).size).toBe(ids.length);
   });
 });

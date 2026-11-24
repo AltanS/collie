@@ -23,7 +23,7 @@ import { paneRowKey, paneScope } from "@/lib/hosts";
 import { machinesHiddenFrom } from "@/lib/hidden-machines";
 import { pinMatcher, type Pin } from "@/lib/pins";
 import { inRankOrder, paneOrdersFor, rankedHeading, type PaneOrder } from "@/lib/pane-order";
-import { herdHasTree, paneRole, treeLayout } from "@/lib/pane-tree";
+import { herdHasTree, paneRole, treeLayout, treeRows } from "@/lib/pane-tree";
 import {
   byScore,
   filterOffered,
@@ -591,9 +591,17 @@ export function AgentList({
   // groups already and are ranked with everything else, as in the switcher.
   // The tree order (lib/pane-tree.ts) is structure, not a reading: laid out live from the rows the
   // filters left, so a child sits under its starter and a starter filtered out leaves its child a root.
-  const tree = order === "tree" && !renderBody ? treeLayout(drawn.flatMap((d) => d.rows)) : null;
+  // A pinned pane stays in its place in the tree as well (lib/pane-tree.ts `treeRows`), so a pinned starter
+  // or child never leaves the panes under it with no parent row.
+  const tree =
+    order === "tree" && !renderBody
+      ? treeLayout(treeRows(drawn.flatMap((d) => d.rows), pinned, groups.flatMap((g) => g.panes)))
+      : null;
+  // A pinned pane's second row, in the tree: drawn like any row but without the DOM id and the glide key the
+  // Pinned row already holds, so a jump and a glide still land on one element.
+  const isTreeCopy = (a: AgentView) => tree !== null && isPinned(a);
   const rankedRows = ranked && !renderBody ? (tree?.rows ?? inRankOrder(drawn.flatMap((d) => d.rows), ranks)) : NO_PANES;
-  const firstUrgentRow = rankedRows.find((p) => ATTENTION.has(bucketOf(p)));
+  const firstUrgentRow = rankedRows.find((p) => ATTENTION.has(bucketOf(p)) && !isTreeCopy(p));
 
   // ── THE FILTER (M97) ──────────────────────────────────────────────────────────────────────────────
   // It narrows what the controls above already narrowed: the workspace select, hidden machines and the
@@ -608,7 +616,7 @@ export function AgentList({
   const herdTotal = agents.length + shellPanes.length;
   const offered = filterOffered(herdTotal);
   const filterActive = offered && renderBody === undefined;
-  const baseRows = [...pinned, ...(ranked ? rankedRows : drawn.flatMap((d) => d.rows))];
+  const baseRows = [...pinned, ...(ranked ? rankedRows.filter((p) => !isTreeCopy(p)) : drawn.flatMap((d) => d.rows))];
   const hits = matchPanes(baseRows, filterActive ? filter.query : "", {
     level: filterLevel,
     drawn: DASH_DRAWN,
@@ -733,25 +741,30 @@ export function AgentList({
     const depth = band || bestRows !== null ? undefined : tree?.depth.get(paneRowKey(a));
     return depth === undefined ? undefined : { depth, role: paneRole(a) };
   };
-  const row = (a: AgentView, scope: "place" | "herd" = "place", band = false) => (
-    <AgentCard
-      key={paneRowKey(a)}
-      id={band ? undefined : rowDomId(paneRowKey(a))}
-      agent={a}
-      onClick={(el) => onOpen(a, el)}
-      glideKey={glideKeyOf?.(a)}
-      onPress={onPress && (() => onPress(a))}
-      onHold={onHold && (() => onHold(a))}
-      scope={scope}
-      statusStyle="dot"
-      density={band ? "card" : "row"}
-      unseen={bucketOf(a) === "ready"}
-      tint
-      stale={stale}
-      match={hitOf(a)}
-      tree={treePlace(a, band)}
-    />
-  );
+  // `inTree`: the row is drawn in the tree order's own list, the one place it takes a depth and a role. A pinned
+  // pane's row there is its second one (`isTreeCopy`).
+  const row = (a: AgentView, scope: "place" | "herd" = "place", band = false, inTree = false) => {
+    const copy = inTree && isTreeCopy(a);
+    return (
+      <AgentCard
+        key={paneRowKey(a)}
+        id={band || copy ? undefined : rowDomId(paneRowKey(a))}
+        agent={a}
+        onClick={(el) => onOpen(a, el)}
+        glideKey={copy ? undefined : glideKeyOf?.(a)}
+        onPress={onPress && (() => onPress(a))}
+        onHold={onHold && (() => onHold(a))}
+        scope={scope}
+        statusStyle="dot"
+        density={band ? "card" : "row"}
+        unseen={bucketOf(a) === "ready"}
+        tint
+        stale={stale}
+        match={hitOf(a)}
+        tree={inTree ? treePlace(a, band) : undefined}
+      />
+    );
+  };
 
   const summary = (
     <StatusSummaryLine
@@ -931,7 +944,7 @@ export function AgentList({
                 tone="strong"
                 className="min-h-7"
               />
-              <ListColumns rows={rankedShown} columns={columns} renderRow={(a) => row(a, "herd")} />
+              <ListColumns rows={rankedShown} columns={columns} renderRow={(a) => row(a, "herd", false, true)} />
             </section>
           )}
 
@@ -1067,7 +1080,7 @@ export function AgentList({
             tone="strong"
             className="min-h-7"
           />
-          <ListGroup>{rankedShown.map((a) => row(a, "herd"))}</ListGroup>
+          <ListGroup>{rankedShown.map((a) => row(a, "herd", false, true))}</ListGroup>
         </section>
       )}
 

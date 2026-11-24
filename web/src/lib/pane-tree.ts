@@ -51,6 +51,26 @@ export function herdHasTree(panes: readonly Pick<AgentView, "tree">[]): boolean 
   return panes.some((p) => paneTree(p) !== null);
 }
 
+/**
+ * The rows the tree order lays out: the rows the filters left, and every pinned pane as well, in place
+ * order (`place`, every pane as the groups run). A pin takes a pane out of its workspace group (ADR 0147
+ * point 6), but the tree is not a workspace group: a pinned starter or a pinned child taken out of it
+ * would leave its own children with no parent row, and they would fall to the left as if no one had
+ * started them. So in the tree order a pinned pane is listed twice, in Pinned and in its place in the tree.
+ */
+export function treeRows(
+  shown: readonly AgentView[],
+  pinned: readonly AgentView[],
+  place: readonly AgentView[],
+): AgentView[] {
+  const seen = new Set(shown.map(paneRowKey));
+  const extra = pinned.filter((p) => !seen.has(paneRowKey(p)));
+  if (extra.length === 0) return [...shown];
+  const at = new Map(place.map((p, i) => [paneRowKey(p), i]));
+  const rank = (p: AgentView) => at.get(paneRowKey(p)) ?? Number.MAX_SAFE_INTEGER;
+  return [...shown, ...extra].toSorted((a, b) => rank(a) - rank(b));
+}
+
 export interface TreeLayout {
   /** Every pane given, once each, in tree order. */
   rows: AgentView[];
