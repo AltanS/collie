@@ -829,6 +829,17 @@ updated machines, so build skew is the steady state (§7), and this section is t
   answerable, and nothing in `bridge/crew/merge.ts` changes, for the reason the `cache` bullet gives.
   `CREW_PROTOCOL_VERSION` stays `2`, no new route, no new verb and no new header.
 
+- **A pane gained an optional `tree`** (added 2026-11-20). It says where the pane sits in a tree of
+  agents that start agents: `{ id?, parent?, role? }`, two opaque node ids of at most 64 characters
+  from `[A-Za-z0-9_-]` and a role word of at most 24, with at least one id. A member reads it off its
+  own multiplexer's pane metadata (Herdr's `collie_*` pane tokens) and sends it as a plain field, so no
+  Herdr word crosses the link. Additive-optional with the closed reading this section requires:
+  **absent means not in a tree**, which the phone renders as nothing, exactly as before the field, and
+  the phone drops a malformed one from a peer. The ids are matched across the whole merged herd, which
+  is why they carry no member id. An older peer omits it, and an older lead passes it through
+  untouched. Nothing in `bridge/crew/merge.ts` changes, for the reason the `cache` bullet gives.
+  `CREW_PROTOCOL_VERSION` stays `2`, no new route, no new verb and no new header.
+
 - **An addition a lead has no reader for is INERT, not merely tolerated — measured, not assumed**
   (2026-09-08, §16's version-skew leg). This section's promise used to rest on a unit test with a
   stand-in field. It has now been walked with the two real builds: a **1.6.0** lead binary, leading

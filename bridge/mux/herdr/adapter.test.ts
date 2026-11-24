@@ -559,3 +559,30 @@ describe("a write whose connection Herdr closed before the reply", () => {
     expect(keys.ok ? "ok" : keys.reason).toBe("unreachable");
   });
 });
+
+describe("a pane's place in a tree of agents, off its collie_ tokens", () => {
+  class TaggedHerdr extends FakeHerdr {
+    constructor(private readonly tokens: Record<string, string> | null | undefined) {
+      super();
+    }
+
+    override async sessionSnapshot(): Promise<WireSnapshot> {
+      const snapshot = await super.sessionSnapshot();
+      return { ...snapshot, panes: snapshot.panes.map((pane) => Object.assign({}, pane, { tokens: this.tokens })) };
+    }
+  }
+
+  test("a tagged pane carries its tree", async () => {
+    const tokens = { collie_id: "a1b2c3d4", collie_parent: "ffee0011", collie_role: "worker", role: "ignored" };
+    const { panes } = await new HerdrMux(new TaggedHerdr(tokens), () => []).snapshot();
+    expect(panes.length).toBeGreaterThan(0);
+    for (const pane of panes) expect(pane.tree).toEqual({ id: "a1b2c3d4", parent: "ffee0011", role: "worker" });
+  });
+
+  const UNTAGGED: (Record<string, string> | null | undefined)[] = [undefined, null, {}, { role: "worker", parent: "host/w1:p1" }];
+  test.each(UNTAGGED)("no tree from %p", async (tokens) => {
+    const { panes } = await new HerdrMux(new TaggedHerdr(tokens), () => []).snapshot();
+    expect(panes.length).toBeGreaterThan(0);
+    for (const pane of panes) expect("tree" in pane).toBe(false);
+  });
+});

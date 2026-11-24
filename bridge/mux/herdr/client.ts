@@ -115,6 +115,13 @@ export interface WirePane {
     max_offset_from_bottom: number;
     viewport_rows: number;
   } | null;
+  /**
+   * Display-only metadata another program put on the pane (`herdr pane report-metadata --token`), as
+   * one flat map of name to value; the reporting source is not on the wire. Collie reads only the
+   * `collie_*` names (adapter.ts, `paneTreeOf`). Every value is a string (probed on herdr 0.9.x).
+   * Optional: older servers omit it, and a pane nobody tagged carries none.
+   */
+  tokens?: Record<string, string> | null;
 }
 
 /**

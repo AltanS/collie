@@ -26,7 +26,7 @@
 // capability — it does not get a VT parser written for it.
 
 import type { AgentSessionRef, ForegroundProcess } from "../journal/types.ts";
-import type { AgentStatus, AnswerRequest, BlockedBy, Ask, AskDecided, ControlRequest, PaneAction } from "../types.ts";
+import type { AgentStatus, AnswerRequest, BlockedBy, Ask, AskDecided, ControlRequest, PaneAction, PaneTree } from "../types.ts";
 import type { MuxCapability, MuxCapabilityDeclaration } from "./capabilities.ts";
 import type { MuxIdentity } from "./identity.ts";
 
@@ -277,6 +277,12 @@ export interface MuxPane extends MuxIdentity {
   readonly progress?:
     | { readonly kind: "steps"; readonly steps: readonly { readonly label: string; readonly state: "done" | "running" | "todo" }[] }
     | { readonly kind: "percent"; readonly value: number; readonly label?: string };
+  /**
+   * Where this pane sits in a tree of agents that start agents, when whoever started it said so. Only
+   * an adapter whose multiplexer keeps per-pane metadata fills it (Herdr's pane tokens). Validated by
+   * the adapter that read it: opaque ids, a short role word.
+   */
+  readonly tree?: PaneTree;
   /**
    * The session the agent in this pane named, when it named one — the journal's key, and the reason
    * `agentSessionRef` is a capability rather than an assumption (bridge/journal/registry.ts).

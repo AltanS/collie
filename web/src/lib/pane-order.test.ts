@@ -1,4 +1,4 @@
-import { activityAt, activityRanks, cacheRanks, coercePaneOrder, coldAt, inRankOrder } from "./pane-order";
+import { activityAt, activityRanks, cacheRanks, coercePaneOrder, coldAt, inRankOrder, isFrozenOrder, paneOrdersFor, rankedHeading } from "./pane-order";
 import { paneRowKey } from "./hosts";
 import type { AgentView } from "./types";
 
@@ -179,5 +179,25 @@ describe("cacheRanks", () => {
     expect(keys(inRankOrder(panes, ranks))).toEqual(["soon", "late"]);
     // `soon` is now cold and `late` is not, and the list still draws what the reader was handed.
     expect(keys(inRankOrder(panes, ranks))).toEqual(["soon", "late"]);
+  });
+});
+
+describe("the tree order", () => {
+  it("is a stored order like the others", () => {
+    expect(coercePaneOrder("tree")).toBe("tree");
+  });
+
+  it("is offered only with a tree in the herd, or while it is the order in force", () => {
+    expect(paneOrdersFor(false)).toEqual(["place", "activity", "cache"]);
+    expect(paneOrdersFor(true)).toEqual(["place", "activity", "cache", "tree"]);
+    expect(paneOrdersFor(false, "tree")).toEqual(["place", "activity", "cache", "tree"]);
+  });
+
+  it("is structure, never a frozen reading, and has its own heading", () => {
+    expect(isFrozenOrder("tree")).toBe(false);
+    expect(isFrozenOrder("place")).toBe(false);
+    expect(isFrozenOrder("activity")).toBe(true);
+    expect(isFrozenOrder("cache")).toBe(true);
+    expect(rankedHeading("tree")).toBe("paneOrder.byStarter");
   });
 });

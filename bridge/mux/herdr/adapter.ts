@@ -27,6 +27,7 @@ import { isUnnamedTab } from "../../pane-name.ts";
 import type { DialMode } from "../../dial.ts";
 import type { ForegroundProcess } from "../../journal/types.ts";
 import { declareCapabilities } from "../capabilities.ts";
+import { paneTreeOf } from "../pane-tree.ts";
 import { herdrMachineCandidates } from "./machine-list.ts";
 import { herdrBeaconMatcher } from "./markers.ts";
 import { herdrSessionSource } from "./sessions.ts";
@@ -665,6 +666,9 @@ function toMuxPane(
   // Scrollback depth + viewport = what a `recent` read can yield. Omitted when the server predates
   // `scroll`, so an older Herdr reads as "unknown" rather than "zero".
   if (raw.scroll) pane.readableLines = raw.scroll.max_offset_from_bottom + raw.scroll.viewport_rows;
+  // Where an orchestrating agent placed this pane, off its `collie_*` pane tokens (bridge/mux/pane-tree.ts).
+  const tree = paneTreeOf(raw.tokens);
+  if (tree !== undefined) pane.tree = tree;
   pane.revision = raw.revision;
   return pane;
 }

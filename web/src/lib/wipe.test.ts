@@ -93,6 +93,7 @@ const PREFERENCE_KEYS = [
   "collie:display-prefs:v4",
   "collie:dash-prefs:v1",
   "collie:pins:v1",
+  "collie:tree-fold:v1",
   "collie:tour:v1",
   "collie:push-disabled",
   "collie:locale:v1",

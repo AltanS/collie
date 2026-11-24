@@ -73,6 +73,13 @@
 # cycle_pane_next = "prefix+tab"
 # cycle_pane_previous = "prefix+shift+tab"
 
+# Move through the tree order from a pane: out to the parent, in to the first child, across to the
+# siblings. Shift keeps them off the arrows Herdr uses to move between split panes.
+# tree_parent = "prefix+shift+left"
+# tree_first_child = "prefix+shift+right"
+# tree_previous = "prefix+shift+up"
+# tree_next = "prefix+shift+down"
+
 # Remove the pane from the view (it keeps running), open the pane menu, zen mode, the sidebar.
 # remove_from_view = "prefix+x"
 # pane_menu = "prefix+m"

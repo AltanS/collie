@@ -28,11 +28,33 @@
 // list is on screen, so a window ticking down cannot pull a row out from under a thumb.
 import { COLD_GRACE_MS } from "./cache-view";
 import { paneRowKey } from "./hosts";
+import type { MessageKey } from "./i18n";
 import type { JsonValue } from "./json";
 import type { AgentView } from "./types";
 
-export const PANE_ORDERS = ["place", "activity", "cache"] as const;
+export const PANE_ORDERS = ["place", "activity", "cache", "tree"] as const;
 export type PaneOrder = (typeof PANE_ORDERS)[number];
+
+/**
+ * The orders a control offers. `tree` (lib/pane-tree.ts) is offered only while some pane of the herd
+ * sits in a tree of agents, or while it is the order in force, so a herd nobody orchestrates never sees
+ * a choice that would read as place order. It is STRUCTURE, not a reading: no clock, nothing frozen.
+ */
+export function paneOrdersFor(hasTree: boolean, current?: PaneOrder): readonly PaneOrder[] {
+  return hasTree || current === "tree" ? PANE_ORDERS : PANE_ORDERS.filter((o) => o !== "tree");
+}
+
+/** The words over the one ranked list, naming the order it runs in. */
+export function rankedHeading(order: Exclude<PaneOrder, "place">): MessageKey {
+  if (order === "cache") return "paneOrder.coldest";
+  if (order === "tree") return "paneOrder.byStarter";
+  return "paneOrder.recent";
+}
+
+/** Whether the order is a reading of a clock, taken once and held (`useFrozenRanks`). */
+export function isFrozenOrder(order: PaneOrder): order is "activity" | "cache" {
+  return order === "activity" || order === "cache";
+}
 
 /** A stored value as an order; anything unknown is the default, place. */
 export function coercePaneOrder(raw: JsonValue | undefined): PaneOrder {

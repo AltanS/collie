@@ -165,6 +165,20 @@ function herdOf(seeds: readonly SpaceSeed[]): Herd {
 
 const HERD = herdOf(SEEDS);
 
+/**
+ * The same herd as an orchestrating agent left it: the first agent coordinates, the next three are workers it
+ * started in other spaces, and one worker started a research pane. The rest sits in no tree.
+ */
+const TREE_HERD: Herd = {
+  ...HERD,
+  agents: HERD.agents.map((pane, i) => {
+    if (i === 0) return { ...pane, tree: { id: "c1", role: "coordinator" } };
+    if (i >= 2 && i <= 4) return { ...pane, tree: { id: `w${i}`, parent: "c1", role: "worker" } };
+    if (i === 5) return { ...pane, tree: { parent: "w2", role: "research" } };
+    return pane;
+  }),
+};
+
 /** Wired to nothing: the "+" shows where it sits. */
 const HEADING_NEW_TAB: HeadingNewTab = { scope: {}, creating: new Set(), onNewTab: () => {} };
 
@@ -174,8 +188,8 @@ const SCREEN_WIDTH = 1280;
 const SCREEN_HEIGHT = 800;
 
 /** One live screen, called INSIDE the card's router, because the router freezes its children. */
-function LiveScreen() {
-  const [order, setOrder] = useState<PaneOrder>("place");
+function LiveScreen({ herd = HERD, initialOrder = "place" }: { herd?: Herd; initialOrder?: PaneOrder }) {
+  const [order, setOrder] = useState<PaneOrder>(initialOrder);
   const [isolated, setIsolated] = useState<string[]>([]);
   const [hidden, setHidden] = useState<string[]>([]);
   const [needsYou, setNeedsYou] = useState(false);
@@ -185,7 +199,7 @@ function LiveScreen() {
   const [measure, width] = useElementWidth<HTMLDivElement>(SCREEN_WIDTH, "client");
   const columns = spaceColumns(width);
   const column = contentWidth(columns);
-  const blocked = countBlocked(HERD.agents);
+  const blocked = countBlocked(herd.agents);
   return (
     <AppHeaderHost bridge="connected" error={false}>
       <RouteHeader wordmark width={column} rightTrail={<SettingsGear scope={{}} />} />
@@ -194,12 +208,12 @@ function LiveScreen() {
           <AgentList
             wide={{ columns }}
             filter={filter}
-            agents={HERD.agents}
-            shellPanes={HERD.shellPanes}
+            agents={herd.agents}
+            shellPanes={herd.shellPanes}
             bridge="connected"
             onOpen={() => {}}
-            tabs={HERD.tabs}
-            workspaces={HERD.workspaces}
+            tabs={herd.tabs}
+            workspaces={herd.workspaces}
             newTab={HEADING_NEW_TAB}
             order={order}
             onOrderChange={setOrder}
@@ -213,9 +227,9 @@ function LiveScreen() {
           <div style={{ width: SPACE_WIDTH }}>
             <div className="-mx-4">
               <SpaceOverview
-                workspaces={HERD.workspaces}
-                agents={HERD.agents}
-                shellPanes={HERD.shellPanes}
+                workspaces={herd.workspaces}
+                agents={herd.agents}
+                shellPanes={herd.shellPanes}
                 onOpen={() => {}}
                 onNewSpace={() => {}}
                 open={spacesOpen}
@@ -236,7 +250,7 @@ function LiveScreen() {
               label: t("home.tabs.dashboard"),
               icon: <Icon name="tab-dashboard" className="size-5" />,
               badge: blocked,
-              dot: blocked === 0 && hasReady(HERD.agents),
+              dot: blocked === 0 && hasReady(herd.agents),
               badgeLabel: blocked > 0 ? tn("home.tabs.blocked", blocked) : t("home.tabs.unseen"),
             },
             { value: "changes", label: t("files.title"), icon: <Icon name="files" className="size-5" /> },
@@ -288,6 +302,21 @@ export function DashboardWideSection() {
             <Screen>
               <PackedRootRouter data={{ ...homeSolo, agents: HERD.agents, shellPanes: HERD.shellPanes, workspaces: HERD.workspaces, tabs: HERD.tabs, servers: [] }}>
                 <LiveScreen />
+              </PackedRootRouter>
+            </Screen>
+          </div>
+        </Card>
+        <Card
+          state="dashboard-wide-tree"
+          label="Tree order, large screen"
+          reach="pick Tree in the order select on a large screen while an orchestrator's sessions carry node ids."
+          note="The ranked list runs across the columns as Activity and Cache do; each child sits under its starter."
+          span="all"
+        >
+          <div className="-mx-4 overflow-x-auto sm:mx-0">
+            <Screen>
+              <PackedRootRouter data={{ ...homeSolo, agents: TREE_HERD.agents, shellPanes: TREE_HERD.shellPanes, workspaces: TREE_HERD.workspaces, tabs: TREE_HERD.tabs, servers: [] }}>
+                <LiveScreen herd={TREE_HERD} initialOrder="tree" />
               </PackedRootRouter>
             </Screen>
           </div>

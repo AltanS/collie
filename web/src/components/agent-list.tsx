@@ -22,7 +22,11 @@ import type { AgentView, BridgeStatus, ServerSummary, SessionSummary, TabView, W
 import { paneRowKey, paneScope } from "@/lib/hosts";
 import { machinesHiddenFrom } from "@/lib/hidden-machines";
 import { pinMatcher, type Pin } from "@/lib/pins";
-import { inRankOrder, type PaneOrder } from "@/lib/pane-order";
+import { inRankOrder, paneOrdersFor, rankedHeading, type PaneOrder } from "@/lib/pane-order";
+import { foldTree, herdHasTree, NO_FOLDS, paneRole, paneTree, treeLayout, treeRows, unfoldPath, waitsOnYou, type FoldedRow } from "@/lib/pane-tree";
+import { foldBranch, unfoldBranches, useTreeFolds } from "@/lib/tree-fold";
+import { paneName } from "@/lib/pane-name";
+import { TreeRow } from "@/components/ui/tree-row";
 import {
   byScore,
   filterOffered,
@@ -232,6 +236,7 @@ export interface HeadingNewTab {
 
 /** A module-level empty list: a fresh `[]` default per render is a new reference for nothing. */
 const NO_PANES: AgentView[] = [];
+
 /** The keys of the panes that needed you in the list as it was held (agents and shells each held on their own). */
 function frozenNeedsKeys(...lists: (readonly AgentView[] | null)[]): ReadonlySet<string> {
   const keys = new Set<string>();
@@ -396,6 +401,8 @@ export function AgentList({
   // never on a poll. Above the early return, because a hook cannot sit behind one. It ranks the whole
   // herd, not what the filters leave, so a filter changing never needs a new reading.
   const { ranks, reread } = useFrozenRanks(order, [...agents, ...shellPanes], { rereadOnVisible: true });
+  // The branches this device folded in the tree order (lib/tree-fold.ts), read above the early return.
+  const folds = useTreeFolds();
   // THE LIST, HELD STILL UNDER A FINGER (hooks/use-still-list.ts). While a finger is down on this list, and 300ms
   // after, a pane that arrived or left waits to be drawn, so no row slides out from under a thumb. Every pane
   // that is drawn is the LIVE copy, so a status or an attention mark still changes in place; the summary
@@ -588,8 +595,28 @@ export function AgentList({
   // the workspace groups into one list. The filters above (needs you, isolate, hide, hidden machines,
   // pins) have already run, so they decide WHICH rows and never their order; shells are in these
   // groups already and are ranked with everything else, as in the switcher.
-  const rankedRows = ranked && !renderBody ? inRankOrder(drawn.flatMap((d) => d.rows), ranks) : NO_PANES;
-  const firstUrgentRow = rankedRows.find((p) => ATTENTION.has(bucketOf(p)));
+  // The tree order (lib/pane-tree.ts) is structure, not a reading: laid out live from the rows the
+  // filters left, so a child sits under its starter and a starter filtered out leaves its child a root.
+  // A pinned pane stays in its place in the tree as well (lib/pane-tree.ts `treeRows`), so a pinned starter
+  // or child never leaves the panes under it with no parent row.
+  const tree =
+    order === "tree" && !renderBody
+      ? treeLayout(treeRows(drawn.flatMap((d) => d.rows), pinned, groups.flatMap((g) => g.panes)))
+      : null;
+  // A pinned pane's second row, in the tree: drawn like any row but without the DOM id and the glide key the
+  // Pinned row already holds, so a jump and a glide still land on one element.
+  const isTreeCopy = (a: AgentView) => tree !== null && isPinned(a);
+  // FOLDED BRANCHES (lib/pane-tree.ts `foldTree`): a folded starter draws alone, with what it hides. A query
+  // searches every row, so the folds wait while the field holds one, and the toggles with them.
+  const querying = filter.query.trim() !== "";
+  const folded = tree === null ? null : foldTree(tree, querying ? NO_FOLDS : folds, waitsOnYou);
+  const foldAt = new Map<string, FoldedRow>(folded?.map((r) => [paneRowKey(r.pane), r]) ?? []);
+  const rankedRows =
+    ranked && !renderBody ? (folded?.map((r) => r.pane) ?? inRankOrder(drawn.flatMap((d) => d.rows), ranks)) : NO_PANES;
+  // The first row that needs you, or a folded starter that hides one, so the summary line's jump has a row to land on.
+  const firstUrgentRow = rankedRows.find(
+    (p) => !isTreeCopy(p) && (ATTENTION.has(bucketOf(p)) || (foldAt.get(paneRowKey(p))?.waiting ?? 0) > 0),
+  );
 
   // ── THE FILTER (M97) ──────────────────────────────────────────────────────────────────────────────
   // It narrows what the controls above already narrowed: the workspace select, hidden machines and the
@@ -604,7 +631,7 @@ export function AgentList({
   const herdTotal = agents.length + shellPanes.length;
   const offered = filterOffered(herdTotal);
   const filterActive = offered && renderBody === undefined;
-  const baseRows = [...pinned, ...(ranked ? rankedRows : drawn.flatMap((d) => d.rows))];
+  const baseRows = [...pinned, ...(ranked ? rankedRows.filter((p) => !isTreeCopy(p)) : drawn.flatMap((d) => d.rows))];
   const hits = matchPanes(baseRows, filterActive ? filter.query : "", {
     level: filterLevel,
     drawn: DASH_DRAWN,
@@ -723,24 +750,63 @@ export function AgentList({
   // same hold.
   // `band` is the large screen's card in the band above the grid (ADR 0158): the same row's session, so it
   // carries no DOM id (the row in its Space has it) and draws the card density, with the question.
-  const row = (a: AgentView, scope: "place" | "herd" = "place", band = false) => (
-    <AgentCard
-      key={paneRowKey(a)}
-      id={band ? undefined : rowDomId(paneRowKey(a))}
-      agent={a}
-      onClick={(el) => onOpen(a, el)}
-      glideKey={glideKeyOf?.(a)}
-      onPress={onPress && (() => onPress(a))}
-      onHold={onHold && (() => onHold(a))}
-      scope={scope}
-      statusStyle="dot"
-      density={band ? "card" : "row"}
-      unseen={bucketOf(a) === "ready"}
-      tint
-      stale={stale}
-      match={hitOf(a)}
-    />
-  );
+  // A row's place in the tree, drawn only in the tree order's own list: never in Pinned, the band, or a
+  // query's best-first list, where the rows above a child are not its starter.
+  const treePlace = (a: AgentView, band: boolean) => {
+    const at = band || bestRows !== null ? undefined : foldAt.get(paneRowKey(a));
+    if (at === undefined) return undefined;
+    return at.folded ? { role: paneRole(a), fold: { hidden: at.hidden, waiting: at.waiting } } : { role: paneRole(a) };
+  };
+  // `inTree`: the row is drawn in the tree order's own list, the one place it takes a depth and a role. A pinned
+  // pane's row there is its second one (`isTreeCopy`).
+  const row = (a: AgentView, scope: "place" | "herd" = "place", band = false, inTree = false) => {
+    const copy = inTree && isTreeCopy(a);
+    return (
+      <AgentCard
+        key={paneRowKey(a)}
+        id={band || copy ? undefined : rowDomId(paneRowKey(a))}
+        agent={a}
+        onClick={(el) => onOpen(a, el)}
+        glideKey={copy ? undefined : glideKeyOf?.(a)}
+        onPress={onPress && (() => onPress(a))}
+        onHold={onHold && (() => onHold(a))}
+        scope={scope}
+        statusStyle="dot"
+        density={band ? "card" : "row"}
+        unseen={bucketOf(a) === "ready"}
+        tint
+        stale={stale}
+        match={hitOf(a)}
+        tree={inTree ? treePlace(a, band) : undefined}
+      />
+    );
+  };
+
+  // A row of the tree order's list: in `TreeRow` (its indent and its fold toggle) when it sits in a tree, the bare
+  // row otherwise. Opening a folded branch also opens the folded branches on the way to a session that waits.
+  const toggleBranch = (id: string) => {
+    if (tree === null) return;
+    if (folds.has(id)) unfoldBranches(unfoldPath(tree, id, waitsOnYou));
+    else foldBranch(id);
+  };
+  const rankedRow = (a: AgentView) => {
+    const inner = row(a, "herd", false, tree !== null);
+    const at = tree === null || bestRows !== null ? undefined : foldAt.get(paneRowKey(a));
+    if (at === undefined || (at.branch === null && paneTree(a) === null)) return inner;
+    const branch = at.branch;
+    return (
+      <TreeRow
+        key={paneRowKey(a)}
+        depth={at.depth}
+        branch={branch !== null && !querying}
+        folded={at.folded}
+        name={paneName(a)}
+        onToggle={() => branch !== null && toggleBranch(branch)}
+      >
+        {inner}
+      </TreeRow>
+    );
+  };
 
   const summary = (
     <StatusSummaryLine
@@ -774,6 +840,7 @@ export function AgentList({
   const orderSlot = onOrderChange && (
     <PaneOrderSelect
       order={order}
+      orders={paneOrdersFor(herdHasTree(agents) || herdHasTree(shellPanes), order)}
       className="shrink-0"
       onChange={(next) => {
         reread();
@@ -914,12 +981,12 @@ export function AgentList({
             <section id={RANKED_ID} aria-labelledby={RANKED_HEADING_ID} className="flex scroll-mt-4 flex-col gap-2">
               <SectionHeader
                 id={RANKED_HEADING_ID}
-                label={t(order === "cache" ? "paneOrder.coldest" : "paneOrder.recent")}
+                label={t(rankedHeading(order))}
                 count={rankedShown.length}
                 tone="strong"
                 className="min-h-7"
               />
-              <ListColumns rows={rankedShown} columns={columns} renderRow={(a) => row(a, "herd")} />
+              <ListColumns rows={rankedShown} columns={columns} renderRow={rankedRow} />
             </section>
           )}
 
@@ -1050,12 +1117,12 @@ export function AgentList({
         <section id={RANKED_ID} aria-labelledby={RANKED_HEADING_ID} className="flex scroll-mt-4 flex-col gap-2">
           <SectionHeader
             id={RANKED_HEADING_ID}
-            label={t(order === "cache" ? "paneOrder.coldest" : "paneOrder.recent")}
+            label={t(rankedHeading(order))}
             count={rankedShown.length}
             tone="strong"
             className="min-h-7"
           />
-          <ListGroup>{rankedShown.map((a) => row(a, "herd"))}</ListGroup>
+          <ListGroup>{rankedShown.map(rankedRow)}</ListGroup>
         </section>
       )}
 

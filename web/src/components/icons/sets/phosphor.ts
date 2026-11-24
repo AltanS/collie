@@ -276,6 +276,7 @@ export const PHOSPHOR = {
   "sign-in": "sign-in", // sign in · lucide LogIn
   "slash-command": "terminal", // slash command · lucide Slash
   "sort-by-place": "tree-structure", // sort panes by place · lucide FolderTree
+  "sort-by-tree": "tree-view", // sort panes by who started whom · lucide Network
   "sort-order": "arrows-down-up", // the pane sort order setting · lucide ArrowDownUp
   "space-next": "caret-down", // next space · lucide ChevronDown
   "space-prev": "caret-up", // previous space · lucide ChevronUp
@@ -313,6 +314,7 @@ export const PHOSPHOR = {
   "tool-search": "magnifying-glass", // a search tool call · lucide Search
   "tool-task": "robot", // a task or subagent tool call · lucide Bot
   "tour": "compass", // the guided tour · lucide Compass
+  "tree-child": "arrow-elbow-down-right", // a pane started by the pane above it · lucide CornerDownRight
   "trick-fact-adds": "plus-square", // what a trick adds to the app, on its details page · lucide SquarePlus
   "trick-fact-reads": "eye", // what a trick may read or do, on its details page · lucide Eye
   "trick-fact-runs": "timer", // when a trick runs, on its details page · lucide Timer

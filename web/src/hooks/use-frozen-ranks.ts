@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { activityRanks, cacheRanks, type PaneOrder } from "@/lib/pane-order";
+import { activityRanks, cacheRanks, isFrozenOrder, type PaneOrder } from "@/lib/pane-order";
 import type { AgentView } from "@/lib/types";
 
 // THE FREEZE, in one place (ADR 0071 point 3, ADR 0063). The pane switcher and the dashboard both
@@ -37,7 +37,8 @@ interface Reading {
 }
 
 function read(order: PaneOrder, panes: readonly AgentView[], generation: number): Reading {
-  if (order === "place") return { order, generation, ranks: NO_RANKS };
+  // Place and tree are structure, not a reading: nothing to freeze, and the caller draws them live.
+  if (!isFrozenOrder(order)) return { order, generation, ranks: NO_RANKS };
   // `Date.now()` and not the cache clock's tick: this is the FREEZE, taken once when the operator
   // opens the list or taps. Subscribing to a clock that moves every second is the exact fault
   // ADR 0063 closes.
@@ -49,7 +50,7 @@ function read(order: PaneOrder, panes: readonly AgentView[], generation: number)
 }
 
 export interface FrozenRanks {
-  /** Row key against position, from the reading in force. Empty for place order. */
+  /** Row key against position, from the reading in force. Empty for place and tree order. */
   ranks: ReadonlyMap<string, number>;
   /** Take a new reading now. Call it from an operator's tap, never from a poll. */
   reread: () => void;
@@ -65,7 +66,7 @@ export function useFrozenRanks(
   // The state-adjustment-on-a-changed-prop shape, not a `useMemo` with a lie in its deps: the reading
   // must survive a poll and must NOT survive a tap, which is exactly the two things compared below.
   const [reading, setReading] = useState<Reading>(() => read(order, panes, generation));
-  const firstOnAnEmptyHerd = order !== "place" && reading.ranks.size === 0 && panes.length > 0;
+  const firstOnAnEmptyHerd = isFrozenOrder(order) && reading.ranks.size === 0 && panes.length > 0;
   if (reading.order !== order || reading.generation !== generation || firstOnAnEmptyHerd) {
     setReading(read(order, panes, generation));
   }
@@ -73,7 +74,7 @@ export function useFrozenRanks(
   const reread = useCallback(() => setGeneration((g) => g + 1), []);
 
   useEffect(() => {
-    if (!rereadOnVisible || order === "place") return;
+    if (!rereadOnVisible || !isFrozenOrder(order)) return;
     const onVisible = () => {
       if (document.visibilityState === "visible") reread();
     };

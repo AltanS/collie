@@ -8,6 +8,8 @@
 import { useState, type ReactNode } from "react";
 
 import { ThreadSidebar } from "@/components/agent-sidebar";
+import { TreeNavSheet } from "@/components/tree-nav";
+import { treeLayout, treeRelatives } from "@/lib/pane-tree";
 import { CrewProvider } from "@/components/crew-provider";
 import { paneRowKey } from "@/lib/hosts";
 import { PANE_FILTER, type PaneFilterSettings } from "@/lib/pane-filter";
@@ -16,7 +18,7 @@ import { panePlaceParts } from "@/lib/pane-name";
 import type { AgentView } from "@/lib/types";
 
 import { switcherCrew, TS } from "../fixtures";
-import { Card, Group, Section, type SectionDef } from "../layout";
+import { Card, Group, Section, Stage, type SectionDef } from "../layout";
 
 export const DEF: SectionDef = {
   id: "switcher",
@@ -83,6 +85,51 @@ export function SwitcherList({
   );
 }
 
+/**
+ * The crew's herd as an orchestrating agent left it: a coordinator, three workers it started (on both
+ * machines), and one pane a worker started. The rest sits in no tree.
+ */
+const treeCrew: AgentView[] = switcherCrew.agents.map((pane, i) => {
+  if (i === 0) return { ...pane, tree: { id: "c1", role: "coordinator" } };
+  if (i >= 1 && i <= 3) return { ...pane, tree: { id: `w${i}`, parent: "c1", role: i === 3 ? "reviewer" : "worker" } };
+  if (i === 4) return { ...pane, tree: { parent: "w1", role: "research" } };
+  return pane;
+});
+
+/** The large screen's sidebar (`roomy`) in the tree order, at the sidebar's width. */
+function TreeSidebarCard() {
+  const [order, setOrder] = useState<PaneOrder>("tree");
+  return (
+    <div data-pg-frame="" className="w-[320px] max-w-full overflow-hidden rounded-md border border-rule bg-card">
+      <div className="max-h-[720px] overflow-y-auto overscroll-contain">
+        <CrewProvider servers={switcherCrew.servers} sessions={switcherCrew.sessions} ts={TS} pollMs={3_000}>
+          <ThreadSidebar
+            roomy
+            agents={treeCrew}
+            currentPaneKey={paneRowKey(treeCrew[1]!)}
+            onSelect={() => {}}
+            servers={switcherCrew.servers}
+            workspaces={switcherCrew.workspaces}
+            sessions={switcherCrew.sessions}
+            order={order}
+            onOrderChange={setOrder}
+          />
+        </CrewProvider>
+      </div>
+    </div>
+  );
+}
+
+/** The pane header's tree sheet, open on the first worker of `treeCrew`: its coordinator, its siblings, its child. */
+function TreeNavCard() {
+  const layout = treeLayout(treeCrew);
+  return (
+    <Stage height={900}>
+      <TreeNavSheet open onClose={() => {}} relatives={treeRelatives(layout, treeCrew[1]!)} onMove={() => {}} />
+    </Stage>
+  );
+}
+
 function SwitcherCard({ here }: { here: AgentView }) {
   return (
     <SheetBody>
@@ -102,6 +149,22 @@ export function SwitcherSection() {
           note="Type into the field: cw, f7, workshop, omp. The card has no sheet head, so the field sticks at the box's top."
         >
           <SwitcherCard here={switcherCrew.agents[2]!} />
+        </Card>
+        <Card
+          state="switcher-tree-roomy"
+          label="2: Large screen, tree order"
+          reach="Open a pane on a large screen while an orchestrator's sessions carry node ids, and pick the tree in the order toggle."
+          note="Workers sit under their coordinator across both machines; the role rides beside the name."
+        >
+          <TreeSidebarCard />
+        </Card>
+        <Card
+          state="tree-nav-sheet"
+          label="3: Tree moves from a pane"
+          reach="Tap the tree button in the header of a pane that sits in a tree."
+          note="Alt with an arrow makes the same moves on a keyboard."
+        >
+          <TreeNavCard />
         </Card>
       </Group>
     </Section>
