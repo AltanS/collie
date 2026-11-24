@@ -1,0 +1,8 @@
+
+[0m[38;2;136;136;136m───[0m [0m[2m↑ 5 more[0m [0m[38;2;136;136;136m──────────────────────────────────────────────[0m
+  of view. Collie looks for that prompt line to find the
+  box, so it cannot find it, and the send stops after
+  typing without pressing Enter.
+[0m[38;2;136;136;136m───────────────────────────────────────────────────────────[0m
+
+  [0m[38;2;255;107;128m⏵⏵ bypass permissions on[0m[38;2;153;153;153m (shift+tab to cycle)[0m

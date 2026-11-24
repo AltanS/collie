@@ -20,7 +20,8 @@
       "bottom": { "pattern": "^─+$", "minCells": 8, "column": 0 },
       "continuationIndent": 2,
       "maxDraftRows": 100,
-      "maxTailRows": 60
+      "maxTailRows": 60,
+      "scroll": { "keeps": "tail", "rows": 100, "marker": "^↑ \\d+ more$" }
     },
     "frameAlternates": [
       {
