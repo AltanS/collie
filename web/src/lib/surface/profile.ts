@@ -561,6 +561,8 @@ export interface FrameScroll {
   readonly keeps: "tail";
   /** The box's height in draft rows once it scrolls. A box that shows fewer rows shows the whole draft. */
   readonly rows: number;
+  /** A top-edge label that says the box scrolled its prompt row out of view (Claude Code's `↑ 2 more`). */
+  readonly marker?: string;
 }
 
 /** The ghost text after the cursor ({@link Profile.idle.inlineHint}). */
@@ -1565,7 +1567,8 @@ function parseScroll(value: JsonValue, maxDraftRows: number): FrameScroll {
   const keeps = oneOf(field(node, "keeps", "idle.frame.scroll"), "idle.frame.scroll.keeps", SCROLL_KEEPS);
   const rows = whole(field(node, "rows", "idle.frame.scroll"), "idle.frame.scroll.rows", 1);
   if (rows > maxDraftRows) fail("idle.frame.scroll.rows", "must not pass maxDraftRows: the walk would never read a box that tall");
-  return { keeps, rows };
+  if (node.marker === undefined) return { keeps, rows };
+  return { keeps, rows, marker: pattern(node.marker, "idle.frame.scroll.marker").source };
 }
 
 /** `idle.frame`: the three anchors, the bounds, and the interior walk's own fields when the profile names that walk. */

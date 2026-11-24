@@ -4206,3 +4206,22 @@ Privacy: the scratch folder reads `~/project`, and the stub model names itself `
 | --- | --- | --- |
 | `mcode--v077-idle-w200.txt` | The welcome panel (`v0.7.7 … ● Ready`), three tip rows, the what's-new box, the `Start · @ file or Plugin · / autocomplete` row, the composer between two rules with `›  Ask Mcode to do anything`, and the status row `~/project │ Auto │ ✦ stub-model · Thinking On │ Context 100K` | idle, composer found and empty |
 | `mcode--v077-turn-suggestion-w200.txt` | One finished turn: the prompt row, `└ • Ran  ls -la · 5 output lines`, the reply, `└ Completed in 1s · ⚡ 1667 tok/s`, then `Suggested next message · Tab accept` over a composer whose text is the grey suggestion — plain text cannot mark it grey, so the bridge reads a draft | draft |
+
+## Claude Code 2.1.331 draft taller than its box (captured 2026-11-23, Herdr 0.9.5, 59 x 16)
+
+Claude Code caps its input box at a share of the terminal's height. A draft that wraps past that
+cap scrolls the box: the `❯` row leaves the top, and the top edge carries a count of the hidden rows,
+`─── ↑ 5 more ───` (the bundle's ``h>0?`↑ ${h} more`:""``, in every release from 2.1.322 to 2.1.331).
+The frame walk needed the `❯` row, so a long send typed its text and stopped short of Enter
+(`typed_not_submitted`), and every later send was refused as `no-match` until the box was emptied.
+The profile's `idle.frame.scroll.marker` names that edge.
+
+Captured in a throwaway Herdr tab split down to 59 x 16, in an empty `/tmp/collie-lab`, with
+`claude --settings '{"statusLine":{"type":"command","command":"true"}}'` so no status line drew,
+and the draft typed with `herdr pane send-text`. `herdr pane read --source visible --format ansi
+--raw`, CRLF as read, cut to the blank row above the box: the rows above it held the welcome banner
+and a notice from a local plugin. Nothing else was altered.
+
+| Fixture | What's in it | Reads as |
+| --- | --- | --- |
+| `claude--v2331-draft-scrolled-up--w59.txt` | A 404-character draft scrolled to its last three rows under `─── ↑ 5 more ───`, the bypass-permissions mode row under the box | draft, frame `scrolled`, S1 compares the tail |

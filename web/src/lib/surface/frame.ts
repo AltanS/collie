@@ -733,7 +733,7 @@ export function frameAt(rows: readonly FrameRow[], bottom: number, idle: IdlePro
   }
   if (i < 0) return null;
   const promptMatch = anchored(texts[i]!, c.prompt);
-  if (promptMatch === null) return null;
+  if (promptMatch === null) return scrolledFrameAt(rows, texts, i, bottom, span, idle);
   const prompt = i;
   i--;
   let top: number;
@@ -801,6 +801,34 @@ export function frameAt(rows: readonly FrameRow[], bottom: number, idle: IdlePro
     placeholder,
     volatile: { above, status, footer, named },
     anchorsHit,
+  };
+}
+
+/** A box scrolled so far its prompt row is out of view: the top edge's label is the layout's `scroll.marker`. */
+function scrolledFrameAt(rows: readonly FrameRow[], texts: readonly string[], top: number, bottom: number, span: string | null, idle: IdleProfile): Frame | null {
+  const marker = idle.frame.scroll?.marker;
+  if (marker === undefined || top + 1 >= bottom) return null;
+  const c = compile(idle);
+  const topMatch = spansBox(texts[top]!, span, c.top) ? anchored(texts[top]!, c.top) : null;
+  const label = topMatch?.groups?.label?.trim() ?? "";
+  if (!new RegExp(marker, "u").test(label)) return null;
+  const pieces: DraftPiece[] = [];
+  for (let j = top + 1; j < bottom; j++) {
+    const piece = trimmedPiece(j, texts[j]!, 0, texts[j]!.length);
+    if (piece !== null) pieces.push(piece);
+  }
+  let end = texts.length;
+  while (end > bottom + 1 && isBlank(texts[end - 1]!)) end--;
+  const { status, footer, named } = walkBelowNamed(texts, bottom, end, idle, c.footerRows);
+  return {
+    top,
+    bottom,
+    label,
+    interior: { first: top + 1, prompt: top + 1, last: bottom - 1, text: draftText(rows, texts, pieces, c.hint) },
+    placeholder: false,
+    volatile: { above: bandAbove(texts, top, idle), status, footer, named },
+    anchorsHit: ["top", "label", "bottom"],
+    scrolled: true,
   };
 }
 

@@ -78,6 +78,8 @@ const NEUTRAL = new Set([
   "claude--v2323-rc-on-idle-notice--w100.txt",
   "claude--v2323-rc-on-idle-usage--w100.txt",
   "claude--v2323-rc-on-running--w100.txt",
+  // A draft taller than the box (2.1.331): the `↑ 5 more` edge over the draft's last rows, composer chrome.
+  "claude--v2331-draft-scrolled-up--w59.txt",
   // The /model picker DISMISSED: the input box is back, so this is an ordinary idle screen. It is the
   // negative control for the generic menu grammar — its statusline is `·`-separated like a key-hint
   // footer, and the input-box gate is the only thing that keeps it raw.
