@@ -195,7 +195,7 @@ export async function runLab(options: LabOptions, ports: LabPorts): Promise<LabO
 
   // 1. The stop rule.
   const existing = loadLedger(options.ledgerPath, now());
-  if (!shouldRun(existing, harness, version, options.named === true)) {
+  if (!shouldRun(existing, harness, version, options.named === true, now())) {
     const row = existing.rows.find((candidate) => candidate.harness === harness && candidate.version === version);
     return outcome("skipped", `already in the ledger as ${row?.result ?? "?"} on ${row?.date ?? "?"}`);
   }
