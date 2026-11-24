@@ -297,8 +297,9 @@ export class ClearService {
         }
         // A box whose draft went shows the harness's suggestion again where it may wear any style (omp, issue
         // 854): text that is no start of the draft. One probe proves it, once per Clear; then the box is empty.
+        // Not on a box at its scroll height: it shows another part of its draft after each batch.
         const showing = after.frame === null ? "" : (boxOf(after.frame) ?? "");
-        if (!suggestionProbed && match.profile.idle.placeholders.anyStyle === true && after.surface.modal === "none" && after.surface.composer === "draft" && showing.length > 0 && !look!.frame!.interior.text.startsWith(showing)) {
+        if (!suggestionProbed && look!.frame!.scrolled !== true && after.frame?.scrolled !== true && match.profile.idle.placeholders.anyStyle === true && after.surface.modal === "none" && after.surface.composer === "draft" && showing.length > 0 && !look!.frame!.interior.text.startsWith(showing)) {
           suggestionProbed = true;
           const probed = await this.probeBox(paneId, harness, match, after, match.profile.probe.char, sleep);
           if ("refused" in probed) return refusal(requestId, probed.refused, pressed);

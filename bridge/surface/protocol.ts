@@ -7476,8 +7476,9 @@ export class SendProtocol {
       let text = boxText(snap.frame);
       // A box whose draft went shows the harness's suggestion again where it may wear any style (omp, issue
       // 854): text that is no start of the text being cleared, after a batch. One probe proves it, once;
-      // a box it does not prove is cleared on as before.
-      if (pressedAt !== null && text.length > 0 && !cleared.startsWith(text) && !suggestionProbed && anyStyle(state.match) && snap.surface.modal === "none") {
+      // a box it does not prove is cleared on as before. Not on a box at its scroll height: it shows
+      // another part of its draft after each batch.
+      if (pressedAt !== null && text.length > 0 && !cleared.startsWith(text) && !suggestionProbed && from.frame.scrolled !== true && snap.frame.scrolled !== true && anyStyle(state.match) && snap.surface.modal === "none") {
         suggestionProbed = true;
         this.stretch(state, 2 * BOUNDS.probe.ms);
         const probed = await this.draftProbe(state, snap, probeCharOf(state.match));
