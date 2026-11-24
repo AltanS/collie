@@ -81,6 +81,7 @@ export function BuildStamp({ className, version = BUILD.version }: { className?:
 
   return (
     <div
+      data-slot="build-stamp"
       className={cn(
         "text-center text-[11px] leading-relaxed text-muted-foreground",
         className,

@@ -49,11 +49,12 @@ for (const [width, height] of [
     const stack = [
       ...(await page.locator('[data-slot="wide-under-grid"]').all()),
       page.locator('[data-slot="wide-foot"]'),
-      page.getByText(/^vp \d/),
+      // The build stamp: its own hook, on a release build and on a `-dev` one (only the latter draws the `vp` line under it).
+      page.locator('[data-slot="build-stamp"]'),
     ];
     // Launch and Spaces, the foot lines and the stamp are all there to measure.
     expect(stack.length).toBeGreaterThanOrEqual(3);
-    await page.getByText(/^vp \d/).scrollIntoViewIfNeeded();
+    await page.locator('[data-slot="build-stamp"]').scrollIntoViewIfNeeded();
     const boxes = await Promise.all(stack.map(box));
     const columns = boxes.slice(0, -2);
     for (const b of boxes) {
