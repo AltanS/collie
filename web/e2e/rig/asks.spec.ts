@@ -207,7 +207,8 @@ async function dialogIn(rig: Rig, paneId: string): Promise<string | null> {
   const tail = await rig.tail(paneId, 30).catch(() => "");
   if (askOn(pane) === null && !DIALOG_WORDS.test(tail)) return null;
   const lines = tail.split("\n").map((line) => line.replace(/^[\s│]+/u, "").trim());
-  const command = lines.findLast((line) => /\bwalky\b|^Bash\(/u.test(line)) ?? "";
+  // The command line of the card, not one of its numbered choices ("2. Yes, and don't ask again for: ...").
+  const command = lines.findLast((line) => /\bwalky\b|^Bash\(/u.test(line) && !/^\d+\.\s/u.test(line)) ?? "";
   const words = lines.find((line) => DIALOG_WORDS.test(line)) ?? "a dialog the bridge reads as an ask";
   return command === "" ? words : `${words} for: ${command.slice(0, 160)}`;
 }
