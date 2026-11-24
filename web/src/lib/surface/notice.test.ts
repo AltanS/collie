@@ -240,6 +240,30 @@ describe("readAboveNotice", () => {
     expect(noticeOf(screen(["● The survey said: How is Claude doing this session? (optional)", "  1: Bad    2: Fine   3: Good   0: Dismiss"]))).toBeNull();
   });
 
+  // 2026-11-24, Claude Code 2.1.330 and 2.1.331 on macOS: the bullet is `⏺`, not `●`, so neither head
+  // matched, and every send under the survey was refused as if a dialog were open.
+  const onMac = (rows: readonly string[]) => rows.map((row) => row.replace(/^●/u, "⏺"));
+
+  it("reads the survey and the transcript question under macOS's ⏺ head, over each row the gaps name", () => {
+    const rows = [...UPDATE_WORDINGS.map((wording) => `✔ Update installed · ${wording}`), ...IDLE_HINT_ROWS];
+    for (const row of rows.map((text) => `${" ".repeat(20)}${text}`)) {
+      expect(noticeOf(screen([...onMac(SURVEY), row]))?.keys.map((k) => k.key), row.trim()).toEqual(["1", "2", "3", "0"]);
+      expect(noticeOf(screen([...onMac(TRANSCRIPT), LETTER_KEYS, row]))?.keys.map((k) => k.key), row.trim()).toEqual(["y", "n", "d"]);
+    }
+    expect(noticeOf(screen(onMac(SURVEY)))?.text).toBe("How is Claude doing this session? (optional)");
+  });
+
+  it("takes only ● and ⏺ as the survey's bullet", () => {
+    for (const glyph of ["◯", "○", "•", "⏵"]) {
+      expect(noticeOf(screen([`${glyph} How is Claude doing this session? (optional)`, SURVEY[1]!])), glyph).toBeNull();
+    }
+  });
+
+  it("does not read macOS's ⏺ head when the agent's prose quotes it", () => {
+    expect(noticeOf(screen(onMac([...SURVEY, "  That is the survey row I saw."])))).toBeNull();
+    expect(noticeOf(screen(["⏺ The survey said: How is Claude doing this session? (optional)", SURVEY[1]!]))).toBeNull();
+  });
+
   it("reads nothing with no notice shapes", () => {
     const rows = fixtureRows("claude--v2302-heads-up-above-box--w142.txt");
     expect(readAboveNotice(rows.map(rowText), findInputFrame(rows, IDLE)!.top, [], GAPS)).toBeNull();
