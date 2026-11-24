@@ -3,7 +3,7 @@ import { join } from "node:path";
 
 import type { JsonValue } from "../bridge/json.ts";
 import { BEACON_HOOKS } from "./beacon.ts";
-import { capture, context, fakeFiles, fakeLinkFs, HOME, ROOT } from "./fakes.ts";
+import { capture, context, fakeFiles, fakeLinkFs, HOME, posixKey, ROOT } from "./fakes.ts";
 import { asksCommandFor, cmdHooksInstall, HOOK_MARKER, HOOK_HARNESSES, installDocument, type HooksDeps } from "./hooks.ts";
 import { EXIT } from "./io.ts";
 import { asJsonObject, parseJsonObject } from "../web/src/lib/json.ts";
@@ -43,7 +43,8 @@ describe("asksCommandFor", () => {
     if (outcome.kind !== "document") return;
     const commands = commandsIn(outcome.document);
     expect(commands).toHaveLength(BEACON_HOOKS.length);
-    for (const command of commands) expect(command).toBe(`"command":"${odd}"`);
+    // The document is JSON, so a Windows command (`\opt\collie\bin\collie.exe`) is written with doubled backslashes.
+    for (const command of commands) expect(command).toBe(`"command":${JSON.stringify(odd)}`);
     expect(JSON.stringify(outcome.document)).not.toContain("beacon asks");
   });
 });
@@ -57,8 +58,9 @@ describe("only the Claude Code settings document gets a beacon asks entry", () =
     const d = deps({ COLLIE_TRANSCRIPT_ROOT: join(EXTRA, "projects") });
     expect(cmdHooksInstall(d, ["claude", "--no-statusline", "--hold-permissions"])).toBe(EXIT.OK);
     expect(cmdHooksInstall(d, ["codex"])).toBe(EXIT.OK);
-    const claudeFiles = [join(HOME, ".claude", "settings.json"), join(EXTRA, "settings.json")];
-    const written = [...d.files.entries].map(([path, entry]) => ({ path, text: entry.text }));
+    // The fake filesystem keys every path POSIX (`posixKey`); `join` gives backslashes on Windows.
+    const claudeFiles = [join(HOME, ".claude", "settings.json"), join(EXTRA, "settings.json")].map((path) => posixKey(path));
+    const written = [...d.files.entries].map(([path, entry]) => ({ path: posixKey(path), text: entry.text }));
     for (const path of claudeFiles) expect(written.find((file) => file.path === path)?.text).toContain("beacon asks");
     const others = written.filter((file) => !claudeFiles.includes(file.path));
     expect(others.length).toBeGreaterThan(0);
