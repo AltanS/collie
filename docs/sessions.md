@@ -66,6 +66,34 @@ until one more tap. Every command is also a keyboard action, so you can give it 
 ([Keyboard shortcuts](keyboard-shortcuts.md#the-actions)). There is no setting for Actions: it is
 always on.
 
+## Show agents that start agents as a tree
+
+When one agent starts and directs others, the Tree order draws each session under the one that started it.
+
+```bash
+herdr pane report-metadata "$PANE" --source my-orchestrator \
+  --token collie_id=4f2a9c1e --token collie_parent=b81d07aa --token collie_role=worker
+```
+
+Whatever starts the agents, an orchestrating agent or a script, puts these Herdr pane tokens on each
+pane it opens. Collie only reads them.
+
+| Token | What it holds |
+| --- | --- |
+| `collie_id` | This pane's node id: letters, digits, `-` and `_`, at most 64 characters |
+| `collie_parent` | The node id of the pane that started this one |
+| `collie_role` | A short word for what the pane does, such as `worker`, at most 24 characters |
+
+An id must be unique across every machine of your crew. A prefix of the agent's own session id is one
+way to get that. A parent on another machine is found by id alone, so no machine name goes in a token.
+
+Tree appears in the Dashboard's order select and in the switcher only while a session sits in a tree.
+It is one list: each child is indented under the session that started it, and its role is shown beside
+its name. Sessions in no tree come after the trees. A child whose parent closed stays in the list, at
+the left.
+
+> **Note.** Only Herdr keeps pane tokens today, so the Tree order reads Herdr panes only.
+
 ## One machine, or several
 
 One Collie carries a terminal and durable agents together. A machine with Herdr and a durable agent needs no
