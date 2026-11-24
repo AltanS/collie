@@ -26,6 +26,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Fixed
 
 - **On macOS, a message to Claude Code is sent while its rating question shows.** Claude Code on macOS draws the bullet of its session rating question, and of its question about the session transcript, as `⏺` and not as `●`. Collie did not know the question with that bullet, took it for a dialog it could not read, and refused every message until the question went away. Collie takes either bullet. Thanks @OowhitecatoO (#856). ([bcc014b](https://github.com/AltanS/collie/commit/bcc014b))
+- **A permission on Claude Code 2.1.330 in an unattended session takes your tap.** In a session that runs unattended, Claude Code shows a countdown on a permission and answers it by itself when the time is up. Version 2.1.330 changed the words of that countdown ("will automatically block this request in 1:20"). Collie did not know the new words, so each tick of the clock looked like a new question, and a tap from the phone was refused unless it landed in the same second. Collie reads both wordings, and your tap goes through while the clock runs. Thanks @GGGODLIN (#848).
 
 ## [1.30.1] - 2026-11-22
 
