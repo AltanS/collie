@@ -64,6 +64,18 @@ export type PaneProgress =
   | { readonly kind: "percent"; readonly value: number; readonly label?: string };
 
 /**
+ * Where a pane sits in a tree of agents that start other agents: its own node id, the node id of the
+ * pane that started it, and a short role word. Set by whoever started the pane (an orchestrating agent
+ * or a script), never by Collie. The ids are opaque words, unique across the crew by the producer's
+ * promise, so a parent on another machine is found by id alone. At least one of `id` and `parent`.
+ */
+export interface PaneTree {
+  readonly id?: string;
+  readonly parent?: string;
+  readonly role?: string;
+}
+
+/**
  * A single pane the user might want to monitor or drive. Usually an agent-bearing pane (the
  * triage home), but also a bare **shell** pane (`kind:"shell"`, `agent:"shell"`) once we surface
  * those so a freshly-created tab/space is reachable and you can launch your own agent in it.
@@ -204,6 +216,12 @@ export interface AgentView {
    * {@link subtitle}. The phone draws it only while the pane works or waits.
    */
   progress?: PaneProgress;
+  /**
+   * Where the pane sits in a tree of agents that start agents ({@link PaneTree}). Read off the
+   * multiplexer's own pane metadata, today Herdr's pane tokens. Absent on every pane nobody placed in a
+   * tree and from every older bridge or crew member, which all read as "not in a tree".
+   */
+  tree?: PaneTree;
   /**
    * A finished English sentence about this pane, composed in the bridge and rendered as text the
    * client does not interpret. Absent on almost every pane.
