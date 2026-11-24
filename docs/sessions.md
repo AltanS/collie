@@ -72,11 +72,12 @@ When one agent starts and directs others, the Tree order draws each session unde
 
 ```bash
 herdr pane report-metadata "$PANE" --source my-orchestrator \
-  --token collie_id=4f2a9c1e --token collie_parent=b81d07aa --token collie_role=worker
+  --token collie_id=4f2a9c1e5b7d --token collie_parent=b81d07aa3c90 \
+  --token collie_role=worker
 ```
 
 Whatever starts the agents, an orchestrating agent or a script, puts these Herdr pane tokens on each
-pane it opens. Collie only reads them.
+pane it opens. Collie only reads them. `--source` is any name of your own.
 
 | Token | What it holds |
 | --- | --- |
@@ -84,13 +85,55 @@ pane it opens. Collie only reads them.
 | `collie_parent` | The node id of the pane that started this one |
 | `collie_role` | A short word for what the pane does, such as `worker`, at most 24 characters |
 
-An id must be unique across every machine of your crew. A prefix of the agent's own session id is one
-way to get that. A parent on another machine is found by id alone, so no machine name goes in a token.
+A value that breaks these rules is dropped, never repaired. A pane needs `collie_id` to be a parent,
+and `collie_parent` to be a child; a pane can carry both.
+
+### Pick ids that are unique across the crew
+
+Use the first 12 hex characters of the agent's own session id, which Herdr reports for the pane.
+
+```bash
+session=$(herdr pane get "$PANE" | jq -r '.result.pane.agent_session.value // empty')
+id=$(printf '%s' "$session" | tr -d '-' | cut -c1-12)
+```
+
+The session id is unique on every machine, so a parent on another machine of the crew is found by id
+alone, and no machine name goes in a token. The id also survives a restart that moves the pane: tag
+the pane again with the same id and the tree comes back.
+
+Tokens are display metadata, and a Herdr server restart can drop them. An orchestrator that keeps its
+own record of the tags can put them back after one.
+
+### Read the tree
 
 Tree appears in the Dashboard's order select and in the switcher only while a session sits in a tree.
-It is one list: each child is indented under the session that started it, and its role is shown beside
-its name. Sessions in no tree come after the trees. A child whose parent closed stays in the list, at
-the left.
+
+- **One list.** Each child is indented under the session that started it, with its role beside its
+  name. Sessions in no tree come after the trees.
+- **Orphans stay.** A child whose parent closed stays in the list, at the left.
+- **Pins stay.** A pinned session shows in Pinned and also in its place in the tree, so its children
+  keep their parent row.
+
+### Fold a branch
+
+Tap the chevron beside a session that started others to fold its branch. A folded session shows how
+many sessions inside wait on you, at any depth, and how many it hides. Opening it also opens the
+folded branches on the way to a session that waits. Folds are kept on this device. A new branch
+starts open, and a search shows every row.
+
+### Move through the tree from a session
+
+In an open session that sits in a tree, the tree button in the header lists its parent, the sessions
+either side of it, and the ones it started. A tap moves there.
+
+| Keys | Moves to |
+| --- | --- |
+| prefix, then `Shift` + `←` | The parent |
+| prefix, then `Shift` + `→` | The first child |
+| prefix, then `Shift` + `↑` / `↓` | The previous / next sibling |
+
+The prefix is `Ctrl+B` unless you changed it ([Keyboard shortcuts](keyboard-shortcuts.md)). The four
+moves are also rows of Actions, and you can give them other keys in `shortcuts.toml`.
 
 > **Note.** Only Herdr keeps pane tokens today, so the Tree order reads Herdr panes only.
 
