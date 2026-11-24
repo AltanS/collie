@@ -1,7 +1,6 @@
 # 0178: The reminder of open asks rides on the prompt
 
-- **Status:** Proposed (2026-11-23), the lead's design for the second build on the dev lane; the owner looks at it
-  there before it goes further.
+- **Status:** Accepted (2026-11-24), the lead's design for the second build on the dev lane
 - **Date:** 2026-11-23
 - **Supersedes:** ADR 0177
 - **Trail:** The Asks sync review of 2026-11-23 (the design note on the reminder, its section 3 "Skill text" and

@@ -1,7 +1,7 @@
 # 0179: The Hill and the Decision become Asks and an ask, with no alias
 
-- **Status:** Proposed (2026-11-23), the owner's decision ("rename them all, this is experimental, i want a clean
-  slate"); the lead's build 3 on the dev lane.
+- **Status:** Accepted (2026-11-24), the owner's decision ("rename them all, this is experimental, i want a clean
+  slate"); the lead's build 3 on the dev lane
 - **Date:** 2026-11-23
 - **Trail:** The Asks spec, part G (names). Files: `cli/hill.ts` (`collie asks`, the one line for an old `collie
   hill` verb), `cli/program.ts` (the `asks` tree, the hidden `hill` verb), `cli/ask.ts` (the old `dc_` id line),

@@ -1,7 +1,6 @@
 # 0176: An ask is a Decision with an `ask` field, and one Send answers a session's asks
 
-- **Status:** Proposed (2026-11-23), the lead's design for the first build on the dev lane; the owner looks at it
-  there before it goes further
+- **Status:** Accepted (2026-11-24), the lead's design for the first build on the dev lane
 - **Date:** 2026-11-23
 - **Trail:** The Asks lab of 2026-11-22: four test agents, 13 asks, and the faults each rule below answers (bare
   labels, no background, two decisions in one ask, a decision left in a plan file, all asks sent at the end of the
