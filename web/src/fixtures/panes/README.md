@@ -4238,6 +4238,11 @@ same suggestion `Mountains.` shows in three colours. Each screen was read as the
 shows as the rig's scratch path (`…uggestion-rig/state/harness/omp/project`), the prompts are lab
 prompts, nothing else private was on screen.
 
+The six files live in `web/src/fixtures/surface/`, beside omp 19.0.1's suggestion capture, not in
+this folder: omp 18.22's box (a status row over `╰─`, with no `╭─` top) is a layout the omp chrome
+reader's corpus tests do not cover, and the dark and light screens read as a draft on purpose (only
+the probe tells them apart). The tests that read them name the folder.
+
 | Fixture | State | What it shows |
 | --- | --- | --- |
 | `omp--v18-22-0-suggestion-titanium--w120.txt` | `idle` | `╰─ Mountains.` in `rgb(107,114,128)`, titanium's `dim`, the one colour the profile names (`idle.placeholders.fg`): reads empty |

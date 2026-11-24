@@ -24,7 +24,7 @@ import { KeyGate } from "./key-gate.ts";
 import { RowRing, SendProtocol, SessionLocks, type SendRequest } from "./protocol.ts";
 import { RequestStore } from "./requests.ts";
 
-const PANES = join(import.meta.dir, "..", "..", "web", "src", "fixtures", "panes");
+const CAPTURES = join(import.meta.dir, "..", "..", "web", "src", "fixtures", "surface");
 const OMP = loadProfiles().get("omp")!;
 const PROBE = OMP.probe.char;
 const ESC = String.fromCodePoint(0x1b);
@@ -62,7 +62,7 @@ class SuggestingOmpPane {
   private revision = 1;
 
   constructor(private readonly theme: Theme) {
-    this.rows = readFileSync(join(PANES, THEMES[theme].capture), "utf8").split("\n");
+    this.rows = readFileSync(join(CAPTURES, THEMES[theme].capture), "utf8").split("\n");
     this.prompt = this.rows.findLastIndex((row) => row.includes("╰─"));
     this.status = this.prompt - 1;
   }

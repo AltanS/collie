@@ -6,7 +6,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parseJsonObject, type JsonObject } from "../json";
-import { fixtureRows, idleFor, readScreen } from "../../test/surface-corpus";
+import { fixtureRows, idleFor, readScreen, SURFACE_FIXTURES_DIR } from "../../test/surface-corpus";
 import { boxInk } from "./frame";
 import { parseProfile, ProfileError } from "./profile";
 import { readSurfaceWords } from "./send";
@@ -42,9 +42,9 @@ describe("the profile flag `idle.placeholders.anyStyle` (issue 854)", () => {
 });
 
 describe("the captures: omp 18.22.0's suggestion in three themes", () => {
-  const read = (name: string) => readScreen(fixtureRows(name), "omp", idleFor("omp"));
+  const read = (name: string) => readScreen(fixtureRows(name, SURFACE_FIXTURES_DIR), "omp", idleFor("omp"));
   const ink = (name: string): string | null => {
-    const rows = fixtureRows(name);
+    const rows = fixtureRows(name, SURFACE_FIXTURES_DIR);
     const frame = read(name).frame;
     return frame === null ? null : boxInk(rows, frame);
   };

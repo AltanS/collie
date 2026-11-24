@@ -5655,36 +5655,6 @@
    "version": "18.12.6",
    "state": "draft"
   },
-  "omp--v18-22-0-suggestion-titanium--w120.txt": {
-   "harness": "omp",
-   "version": "18.22.0",
-   "state": "idle"
-  },
-  "omp--v18-22-0-suggestion-dark--w120.txt": {
-   "harness": "omp",
-   "version": "18.22.0",
-   "state": "idle"
-  },
-  "omp--v18-22-0-suggestion-light--w120.txt": {
-   "harness": "omp",
-   "version": "18.22.0",
-   "state": "idle"
-  },
-  "omp--v18-22-0-suggestion-probe-dark--w120.txt": {
-   "harness": "omp",
-   "version": "18.22.0",
-   "state": "draft"
-  },
-  "omp--v18-22-0-suggestion-typed-light--w120.txt": {
-   "harness": "omp",
-   "version": "18.22.0",
-   "state": "draft"
-  },
-  "omp--v18-22-0-suggestion-under-typed-dark--w120.txt": {
-   "harness": "omp",
-   "version": "18.22.0",
-   "state": "draft"
-  },
   "omp--v18-6-1-status-ascii-idle--w80.txt": {
    "harness": "omp",
    "version": "18.6.1",
