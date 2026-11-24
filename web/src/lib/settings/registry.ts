@@ -258,6 +258,7 @@ export const NOT_SETTINGS: ReadonlyMap<string, string> = new Map([
   ["collie:session-later", "trick proposals closed with Not now"],
   ["collie:ask-drafts:v1", "answers marked on the Asks pages and not sent yet: unsent words, not a choice"],
   ["collie:recent-panes:v1", "the panes this device opened last"],
+  ["collie:tree-fold:v1", "the tree order's folded branches, set by each branch's fold toggle (lib/tree-fold.ts)"],
   ["collie:slot:v1:", "a pane's reserved layout slot"],
   ["collie:wipe-pending", "an unpair's unfinished wipe"],
   ["collie:wipe-last", "when the last wipe ran"],

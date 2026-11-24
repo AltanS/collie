@@ -1,7 +1,9 @@
 import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 
 import { ThreadSidebar } from "./agent-sidebar";
 import { currentPins, setPinned } from "@/lib/pins";
+import { __resetTreeFolds } from "@/lib/tree-fold";
 import type { AgentView, PaneTree } from "@/lib/types";
 
 // THE TREE ORDER in the switcher and the large screen's sidebar: the same layout as the dashboard's
@@ -30,6 +32,7 @@ const herd = [
   agent("charlie", 3, { id: "c1", role: "coordinator" }),
 ];
 const NAMES = ["alpha", "bravo", "charlie"];
+const indentOf = (row: HTMLElement) => row.closest("[data-slot=tree-row]")?.querySelector("[data-slot=tree-indent]") ?? null;
 const rows = () => screen.getAllByRole("button").filter((b) => b.hasAttribute("data-pane-key"));
 const names = () => rows().map((b) => NAMES.find((n) => within(b).queryByText(n) !== null));
 
@@ -39,8 +42,8 @@ describe("ThreadSidebar — the tree order", () => {
     expect(screen.getAllByRole("heading").map((h) => h.textContent)).toEqual([expect.stringContaining("Who started whom")]);
     expect(names()).toEqual(["charlie", "bravo", "alpha"]);
     const [coord, worker] = rows();
-    expect(coord!.querySelector('[data-slot="tree-indent"]')).toBeNull();
-    expect(worker!.querySelector('[data-slot="tree-indent"]')).toHaveClass("w-4");
+    expect(indentOf(coord!)).toBeNull();
+    expect(indentOf(worker!)).toHaveClass("w-4");
     expect(within(worker!).getByText("worker", { selector: "[data-slot=pane-badge] span" })).toBeInTheDocument();
   });
 
@@ -68,9 +71,21 @@ describe("ThreadSidebar — the tree order keeps pinned panes in the tree", () =
     // Pinned (bravo), then the tree: charlie > bravo, then alpha.
     expect(names()).toEqual(["bravo", "charlie", "bravo", "alpha"]);
     const all = rows();
-    expect(all[0]!.querySelector('[data-slot="tree-indent"]')).toBeNull();
-    expect(all[2]!.querySelector('[data-slot="tree-indent"]')).toHaveClass("w-4");
+    expect(indentOf(all[0]!)).toBeNull();
+    expect(indentOf(all[2]!)).toHaveClass("w-4");
     expect(all[0]!.id).not.toBe("");
     expect(all[2]!.id).toBe("");
+  });
+});
+
+describe("ThreadSidebar — folding branches in the tree order", () => {
+  afterEach(() => __resetTreeFolds());
+
+  it("folds a branch from its toggle, as the dashboard does", async () => {
+    const user = userEvent.setup();
+    render(<ThreadSidebar agents={herd} currentPaneKey="" onSelect={vi.fn()} order="tree" onOrderChange={vi.fn()} />);
+    await user.click(screen.getByRole("button", { name: "Collapse charlie" }));
+    expect(names()).toEqual(["charlie", "alpha"]);
+    expect(screen.getByRole("button", { name: "Expand charlie" })).toHaveAttribute("aria-expanded", "false");
   });
 });

@@ -18,6 +18,7 @@
 // where the walk meets a pane it already drew. Two panes claiming one id: the first in place order owns it.
 import { paneRowKey } from "./hosts";
 import { asJsonObject, asJsonString } from "./json";
+import { bucketOf } from "./triage";
 import type { AgentView, PaneTree } from "./types";
 
 /** The deepest indent drawn; a deeper pane is drawn at this depth and still sits under its parent. */
@@ -123,4 +124,84 @@ export function treeLayout(panes: readonly AgentView[]): TreeLayout {
   for (const pane of panes) if (inTree(pane)) walk(pane, 0);
   for (const pane of panes) walk(pane, 0);
   return { rows, depth };
+}
+
+/** No folded branch: what the tree order folds by while a query searches every row. */
+export const NO_FOLDS: ReadonlySet<string> = new Set();
+
+/** A session that waits on the operator's input (the `needs` bucket), which a folded branch counts and shows. */
+export function waitsOnYou(pane: AgentView): boolean {
+  return bucketOf(pane) === "needs";
+}
+
+/** What a row in the tree order shows of its place: its role and, when its branch is folded, what the fold hides. */
+export interface TreePlace {
+  role: string | null;
+  fold?: { hidden: number; waiting: number };
+}
+
+/** One row of the tree order as drawn, once folded branches have taken their descendants away. */
+export interface FoldedRow {
+  pane: AgentView;
+  depth: number;
+  /** The branch this row starts, by its node id, when it has children to fold; null for a leaf. */
+  branch: string | null;
+  /** True when this row's branch is folded and its descendants are not drawn. */
+  folded: boolean;
+  /** How many descendants a folded branch hides, at every depth. 0 when open. */
+  hidden: number;
+  /** How many of those hidden descendants wait on the operator. 0 when open. */
+  waiting: number;
+}
+
+/**
+ * The tree order's rows with folded branches closed. A row's descendants are the rows after it in tree order
+ * that sit deeper than it, up to the next row at its depth or above (`treeLayout` draws depth first). A branch
+ * folds only when its starter carries a node id, the key `folds` names it by; a folded branch draws its starter
+ * alone and counts what it hides, and `waits` says which of those wait on the operator.
+ */
+export function foldTree(layout: TreeLayout, folds: ReadonlySet<string>, waits: (pane: AgentView) => boolean): FoldedRow[] {
+  const { rows, depth } = layout;
+  const depthAt = (i: number) => depth.get(paneRowKey(rows[i]!)) ?? 0;
+  const out: FoldedRow[] = [];
+  let i = 0;
+  while (i < rows.length) {
+    const pane = rows[i]!;
+    const level = depthAt(i);
+    let end = i + 1;
+    while (end < rows.length && depthAt(end) > level) end++;
+    const id = paneTree(pane)?.id ?? null;
+    const branch = end > i + 1 && id !== null ? id : null;
+    const folded = branch !== null && folds.has(branch);
+    const hiddenRows = folded ? rows.slice(i + 1, end) : [];
+    out.push({ pane, depth: level, branch, folded, hidden: hiddenRows.length, waiting: hiddenRows.filter(waits).length });
+    i = folded ? end : i + 1;
+  }
+  return out;
+}
+
+/**
+ * The branches to open when the operator opens `id`: that branch, and every branch below it whose subtree holds
+ * a pane that waits, so the session waiting on them is drawn after one tap. Branches with nothing waiting keep
+ * whatever fold they had.
+ */
+export function unfoldPath(layout: TreeLayout, id: string, waits: (pane: AgentView) => boolean): string[] {
+  const { rows, depth } = layout;
+  const depthAt = (i: number) => depth.get(paneRowKey(rows[i]!)) ?? 0;
+  const start = rows.findIndex((p) => paneTree(p)?.id === id);
+  if (start === -1) return [id];
+  const out = [id];
+  const stop = (from: number) => {
+    let end = from + 1;
+    while (end < rows.length && depthAt(end) > depthAt(from)) end++;
+    return end;
+  };
+  const last = stop(start);
+  for (let i = start + 1; i < last; i++) {
+    const branchId = paneTree(rows[i]!)?.id;
+    if (branchId === undefined) continue;
+    const end = stop(i);
+    if (end > i + 1 && rows.slice(i + 1, end).some(waits)) out.push(branchId);
+  }
+  return out;
 }

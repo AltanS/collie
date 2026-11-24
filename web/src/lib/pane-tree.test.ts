@@ -1,5 +1,5 @@
 import { paneRowKey } from "./hosts";
-import { herdHasTree, paneRole, paneTree, treeLayout, treeRows } from "./pane-tree";
+import { foldTree, herdHasTree, paneRole, paneTree, treeLayout, treeRows, unfoldPath } from "./pane-tree";
 import type { AgentView, PaneTree } from "./types";
 
 function pane(paneId: string, tree?: PaneTree, host?: string): AgentView {
@@ -91,5 +91,51 @@ describe("treeRows", () => {
   it("is the shown rows when nothing pinned is missing from them", () => {
     expect(ids(treeRows([a, b, c], [b], [a, b, c]))).toEqual(["a", "b", "c"]);
     expect(ids(treeRows([c, a], [], [a, b, c]))).toEqual(["c", "a"]);
+  });
+});
+
+describe("foldTree", () => {
+  const waiting = (p: AgentView) => p.status === "blocked";
+  const herd = [
+    pane("c", { id: "c" }),
+    pane("w1", { id: "w1", parent: "c" }),
+    pane("r", { parent: "w1" }),
+    pane("w2", { parent: "c" }),
+    pane("plain"),
+  ];
+  herd[2]!.status = "blocked";
+  const layout = treeLayout(herd);
+
+  it("draws every row, each branch marked, when nothing is folded", () => {
+    const rows = foldTree(layout, new Set(), waiting);
+    expect(rows.map((r) => [r.pane.paneId, r.depth, r.branch])).toEqual([
+      ["c", 0, "c"],
+      ["w1", 1, "w1"],
+      ["r", 2, null],
+      ["w2", 1, null],
+      ["plain", 0, null],
+    ]);
+  });
+
+  it("a folded branch draws its starter alone and counts what it hides, waiting at any depth", () => {
+    const rows = foldTree(layout, new Set(["c"]), waiting);
+    expect(rows.map((r) => r.pane.paneId)).toEqual(["c", "plain"]);
+    expect(rows[0]).toMatchObject({ folded: true, hidden: 3, waiting: 1 });
+  });
+
+  it("a folded inner branch leaves its siblings drawn", () => {
+    const rows = foldTree(layout, new Set(["w1"]), waiting);
+    expect(rows.map((r) => r.pane.paneId)).toEqual(["c", "w1", "w2", "plain"]);
+    expect(rows[1]).toMatchObject({ folded: true, hidden: 1, waiting: 1 });
+  });
+
+  it("a fold on a leaf or an unknown id changes nothing", () => {
+    expect(foldTree(layout, new Set(["w2", "gone"]), waiting).map((r) => r.pane.paneId)).toEqual(["c", "w1", "r", "w2", "plain"]);
+  });
+
+  it("opening a branch opens the folded branches on the way to a waiting pane, and no others", () => {
+    expect(unfoldPath(layout, "c", waiting)).toEqual(["c", "w1"]);
+    expect(unfoldPath(layout, "w1", waiting)).toEqual(["w1"]);
+    expect(unfoldPath(layout, "gone", waiting)).toEqual(["gone"]);
   });
 });
