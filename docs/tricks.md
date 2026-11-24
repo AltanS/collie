@@ -2,7 +2,8 @@
 
 A trick adds its own parts to ColliePWA on your phone: a count, a question, or a whole screen.
 
-Tricks are experimental. They may change, lose settings, or be withdrawn in a patch release. They are
+Tricks are experimental. They may change, lose settings, or be withdrawn. A change to how a trick is
+written comes in a minor release, and Edge builds get it first. They are
 off until you switch them on in Settings → Tricks, or with `collie tricks on`. See
 [Switch tricks on or off](#switch-tricks-on-or-off).
 
