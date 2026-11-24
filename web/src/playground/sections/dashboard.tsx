@@ -79,15 +79,26 @@ const herdWithBranches: AgentView[] = herd.map((pane, i) => {
   return gitHead === undefined ? pane : { ...pane, gitHead };
 });
 
+/**
+ * The herd as an orchestrating agent left it: one coordinator, three workers it started, and one research
+ * pane a worker started, each with its role. The rest of the herd sits in no tree.
+ */
+const herdWithTree: AgentView[] = herd.map((pane, i) => {
+  if (i === 0) return { ...pane, tree: { id: "c1", role: "coordinator" } };
+  if (i < 4) return { ...pane, tree: { id: `w${i}`, parent: "c1", role: i === 3 ? "reviewer" : "worker" } };
+  if (i === 4) return { ...pane, tree: { parent: "w1", role: "research" } };
+  return pane;
+});
+
 /** The dashboard with its order toggle live (ADR 0071): tap a segment and the list re-ranks, the way
  *  the route does, with the reading held between taps. */
-function OrderedAgentList({ initial }: { initial: PaneOrder }) {
+function OrderedAgentList({ initial, agents = herd }: { initial: PaneOrder; agents?: AgentView[] }) {
   const [order, setOrder] = useState<PaneOrder>(initial);
   const filter = useCardFilter();
   return (
     <AgentList
       filter={filter}
-      agents={herd}
+      agents={agents}
       bridge="connected"
       onOpen={() => {}}
       newTab={HEADING_NEW_TAB}
@@ -240,6 +251,18 @@ export function DashboardSection() {
         >
           <PhoneFrameCard>
             <OrderedAgentList initial="activity" />
+          </PhoneFrameCard>
+        </Card>
+
+        <Card
+          state="agent-list-tree-order"
+          label="agent list, tree order"
+          reach="some panes carry an orchestrator's node ids and the operator picks Tree in the order select. Each child sits under the pane that started it, indented, with its role beside the name; panes in no tree follow."
+          note="Tree is offered only while a pane of the herd sits in a tree. It is laid out live, never frozen: a link changes only when a pane starts or closes."
+          span={2}
+        >
+          <PhoneFrameCard>
+            <OrderedAgentList initial="tree" agents={herdWithTree} />
           </PhoneFrameCard>
         </Card>
 

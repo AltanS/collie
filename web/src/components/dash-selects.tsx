@@ -5,7 +5,7 @@ import { BottomSheet } from "@/components/ui/sheet";
 import { PANE_ORDER_SEGMENTS } from "@/components/pane-order-toggle";
 import { useLocale } from "@/hooks/use-locale";
 import { t, tn } from "@/lib/i18n";
-import { PANE_ORDERS, type PaneOrder } from "@/lib/pane-order";
+import { paneOrdersFor, type PaneOrder } from "@/lib/pane-order";
 import type { StripEntry } from "@/lib/dash-view";
 import { hostName } from "@/lib/hosts";
 import { worstTriage, type TriageKey } from "@/lib/triage";
@@ -211,14 +211,17 @@ export function WorkspaceFilter({
   );
 }
 
-/** The pane order as a select: Place, Activity, Cache, its glyph in front of the chosen word. */
+/** The pane order as a select: Place, Activity, Cache (and Tree when offered), its glyph in front of the chosen word. */
 export function PaneOrderSelect({
   order,
   onChange,
+  orders = paneOrdersFor(false),
   className,
 }: {
   order: PaneOrder;
   onChange: (order: PaneOrder) => void;
+  /** The orders offered (`paneOrdersFor`). Omit and Place, Activity and Cache are offered. */
+  orders?: readonly PaneOrder[];
   className?: string;
 }) {
   useLocale();
@@ -230,11 +233,11 @@ export function PaneOrderSelect({
       value={order}
       lead={<Icon name={icon} className="size-4" />}
       onChange={(event) => {
-        const next = PANE_ORDERS.find((o) => o === event.target.value);
+        const next = orders.find((o) => o === event.target.value);
         if (next !== undefined) onChange(next);
       }}
     >
-      {PANE_ORDERS.map((value) => (
+      {orders.map((value) => (
         <option key={value} value={value}>
           {t(PANE_ORDER_SEGMENTS[value].label)}
         </option>

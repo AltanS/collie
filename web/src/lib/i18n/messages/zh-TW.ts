@@ -775,6 +775,8 @@ export const zhTW: Dictionary = {
   "paneOrder.recent": "最新優先",
   "paneOrder.cache": "快取",
   "paneOrder.coldest": "最快變冷優先",
+  "paneOrder.tree": "樹狀",
+  "paneOrder.byStarter": "依啟動關係",
   "settings.keepChat.title": "在此手機上保留聊天",
   "settings.keepChat.description": "保留每個窗格最新的聊天內容，在無法連線到 Bridge 時也能閱讀。關閉則不保留任何內容，並刪除已保留的內容。",
   "settings.keepChat.off": "關閉",

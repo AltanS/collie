@@ -776,6 +776,8 @@ export const zh: Dictionary = {
   "paneOrder.recent": "最新优先",
   "paneOrder.cache": "缓存",
   "paneOrder.coldest": "最快变冷优先",
+  "paneOrder.tree": "树状",
+  "paneOrder.byStarter": "按启动关系",
   "settings.keepChat.title": "在此手机上保留聊天",
   "settings.keepChat.description": "保留每个窗格最新的聊天内容，在无法连接网桥时也能阅读。关闭则不保留任何内容，并删除已保留的内容。",
   "settings.keepChat.off": "关闭",

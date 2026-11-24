@@ -735,6 +735,8 @@ export const fr: Dictionary = {
   "paneOrder.recent": "Plus récent d'abord",
   "paneOrder.cache": "Cache",
   "paneOrder.coldest": "Moins actif d'abord",
+  "paneOrder.tree": "Arbre",
+  "paneOrder.byStarter": "Qui a lancé qui",
   "settings.keepChat.title": "Garder le chat sur ce téléphone",
   "settings.keepChat.description": "Conserve les tours de Chat les plus récents de chaque volet, pour pouvoir les lire lorsque le bridge est inaccessible. Désactivé ne garde rien et supprime l'existant.",
   "settings.keepChat.off": "Désactivé",

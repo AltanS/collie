@@ -805,6 +805,8 @@ export const de: Dictionary = {
   "paneOrder.recent": "Neueste zuerst",
   "paneOrder.cache": "Cache",
   "paneOrder.coldest": "Zuerst, was kalt wird",
+  "paneOrder.tree": "Baum",
+  "paneOrder.byStarter": "Wer wen gestartet hat",
   "settings.keepChat.title": "Chat auf diesem Telefon behalten",
   "settings.keepChat.description": "Behält die neuesten Chat-Beiträge jedes Panes, damit du sie lesen kannst, wenn die Bridge nicht erreichbar ist. Aus behält nichts und löscht, was gespeichert ist.",
   "settings.keepChat.off": "Aus",

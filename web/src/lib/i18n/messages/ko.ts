@@ -788,6 +788,8 @@ export const ko: Dictionary = {
   "paneOrder.recent": "최신 순",
   "paneOrder.cache": "캐시",
   "paneOrder.coldest": "캐시 만료 임박순",
+  "paneOrder.tree": "트리",
+  "paneOrder.byStarter": "실행한 세션별",
   "settings.keepChat.title": "이 기기에 채팅 보관",
   "settings.keepChat.description": "각 창의 최신 채팅을 보관하여 브리지에 연결할 수 없을 때도 읽을 수 있게 합니다. 끄면 아무것도 보관하지 않고 보관된 내용을 삭제합니다.",
   "settings.keepChat.off": "끄기",

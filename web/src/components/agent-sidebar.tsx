@@ -15,7 +15,8 @@ import { SUMMARY_LINE_TAP_TARGET } from "@/components/ui/tap-target";
 import { pinnedRows, shownGroups } from "@/lib/dash-view";
 import { paneRowKey, paneSpaceKey, tabKey } from "@/lib/hosts";
 import { groupPanesByWorkspace } from "@/lib/pane-groups";
-import { inRankOrder, type PaneOrder } from "@/lib/pane-order";
+import { inRankOrder, paneOrdersFor, rankedHeading, type PaneOrder } from "@/lib/pane-order";
+import { herdHasTree, paneRole, treeLayout } from "@/lib/pane-tree";
 import {
   byScore,
   filterOffered,
@@ -34,6 +35,7 @@ import { paneName, panePlaceParts } from "@/lib/pane-name";
 import { paneSubtitle } from "@/lib/pane-marks";
 import { PaneBadge } from "@/components/pane-badge";
 import { PaneGlyph } from "@/components/ui/pane-glyph";
+import { TreeIndent } from "@/components/ui/tree-indent";
 import { UnseenMark } from "@/components/ui/unseen-mark";
 import { shortenHome } from "@/lib/shorten-home";
 import { bucketOf, isAttention, isUnseen, shownStatus, worstTriage, type TriageKey } from "@/lib/triage";
@@ -340,8 +342,10 @@ export function ThreadSidebar({
   // Place keeps its workspace sections; BOTH ranked orders collapse to one list, for the same reason:
   // a rank crosses every workspace, and a heading cannot answer a question asked across all of them.
   const ranked = order !== "place";
+  // The tree order is structure, laid out live (lib/pane-tree.ts), never a frozen reading.
+  const tree = order === "tree" ? treeLayout([...sections.flatMap((g) => g.rows), ...shellRows]) : null;
   const rankedAll = ranked
-    ? inRankOrder([...sections.flatMap((g) => g.rows), ...shellRows], ranks)
+    ? (tree?.rows ?? inRankOrder([...sections.flatMap((g) => g.rows), ...shellRows], ranks))
     : NO_PANES;
 
   const urgent = agents.filter((a) => URGENT.has(bucketOf(a)));
@@ -411,6 +415,12 @@ export function ThreadSidebar({
       match={hitOf(pane)}
     />
   );
+  // A row's place in the tree, only in the tree order's own list: never in Pinned or a best-first list,
+  // where the rows above a child are not its starter.
+  const treePlace = (a: AgentView) => {
+    const depth = bestRows !== null ? undefined : tree?.depth.get(paneRowKey(a));
+    return depth === undefined ? undefined : { depth, role: paneRole(a) };
+  };
   // A trick row reaches here only in best-first order, where every matched row shares one flat list.
   const row = (a: AgentView) =>
     isTrickPane(a) ? (
@@ -425,6 +435,7 @@ export function ThreadSidebar({
         roomy={roomy}
         match={hitOf(a)}
         highlighted={highlightedKey !== null && paneRowKey(a) === highlightedKey}
+        tree={treePlace(a)}
       />
     );
 
@@ -476,6 +487,7 @@ export function ThreadSidebar({
             {onOrderChange && !noPanes && (
               <PaneOrderToggle
                 order={order}
+                orders={paneOrdersFor(herdHasTree(agents) || herdHasTree(shellPanes), order)}
                 onChange={(next) => {
                   reread();
                   onOrderChange(next);
@@ -543,7 +555,7 @@ export function ThreadSidebar({
               <Section
                 roomy={roomy}
                 id="switch-activity"
-                label={t(order === "cache" ? "paneOrder.coldest" : "paneOrder.recent")}
+                label={t(rankedHeading(order))}
                 count={rankedRows.length}
                 tone={roomy ? "quiet" : "strong"}
               >
@@ -705,6 +717,7 @@ export function PaneRow({
   roomy,
   match,
   highlighted = false,
+  tree,
 }: {
   /** The row's DOM id, for the summary line's jump. Every row has one, shells too. */
   id?: string;
@@ -717,6 +730,8 @@ export function PaneRow({
   match?: PaneMatch | undefined;
   /** The Actions palette's highlight: the row Enter opens (ADR 0165). An inset ring, so it shows on the open row too. */
   highlighted?: boolean;
+  /** The row's place in the tree order (lib/pane-tree.ts). Absent outside it: the row is drawn as before. */
+  tree?: { depth: number; role: string | null } | undefined;
 }) {
   const isShell = pane.kind === "shell";
   // ONE NAME, ONE PLACE (lib/pane-name.ts), the same way round as every other row in the app: the
@@ -770,6 +785,7 @@ export function PaneRow({
         highlighted && PALETTE_HIGHLIGHT,
       )}
     >
+      {tree !== undefined && <TreeIndent depth={tree.depth} />}
       {isShell ? (
         <Icon name="shell-pane" className="size-3.5 shrink-0 text-muted-foreground" />
       ) : (
@@ -787,6 +803,9 @@ export function PaneRow({
             <MatchText text={name} ranges={marks?.name} fade={paneRowKey(pane)} />
           </span>
           <PaneBadge pane={pane} className={cn("shrink-0 self-center", roomy && "text-muted-foreground")} />
+          {tree !== undefined && tree.role !== null && (
+            <PaneBadge pane={{ badge: { text: tree.role } }} className={cn("shrink-0 self-center", roomy && "text-muted-foreground")} />
+          )}
           {/* A finished pane nobody opened: the dashboard's square, after the name, so a row agrees with
               the heading's `■` count. The slot is kept on every agent row, so a name truncates at one
               width whether the mark is drawn or not (DESIGN.md §2). */}

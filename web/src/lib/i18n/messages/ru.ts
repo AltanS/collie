@@ -741,6 +741,8 @@ export const ru: Dictionary = {
   "paneOrder.recent": "Сначала новые",
   "paneOrder.cache": "Кэш",
   "paneOrder.coldest": "Сначала неактивные",
+  "paneOrder.tree": "Дерево",
+  "paneOrder.byStarter": "Кто кого запустил",
   "settings.keepChat.title": "Хранить чат на этом телефоне",
   "settings.keepChat.description": "Сохраняет последние реплики Chat для каждой панели, чтобы их можно было читать без доступа к bridge. В выключенном состоянии ничего не сохраняется, а сохраненные данные удаляются.",
   "settings.keepChat.off": "Выкл.",

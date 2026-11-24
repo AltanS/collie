@@ -733,6 +733,8 @@ export const pt: Dictionary = {
   "paneOrder.recent": "Mais recentes primeiro",
   "paneOrder.cache": "Cache",
   "paneOrder.coldest": "Inativos primeiro",
+  "paneOrder.tree": "Árvore",
+  "paneOrder.byStarter": "Quem iniciou quem",
   "settings.keepChat.title": "Manter chat neste telefone",
   "settings.keepChat.description": "Mantém as mensagens de Chat mais recentes de cada painel para você lê-las quando a bridge estiver inacessível. Desativado não mantém nada e apaga o que estiver salvo.",
   "settings.keepChat.off": "Desativado",

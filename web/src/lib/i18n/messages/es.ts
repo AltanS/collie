@@ -802,6 +802,8 @@ export const es: Dictionary = {
   "paneOrder.recent": "Más reciente primero",
   "paneOrder.cache": "Caché",
   "paneOrder.coldest": "Primero lo que se enfría",
+  "paneOrder.tree": "Árbol",
+  "paneOrder.byStarter": "Quién inició a quién",
   "settings.keepChat.title": "Guardar el chat en este teléfono",
   "settings.keepChat.description": "Guarda los turnos más recientes del Chat de cada panel para que puedas leerlos cuando el bridge no esté al alcance. Desactivado no guarda nada y borra lo guardado.",
   "settings.keepChat.off": "Desactivado",

@@ -41,7 +41,7 @@ export interface SectionEntry {
  */
 export const ENTRIES: readonly SectionEntry[] = [
   {
-    def: { id: "dashboard", group: "Dashboard", title: "Dashboard", keywords: ["home", "herd", "AgentList", "tabs", "needs-you", "TabBar", "PaneStrip", "SpaceStrip", "TabStrip", "navigation", "update-band", "UpdateBanner", "UpdateRibbon", "footer", "build-stamp", "crew-link", "SessionSwitcher", "read-only", "write-gate", "worktree", "branch"] },
+    def: { id: "dashboard", group: "Dashboard", title: "Dashboard", keywords: ["home", "herd", "AgentList", "tabs", "needs-you", "TabBar", "PaneStrip", "SpaceStrip", "TabStrip", "navigation", "update-band", "UpdateBanner", "UpdateRibbon", "footer", "build-stamp", "crew-link", "SessionSwitcher", "read-only", "write-gate", "worktree", "branch", "tree", "orchestrator", "TreeIndent"] },
     load: () => import("./sections/dashboard").then((m) => ({ default: m.DashboardSection })),
   },
   {

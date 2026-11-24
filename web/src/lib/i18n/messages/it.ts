@@ -737,6 +737,8 @@ export const it: Dictionary = {
   "paneOrder.recent": "Prima i più recenti",
   "paneOrder.cache": "Cache",
   "paneOrder.coldest": "Prima i meno attivi",
+  "paneOrder.tree": "Albero",
+  "paneOrder.byStarter": "Chi ha avviato chi",
   "settings.keepChat.title": "Salva chat su questo telefono",
   "settings.keepChat.description": "Mantiene i turni di Chat più recenti di ogni riquadro, per leggerli quando il bridge non è raggiungibile. Disattivato non mantiene nulla ed elimina i dati salvati.",
   "settings.keepChat.off": "Disattivato",

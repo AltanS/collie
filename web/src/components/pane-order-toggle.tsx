@@ -3,11 +3,11 @@ import { Segmented } from "@/components/ui/segmented";
 import type { IconKey } from "@/components/icons/keys";
 
 import { cn } from "@/lib/utils";
-import { PANE_ORDERS, type PaneOrder } from "@/lib/pane-order";
+import { paneOrdersFor, type PaneOrder } from "@/lib/pane-order";
 import { t, type MessageKey } from "@/lib/i18n";
 import { useLocale } from "@/hooks/use-locale";
 
-// Place, Activity or Cache: the segmented choice that decides which way a pane list runs
+// Place, Activity, Cache or Tree: the segmented choice that decides which way a pane list runs
 // (lib/pane-order.ts, ADR 0071). ONE control, drawn in two places — at the top of the pane switcher
 // where the order is read, and on the Settings page where a person goes looking for it — because the
 // two write the same stored value and a person who finds one should recognise the other.
@@ -25,17 +25,22 @@ import { useLocale } from "@/hooks/use-locale";
 // control, the row it shares says what is on screen, and the section heading below spells the order
 // in words anyway ("Newest first", "Going cold first"). Settings keeps the labelled form, because
 // nobody arrives there already knowing which glyph is which.
+/** The orders a control offers when its caller names none: the tree order only where a caller offers it. */
+const BASE_ORDERS = paneOrdersFor(false);
+
 export const PANE_ORDER_SEGMENTS = {
   place: { label: "paneOrder.place", icon: "sort-by-place" },
   activity: { label: "paneOrder.activity", icon: "time" },
   // The chip's own glyph (components/cache-chip.tsx), so the control and the number it sorts by are
   // obviously about the same thing.
   cache: { label: "paneOrder.cache", icon: "cache-age" },
+  tree: { label: "paneOrder.tree", icon: "sort-by-tree" },
 } as const satisfies Record<PaneOrder, { label: MessageKey; icon: IconKey }>;
 
 export function PaneOrderToggle({
   order,
   onChange,
+  orders = BASE_ORDERS,
   compact = false,
   iconClassName = "size-4",
   className,
@@ -43,6 +48,8 @@ export function PaneOrderToggle({
 }: {
   order: PaneOrder;
   onChange: (order: PaneOrder) => void;
+  /** The orders offered, in this order (`paneOrdersFor`). Omit and Place, Activity and Cache are offered. */
+  orders?: readonly PaneOrder[];
   /** Glyphs only, sized to share a row. See the note above {@link PANE_ORDER_SEGMENTS}. */
   compact?: boolean;
   /** The glyph's size; the large screen's sidebar draws its 20px glyphs here too. */
@@ -58,7 +65,7 @@ export function PaneOrderToggle({
   if (segmented) {
     return (
       <Segmented
-        options={PANE_ORDERS.map((value) => ({
+        options={orders.map((value) => ({
           value,
           label: t(PANE_ORDER_SEGMENTS[value].label),
           icon: <Icon name={PANE_ORDER_SEGMENTS[value].icon} aria-hidden />,
@@ -67,7 +74,8 @@ export function PaneOrderToggle({
         onChange={onChange}
         label={t("paneOrder.aria")}
         compact
-        className={cn("w-[132px] shrink-0", className)}
+        // 44px a segment: three orders, or four while the tree order is offered.
+        className={cn(orders.length > 3 ? "w-[176px]" : "w-[132px]", "shrink-0", className)}
       />
     );
   }
@@ -77,7 +85,7 @@ export function PaneOrderToggle({
       aria-label={t("paneOrder.aria")}
       className={cn("flex gap-1", compact && "shrink-0", className)}
     >
-      {PANE_ORDERS.map((value) => {
+      {orders.map((value) => {
         const { label, icon } = PANE_ORDER_SEGMENTS[value];
         const selected = value === order;
         return (

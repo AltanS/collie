@@ -879,6 +879,8 @@ export const en = {
   "paneOrder.recent": "Newest first",
   "paneOrder.cache": "Cache",
   "paneOrder.coldest": "Going cold first",
+  "paneOrder.tree": "Tree",
+  "paneOrder.byStarter": "Who started whom",
   "settings.keepChat.title": "Keep chat on this phone",
   "settings.keepChat.description": "Keeps the newest Chat turns of each pane, so you can read them when the bridge is out of reach. Off keeps nothing and deletes what is kept.",
   "settings.keepChat.off": "Off",

@@ -5,6 +5,7 @@ import { PaneOrderToggle } from "@/components/pane-order-toggle";
 import { useDashPrefs } from "@/hooks/use-dash-prefs";
 import { useLocale } from "@/hooks/use-locale";
 import { t } from "@/lib/i18n";
+import { paneOrdersFor } from "@/lib/pane-order";
 
 /**
  * Which way a pane list runs: by PLACE, or by ACTIVITY.
@@ -37,7 +38,9 @@ export function PaneOrderControl() {
       </div>
 
       <div className="border-t border-border p-2">
-        <PaneOrderToggle order={prefs.paneOrder} onChange={setPaneOrder} />
+        {/* Tree is offered where the herd is in view (the dashboard and the switcher), and here only
+            while it is the order in force, so the setting still shows what is chosen. */}
+        <PaneOrderToggle order={prefs.paneOrder} onChange={setPaneOrder} orders={paneOrdersFor(false, prefs.paneOrder)} />
       </div>
     </Card>
   );

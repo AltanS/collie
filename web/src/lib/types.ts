@@ -152,6 +152,12 @@ export interface AgentView {
    */
   progress?: PaneProgress;
   /**
+   * Where the pane sits in a tree of agents that start agents. Mirrors `AgentView.tree` in
+   * bridge/types.ts. Absent on a pane nobody placed in a tree, on an older bridge and on an older crew
+   * member. Read it through lib/pane-tree.ts, which drops a malformed one from a peer.
+   */
+  tree?: PaneTree;
+  /**
    * A finished sentence the bridge composed about this pane, for the operator to read. Absent on
    * almost every pane, and on every bridge older than the version that introduced it.
    *
@@ -2903,6 +2909,13 @@ export type WorktreeCreateResponse =
   | { ok: false; error: string; code?: ApiErrorCode; detail?: ApiErrorDetail };
 /** A small mark next to a pane's title: a count, or a short word. Mirrors `PaneBadge` in bridge/types.ts. */
 export type PaneBadge = { count: number } | { text: string };
+
+/** A pane's place in a tree of agents: its node id, its starter's node id, a role word. Mirrors `PaneTree` in bridge/types.ts. */
+export type PaneTree = {
+  id?: string;
+  parent?: string;
+  role?: string;
+};
 
 /** How far a working pane is: up to 12 steps, or a percent. Mirrors `PaneProgress` in bridge/types.ts. */
 export type PaneProgress =

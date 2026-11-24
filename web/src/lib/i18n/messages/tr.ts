@@ -733,6 +733,8 @@ export const tr: Dictionary = {
   "paneOrder.recent": "Önce en yeni",
   "paneOrder.cache": "Önbellek",
   "paneOrder.coldest": "Önce soğuyanlar",
+  "paneOrder.tree": "Ağaç",
+  "paneOrder.byStarter": "Kim kimi başlattı",
   "settings.keepChat.title": "Sohbeti bu telefonda tut",
   "settings.keepChat.description": "Köprüye erişilemediğinde okuyabilmeniz için her bölmenin en yeni Sohbet sıralarını saklar. Kapalı hiçbir şey tutmaz ve tutulanları siler.",
   "settings.keepChat.off": "Kapalı",

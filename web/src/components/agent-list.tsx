@@ -22,7 +22,8 @@ import type { AgentView, BridgeStatus, ServerSummary, SessionSummary, TabView, W
 import { paneRowKey, paneScope } from "@/lib/hosts";
 import { machinesHiddenFrom } from "@/lib/hidden-machines";
 import { pinMatcher, type Pin } from "@/lib/pins";
-import { inRankOrder, type PaneOrder } from "@/lib/pane-order";
+import { inRankOrder, paneOrdersFor, rankedHeading, type PaneOrder } from "@/lib/pane-order";
+import { herdHasTree, paneRole, treeLayout } from "@/lib/pane-tree";
 import {
   byScore,
   filterOffered,
@@ -588,7 +589,10 @@ export function AgentList({
   // the workspace groups into one list. The filters above (needs you, isolate, hide, hidden machines,
   // pins) have already run, so they decide WHICH rows and never their order; shells are in these
   // groups already and are ranked with everything else, as in the switcher.
-  const rankedRows = ranked && !renderBody ? inRankOrder(drawn.flatMap((d) => d.rows), ranks) : NO_PANES;
+  // The tree order (lib/pane-tree.ts) is structure, not a reading: laid out live from the rows the
+  // filters left, so a child sits under its starter and a starter filtered out leaves its child a root.
+  const tree = order === "tree" && !renderBody ? treeLayout(drawn.flatMap((d) => d.rows)) : null;
+  const rankedRows = ranked && !renderBody ? (tree?.rows ?? inRankOrder(drawn.flatMap((d) => d.rows), ranks)) : NO_PANES;
   const firstUrgentRow = rankedRows.find((p) => ATTENTION.has(bucketOf(p)));
 
   // ── THE FILTER (M97) ──────────────────────────────────────────────────────────────────────────────
@@ -723,6 +727,12 @@ export function AgentList({
   // same hold.
   // `band` is the large screen's card in the band above the grid (ADR 0158): the same row's session, so it
   // carries no DOM id (the row in its Space has it) and draws the card density, with the question.
+  // A row's place in the tree, drawn only in the tree order's own list: never in Pinned, the band, or a
+  // query's best-first list, where the rows above a child are not its starter.
+  const treePlace = (a: AgentView, band: boolean) => {
+    const depth = band || bestRows !== null ? undefined : tree?.depth.get(paneRowKey(a));
+    return depth === undefined ? undefined : { depth, role: paneRole(a) };
+  };
   const row = (a: AgentView, scope: "place" | "herd" = "place", band = false) => (
     <AgentCard
       key={paneRowKey(a)}
@@ -739,6 +749,7 @@ export function AgentList({
       tint
       stale={stale}
       match={hitOf(a)}
+      tree={treePlace(a, band)}
     />
   );
 
@@ -774,6 +785,7 @@ export function AgentList({
   const orderSlot = onOrderChange && (
     <PaneOrderSelect
       order={order}
+      orders={paneOrdersFor(herdHasTree(agents) || herdHasTree(shellPanes), order)}
       className="shrink-0"
       onChange={(next) => {
         reread();
@@ -914,7 +926,7 @@ export function AgentList({
             <section id={RANKED_ID} aria-labelledby={RANKED_HEADING_ID} className="flex scroll-mt-4 flex-col gap-2">
               <SectionHeader
                 id={RANKED_HEADING_ID}
-                label={t(order === "cache" ? "paneOrder.coldest" : "paneOrder.recent")}
+                label={t(rankedHeading(order))}
                 count={rankedShown.length}
                 tone="strong"
                 className="min-h-7"
@@ -1050,7 +1062,7 @@ export function AgentList({
         <section id={RANKED_ID} aria-labelledby={RANKED_HEADING_ID} className="flex scroll-mt-4 flex-col gap-2">
           <SectionHeader
             id={RANKED_HEADING_ID}
-            label={t(order === "cache" ? "paneOrder.coldest" : "paneOrder.recent")}
+            label={t(rankedHeading(order))}
             count={rankedShown.length}
             tone="strong"
             className="min-h-7"

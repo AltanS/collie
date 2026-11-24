@@ -787,6 +787,8 @@ export const ja: Dictionary = {
   "paneOrder.recent": "新しい順",
   "paneOrder.cache": "キャッシュ",
   "paneOrder.coldest": "冷める順",
+  "paneOrder.tree": "ツリー",
+  "paneOrder.byStarter": "起動元ごと",
   "settings.keepChat.title": "この端末にチャットを保存",
   "settings.keepChat.description": "各ペインの最新のチャットを保存し、ブリッジに接続できないときにも読めるようにします。オフにすると何も保存せず、保存済みの内容を削除します。",
   "settings.keepChat.off": "オフ",

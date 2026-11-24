@@ -27,6 +27,7 @@ import { PRESS_REACH_ROW } from "@/components/ui/tap-target";
 import { useOpeningShown } from "@/lib/pane-opening";
 import { cancelPress, clearPress, markPressHeld, redirectClick, releasePress, rememberPress } from "@/lib/press-memory";
 import { Icon } from "@/components/icons/icon";
+import { TreeIndent } from "@/components/ui/tree-indent";
 
 interface AgentCardProps {
   agent: AgentView;
@@ -100,6 +101,12 @@ interface AgentCardProps {
    * in the same line box. Absent, with no query, the row is drawn exactly as it was.
    */
   match?: PaneMatch | undefined;
+  /**
+   * The row's place in the tree order (lib/pane-tree.ts): how deep it sits under the pane that started
+   * it, and the role word its starter gave it. Given, a child row is indented with a branch mark and the
+   * role rides beside the name. Absent, outside the tree order, the row is drawn exactly as it was.
+   */
+  tree?: { depth: number; role: string | null } | undefined;
 }
 
 /** The row's text: line 1's name, and line 2's two runs. */
@@ -151,6 +158,7 @@ export function AgentCard({
   tint = false,
   stale = false,
   match,
+  tree,
 }: AgentCardProps) {
   useLocale();
   // The read for this row's pane is out and has taken longer than the glide waits (lib/pane-opening.ts).
@@ -352,6 +360,8 @@ export function AgentCard({
           stale && "opacity-50",
         )}
       >
+        {/* A child in the tree order is pushed right by its depth (ui/tree-indent.tsx). */}
+        {tree !== undefined && <TreeIndent depth={tree.depth} />}
         <div className="min-w-0 flex-1">
           {/* LINE 1 IS THE NAME, AND THE ADDRESS ENDS IT. The dot and the tile stay centred on the
               row's own line box — neither has a baseline worth chasing — but the name and the
@@ -405,6 +415,8 @@ export function AgentCard({
             {/* The program's small mark (a count, or a short word), 16px like the tile so line 1 holds
                 its height. Nothing without one. */}
             <PaneBadge pane={agent} className="shrink-0 self-center" />
+            {/* The role its starter gave the pane, in the same pill, only in the tree order. */}
+            {tree !== undefined && tree.role !== null && <PaneBadge pane={{ badge: { text: tree.role } }} className="shrink-0 self-center" />}
             <UnseenMark on={unseen} reserve={flat} className="ml-2" />
             <PaneMeta
               host={agent.host}

@@ -276,6 +276,7 @@ export const ICONOIR = {
   "sign-in": "log-in", // sign in · lucide LogIn
   "slash-command": "slash", // slash command · lucide Slash
   "sort-by-place": "folder", // sort panes by place · lucide FolderTree
+  "sort-by-tree": "view-structure-down", // sort panes by who started whom · lucide Network
   "sort-order": "sort", // the pane sort order setting · lucide ArrowDownUp
   "space-next": "nav-arrow-down", // next space · lucide ChevronDown
   "space-prev": "nav-arrow-up", // previous space · lucide ChevronUp
@@ -313,6 +314,7 @@ export const ICONOIR = {
   "tool-search": "search", // a search tool call · lucide Search
   "tool-task": "sparks", // a task or subagent tool call · lucide Bot
   "tour": "compass", // the guided tour · lucide Compass
+  "tree-child": "corner-bottom-left", // a pane started by the pane above it · lucide CornerDownRight
   "trick-fact-adds": "plus-square", // what a trick adds to the app, on its details page · lucide SquarePlus
   "trick-fact-reads": "eye", // what a trick may read or do, on its details page · lucide Eye
   "trick-fact-runs": "timer", // when a trick runs, on its details page · lucide Timer
