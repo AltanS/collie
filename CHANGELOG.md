@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Fixed
+
+- **On macOS, a message to Claude Code is sent while its rating question shows.** Claude Code on macOS draws the bullet of its session rating question, and of its question about the session transcript, as `⏺` and not as `●`. Collie did not know the question with that bullet, took it for a dialog it could not read, and refused every message until the question went away. Collie takes either bullet. Thanks @OowhitecatoO (#856). ([bcc014b](https://github.com/AltanS/collie/commit/bcc014b))
+
 ## [1.30.1] - 2026-11-22
 
 ### Fixed
