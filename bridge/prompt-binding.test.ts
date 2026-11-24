@@ -759,7 +759,9 @@ describe("the declared tail window", () => {
 });
 
 describe("verifyPromptParts", () => {
-  const read = ["older output", "Title", "subject one", "subject two", "clock 1:20", "Question?", "1. Yes", "2. No", "footer"].join("\n");
+  // The rows between two parts must be one self-answer countdown sentence and nothing else.
+  const clock = (time: string) => `⚠ Claude Code will automatically deny this request in ${time}, to avoid blocking progress on an unattended session`;
+  const read = ["older output", "Title", "subject one", "subject two", clock("1:20"), "Question?", "1. Yes", "2. No", "footer"].join("\n");
   const parts = ["Title\nsubject one\nsubject two", "Question?\n1. Yes\n2. No\nfooter"];
 
   test("every part in order, one left-out row between, the last in the tail: bound", () => {
@@ -773,9 +775,14 @@ describe("verifyPromptParts", () => {
   });
 
   test("the parts must sit apart by 1 to MAX_PART_GAP_ROWS rows, no more and no less", () => {
-    expect(verifyPromptParts(read.replace("clock 1:20\n", ""), parts).ok).toBe(false);
-    expect(verifyPromptParts(read.replace("clock 1:20", "a\nb\nc\nd\ne"), parts).ok).toBe(false);
-    expect(verifyPromptParts(read.replace("clock 1:20", "a\nb\nc\nd"), parts).ok).toBe(true);
+    expect(verifyPromptParts(read.replace(`${clock("1:20")}\n`, ""), parts).ok).toBe(false);
+    const wrapped = (rows: number) => {
+      const words = clock("1:20").split(" ");
+      const per = Math.ceil(words.length / rows);
+      return Array.from({ length: rows }, (_, r) => words.slice(r * per, (r + 1) * per).join(" ")).join("\n");
+    };
+    expect(verifyPromptParts(read.replace(clock("1:20"), wrapped(4)), parts).ok).toBe(true);
+    expect(verifyPromptParts(read.replace(clock("1:20"), wrapped(5)), parts).ok).toBe(false);
   });
 
   test("out of order, or the last part away from the tail, refuses", () => {

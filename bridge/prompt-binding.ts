@@ -11,6 +11,8 @@ import { trailingTaskChecklistStart } from "../web/src/lib/task-checklist.ts";
 // anchors. It feeds a SHADOW observation only (composerBelowShadow); it never refuses a tap.
 import { findInputFrame, plainRows } from "../web/src/lib/surface/frame.ts";
 import { loadProfiles } from "../web/src/lib/surface/profile.ts";
+// The rows a list binding leaves out are checked by the one countdown matcher the phone cut them with.
+import { holdsOnlyCountdown } from "../web/src/lib/harness/claude/countdown.ts";
 
 /**
  * Normalize a rendered prompt region for comparison across terminal redraws.
@@ -230,7 +232,8 @@ export const MAX_PROMPT_PARTS = 4;
 /**
  * How many rows may sit between two parts of a list binding, at most. A part boundary leaves out the
  * rows the phone saw redraw by themselves (a countdown sentence, which rewraps to one to three rows as
- * its clock changes width), and nothing else: at least one row, never more than this.
+ * its clock changes width), and nothing else: at least one row, never more than this. What those rows
+ * hold is checked too ({@link verifyPromptParts}).
  */
 export const MAX_PART_GAP_ROWS = 4;
 
@@ -239,8 +242,13 @@ export const MAX_PART_GAP_ROWS = 4;
  * read, in order, the last one where a single region would be (its last match, ending inside the last
  * `tailLines` rows, a trailing task checklist and a named footer run handled as `verifyExpectedPrompt`
  * does), and each earlier part ends 1 to {@link MAX_PART_GAP_ROWS} rows above the start of the part
- * after it. Normalized rows, as the single check counts them. No grammar here: which rows were left
- * out, and why, is the phone's decision; the bridge checks only that everything else is still there.
+ * after it. Normalized rows, as the single check counts them.
+ *
+ * The parts come from the phone, and the bridge is the gate: the rows between two parts must be one
+ * self-answer countdown sentence and nothing else (`holdsOnlyCountdown`, the matcher the phone cut
+ * them with). A gap that holds anything else, a command row or a sentence with other words beside it,
+ * is refused as a changed prompt (`not_found`), so a forged list cannot leave a row of the dialog
+ * unchecked.
  */
 export function verifyPromptParts(
   freshText: string,
@@ -260,7 +268,8 @@ export function verifyPromptParts(
     for (let gap = 1; gap <= MAX_PART_GAP_ROWS && found < 0; gap++) {
       const start = nextStart - gap - lines.length;
       if (start < 0) break;
-      if (lines.every((line, offset) => freshLines[start + offset] === line)) found = start;
+      if (!lines.every((line, offset) => freshLines[start + offset] === line)) continue;
+      if (holdsOnlyCountdown(freshLines.slice(start + lines.length, nextStart))) found = start;
     }
     if (found < 0) return { ok: false, reason: "not_found" };
     nextStart = found;
