@@ -23,10 +23,6 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
-### Changed
-
-- **The build line at the foot of a page carries a name for test tools.** Nothing on the screen changes. A browser test finds the line by that name on every build instead of by a diagnostic line that only a development build draws.
-
 ## [1.31.0] - 2026-11-24
 
 ### Added
