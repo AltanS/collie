@@ -2868,7 +2868,18 @@ describe("walky talky in a crew of four, on the real wire", () => {
     // B types it, B's next snapshot answer reports it, and the lead pushes it back to A, all inside
     // the 15 s `send` waits on a local message.
     expect(await cmdWalkySend(cli, [paneOf(wb), "from member a, told how it ended"])).toBe(EXIT.OK);
-    expect(captured.out).toEqual([id, `to ${paneOf(wb)}`, "typed into the pane"]);
+    // Five lines since `send` names its recipient and what it leaves unanswered (commit d5c219d): the id, the
+    // pane, `to: NAME · SPACE · MACHINE` of B's row as the bridge lists it (the fake Herdr labels B's pane with
+    // its name, every pane sits in SHARED_SPACE, the machine is B's), the state, and last the `note:`. The note
+    // is right here: an earlier case of this describe block had the lead's agent send `wt_l2apane00001` to A's
+    // pane, A's agent never replied to it, it is under 10 minutes old and not from B, the recipient of this send.
+    expect(captured.out).toEqual([
+      id,
+      `to ${paneOf(wb)}`,
+      `to: ${wb.name} · ${SHARED_SPACE} · ${wb.name}`,
+      "typed into the pane",
+      expect.stringMatching(new RegExp(`^note: wt_l2apane00001 from ${paneOf(wl)}#[a-z0-9]{4} is not answered\\. To answer it: collie walky reply wt_l2apane00001 "<text>"$`, "u")),
+    ]);
     expect(captured.err).toEqual([]);
     // A's own log holds B's receipt, as B wrote it, and nothing is left "on the lead".
     expect(await walky(wa, { op: "status", id })).toMatchObject({ ok: true, receipts: [{ id, target: paneOf(wb), state: "delivered", by: idOf(wb), verified: "origin" }], elsewhere: [] });
