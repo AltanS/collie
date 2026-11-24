@@ -298,7 +298,7 @@ import type { PaneForeground } from "../pane-binary.ts";
 import type { PaneLockFiles } from "./pane-lock.ts";
 import { commandListAnyText, commandListAt, isRunningRow, noticeOver, ownCommandList, popupAt, readCues, readCuesFor, runningSign, withoutCommandList, withoutPopup, withoutPromptEchoes, type CommandListRead, type Cue } from "../../web/src/lib/surface/cues.ts";
 import { loadProfiles } from "../../web/src/lib/surface/profile.ts";
-import { surfaceOfScreen } from "../../web/src/lib/surface/fold.ts";
+import { inputFrameOf, surfaceOfScreen } from "../../web/src/lib/surface/fold.ts";
 import { findInputFrame, readIsUnstyled, rowText, type Frame, type FrameRow } from "../../web/src/lib/surface/frame.ts";
 import { CODE_REJECTED_PLAIN, fieldShows, rejectionDetail, signInRejections } from "../../web/src/lib/surface/secret-field.ts";
 import { liftAsk, liftDialog, readerBlocks } from "../../web/src/lib/surface/lift.ts";
@@ -1397,7 +1397,8 @@ function mayHoldPlaceholder(match: PaneProfileMatch | null, s0: Snap): boolean {
  */
 function ghostView(ghost: string | null, snap: Snap): Snap {
   const { frame } = snap;
-  if (ghost === null || frame === null || frame.placeholder || frame.interior.text !== ghost || !readIsUnstyled(snap.rows)) return snap;
+  // A box at its scroll height is never the empty box (fold.ts `composerOf`): text stands above its view.
+  if (ghost === null || frame === null || frame.placeholder || frame.scrolled === true || frame.interior.text !== ghost || !readIsUnstyled(snap.rows)) return snap;
   const surface: Surface = snap.surface.composer === "draft" ? { ...snap.surface, composer: "empty" } : snap.surface;
   return { ...snap, frame: { ...frame, placeholder: true }, surface };
 }
@@ -2625,6 +2626,7 @@ export function uploadAlone(match: ProfileMatch | null, lines: readonly string[]
  * last one must be the text's last: what is in view is compared as strictly as a box that fits.
  */
 export function boxMatchesTail(box: string, prefix: string, lines: readonly string[]): boolean {
+  // A view with no text (blank rows only) proves nothing: a scrolled box's head may hold anything.
   const seen = wsFree(box);
   const typed = wsFree(prefix + lines.join(""));
   return seen.length > 0 && seen.length < typed.length && typed.endsWith(seen);
@@ -2639,6 +2641,8 @@ export function boxMatchesTail(box: string, prefix: string, lines: readonly stri
  */
 function boxHolds(frame: Frame, prefix: string, lines: readonly string[], collapse: RegExp | null, whole: WholePaste | null): "all" | "tail" | null {
   const box = boxText(frame);
+  // A scrolled box whose rows in view hold no text confirms nothing, by the whole compare or the tail.
+  if (frame.scrolled === true && wsFree(box).length === 0) return null;
   if (boxMatches(box, prefix, lines, collapse, whole)) return "all";
   return frame.scrolled === true && whole === null && boxMatchesTail(box, prefix, lines) ? "tail" : null;
 }
@@ -6270,7 +6274,8 @@ export class SendProtocol {
     }
     const rows = splitLines(parseAnsi(grid.value.text));
     const idle = state.match?.profile.idle ?? null;
-    const frame = idle === null ? null : findInputFrame(rows, idle);
+    // The frame the Surface reads too (inputFrameOf): a box scrolled past its prompt row over a dialog is none.
+    const frame = idle === null ? null : inputFrameOf(rows, idle);
     const blocks = readerBlocks(rows, harness);
     const ask =
       this.deps.asks === undefined

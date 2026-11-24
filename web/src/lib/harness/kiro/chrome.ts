@@ -3,7 +3,7 @@
 // Protocol reads; the status bar is what tells the composer from an echoed `›` row or a panel's editor.
 
 import { trimTrailingBlank, type StyledLine } from "../../blocks";
-import { findInputFrame, frameEdge, type Frame } from "../../surface/frame";
+import { findInputFrame, frameEdge, wholeDraft, type Frame } from "../../surface/frame";
 import { frameRows, KIRO_IDLE, readPanelTail } from "./markers";
 
 const MAX_STATUS_ROWS = 8;
@@ -44,8 +44,8 @@ export function extractStatusLines(lines: StyledLine[]): StyledLine[] {
 export function extractInputDraft(lines: StyledLine[]): string | null {
   const frame = locateComposer(lines);
   if (frame === null) return null;
-  if (frame.placeholder) return null;
-  return frame.interior.text === "" ? null : frame.interior.text;
+  const draft = wholeDraft(frame);
+  return draft === null || draft === "" ? null : draft;
 }
 
 /** Remove only a complete normal composer; unread panels and torn frames stay visible. */

@@ -94,9 +94,12 @@ export interface Frame {
    */
   readonly ownPrompt?: { readonly row: number; readonly end: number };
   /**
-   * The box stands at the height where its layout scrolls (`idle.frame.scroll`): it shows at least
-   * `scroll.rows` draft rows, so the head of the draft may be out of view and `interior.text` is only
-   * the tail. Absent on a box that shows its whole draft, and on every layout that does not scroll.
+   * The box may hide the head of its draft above its view (`idle.frame.scroll`), so `interior.text` is
+   * only the tail and never the whole draft ({@link wholeDraft}). Set in one of two ways: a box whose
+   * prompt row is in view shows at least `scroll.rows` non-blank draft rows, or a box whose prompt row
+   * scrolled out carries the layout's `scroll.marker` as its top edge's label ({@link pastPrompt}: there
+   * text is always hidden, so the box is never empty). Absent on a box that shows its whole draft, and
+   * on every layout that does not scroll.
    */
   readonly scrolled?: true;
   /**
@@ -804,7 +807,13 @@ export function frameAt(rows: readonly FrameRow[], bottom: number, idle: IdlePro
   };
 }
 
-/** A box scrolled so far its prompt row is out of view: the top edge's label is the layout's `scroll.marker`. */
+/**
+ * A box scrolled so far its prompt row is out of view: the top edge's label is the layout's `scroll.marker`.
+ * Its rows in view are only the tail of the draft, blank or not; the head stands above them. It is found
+ * only where the box with its prompt row would be (the same bottom edge, at most `maxTailRows` over the
+ * screen's end, the same walk of the rows under it); the Surface drops it where a dialog cue stands on
+ * the screen without it (fold.ts `surfaceOfScreen`), so a transcript echo over a dialog makes no box.
+ */
 function scrolledFrameAt(rows: readonly FrameRow[], texts: readonly string[], top: number, bottom: number, span: string | null, idle: IdleProfile): Frame | null {
   const marker = idle.frame.scroll?.marker;
   if (marker === undefined || top + 1 >= bottom) return null;
@@ -830,6 +839,25 @@ function scrolledFrameAt(rows: readonly FrameRow[], texts: readonly string[], to
     anchorsHit: ["top", "label", "bottom"],
     scrolled: true,
   };
+}
+
+/**
+ * Whether the frame is a box scrolled past its prompt row ({@link scrolledFrameAt}): its top edge carries
+ * the layout's `scroll.marker`, and no prompt row is in view. Text always stands above such a view.
+ */
+export function pastPrompt(frame: Frame): boolean {
+  return frame.scrolled === true && !frame.anchorsHit.includes("prompt");
+}
+
+/**
+ * The whole draft a frame shows: its text, "" for an empty box or one that shows the placeholder. Null
+ * when the frame cannot show the whole draft: a box at its scroll height ({@link Frame.scrolled}) shows
+ * only a tail. Every reader that takes the box's text as the draft (to show it, restore it, take it
+ * back, or compare it with a whole text) reads it here, so a tail is never taken for the draft.
+ */
+export function wholeDraft(frame: Frame): string | null {
+  if (frame.scrolled === true) return null;
+  return frame.placeholder ? "" : frame.interior.text;
 }
 
 /**
@@ -1095,7 +1123,9 @@ function answerBox(frame: Frame, idle: IdleProfile): Frame {
 
 /**
  * The frame marked {@link Frame.scrolled} when its layout scrolls and it shows at least the layout's
- * scroll height in draft rows: the non-blank rows from the prompt row down to the interior's last row.
+ * scroll height in draft rows (`scroll.rows`): the non-blank rows from the prompt row down to the
+ * interior's last row. A frame {@link scrolledFrameAt} found is marked already; `scroll.marker` alone
+ * decides it, never this count.
  */
 function atScroll(rows: readonly FrameRow[], frame: Frame, idle: IdleProfile): Frame {
   const scroll = idle.frame.scroll;

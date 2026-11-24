@@ -26,7 +26,7 @@ import { parseAnsi } from "../../web/src/lib/ansi.ts";
 import { splitLines } from "../../web/src/lib/blocks.ts";
 import { DEFAULT_EDGE_PROFILE, type EdgeKind } from "../../web/src/lib/surface/edges.ts";
 import { emptyFoldState, readFold, stepFold, type FoldContext, type FoldState, type SurfaceInput, type SurfaceRead } from "../../web/src/lib/surface/fold.ts";
-import { readIsUnstyled, rowText, type IdleProfile } from "../../web/src/lib/surface/frame.ts";
+import { readIsUnstyled, rowText, wholeDraft, type IdleProfile } from "../../web/src/lib/surface/frame.ts";
 import { legacyFree, liftAsk, liftDialog, readerBlocks } from "../../web/src/lib/surface/lift.ts";
 import { findProfile, loadProfiles, profileFor, type Profile } from "../../web/src/lib/surface/profile.ts";
 import { askOf, frameImageKey, isFree, modalWord, shortHash, type Ask, type Surface, type SurfaceTurn } from "../../web/src/lib/surface/surface.ts";
@@ -212,7 +212,7 @@ export class SurfaceShadow {
    * The input box of the pane's newest screen read, when it was read and the turn the Surface claimed
    * (ADR 0122): the box's text, "" when
    * empty or showing the placeholder, null when that read found no box (a dialog over it, an unreadable
-   * screen). Null before the pane's first read. The Send Protocol reads it for queued sends that came
+   * screen) or a box that shows only the tail of its draft ({@link wholeDraft}, a box at its scroll height). Null before the pane's first read. The Send Protocol reads it for queued sends that came
    * back to the box; the box text never leaves the bridge from here.
    */
   boxOf(paneId: string): { readonly box: string | null; readonly at: number; readonly turn: SurfaceTurn; readonly plain: boolean } | null {
@@ -223,7 +223,7 @@ export class SurfaceShadow {
     const turn = state?.read?.surface.turn ?? "unknown";
     // A read with no styling at all (herdr-core): a draft there may be the placeholder (M78 spec 06).
     const plain = fold.screen.rows !== null && readIsUnstyled(fold.screen.rows);
-    return { box: frame === null ? null : frame.placeholder ? "" : frame.interior.text, at: fold.screen.at, turn, plain };
+    return { box: frame === null ? null : wholeDraft(frame), at: fold.screen.at, turn, plain };
   }
 
   /**

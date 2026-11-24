@@ -10,7 +10,7 @@
 // matched by POSITION (below the box's bottom border), never by its content strings.
 
 import type { StyledLine } from "../../blocks";
-import { findInputFrame, type Frame } from "../../surface/frame";
+import { findInputFrame, wholeDraft, type Frame } from "../../surface/frame";
 import { namesAMenuKey, SEGMENT_SPLIT } from "../menu-hints";
 import { findAutocompleteRun } from "./autocomplete";
 import {
@@ -189,8 +189,10 @@ export function extractInputDraft(lines: StyledLine[]): string | null {
   // The frame's text is the hole after the marker plus every wrapped row, de-indented and joined with
   // one space. The marker is chrome and never reaches the draft, so shell mode's draft is the command
   // alone. Memory mode keeps its "#": there the marker is still "❯" and the "#" is typed content.
-  const draft = box.frame.interior.text;
-  return draft.length === 0 ? null : draft;
+  // A box scrolled past its height shows only the tail of its draft, which is no draft to show or take
+  // over (wholeDraft): null, as when no box was found.
+  const draft = wholeDraft(box.frame);
+  return draft === null || draft.length === 0 ? null : draft;
 }
 
 /**

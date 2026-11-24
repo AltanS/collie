@@ -555,13 +555,28 @@ export interface SecretMask {
  * cursor's rows in view: after typing, the LAST rows. A box read at that height may hold more text
  * above its first row, so the Send Protocol compares only the visible rows, against the end of the text
  * it typed, and empties such a box only when it knows how long the draft is.
+ *
+ * Two ways mark a box scrolled, each on its own: `rows` on a box whose prompt row is in view, and
+ * `marker` on one whose prompt row scrolled out. Claude Code 2.1.331 caps its box at a share of the
+ * pane's height, so no row count tells; its `rows` is `maxDraftRows` (a box the walk never reads that
+ * tall), and only its `marker` decides.
  */
 export interface FrameScroll {
   /** Which rows stay in view: `tail`, the last ones (the cursor's, at the end of a typed text). */
   readonly keeps: "tail";
-  /** The box's height in draft rows once it scrolls. A box that shows fewer rows shows the whole draft. */
+  /**
+   * The row count that marks a box with its prompt row in view as scrolled: a box that shows this many
+   * non-blank draft rows or more may hide text above them; one that shows fewer shows the whole draft.
+   * It decides nothing about a box whose prompt row is out of view (`marker`). A layout whose height
+   * no count tells sets it to `maxDraftRows`, so the count never decides there.
+   */
   readonly rows: number;
-  /** A top-edge label that says the box scrolled its prompt row out of view (Claude Code's `↑ 2 more`). */
+  /**
+   * The top-edge label that marks a box as scrolled past its prompt row (Claude Code's `↑ 2 more`):
+   * where the walk up from the bottom edge meets an edge with this label and no prompt row, the rows
+   * between the edges are the visible tail of a longer draft. Such a box always hides text above its
+   * view, whatever the rows in view hold. Absent: a box with no prompt row is no box.
+   */
   readonly marker?: string;
 }
 

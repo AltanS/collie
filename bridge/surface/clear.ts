@@ -12,6 +12,7 @@
 //               an unreadable screen whose box holds text and whose only cues are on the box's own rows
 //               (the box shape could not be read)      -> refused unreadable
 //               no dialog claim, no box found, or the box is behind a panel -> refused unreadable
+//               a box at its scroll height (it hides the head of its draft)  -> refused unreadable
 //               the box already reads empty            -> refused no_draft   (before any key)
 //   reread    on the first round only: one more fresh read right before the press with the same refusals,
 //             so a dialog that drew after the first read is never typed at
@@ -53,7 +54,7 @@ import { frameImageKey } from "../../web/src/lib/surface/surface.ts";
 import { parseAnsi } from "../../web/src/lib/ansi.ts";
 import { splitLines } from "../../web/src/lib/blocks.ts";
 import { boundedDraft, type ClearReason, type ClearReceipt } from "../../web/src/lib/surface/clear.ts";
-import { findInputFrame, rowText, type Frame } from "../../web/src/lib/surface/frame.ts";
+import { findInputFrame, rowText, wholeDraft, type Frame } from "../../web/src/lib/surface/frame.ts";
 import { surfaceOfScreen } from "../../web/src/lib/surface/fold.ts";
 import { liftAsk, readerBlocks } from "../../web/src/lib/surface/lift.ts";
 import type { ProfileMatch } from "../../web/src/lib/surface/profile.ts";
@@ -139,8 +140,9 @@ function countIn(texts: readonly string[], probe: string): number {
   return n;
 }
 
-function boxOf(frame: Frame): string {
-  return frame.placeholder ? "" : frame.interior.text;
+/** The box's whole draft ("" when empty), or null when the box shows only a tail of it ({@link wholeDraft}). */
+function boxOf(frame: Frame): string | null {
+  return wholeDraft(frame);
 }
 
 function refusal(requestId: string, reason: ClearReason, pressed: boolean): Settled {
@@ -158,14 +160,18 @@ function refusalOf(look: Look): ClearReason | null {
   // box shape could not be read, and that is what the receipt says. A dialog it lifted (an ask) is one.
   if (surface.modal !== "none" && surface.modal !== "unknown") return surface.modal === "unreadable" && look.cuesInBox ? "unreadable" : "dialog_open";
   if (surface.modal === "unknown" || frame === null) return "unreadable";
+  // A box at its scroll height hides the head of its draft: Collie cannot see how long it is, nor keep
+  // it for Restore, so no key goes (the Send Protocol refuses the same box before a clear, TALL_DRAFT).
+  if (frame.scrolled === true) return "unreadable";
   if (surface.composer === "empty") return "no_draft";
   if (surface.composer !== "draft") return "unreadable";
   return null;
 }
 
-/** How many characters the box holds (what the clear key must delete), 0 for the placeholder. */
+/** How many characters the box holds (what the clear key must delete), 0 for the placeholder; no count for a box that shows only a tail. */
 function draftLength(frame: Frame): number {
-  return frame.placeholder ? 0 : [...frame.interior.text].length;
+  const draft = boxOf(frame);
+  return draft === null ? Number.POSITIVE_INFINITY : [...draft].length;
 }
 
 /** Whether the profile may be trusted to read a box: not on a revoked version or range. */
@@ -244,8 +250,9 @@ export class ClearService {
       const length = draftLength(look!.frame!);
       // A box whose whole text is Collie's own probe characters (probe-marker.ts) is no draft of the
       // person's: one Backspace each takes exactly them out, and there is nothing to restore.
-      const residue = round === 0 && !look!.frame!.placeholder ? probeResidue(look!.frame!.interior.text, probeCharOf(match)) : 0;
-      if (round === 0 && !look!.frame!.placeholder && residue === 0) draft = boundedDraft(look!.frame!.interior.text);
+      const shown = boxOf(look!.frame!) ?? "";
+      const residue = round === 0 && !look!.frame!.placeholder ? probeResidue(shown, probeCharOf(match)) : 0;
+      if (round === 0 && !look!.frame!.placeholder && residue === 0) draft = boundedDraft(shown);
       // A box that did not shrink since the last press is left alone: no second blind press. The one
       // exception is the profile's own stroke key (`keys.clearAll`): the box is a draft on a read taken
       // just now (an empty box was refused above), and it goes at most once per request.
@@ -327,7 +334,7 @@ export class ClearService {
    * not give it back, is a refusal (`unreadable`, `press_failed`).
    */
   private async probeBox(paneId: string, harness: string, match: ProfileMatch, look: Look, probe: string, sleep: (ms: number) => Promise<void>): Promise<{ readonly landing: Landing } | { readonly refused: ClearReason }> {
-    const draft = look.frame === null ? "" : boxOf(look.frame);
+    const draft = look.frame === null ? "" : (boxOf(look.frame) ?? "");
     const before = countIn(look.texts, probe);
     const typed = await this.deps.mux.typeText(paneId, probe);
     if (!typed.ok) return { refused: "press_failed" };
@@ -335,8 +342,9 @@ export class ClearService {
       await sleep(gap);
       const now = await this.look(paneId, harness, match);
       if (now === null) return { refused: "pane_gone" };
-      if (now.frame === null) continue;
-      const box = boxOf(now.frame);
+      // A box that shows only a tail (the probe scrolled it) is read as no box, as a read with none.
+      const box = now.frame === null ? null : boxOf(now.frame);
+      if (box === null) continue;
       if (wsFree(box) === wsFree(draft) + probe) {
         if (!(await this.deps.gate.press(paneId, ["Backspace"], "person_tap")).ok) return { refused: "press_failed" };
         for (const again of PROBE_GAPS_MS) {

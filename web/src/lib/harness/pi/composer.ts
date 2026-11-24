@@ -38,7 +38,7 @@
 // is on screen (index.ts asks ask.ts for that too); a status tail alone never permits typing.
 import { MIRROR_BG, MIRROR_FG } from "../../ansi";
 import { lineText, type StyledLine } from "../../blocks";
-import { findInputFrame, type Frame } from "../../surface/frame";
+import { findInputFrame, wholeDraft, type Frame } from "../../surface/frame";
 import { requireProfile } from "../../surface/profile";
 
 const RULE = /^─{8,}$/;
@@ -333,7 +333,7 @@ export function locateComposer(lines: StyledLine[]): PiComposer | null {
 function draftOf(lines: StyledLine[], composer: PiComposer): string | null {
   if (composer.layout === "gentle") {
     const frame = gentleFrame(lines);
-    return frame === null || frame.placeholder ? null : frame.interior.text || null;
+    return frame === null ? null : wholeDraft(frame) || null;
   }
   const draft = lines.slice(composer.top + 1, composer.bottom)
     .map((line, index) => {
