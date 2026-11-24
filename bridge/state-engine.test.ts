@@ -759,10 +759,65 @@ describe("StateEngine — session name enrichment", () => {
     expect(agent("w1:p1").agentTitle).toBe("Lodge migration");
   });
 
-  test("an unstyled screen never turns a mode badge into sessionName when a journal tracks the session", async () => {
-    const { herdr, poll, agent } = makeTitledEngine({ "w1:p1": { agent: "Refactor cache layer" } });
+  // The same engine on a multiplexer that hands out plain text, as the Herdr core does: every grid
+  // it reads carries `unstyled` and no colour escape. Only the flag and the text differ from the
+  // styled engine above.
+  function makeCoreEngine(titles: Record<string, { person?: string; agent?: string }>) {
+    const herdr = new NameHerdr();
+    const mux = asMux(herdr);
+    const readGrid = mux.readGrid.bind(mux);
+    mux.readGrid = async (id, req) => {
+      const res = await readGrid(id, req);
+      return res.ok ? { ok: true, value: { ...res.value, unstyled: true } } : res;
+    };
+    const engine = new StateEngine(mux, 1500, { titles: (a) => titles[a.paneId] });
+    const poll = () => engine["poll"]();
+    const agent = (id: string) => engine.current().agents.find((a) => a.paneId === id)!;
+    return { herdr, poll, agent };
+  }
+  const sessionRef = (value: string) => ({ source: "hook", agent: "claude", kind: "id", value });
+
+  test("core pane with no session ref: the name on the screen shows, as before pull request 849", async () => {
+    const { herdr, poll, agent } = makeCoreEngine({});
+    herdr.panes = [pane("w1:p1", "w1", "idle", "claude")];
+    herdr.texts.set("w1:p1", named("my-rename"));
+    await poll();
+    expect(agent("w1:p1").sessionName).toBe("my-rename");
+  });
+
+  test("core pane with no session ref and no title tracker: the name on the screen shows", async () => {
+    const herdr = new NameHerdr();
+    const mux = asMux(herdr);
+    const readGrid = mux.readGrid.bind(mux);
+    mux.readGrid = async (id, req) => {
+      const res = await readGrid(id, req);
+      return res.ok ? { ok: true, value: { ...res.value, unstyled: true } } : res;
+    };
+    const engine = new StateEngine(mux, 1500);
     const p = pane("w1:p1", "w1", "idle", "claude");
-    p.agent_session = { source: "hook", agent: "claude", kind: "id", value: "sess-1" };
+    p.agent_session = sessionRef("sess-1");
+    herdr.panes = [p];
+    herdr.texts.set("w1:p1", named("my-rename"));
+    await engine["poll"]();
+    // Nothing can answer from a journal here, so the screen stays the only source.
+    expect(engine.current().agents.find((a) => a.paneId === "w1:p1")!.sessionName).toBe("my-rename");
+  });
+
+  test("core pane with a session ref: the journal's name shows, not the screen's", async () => {
+    const { herdr, poll, agent } = makeCoreEngine({ "w1:p1": { person: "journal-name", agent: "Refactor cache layer" } });
+    const p = pane("w1:p1", "w1", "idle", "claude");
+    p.agent_session = sessionRef("sess-1");
+    herdr.panes = [p];
+    herdr.texts.set("w1:p1", named("screen-name"));
+    await poll();
+    expect(agent("w1:p1").sessionName).toBe("journal-name");
+    expect(agent("w1:p1").agentTitle).toBe("Refactor cache layer");
+  });
+
+  test("core pane with a session ref and a journal that holds no name: a mode badge on the screen shows no name", async () => {
+    const { herdr, poll, agent } = makeCoreEngine({ "w1:p1": { agent: "Refactor cache layer" } });
+    const p = pane("w1:p1", "w1", "idle", "claude");
+    p.agent_session = sessionRef("sess-1");
     herdr.panes = [p];
     herdr.texts.set("w1:p1", named("ultracode"));
     await poll();
@@ -770,80 +825,44 @@ describe("StateEngine — session name enrichment", () => {
     expect(agent("w1:p1").agentTitle).toBe("Refactor cache layer");
   });
 
-  test("a grid marked unstyled skips screen-name fallback even before a session ref arrives", async () => {
-    const herdr = new NameHerdr();
-    herdr.panes = [pane("w1:p1", "w1", "idle", "claude")];
-    herdr.texts.set("w1:p1", named("ultracode"));
-    const base = asMux(herdr);
-    const origReadGrid = base.readGrid.bind(base);
-    base.readGrid = async (id, req) => {
-      const res = await origReadGrid(id, req);
-      return res.ok ? { ok: true, value: { ...res.value, unstyled: true } } : res;
-    };
-    const engine = new StateEngine(base, 1500);
-    await engine["poll"]();
-    const view = engine.current().agents.find((a) => a.paneId === "w1:p1")!;
-    expect("sessionName" in view).toBe(false);
-  });
-
-  test("a real /rename ultracode in the journal still becomes sessionName on an unstyled screen", async () => {
-    const { herdr, poll, agent } = makeTitledEngine({ "w1:p1": { person: "ultracode", agent: "Refactor cache layer" } });
+  test("core pane with a session ref: a real /rename called ultracode in the journal still shows", async () => {
+    const { herdr, poll, agent } = makeCoreEngine({ "w1:p1": { person: "ultracode", agent: "Refactor cache layer" } });
     const p = pane("w1:p1", "w1", "idle", "claude");
-    p.agent_session = { source: "hook", agent: "claude", kind: "id", value: "sess-1" };
+    p.agent_session = sessionRef("sess-1");
     herdr.panes = [p];
     herdr.texts.set("w1:p1", named("ultracode"));
     await poll();
     expect(agent("w1:p1").sessionName).toBe("ultracode");
   });
 
-  test("a styled screen still reads a default-colour /rename when the journal names no person", async () => {
-    const { herdr, poll, agent } = makeTitledEngine({ "w1:p1": { agent: "Lodge migration" } });
-    const p = pane("w1:p1", "w1", "idle", "claude");
-    p.agent_session = { source: "hook", agent: "claude", kind: "id", value: "sess-1" };
-    herdr.panes = [p];
-    herdr.texts.set("w1:p1", [`\u001b[0m──────── screen-name ─`, "❯ ", "────────────────"].join("\n"));
-    await poll();
-    expect(agent("w1:p1").sessionName).toBe("screen-name");
-  });
-
-  test("attaching a session ref drops a badge cached from an earlier unstyled poll even at the same revision", async () => {
+  test("core pane that learns its session ref after a bridge restart: the screen name shows first, then goes, then the journal's name shows", async () => {
     const titles: Record<string, { person?: string; agent?: string }> = {};
-    const { herdr, poll, agent } = makeTitledEngine(titles);
+    const { herdr, poll, agent } = makeCoreEngine(titles);
     const p = pane("w1:p1", "w1", "idle", "claude");
     p.revision = 5;
     herdr.panes = [p];
     herdr.texts.set("w1:p1", named("ultracode"));
     await poll();
+    // Before the ref: the old behaviour, a badge may show as the name.
     expect(agent("w1:p1").sessionName).toBe("ultracode");
 
-    p.agent_session = { source: "hook", agent: "claude", kind: "id", value: "sess-1" };
+    // The ref arrives at the same revision. The cached screen name must not outlive it.
+    p.agent_session = sessionRef("sess-1");
     titles["w1:p1"] = { agent: "Refactor cache layer" };
     await poll();
     expect("sessionName" in agent("w1:p1")).toBe(false);
     expect(agent("w1:p1").agentTitle).toBe("Refactor cache layer");
+
+    // The journal later holds the person's name: it shows.
+    titles["w1:p1"] = { person: "real-name", agent: "Refactor cache layer" };
+    p.revision = 6;
+    await poll();
+    expect(agent("w1:p1").sessionName).toBe("real-name");
   });
 
-  test("switching session ref at the same revision re-enriches and drops the previous session's cached screen name", async () => {
+  test("core pane: a journal name that is cleared does not bring back an earlier screen name", async () => {
     const titles: Record<string, { person?: string; agent?: string }> = {};
-    const { herdr, poll, agent } = makeTitledEngine(titles);
-    const p = pane("w1:p1", "w1", "idle", "claude");
-    p.revision = 5;
-    p.agent_session = { source: "hook", agent: "claude", kind: "id", value: "sess-1" };
-    herdr.panes = [p];
-    herdr.texts.set("w1:p1", ["\x1b[2m────\x1b[0m old-name \x1b[2m────\x1b[0m", "❯ ", "─".repeat(40)].join("\n"));
-    await poll();
-    expect(agent("w1:p1").sessionName).toBe("old-name");
-
-    // A new session attaches to the same pane before the mux reports a new revision.
-    p.agent_session = { source: "hook", agent: "claude", kind: "id", value: "sess-2" };
-    herdr.texts.set("w1:p1", [`\x1b[2m${"─".repeat(40)}\x1b[0m`, "❯ ", "─".repeat(40)].join("\n"));
-    await poll();
-    expect("sessionName" in agent("w1:p1")).toBe(false);
-  });
-
-  test("clearing a journal person name does not resurrect an earlier screen-cached name", async () => {
-    const titles: Record<string, { person?: string; agent?: string }> = {};
-    const { herdr, poll, agent } = makeTitledEngine(titles);
+    const { herdr, poll, agent } = makeCoreEngine(titles);
     const p = pane("w1:p1", "w1", "idle", "claude");
     p.revision = 1;
     herdr.panes = [p];
@@ -851,7 +870,7 @@ describe("StateEngine — session name enrichment", () => {
     await poll();
     expect(agent("w1:p1").sessionName).toBe("stale-screen");
 
-    p.agent_session = { source: "hook", agent: "claude", kind: "id", value: "sess-1" };
+    p.agent_session = sessionRef("sess-1");
     titles["w1:p1"] = { person: "renamed" };
     p.revision = 2;
     await poll();
@@ -859,9 +878,83 @@ describe("StateEngine — session name enrichment", () => {
 
     titles["w1:p1"] = {};
     p.revision = 3;
-    herdr.texts.set("w1:p1", "Do you want to proceed?\n ❯ 1. Yes\n   2. No");
     await poll();
     expect("sessionName" in agent("w1:p1")).toBe(false);
+  });
+
+  test("core pane that switches session ref at the same revision drops the earlier session's screen name", async () => {
+    const titles: Record<string, { person?: string; agent?: string }> = {};
+    const { herdr, poll, agent } = makeCoreEngine(titles);
+    const p = pane("w1:p1", "w1", "idle", "claude");
+    p.revision = 5;
+    herdr.panes = [p];
+    herdr.texts.set("w1:p1", named("old-name"));
+    await poll();
+    expect(agent("w1:p1").sessionName).toBe("old-name");
+
+    p.agent_session = sessionRef("sess-2");
+    await poll();
+    expect("sessionName" in agent("w1:p1")).toBe(false);
+  });
+
+  test("styled multiplexer with a session ref: a default-colour /rename on the screen still shows when the journal names no person", async () => {
+    const { herdr, poll, agent } = makeTitledEngine({ "w1:p1": { agent: "Lodge migration" } });
+    const p = pane("w1:p1", "w1", "idle", "claude");
+    p.agent_session = sessionRef("sess-1");
+    herdr.panes = [p];
+    herdr.texts.set("w1:p1", [`\u001b[0m──────── screen-name ─`, "❯ ", "────────────────"].join("\n"));
+    await poll();
+    expect(agent("w1:p1").sessionName).toBe("screen-name");
+  });
+
+  test("styled multiplexer: the screen name shows with no ref, with a ref and no person in the journal, and with no tracker at all", async () => {
+    // No ref and no journal.
+    const a = makeTitledEngine({});
+    a.herdr.panes = [pane("w1:p1", "w1", "idle", "claude")];
+    a.herdr.texts.set("w1:p1", named("screen-name"));
+    await a.poll();
+    expect(a.agent("w1:p1").sessionName).toBe("screen-name");
+
+    // A ref and a journal that holds only the agent's title: the screen read is not skipped.
+    const b = makeTitledEngine({ "w1:p1": { agent: "Lodge migration" } });
+    const pb = pane("w1:p1", "w1", "idle", "claude");
+    pb.agent_session = sessionRef("sess-1");
+    b.herdr.panes = [pb];
+    b.herdr.texts.set("w1:p1", named("screen-name"));
+    await b.poll();
+    expect(b.agent("w1:p1").sessionName).toBe("screen-name");
+    expect(b.agent("w1:p1").agentTitle).toBe("Lodge migration");
+
+    // No tracker wired at all.
+    const c = makeNameEngine();
+    const pc = pane("w1:p1", "w1", "idle", "claude");
+    pc.agent_session = sessionRef("sess-1");
+    c.herdr.panes = [pc];
+    c.herdr.texts.set("w1:p1", named("screen-name"));
+    await c.poll();
+    expect(c.agent("w1:p1").sessionName).toBe("screen-name");
+  });
+
+  test("styled multiplexer: the journal's name wins and a ref attached at the same revision changes nothing it shows", async () => {
+    const titles: Record<string, { person?: string; agent?: string }> = {};
+    const { herdr, poll, agent } = makeTitledEngine(titles);
+    const p = pane("w1:p1", "w1", "idle", "claude");
+    p.revision = 5;
+    herdr.panes = [p];
+    herdr.texts.set("w1:p1", named("screen-name"));
+    await poll();
+    expect(agent("w1:p1").sessionName).toBe("screen-name");
+
+    p.agent_session = sessionRef("sess-1");
+    titles["w1:p1"] = { person: "journal-name" };
+    await poll();
+    expect(agent("w1:p1").sessionName).toBe("journal-name");
+
+    // The journal later holds no person: the screen name is read again, as it was before.
+    titles["w1:p1"] = {};
+    p.revision = 6;
+    await poll();
+    expect(agent("w1:p1").sessionName).toBe("screen-name");
   });
 
   test("threads a claude pane's /rename session name onto the view — claude-only", async () => {

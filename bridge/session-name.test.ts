@@ -128,8 +128,10 @@ describe("extractClaudeSessionName — styled reads", () => {
   });
 
   test("without any colour the badge still reads as a name (the known limit)", () => {
-    // A multiplexer that drops colour leaves nothing to tell the two apart, so the words are taken
-    // as a name rather than lose a real one.
+    // A multiplexer that drops colour leaves nothing to tell the two apart, so this reader takes the
+    // words as a name. The state engine skips the read where the journal can answer instead: a
+    // plain-text multiplexer (the Herdr core, `MuxGrid.unstyled`) and a pane with a session ref
+    // (state-engine.test.ts). A pane with no ref keeps this limit, so a real name is not lost.
     expect(extractClaudeSessionName(["──── ultracode ─", "❯", BOTTOM].join("\n"))).toBe("ultracode");
   });
 });
