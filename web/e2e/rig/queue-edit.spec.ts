@@ -43,6 +43,30 @@ async function receiptUntil(rig: Rig, pane: string, requestId: string, pick: (ro
   return found ?? null;
 }
 
+/** What Claude's box shows while a message waits in its queue. */
+const QUEUE_SHOWN = /Press up to edit queued messages|Queued · /u;
+
+/**
+ * Leave Claude's queue and box empty on every path, a failed assertion included, so the next case starts clean. A
+ * message still in Claude's queue is taken back with Up (the key the bridge declares for it, journal/claude.ts), outside
+ * the phone; the turn then runs to its end, and `resetBox` clears what the take-back put in the box. Nothing happens
+ * when the queue is empty and the box is free. It never throws: a clean-up that fails is a note.
+ */
+async function leaveClean(rig: Rig, pane: string, notes: string[]): Promise<void> {
+  try {
+    if (QUEUE_SHOWN.test(await rig.screen(pane, 40))) {
+      await rig.keys(pane, ["Up"]);
+      notes.push("clean-up: the waiting text was taken back outside the phone (Up)");
+    }
+    await rig.until(() => turnRuns(rig, pane), (running) => !running, REPLY_MS);
+    await waitIdle(rig, pane, REPLY_MS);
+    const reset = await resetBox(rig, pane);
+    if (reset !== null) notes.push(`clean-up: ${reset}`);
+  } catch (err) {
+    notes.push(`clean-up failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
 /** How many user turns of the pane's live window carry `text`. */
 async function promptsWith(rig: Rig, pane: string, text: string): Promise<number> {
   const body: JsonValue | undefined = await rig.get(`/api/pane/${encodeURIComponent(pane)}/chat`).catch(() => undefined);
@@ -78,7 +102,10 @@ test.describe("edit a waiting message on claude", () => {
         log.push(queuedTap);
         const sent = queuedTap.answers.find((answer) => answer.path.endsWith("/api/send"));
         const receipt = sent?.requestId === null || sent?.requestId === undefined ? null : await receiptUntil(rig, pane, sent.requestId, (row) => row.outcome !== "held", 10_000);
-        const queued = receipt?.outcome === "sent" && receipt.queued === true;
+        // `sent` or `effective`, as case 4 takes it (claude.spec.ts `wentIn`): where Claude has the beacon hooks (the
+        // core's rig) the prompt edge of the queued text confirms the send, and the receipt settles `sent` to `effective`
+        // (bridge/surface/requests.ts `markEffective`) while it keeps `queued: true` (protocol.ts `receiptOf`).
+        const queued = (receipt?.outcome === "sent" || receipt?.outcome === "effective") && receipt.queued === true;
         notes.push(`${tapWords(queuedTap)}; the receipt is ${receipt === null ? "missing" : `${receipt.outcome}${receipt.queued === true ? " + queued" : ", NOT queued"}`}`);
 
         // The journal's card, with Edit.
@@ -129,6 +156,7 @@ test.describe("edit a waiting message on claude", () => {
         const verdict = tookBack && reply !== null && edited === before.edited + 1 && never && log.length === 4 && log.every((entry) => entry.worked) ? "pass" : "fail";
         return { verdict, taps: log.length, minTaps: 4, note: notes.join("; "), taps_log: log, captures: trail.captures };
       } finally {
+        await leaveClean(rig, pane, trail.notes);
         await context.close();
       }
     });
