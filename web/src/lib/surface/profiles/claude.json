@@ -99,8 +99,8 @@
     ],
     "notices": [
       { "head": "^✦ (?:Heads up|You should know) ·(?:\\s|$)", "body": true },
-      { "head": "^● How is Claude doing this session\\? \\(optional\\)$" },
-      { "head": "^● Can Anthropic look at your session transcript to help us improve Claude Code\\?$", "letters": true },
+      { "head": "^[●⏺] How is Claude doing this session\\? \\(optional\\)$" },
+      { "head": "^[●⏺] Can Anthropic look at your session transcript to help us improve Claude Code\\?$", "letters": true },
       { "head": "^✦ Dismissed\\.(?=\\s|$)" }
     ],
     "promptEchoes": true,
