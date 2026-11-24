@@ -6,9 +6,28 @@
     "solo": {
       "model": "haiku",
       "skill": "1b62724c3fd6484e",
-      "recordedAt": "2026-11-23T23:12:51.755Z",
+      "recordedAt": "2026-11-24T01:08:00.347Z",
       "cases": [
-        "claude.ask-remind"
+        "claude.ask-remind",
+        "claude.load-older",
+        "claude.permission",
+        "claude.pick-many",
+        "claude.queue-edit",
+        "claude.stream-send",
+        "claude.walky",
+        "claude.walky-broadcast",
+        "claude.walky-busy",
+        "claude.walky-drop",
+        "claude.walky-forged",
+        "claude.walky-inbox",
+        "claude.walky-question",
+        "claude.walky-replaced",
+        "claude.walky-space-in",
+        "claude.walky-space-outside",
+        "claude.walky-space-refused",
+        "claude.walky-space-reply",
+        "pi.walky-agents",
+        "rig.before-first-case"
       ]
     }
   }
