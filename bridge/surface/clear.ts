@@ -22,7 +22,9 @@
 //             stale image of an earlier layout. The box is read once more after one gap (Collie never
 //             redraws a pane, ADR 0008): an empty box -> refused no_draft; other rows whose draft takes a
 //             second probe go on; else -> refused stale_screen. Nothing is deleted on a box that did not
-//             take the probe
+//             take the probe. On a profile whose suggestion may wear any style (`idle.placeholders.anyStyle`,
+//             issue 854), a probe that makes the whole text go, with the same text back after its
+//             Backspace, proves the harness's own suggestion: the box is empty -> refused no_draft
 //   press     the clear key, `length + slack` times in one call (at most CLEAR_BATCH), as `person_tap`;
 //             a box that holds only Collie's own probe characters gets one Backspace each, and its
 //             `cleared` receipt carries no draft to restore (probe-marker.ts)
@@ -54,7 +56,7 @@ import { frameImageKey } from "../../web/src/lib/surface/surface.ts";
 import { parseAnsi } from "../../web/src/lib/ansi.ts";
 import { splitLines } from "../../web/src/lib/blocks.ts";
 import { boundedDraft, type ClearReason, type ClearReceipt } from "../../web/src/lib/surface/clear.ts";
-import { findInputFrame, rowText, wholeDraft, type Frame } from "../../web/src/lib/surface/frame.ts";
+import { boxInk, findInputFrame, readIsUnstyled, rowText, wholeDraft, type Frame, type FrameRow } from "../../web/src/lib/surface/frame.ts";
 import { surfaceOfScreen } from "../../web/src/lib/surface/fold.ts";
 import { liftAsk, readerBlocks } from "../../web/src/lib/surface/lift.ts";
 import type { ProfileMatch } from "../../web/src/lib/surface/profile.ts";
@@ -95,6 +97,8 @@ export interface ClearDeps {
   readonly profile: (harness: string, paneId?: string) => Promise<ProfileMatch | null>;
   /** A box proven stale (as the Send Protocol's `staleFrame`): the bridge's Surface marks it until its rows change. */
   readonly staleFrame?: (paneId: string, frame: string) => void;
+  /** A suggestion the probe proved (as the Send Protocol's `suggestion`, issue 854): the bridge's Surface reads that box as empty until it changes. */
+  readonly suggestion?: (paneId: string, ghost: { readonly text: string; readonly ink: string }) => void;
   readonly sleep?: (ms: number) => Promise<void>;
 }
 
@@ -120,6 +124,8 @@ interface Look {
   readonly surface: Surface;
   readonly frame: Frame | null;
   readonly texts: readonly string[];
+  /** The rows as read, with their styling: the colour of a suggestion the probe proves (issue 854). */
+  readonly rows: readonly FrameRow[];
   /**
    * The box holds text, and every cue that made the Surface claim a dialog stands on a row of the box
    * itself: the box's own rows look like a list (a composer shape that puts a prompt glyph on the first
@@ -131,8 +137,17 @@ interface Look {
 /** The probe's verdict on a box: the read the clear goes on from, or the refusal. `probed` says a key left (the probe or a Backspace). */
 type Proof = { readonly look: Look; readonly probed: boolean } | { readonly refused: ClearReason; readonly probed: boolean };
 
-/** Where a probe character went: into the box after the draft, onto the screen elsewhere, or nowhere a read showed. */
-type Landing = "box" | "away" | "nowhere";
+/**
+ * Where a probe character went: into the box after the draft, onto the screen elsewhere, or nowhere a
+ * read showed; or it made the whole text go and its Backspace brought the same text back, which only
+ * the harness's own suggestion does (`suggestion`, issue 854).
+ */
+type Landing = "box" | "away" | "nowhere" | "suggestion";
+
+/** The colour of a look's box text when one colour covers it, on a styled read; null otherwise. */
+function inkOf(look: Look): string | null {
+  return look.frame === null || readIsUnstyled(look.rows) ? null : boxInk(look.rows, look.frame);
+}
 
 function countIn(texts: readonly string[], probe: string): number {
   let n = 0;
@@ -229,6 +244,8 @@ export class ClearService {
     const sleep = this.deps.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
     let pressed = false;
     let before = Number.POSITIVE_INFINITY;
+    // Whether a suggestion that showed once the draft went was probed (issue 854): once per Clear.
+    let suggestionProbed = false;
     // The draft the first read showed, for the receipt's Restore. Later rounds read what is left of it.
     let draft = "";
     for (let round = 0; round < MAX_ROUNDS; round++) {
@@ -278,6 +295,18 @@ export class ClearService {
         if (after.frame !== null && after.surface.modal === "none" && after.surface.composer === "empty") {
           return { receipt: draft === "" ? { requestId, outcome: "cleared" } : { requestId, outcome: "cleared", draft }, pressed };
         }
+        // A box whose draft went shows the harness's suggestion again where it may wear any style (omp, issue
+        // 854): text that is no start of the draft. One probe proves it, once per Clear; then the box is empty.
+        const showing = after.frame === null ? "" : (boxOf(after.frame) ?? "");
+        if (!suggestionProbed && match.profile.idle.placeholders.anyStyle === true && after.surface.modal === "none" && after.surface.composer === "draft" && showing.length > 0 && !look!.frame!.interior.text.startsWith(showing)) {
+          suggestionProbed = true;
+          const probed = await this.probeBox(paneId, harness, match, after, match.profile.probe.char, sleep);
+          if ("refused" in probed) return refusal(requestId, probed.refused, pressed);
+          if (probed.landing === "suggestion") {
+            this.suggestionProven(paneId, after);
+            return { receipt: draft === "" ? { requestId, outcome: "cleared" } : { requestId, outcome: "cleared", draft }, pressed };
+          }
+        }
         if (capped && after.frame !== null && draftLength(after.frame) < length) break;
       }
       if (unconfirmed) return refusal(requestId, "press_failed", pressed);
@@ -297,6 +326,7 @@ export class ClearService {
     const first = await this.probeBox(paneId, harness, match, look, probe, sleep);
     if ("refused" in first) return { refused: first.refused, probed: true };
     if (first.landing === "box") return { look, probed: true };
+    if (first.landing === "suggestion") return this.suggestionProven(paneId, look);
     const stale = (at: Look): Proof => {
       if (at.frame !== null) {
         try {
@@ -324,6 +354,7 @@ export class ClearService {
     if (frameImageKey(fresh.texts, frame.top, frame.bottom) === frameImageKey(look.texts, look.frame.top, look.frame.bottom)) return stale(fresh);
     const again = await this.probeBox(paneId, harness, match, fresh, probe, sleep);
     if ("refused" in again) return { refused: again.refused, probed: true };
+    if (again.landing === "suggestion") return this.suggestionProven(paneId, fresh);
     return again.landing === "box" ? { look: fresh, probed: true } : stale(fresh);
   }
 
@@ -336,6 +367,8 @@ export class ClearService {
   private async probeBox(paneId: string, harness: string, match: ProfileMatch, look: Look, probe: string, sleep: (ms: number) => Promise<void>): Promise<{ readonly landing: Landing } | { readonly refused: ClearReason }> {
     const draft = look.frame === null ? "" : (boxOf(look.frame) ?? "");
     const before = countIn(look.texts, probe);
+    // A suggestion in any style (issue 854): the probe makes the whole text go, and Backspace brings it back.
+    const suggestive = match.profile.idle.placeholders.anyStyle === true && wsFree(draft).length > 0 && !draft.includes(probe);
     const typed = await this.deps.mux.typeText(paneId, probe);
     if (!typed.ok) return { refused: "press_failed" };
     for (const gap of PROBE_GAPS_MS) {
@@ -354,11 +387,37 @@ export class ClearService {
         }
         return { refused: "press_failed" };
       }
+      if (suggestive && wsFree(box) === probe && countIn(now.texts, probe) === before + 1 && now.surface.modal === "none") {
+        if (!(await this.deps.gate.press(paneId, ["Backspace"], "person_tap")).ok) return { refused: "press_failed" };
+        for (const again of PROBE_GAPS_MS) {
+          await sleep(again);
+          const back = await this.look(paneId, harness, match);
+          if (back?.frame != null && countIn(back.texts, probe) === before && boxOf(back.frame) === draft && inkOf(back) === inkOf(look)) return { landing: "suggestion" };
+        }
+        // The text did not come back: it was no suggestion. Nothing more is pressed.
+        return { refused: "press_failed" };
+      }
       if (box !== draft) return { refused: "unreadable" };
       if (countIn(now.texts, probe) !== before + 1) continue;
       return (await this.takeBack(paneId, harness, match, before, probe, sleep)) === null ? { refused: "press_failed" } : { landing: "away" };
     }
     return { landing: "nowhere" };
+  }
+
+  /**
+   * The box held only the harness's own suggestion (issue 854): there is no draft to clear, so the Clear
+   * is refused `no_draft`, as for a box that read empty, and the bridge's Surface is told of it.
+   */
+  private suggestionProven(paneId: string, look: Look): Proof {
+    const ink = inkOf(look);
+    if (look.frame !== null && ink !== null) {
+      try {
+        this.deps.suggestion?.(paneId, { text: look.frame.interior.text, ink });
+      } catch (err) {
+        console.warn(`[clear] suggestion note failed: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+    return { refused: "no_draft", probed: true };
   }
 
   /** One Backspace for a probe character outside the box, then reads until the screen holds as many as before; the read, or null. */
@@ -384,6 +443,6 @@ export class ClearService {
     const box = findInputFrame(rows, match.profile.idle);
     const cues = read.cues?.cues ?? [];
     const cuesInBox = box !== null && !box.placeholder && box.interior.text.length > 0 && cues.length > 0 && cues.every((cue) => cue.row >= box.top && cue.row <= box.bottom);
-    return { surface: read.surface, frame: read.frame, texts: rows.map((row) => rowText(row)), cuesInBox };
+    return { surface: read.surface, frame: read.frame, texts: rows.map((row) => rowText(row)), rows, cuesInBox };
   }
 }

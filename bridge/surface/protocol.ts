@@ -299,7 +299,7 @@ import type { PaneLockFiles } from "./pane-lock.ts";
 import { commandListAnyText, commandListAt, isRunningRow, noticeOver, ownCommandList, popupAt, readCues, readCuesFor, runningSign, withoutCommandList, withoutPopup, withoutPromptEchoes, type CommandListRead, type Cue } from "../../web/src/lib/surface/cues.ts";
 import { loadProfiles } from "../../web/src/lib/surface/profile.ts";
 import { inputFrameOf, surfaceOfScreen } from "../../web/src/lib/surface/fold.ts";
-import { findInputFrame, readIsUnstyled, rowText, type Frame, type FrameRow } from "../../web/src/lib/surface/frame.ts";
+import { boxInk, findInputFrame, readIsUnstyled, rowText, spanInk, type Frame, type FrameRow } from "../../web/src/lib/surface/frame.ts";
 import { CODE_REJECTED_PLAIN, fieldShows, rejectionDetail, signInRejections } from "../../web/src/lib/surface/secret-field.ts";
 import { liftAsk, liftDialog, readerBlocks } from "../../web/src/lib/surface/lift.ts";
 import type { AboveNotice } from "../../web/src/lib/surface/notice.ts";
@@ -762,6 +762,12 @@ export interface SendDeps {
    * reads that show the same rows `staleFrame` until one differs. Called inside a try.
    */
   readonly staleFrame?: (paneId: string, frame: string) => void;
+  /**
+   * A request's probe proved the text a pane's box shows the harness's own suggestion (issue 854), on a
+   * styled read: its words and the one colour they wear. The bridge's Surface reads a box that shows the
+   * same words in the same colour as empty until it shows anything else. Called inside a try.
+   */
+  readonly suggestion?: (paneId: string, ghost: { readonly text: string; readonly ink: string }) => void;
   /** Whether an upload path still names a file the harness can attach (`wholePaste`). Absent: a regular file on this disk. */
   readonly imageFile?: (path: string) => boolean;
   readonly now?: () => number;
@@ -1391,16 +1397,86 @@ function mayHoldPlaceholder(match: PaneProfileMatch | null, s0: Snap): boolean {
 }
 
 /**
+ * Whether the profile's suggestion may wear any style (`idle.placeholders.anyStyle`, issue 854): omp
+ * paints its prompt suggestion in the active theme's `dim` colour, one of 92, so no read can tell it from
+ * a typed draft and only behaviour proves it ({@link suggestionWent}).
+ */
+function anyStyle(match: PaneProfileMatch | null): boolean {
+  return match?.profile.idle.placeholders.anyStyle === true;
+}
+
+/** Whether a box that reads a draft may be the harness's own suggestion, which only a probe tells apart ({@link mayHoldPlaceholder}, {@link anyStyle}). */
+function mayShowSuggestion(match: PaneProfileMatch | null, s0: Snap): boolean {
+  return mayHoldPlaceholder(match, s0) || anyStyle(match);
+}
+
+/**
+ * The strict half of the probe proof, for a suggestion in any style (issue 854): the probe character
+ * made the WHOLE text go. The box shows the probe alone, once more on the screen than at S0, and nothing
+ * else moved (no modal, no cue, no other screen, the rows under the box kept their count). A typed
+ * draft keeps its text when a character is typed: the probe stands after it (or before it, with the
+ * cursor at its start), and a typed head before a suggestion's tail ("Moun" + "tains.") keeps the head.
+ * A draft that a selection made the probe replace goes too; {@link SendProtocol.draftProbe} then waits
+ * for the same text to come back on Backspace, which a deleted draft never does.
+ */
+function suggestionWent(s0: Snap, snap: Snap, draft: string, probe: string): boolean {
+  if (s0.frame === null || snap.frame === null || snap.otherScreen !== null) return false;
+  // A box at its scroll height is never a suggestion (PR 857): text stands above its view.
+  if (s0.frame.scrolled === true || snap.frame.scrolled === true) return false;
+  if (wsFree(draft).length === 0 || draft.includes(probe)) return false;
+  if (modalAtBox(snap) || framedCueGrew(s0, snap) || cueAppeared(s0, snap)) return false;
+  if (!belowKept(s0, snap)) return false;
+  if (countIn(snap.texts, probe) !== countIn(s0.texts, probe) + 1) return false;
+  return wsFree(boxText(snap.frame)) === probe;
+}
+
+/** The colour of a read's box text when one colour covers it ({@link boxInk}); null with no box or on a read with no styling. */
+function inkOf(snap: Snap): string | null {
+  return snap.frame === null || readIsUnstyled(snap.rows) ? null : boxInk(snap.rows, snap.frame);
+}
+
+/** A suggestion a probe proved (issue 854, M78 spec 06): its text, and its colour on a styled read (null on a read with no styling). */
+interface ProvenGhost {
+  readonly text: string;
+  readonly ink: string | null;
+}
+
+/**
  * A read as the run knows its box (M78 spec 06): on a read with no styling, a box whose text is exactly
  * the one a probe proved a placeholder ({@link RunState.ghost}) is the empty box, its frame marked as a
  * placeholder and its Surface's composer `empty`. Every other read is as it was read.
  */
-function ghostView(ghost: string | null, snap: Snap): Snap {
+function ghostView(ghost: ProvenGhost | null, snap: Snap): Snap {
   const { frame } = snap;
   // A box at its scroll height is never the empty box (fold.ts `composerOf`): text stands above its view.
-  if (ghost === null || frame === null || frame.placeholder || frame.scrolled === true || frame.interior.text !== ghost || !readIsUnstyled(snap.rows)) return snap;
+  if (ghost === null || frame === null || frame.placeholder || frame.scrolled === true || frame.interior.text !== ghost.text) return snap;
+  // A styled read shows the suggestion only in the colour it was proven in (issue 854): the same words
+  // in another colour are a draft (a suggestion accepted with Tab, the words typed by hand).
+  if (!readIsUnstyled(snap.rows) && (ghost.ink === null || boxInk(snap.rows, frame) !== ghost.ink)) return snap;
   const surface: Surface = snap.surface.composer === "draft" ? { ...snap.surface, composer: "empty" } : snap.surface;
   return { ...snap, frame: { ...frame, placeholder: true }, surface };
+}
+
+/**
+ * A read as the run knows a box it typed into after a probe proved a suggestion (issue 854): the
+ * harness keeps showing the suggestion's rest after the typed text while that text starts it (omp:
+ * "Moun" typed, "tains." in the suggestion's colour after it). Where the box shows exactly the proven
+ * text on its prompt row, Collie's text `typed` is a strict start of it, the typed part wears another
+ * colour and the rest wears the proven colour, the box reads as holding `typed`. Every other read is as
+ * it was read; a read with no styling cannot show the two parts, so it stays as read.
+ */
+function suggestionTailView(ghost: ProvenGhost | null, typed: string, snap: Snap): Snap {
+  const { frame } = snap;
+  if (ghost === null || ghost.ink === null || frame === null || frame.placeholder || typed.length === 0) return snap;
+  if (frame.interior.text !== ghost.text || !ghost.text.startsWith(typed) || typed.length >= ghost.text.length) return snap;
+  const row = snap.rows[frame.interior.prompt];
+  if (row === undefined) return snap;
+  const at = rowText(row).lastIndexOf(ghost.text);
+  if (at < 0) return snap;
+  const head = spanInk(row, at, at + typed.length);
+  const tail = spanInk(row, at + typed.length, at + ghost.text.length);
+  if (tail !== ghost.ink || head === ghost.ink) return snap;
+  return { ...snap, frame: { ...frame, interior: { ...frame.interior, text: typed } } };
 }
 
 /**
@@ -3094,7 +3170,7 @@ interface RunState {
    * later read with no styling whose box shows exactly it reads as the empty box ({@link ghostView}).
    * Null until then, and null again once the text Collie types is that same text.
    */
-  ghost: string | null;
+  ghost: ProvenGhost | null;
   /**
    * A marked send (`draftHolds`, a walky talky delivery) that probed a box which may show its
    * placeholder as a draft (M78 spec 06): the box text it probed, else null. Its end goes back to the
@@ -3256,6 +3332,18 @@ type RowDraft = { -readonly [K in keyof SendReceiptRow]: SendReceiptRow[K] };
 
 /** An answer being built, field by field. */
 type AnswerDraft = { -readonly [K in keyof SendAnswer]: SendAnswer[K] };
+
+/**
+ * The receipt's words with the colour of the draft they saw (issue 854): when the words say `draft` and
+ * one of the run's reads behind that very Surface shows the box text in one colour ({@link inkOf}).
+ * Two people asked for it to tell omp's themes apart; it is a colour, never text.
+ */
+function withInk(words: SurfaceWords, saw: Surface, reads: readonly (Snap | null)[]): SurfaceWords {
+  if (words.composer !== "draft") return words;
+  const read = reads.find((snap) => snap !== null && snap.surface === saw) ?? null;
+  const ink = read === null ? null : inkOf(read);
+  return ink === null ? words : { ...words, ink };
+}
 
 /** The note of an end that saw `snap`, when it saw one. */
 function sawNote(snap: Snap | null, note: EndNote): EndNote {
@@ -4101,7 +4189,8 @@ export class SendProtocol {
       // Only a marked request: another held send keeps its own release rules, whatever its label says.
       const draftLeft = next.draftHolds === true && holds.get(next.id)?.cause === "draft_present" && watch.freeReads >= FREE_POLLS && watch.freeSince !== null && now - watch.freeSince >= DRAFT_LEFT_MS;
       // A draft that may be the placeholder (M78 spec 06): a marked request held over a draft, on a read
-      // with no styling, where the profile's placeholder may be any text. Once two polls read the same box
+      // with no styling, where the profile's placeholder may be any text, or on any read where it may wear
+      // any style (issue 854). Once two polls read the same box
       // text at least DRAFT_LEFT_MS apart (nobody is typing), the request goes, and its run probes the box
       // once: the placeholder sends it, a draft puts it back. The same text is never probed twice after a
       // proven draft, and only after PLACEHOLDER_RETRY_MS after a failed probe.
@@ -4114,8 +4203,7 @@ export class SendProtocol {
         surface.composer === "draft" &&
         box !== null &&
         box !== "" &&
-        profile?.idle.placeholders.anyText === true &&
-        unstyledOf?.(paneId) === true
+        ((profile?.idle.placeholders.anyText === true && unstyledOf?.(paneId) === true) || profile?.idle.placeholders.anyStyle === true)
           ? box
           : null;
       if (plainDraft === null) watch.plainDraft = null;
@@ -4541,7 +4629,7 @@ export class SendProtocol {
       const detail = reason === "write_failed" && outcome === "refused" ? WRITE_FAILED : note.detail ?? (outcome === "typed_not_submitted" && reason !== undefined ? typedDetail(reason) : undefined) ?? reason;
       if (detail !== undefined) receipt.detail = detail.slice(0, RECEIPT_DETAIL_MAX);
       const saw = note.surface ?? state.lastRead?.surface ?? state.marks.s0?.surface;
-      if (saw !== undefined) receipt.saw = surfaceWords(saw);
+      if (saw !== undefined) receipt.saw = withInk(surfaceWords(saw), saw, [state.lastRead, state.marks.s0]);
     }
     // The part's word on a data send that may have arrived (runData): the receipt says what it said.
     if (outcome === "unknown" && note?.keepDetail === true && note.detail !== undefined) receipt.detail = note.detail.slice(0, RECEIPT_DETAIL_MAX);
@@ -5180,6 +5268,9 @@ export class SendProtocol {
     this.begin(state);
     let s0 = await this.settledS0(state);
     state.marks.s0 = s0;
+    // A suggestion the profile's own colour already marks (issue 854): the run knows its words and colour as
+    // if a probe had proven them, so the text Collie types that starts it compares without its rest.
+    this.knownSuggestion(state, s0);
     // The launch window: a harness is starting in the pane, and its box is not on screen yet. No probe
     // either, for the probe would be typed into the shell. A dialog the pane's own profile lifts is the
     // harness up and asking: it keeps its own path. A box on screen is not yet a box that reads keys
@@ -5349,7 +5440,7 @@ export class SendProtocol {
       state.whole = this.deps.mux.pasteBlock !== undefined ? wholePaste(match, lines, this.deps.imageFile) : uploadAlone(match, lines, this.deps.imageFile);
     }
     // A text that is the placeholder's own words reads as the placeholder once typed: from here the box is read as it shows.
-    if (state.ghost !== null && wsFree(lines.join("")) === wsFree(state.ghost)) state.ghost = null;
+    if (state.ghost !== null && wsFree(lines.join("")) === wsFree(state.ghost.text)) state.ghost = null;
     await this.write(state, lines, s0);
     this.lap(state, "write");
 
@@ -5527,7 +5618,7 @@ export class SendProtocol {
     if (state.reread || state.manual || frame === null) return false;
     // A box that may show its placeholder as a draft (M78 spec 06) is proven under a notice too, for a
     // send or a command: the probe character and its Backspace are none of the notice's keys.
-    const mayShowPlaceholder = mayHoldPlaceholder(state.match, s0) && (state.request.mode === "send" || state.request.mode === "command");
+    const mayShowPlaceholder = mayShowSuggestion(state.match, s0) && (state.request.mode === "send" || state.request.mode === "command");
     if (s0.notice !== null && !mayShowPlaceholder) return false;
     // A box at its scroll height shows a slice of its draft, so a probe there cannot be compared; its
     // own rules refuse or bound the clear before any key (TALL_DRAFT, LONG_DRAFT).
@@ -5598,11 +5689,34 @@ export class SendProtocol {
   }
 
   /**
+   * The S0 box of a profile whose suggestion may wear any style, when it reads as the placeholder by the
+   * profile's own colour (`idle.placeholders.fg`, issue 854): the run keeps its words and colour as a
+   * proven suggestion ({@link RunState.ghost}), so {@link suggestionTailView} reads a typed start of it.
+   */
+  private knownSuggestion(state: RunState, s0: Snap): void {
+    const frame = s0.frame;
+    if (!anyStyle(state.match) || state.ghost !== null || frame === null || frame.scrolled === true || !frame.placeholder || frame.interior.text.length === 0) return;
+    const ink = inkOf(s0);
+    if (ink !== null && state.match?.profile.idle.placeholders.fg?.includes(ink) === true) state.ghost = { text: frame.interior.text, ink };
+  }
+
+  /** Tells the bridge's Surface of a suggestion a probe proved on a styled read ({@link SendDeps.suggestion}). */
+  private noteSuggestion(state: RunState, ghost: ProvenGhost): void {
+    if (ghost.ink === null) return;
+    try {
+      this.deps.suggestion?.(state.target.paneId, { text: ghost.text, ink: ghost.ink });
+    } catch (err) {
+      console.warn(`[send] suggestion note failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  /**
    * The draft the probe proved a placeholder (M78 spec 06): from here a read with no styling that shows
    * its text shows the empty box, this read included, and the request goes on from it.
    */
   private ghostProven(state: RunState, read: Snap, back: Snap): Snap {
-    state.ghost = read.frame!.interior.text;
+    state.ghost = { text: read.frame!.interior.text, ink: inkOf(read) };
+    this.noteSuggestion(state, state.ghost);
     // A marked send whose probe proved the placeholder is a send into an empty box from here on.
     state.placeholderProbe = null;
     const view = ghostView(state.ghost, back);
@@ -5620,7 +5734,9 @@ export class SendProtocol {
    * (`idle.placeholders.anyText`), a character that landed at the start of the box ({@link landsAtStart})
    * proves the draft a placeholder (M78 spec 06): one Backspace, then the read that shows no probe
    * character and the box as it was, or empty, is `ghost`. A styled read never takes that path: its
-   * attribute or colour already told the placeholder from a draft. Both writes are the probe's
+   * attribute or colour already told the placeholder from a draft. A profile whose suggestion may wear
+   * any style (`idle.placeholders.anyStyle`, issue 854) takes the strict rule on every read instead: the
+   * probe alone in the box ({@link suggestionWent}), then the very same text back, in the same colour. Both writes are the probe's
    * ({@link SendProtocol.probeWrite}): a slow multiplexer's key press after a raw write stays outside
    * the read bound, and the request's bound grows by it.
    */
@@ -5632,7 +5748,10 @@ export class SendProtocol {
     const frame = s0.frame!;
     const draft = boxText(frame);
     const before = countIn(s0.texts, probe);
-    const ghostable = mayHoldPlaceholder(state.match, s0);
+    const ghostable = mayShowSuggestion(state.match, s0);
+    // A suggestion in any style (issue 854) is proven by the strict rule on every read: the probe made the
+    // whole text go, and Backspace brings the same text back.
+    const strict = anyStyle(state.match);
     const failed = (detail: string, snap: Snap | null): Ended => new Ended("refused", "probe_failed", sawNote(snap, { detail, framed: true }));
     state.probeAt = this.now();
     // A probe write not confirmed in time is read like any other: the probe's reads decide where it went.
@@ -5645,7 +5764,7 @@ export class SendProtocol {
     const typed = await this.poll(state, "probe", { reads: BOUNDS.probe.reads - 1, ms: BOUNDS.probe.ms }, (snap) => {
       if (snap.frame === null) return "wait";
       if (probeBoxPasses(s0, snap, draft, probe)) return "pass";
-      if (ghostable && landsAtStart(s0, snap, draft, probe)) {
+      if (ghostable && (strict ? suggestionWent(s0, snap, draft, probe) : landsAtStart(s0, snap, draft, probe))) {
         ghost = true;
         return "pass";
       }
@@ -5671,7 +5790,9 @@ export class SendProtocol {
       if (snap.frame === null) return false;
       const box = boxText(snap.frame);
       if (!ghost) return box === draft;
-      return countIn(snap.texts, probe) === before && !modalAtBox(snap) && (box === draft || box === "");
+      if (countIn(snap.texts, probe) !== before || modalAtBox(snap)) return false;
+      // The suggestion comes back in the colour it went in, on a styled read.
+      return strict ? box === draft && inkOf(snap) === inkOf(s0) : box === draft || box === "";
     };
     const back = await this.poll(state, "probe", { reads: BOUNDS.probe.reads, ms: BOUNDS.probe.ms }, (snap) => (given(snap) ? "pass" : "wait"));
     if (back.verdict !== "pass" || back.snap === null) throw failed("Backspace did not give the box back as it was.", back.snap);
@@ -6358,7 +6479,7 @@ export class SendProtocol {
       looseHash: shortHash(checked.slice(frame === null ? win.first : Math.max(win.first, Math.min(frame.top, win.end)), win.end).map(looseRow).join("\n")),
     };
     this.noteIssued(read.rowsHash, read.looseHash, frame === null ? null : shortHash(boxText(frame)));
-    const snap = secretView(state.request.text, ghostView(state.ghost, read));
+    const snap = secretView(state.request.text, suggestionTailView(state.ghost, state.request.text, ghostView(state.ghost, read)));
     state.previousRead = state.lastRead;
     state.lastRead = snap;
     return snap;
@@ -7346,10 +7467,25 @@ export class SendProtocol {
     let snap = from;
     // The box as the last batch left it; null before the first batch.
     let pressedAt: string | null = null;
+    // The text the clear started on, and whether a suggestion that showed once it went was probed (issue 854).
+    const cleared = boxText(from.frame);
+    let suggestionProbed = false;
     for (let read = 0; read < reads; read++) {
       if (this.now() > until) throw late();
       if (snap.frame === null || snap.cueStrength !== "none") throw gone();
-      const text = boxText(snap.frame);
+      let text = boxText(snap.frame);
+      // A box whose draft went shows the harness's suggestion again where it may wear any style (omp, issue
+      // 854): text that is no start of the text being cleared, after a batch. One probe proves it, once;
+      // a box it does not prove is cleared on as before.
+      if (pressedAt !== null && text.length > 0 && !cleared.startsWith(text) && !suggestionProbed && anyStyle(state.match) && snap.surface.modal === "none") {
+        suggestionProbed = true;
+        this.stretch(state, 2 * BOUNDS.probe.ms);
+        const probed = await this.draftProbe(state, snap, probeCharOf(state.match));
+        if (probed.landing === "ghost") return this.ghostProven(state, snap, probed.snap);
+        if (probed.landing === "live") snap = probed.snap;
+        if (snap.frame === null) throw gone();
+        text = boxText(snap.frame);
+      }
       const left = [...text].length;
       if (left === 0) return snap;
       unchanged = text === pressedAt ? unchanged + 1 : 0;

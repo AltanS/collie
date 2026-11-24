@@ -229,6 +229,44 @@ function isBlank(text: string): boolean {
   return text.trim().length === 0;
 }
 
+/**
+ * The one foreground that every visible character of `row` between offsets `start` and `end` wears, or
+ * null when there is none: a character in the terminal's default ink, two colours, or nothing visible.
+ */
+export function spanInk(row: FrameRow, start: number, end: number): string | null {
+  let ink: string | null = null;
+  let from = 0;
+  for (const run of row.segments) {
+    const to = from + run.text.length;
+    const part = run.text.slice(Math.max(0, start - from), Math.max(0, end - from));
+    from = to;
+    if (part.trim().length === 0) continue;
+    if (run.fg === undefined || (ink !== null && run.fg !== ink)) return null;
+    ink = run.fg;
+  }
+  return ink;
+}
+
+/** Box-drawing glyphs a layout puts at the sides of its rows; a row of them and blanks holds no draft. */
+const SIDE_GLYPHS = /[│┃║▐▌]/gu;
+
+/**
+ * The colour of the box's text (issue 854): the one foreground covering every visible character of it,
+ * when the text stands on the prompt row alone. Null for an empty box, a text over more rows, a text
+ * in the default ink or in two colours. A suggestion is one row in one theme colour; the receipt says
+ * which, and the Send Protocol keeps the colour of a suggestion its probe proved.
+ */
+export function boxInk(rows: readonly FrameRow[], frame: Frame): string | null {
+  const { first, prompt, last, text } = frame.interior;
+  if (text.length === 0 || rows[prompt] === undefined) return null;
+  for (let j = first; j <= last; j++) {
+    if (j !== prompt && rows[j] !== undefined && !isBlank(rowText(rows[j]!).replace(SIDE_GLYPHS, ""))) return null;
+  }
+  const line = rowText(rows[prompt]!);
+  const at = line.lastIndexOf(text);
+  return at < 0 ? null : spanInk(rows[prompt]!, at, at + text.length);
+}
+
 /** Unstyled rows for a caller that holds only text. */
 export function plainRows(texts: readonly string[]): FrameRow[] {
   return texts.map((text) => ({ segments: [{ text }] }));

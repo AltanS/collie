@@ -614,3 +614,53 @@ describe("canSteer (M69)", () => {
     expect(paneCanSteer({ send: {} }, "w1:p1")).toBe(false);
   });
 });
+
+describe("surface shadow: a suggestion a probe proved (issue 854)", () => {
+  const DARK = "omp--v18-22-0-suggestion-dark--w120.txt";
+  const LIGHT = "omp--v18-22-0-suggestion-light--w120.txt";
+  const UNDER_TYPED = "omp--v18-22-0-suggestion-under-typed-dark--w120.txt";
+  const DIM_DARK = "rgb(95,102,115)";
+
+  test("the box reads empty while it shows the proven words in the proven colour, and the mark goes at the first other box", async () => {
+    const r = rig("18.22.0");
+    r.mux.set("w1:p1", DARK, 3);
+    await r.shadow.observe([agent("w1:p1", "omp")]);
+    expect(r.shadow.surfaceOf("w1:p1")).toMatchObject({ composer: "draft" });
+    expect(r.shadow.boxOf("w1:p1")?.box).toBe("Mountains.");
+    r.shadow.markSuggestion("w1:p1", { text: "Mountains.", ink: DIM_DARK });
+    expect(r.shadow.surfaceOf("w1:p1")).toMatchObject({ composer: "empty" });
+    expect(r.shadow.boxOf("w1:p1")?.box).toBe("");
+    r.tick(1000);
+    r.mux.set("w1:p1", DARK, 4);
+    await r.shadow.observe([agent("w1:p1", "omp")]);
+    expect(r.shadow.surfaceOf("w1:p1")).toMatchObject({ composer: "empty" });
+    // A typed head before the same words: a real draft, and the mark goes for good.
+    r.tick(1000);
+    r.mux.set("w1:p1", UNDER_TYPED, 5);
+    await r.shadow.observe([agent("w1:p1", "omp")]);
+    expect(r.shadow.surfaceOf("w1:p1")).toMatchObject({ composer: "draft" });
+    r.tick(1000);
+    r.mux.set("w1:p1", DARK, 6);
+    await r.shadow.observe([agent("w1:p1", "omp")]);
+    expect(r.shadow.surfaceOf("w1:p1")).toMatchObject({ composer: "draft" });
+  });
+
+  test("the same words in another colour are no proven suggestion", async () => {
+    const r = rig("18.22.0");
+    r.mux.set("w1:p1", LIGHT, 3);
+    await r.shadow.observe([agent("w1:p1", "omp")]);
+    r.shadow.markSuggestion("w1:p1", { text: "Mountains.", ink: DIM_DARK });
+    expect(r.shadow.surfaceOf("w1:p1")).toMatchObject({ composer: "draft" });
+    expect(r.shadow.boxOf("w1:p1")?.box).toBe("Mountains.");
+  });
+
+  test("the words typed in the typed colour stay a draft", async () => {
+    const r = rig("18.22.0");
+    const typed = screen(DARK).replace("\u001b[38;2;95;102;115mMountains.", "\u001b[38;2;229;229;231mMountains.");
+    expect(typed).not.toBe(screen(DARK));
+    r.mux.screens.set("w1:p1", { text: typed, revision: 3 });
+    await r.shadow.observe([agent("w1:p1", "omp")]);
+    r.shadow.markSuggestion("w1:p1", { text: "Mountains.", ink: DIM_DARK });
+    expect(r.shadow.surfaceOf("w1:p1")).toMatchObject({ composer: "draft" });
+  });
+});

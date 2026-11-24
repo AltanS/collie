@@ -642,6 +642,16 @@ export interface Profile {
        */
       readonly anyText?: true;
       /**
+       * The empty box may show a suggestion in free words drawn in any style: the harness paints it in
+       * its theme's colour, which a profile cannot list (omp's prompt suggestion takes the `dim` colour
+       * of whichever of about a hundred themes is active, issue 854). So even a styled read cannot tell
+       * it from a typed draft, and the Send Protocol and Clear prove such a box by behaviour on every
+       * read: one probe character makes the whole text go (the box shows the probe alone), and one
+       * Backspace brings the same text back. A typed draft keeps its text when a character is typed,
+       * so it never passes. Optional.
+       */
+      readonly anyStyle?: true;
+      /**
        * False when a reverse-video cell on the first glyph of the hole is typed text, not a caret on a
        * ghost suggestion. Absent means the caret is skipped (a hole is still a placeholder when one
        * leading reverse-video cell is followed by faint or ghost-coloured cells). For a box whose hint
@@ -1511,8 +1521,10 @@ function parsePlaceholders(node: JsonObject): Profile["idle"]["placeholders"] {
       : { ...withPrefixes, patterns: textList(node.patterns, "idle.placeholders.patterns", 1).map((item, i) => pattern(item, `idle.placeholders.patterns[${String(i)}]`).source) };
   if (node.anyText !== undefined && node.anyText !== true && node.anyText !== false) fail("idle.placeholders.anyText", "must be true or false");
   const withAnyText = node.anyText === true ? { ...withPatterns, anyText: true as const } : withPatterns;
+  if (node.anyStyle !== undefined && node.anyStyle !== true && node.anyStyle !== false) fail("idle.placeholders.anyStyle", "must be true or false");
+  const withAnyStyle = node.anyStyle === true ? { ...withAnyText, anyStyle: true as const } : withAnyText;
   if (node.caretOnGhost !== undefined && node.caretOnGhost !== true && node.caretOnGhost !== false) fail("idle.placeholders.caretOnGhost", "must be true or false");
-  const withCaret = node.caretOnGhost === false ? { ...withAnyText, caretOnGhost: false as const } : withAnyText;
+  const withCaret = node.caretOnGhost === false ? { ...withAnyStyle, caretOnGhost: false as const } : withAnyStyle;
   if (node.fg === undefined) return withCaret;
   return { ...withCaret, fg: colourList(node.fg, "idle.placeholders.fg") };
 }

@@ -4225,3 +4225,24 @@ and a notice from a local plugin. Nothing else was altered.
 | Fixture | What's in it | Reads as |
 | --- | --- | --- |
 | `claude--v2331-draft-scrolled-up--w59.txt` | A 404-character draft scrolled to its last three rows under `─── ↑ 5 more ───`, the bypass-permissions mode row under the box | draft, frame `scrolled`, S1 compares the tail |
+
+## omp 18.22.0 prompt suggestion in three themes (captured 2026-11-24, issue 854, herdr 0.9.5, 120 columns by 40 rows)
+
+omp's prompt suggestion (`composer.predictions`: on by default since 19.0.0, a setting since 18.10) fills
+the empty box after a turn in the active theme's `dim` colour: one foreground, no attribute. The rig's
+scratch omp 18.22.0 (the newest version npm's 7-day age guard allowed that day; it draws the suggestion
+with the same editor code as 19.0.1) ran with `composer.predictions: true` and `theme.dark` set to
+`titanium` (omp's default), `dark` and `light` in turn, switched live in its scratch `config.yml`, so the
+same suggestion `Mountains.` shows in three colours. Each screen was read as the bridge reads it
+(`herdr pane read --source visible --format ansi`), transport CRLF normalised to LF. Privacy: the folder
+shows as the rig's scratch path (`…uggestion-rig/state/harness/omp/project`), the prompts are lab
+prompts, nothing else private was on screen.
+
+| Fixture | State | What it shows |
+| --- | --- | --- |
+| `omp--v18-22-0-suggestion-titanium--w120.txt` | `idle` | `╰─ Mountains.` in `rgb(107,114,128)`, titanium's `dim`, the one colour the profile names (`idle.placeholders.fg`): reads empty |
+| `omp--v18-22-0-suggestion-dark--w120.txt` | `idle` | The same suggestion in `rgb(95,102,115)`, the built-in `dark` theme's `dim`. A pure read takes it for a draft; the Send Protocol and Clear prove it by the probe (`idle.placeholders.anyStyle`) |
+| `omp--v18-22-0-suggestion-light--w120.txt` | `idle` | The same in `rgb(118,118,118)`, the built-in `light` theme's `dim`, typed text there is `rgb(0,0,0)` |
+| `omp--v18-22-0-suggestion-probe-dark--w120.txt` | `draft` | One probe character `⌁` typed into the dark box: the suggestion is gone, the box shows `⌁` alone in the typed colour `rgb(229,229,231)`. One Backspace brings `Mountains.` back |
+| `omp--v18-22-0-suggestion-typed-light--w120.txt` | `draft` | `hey` typed in the light theme, in `rgb(0,0,0)`: a typed draft, the suggestion gone |
+| `omp--v18-22-0-suggestion-under-typed-dark--w120.txt` | `draft` | `Moun` typed (it starts the suggestion), so omp keeps the rest `tains.` after it in the `dim` colour: `Moun` in `rgb(229,229,231)`, `tains.` in `rgb(95,102,115)`. A real draft: a probe after `Moun` keeps `Moun` |
