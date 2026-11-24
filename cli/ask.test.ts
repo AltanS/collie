@@ -1,8 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
-import { createServer } from "node:net";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import { walkySocketPath } from "../bridge/walky/socket.ts";
 import { askInput, askRig, ONE, posted } from "../bridge/hill/ask-rig.ts";
@@ -14,7 +13,7 @@ import { capture, context } from "./fakes.ts";
 import type { HillDeps } from "./hill.ts";
 import { EXIT } from "./io.ts";
 import { run } from "./program.ts";
-import { realFiles } from "./sys.ts";
+import { realFiles, type Files } from "./sys.ts";
 
 // `collie walky ask` and its verbs (Asks, 2026-11-22). The bridge is a scripted socket here: each case sees
 // the request line the CLI wrote and answers what a bridge would. The bridge's own rules are in
@@ -36,19 +35,19 @@ interface Scripted {
   readonly lines: JsonObject[];
 }
 
-/** A real socket file the CLI's safety check takes; the scripted `ask` answers in its place. */
-let socketPath: string | null = null;
-async function socketFile(): Promise<string> {
-  if (socketPath !== null) return socketPath;
-  const dir = realpathSync.native(mkdtempSync(join(tmpdir(), "collie-ask-sock-")));
-  const path = walkySocketPath(dir);
-  mkdirSync(join(path, ".."), { recursive: true, mode: 0o700 });
-  const server = createServer((socket) => socket.end());
-  await new Promise<void>((done) => server.listen(path, done));
-  socketPath = path;
-  return path;
-}
-const SOCKET = await socketFile();
+/**
+ * The socket the CLI's safety check takes (`holdSocketSafe`): a socket of this uid in a private folder.
+ * The scripted `ask` answers in its place, so no socket is made. The check is told what a POSIX host
+ * says of it, as the neighbouring tests of `cli/` do (`hill-state.test.ts`): a Windows host has no
+ * Unix socket door, and its real folders carry no mode bits.
+ */
+const SOCKET = walkySocketPath(join(tmpdir(), "collie-ask-cli-bridge"));
+const SOCKET_FOLDERS = new Set([dirname(SOCKET), dirname(dirname(SOCKET))]);
+const SOCKET_FILES: Files = {
+  ...realFiles,
+  entryType: (path) => (path === SOCKET ? "other" : SOCKET_FOLDERS.has(path) ? "directory" : realFiles.entryType(path)),
+  mode: (path) => (SOCKET_FOLDERS.has(path) ? 0o700 : realFiles.mode(path)),
+};
 
 /** Deps whose one bridge answers `reply` to every line, and keeps each line it got. */
 function scripted(reply: (line: JsonObject) => object, over: Partial<HillDeps> = {}): Scripted {
@@ -57,8 +56,8 @@ function scripted(reply: (line: JsonObject) => object, over: Partial<HillDeps> =
   const d: HillDeps & { readonly io: ReturnType<typeof capture> } = {
     ctx: context({ TMUX: "/tmp/tmux-1/default,123,0", TMUX_PANE: "%1" }, { stateDir: scratch() }),
     stagingRoot: () => scratch(),
-    files: realFiles,
-    uid: process.getuid?.(),
+    files: SOCKET_FILES,
+    uid: undefined,
     platform: "linux",
     readStdin: async () => "",
     stdinIsTty: true,
