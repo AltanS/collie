@@ -1,5 +1,5 @@
 import { paneRowKey } from "./hosts";
-import { foldTree, herdHasTree, paneRole, paneTree, treeLayout, treeRows, unfoldPath } from "./pane-tree";
+import { foldedAncestors, foldTree, herdHasTree, paneRole, paneTree, treeLayout, treeRelatives, treeRows, unfoldPath } from "./pane-tree";
 import type { AgentView, PaneTree } from "./types";
 
 function pane(paneId: string, tree?: PaneTree, host?: string): AgentView {
@@ -137,5 +137,40 @@ describe("foldTree", () => {
     expect(unfoldPath(layout, "c", waiting)).toEqual(["c", "w1"]);
     expect(unfoldPath(layout, "w1", waiting)).toEqual(["w1"]);
     expect(unfoldPath(layout, "gone", waiting)).toEqual(["gone"]);
+  });
+});
+
+describe("treeRelatives", () => {
+  const herd = [
+    pane("c", { id: "c" }),
+    pane("w1", { id: "w1", parent: "c" }),
+    pane("r", { parent: "w1" }),
+    pane("w2", { id: "w2", parent: "c" }),
+    pane("w3", { parent: "c" }),
+    pane("c2", { id: "c2" }),
+    pane("plain"),
+  ];
+  const layout = treeLayout(herd);
+  const rel = (id: string) => {
+    const r = treeRelatives(layout, herd.find((p) => p.paneId === id)!);
+    return { parent: r.parent?.paneId ?? null, children: ids(r.children), previous: r.previous?.paneId ?? null, next: r.next?.paneId ?? null };
+  };
+
+  it("names the parent, the children and the siblings in tree order", () => {
+    expect(rel("w2")).toEqual({ parent: "c", children: [], previous: "w1", next: "w3" });
+    expect(rel("w1")).toEqual({ parent: "c", children: ["r"], previous: null, next: "w2" });
+    expect(rel("r")).toEqual({ parent: "w1", children: [], previous: null, next: null });
+  });
+
+  it("a tree top has the other tree tops as siblings, and a pane in no tree has no relatives", () => {
+    expect(rel("c")).toEqual({ parent: null, children: ["w1", "w2", "w3"], previous: null, next: "c2" });
+    expect(rel("c2")).toEqual({ parent: null, children: [], previous: "c", next: null });
+    expect(rel("plain")).toEqual({ parent: null, children: [], previous: null, next: null });
+  });
+
+  it("names the folded ancestors a move has to open", () => {
+    const r = herd.find((p) => p.paneId === "r")!;
+    expect(foldedAncestors(layout, r, new Set(["c", "w1"]))).toEqual(["w1", "c"]);
+    expect(foldedAncestors(layout, r, new Set())).toEqual([]);
   });
 });

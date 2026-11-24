@@ -8,6 +8,8 @@
 import { useState, type ReactNode } from "react";
 
 import { ThreadSidebar } from "@/components/agent-sidebar";
+import { TreeNavSheet } from "@/components/tree-nav";
+import { treeLayout, treeRelatives } from "@/lib/pane-tree";
 import { CrewProvider } from "@/components/crew-provider";
 import { paneRowKey } from "@/lib/hosts";
 import { PANE_FILTER, type PaneFilterSettings } from "@/lib/pane-filter";
@@ -16,7 +18,7 @@ import { panePlaceParts } from "@/lib/pane-name";
 import type { AgentView } from "@/lib/types";
 
 import { switcherCrew, TS } from "../fixtures";
-import { Card, Group, Section, type SectionDef } from "../layout";
+import { Card, Group, Section, Stage, type SectionDef } from "../layout";
 
 export const DEF: SectionDef = {
   id: "switcher",
@@ -118,6 +120,16 @@ function TreeSidebarCard() {
   );
 }
 
+/** The pane header's tree sheet, open on the first worker of `treeCrew`: its coordinator, its siblings, its child. */
+function TreeNavCard() {
+  const layout = treeLayout(treeCrew);
+  return (
+    <Stage height={900}>
+      <TreeNavSheet open onClose={() => {}} relatives={treeRelatives(layout, treeCrew[1]!)} onMove={() => {}} />
+    </Stage>
+  );
+}
+
 function SwitcherCard({ here }: { here: AgentView }) {
   return (
     <SheetBody>
@@ -145,6 +157,14 @@ export function SwitcherSection() {
           note="Workers sit under their coordinator across both machines; the role rides beside the name."
         >
           <TreeSidebarCard />
+        </Card>
+        <Card
+          state="tree-nav-sheet"
+          label="3: Tree moves from a pane"
+          reach="Tap the tree button in the header of a pane that sits in a tree."
+          note="Alt with an arrow makes the same moves on a keyboard."
+        >
+          <TreeNavCard />
         </Card>
       </Group>
     </Section>

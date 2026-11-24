@@ -205,3 +205,74 @@ export function unfoldPath(layout: TreeLayout, id: string, waits: (pane: AgentVi
   }
   return out;
 }
+
+/** A pane's relatives in the tree, for moving from one open pane to the next (`treeRelatives`). */
+export interface TreeRelatives {
+  parent: AgentView | null;
+  children: AgentView[];
+  previous: AgentView | null;
+  next: AgentView | null;
+}
+
+const NO_RELATIVES: TreeRelatives = { parent: null, children: [], previous: null, next: null };
+
+/**
+ * Where `pane` sits among its relatives, read off the same layout the tree order draws (`treeLayout`, over the
+ * herd in place order), so a move lands on the row the list shows next. Its siblings are the panes that share
+ * its parent; a pane at the top of a tree has the other tree tops as siblings, and the panes in no tree take
+ * no part. No folds apply here: a move into a folded branch is the caller's cue to open it.
+ */
+export function treeRelatives(layout: TreeLayout, pane: AgentView): TreeRelatives {
+  const { rows, depth } = layout;
+  const key = paneRowKey(pane);
+  const at = rows.findIndex((p) => paneRowKey(p) === key);
+  if (at === -1) return NO_RELATIVES;
+  const depthAt = (i: number) => depth.get(paneRowKey(rows[i]!)) ?? 0;
+  const inTree = (i: number) => paneTree(rows[i]!) !== null || (i + 1 < rows.length && depthAt(i + 1) > depthAt(i));
+  const level = depthAt(at);
+  if (level === 0 && !inTree(at)) return NO_RELATIVES;
+
+  let parent: AgentView | null = null;
+  if (level > 0) {
+    for (let i = at - 1; i >= 0; i--) {
+      if (depthAt(i) === level - 1) {
+        parent = rows[i]!;
+        break;
+      }
+    }
+  }
+  const children: AgentView[] = [];
+  for (let i = at + 1; i < rows.length && depthAt(i) > level; i++) if (depthAt(i) === level + 1) children.push(rows[i]!);
+
+  // Siblings: the rows at this depth inside the same parent's span (or every tree top, at depth 0).
+  const siblings: AgentView[] = [];
+  const from = parent === null ? 0 : rows.indexOf(parent) + 1;
+  for (let i = from; i < rows.length; i++) {
+    if (parent !== null && depthAt(i) < level) break;
+    if (depthAt(i) === level && (level > 0 || inTree(i))) siblings.push(rows[i]!);
+  }
+  const me = siblings.indexOf(rows[at]!);
+  return {
+    parent,
+    children,
+    previous: me > 0 ? siblings[me - 1]! : null,
+    next: me >= 0 && me + 1 < siblings.length ? siblings[me + 1]! : null,
+  };
+}
+
+/** The node ids of the folded branches that hide `pane`: every folded ancestor, so a move to it can open them. */
+export function foldedAncestors(layout: TreeLayout, pane: AgentView, folds: ReadonlySet<string>): string[] {
+  const { rows, depth } = layout;
+  const at = rows.findIndex((p) => paneRowKey(p) === paneRowKey(pane));
+  if (at === -1) return [];
+  const out: string[] = [];
+  let level = depth.get(paneRowKey(pane)) ?? 0;
+  for (let i = at - 1; i >= 0 && level > 0; i--) {
+    const d = depth.get(paneRowKey(rows[i]!)) ?? 0;
+    if (d !== level - 1) continue;
+    const id = paneTree(rows[i]!)?.id;
+    if (id !== undefined && folds.has(id)) out.push(id);
+    level = d;
+  }
+  return out;
+}

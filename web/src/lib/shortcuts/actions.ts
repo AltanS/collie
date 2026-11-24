@@ -96,6 +96,12 @@ export const ACTIONS = [
   { id: "open_space", group: "navigation", defaults: ["prefix+o"], labelKey: "shortcuts.action.open_space" },
   { id: "previous_space", group: "navigation", defaults: ["prefix+k"], labelKey: "shortcuts.action.previous_space" },
   { id: "next_space", group: "navigation", defaults: ["prefix+j"], labelKey: "shortcuts.action.next_space" },
+  // The tree order's moves from an open pane (components/tree-nav.tsx): out to the parent, in to the first
+  // child, across to the siblings. Shift keeps them off Herdr's own prefix+arrow pane focus.
+  { id: "tree_parent", group: "navigation", defaults: ["prefix+shift+left"], labelKey: "shortcuts.action.tree_parent" },
+  { id: "tree_first_child", group: "navigation", defaults: ["prefix+shift+right"], labelKey: "shortcuts.action.tree_first_child" },
+  { id: "tree_previous", group: "navigation", defaults: ["prefix+shift+up"], labelKey: "shortcuts.action.tree_previous" },
+  { id: "tree_next", group: "navigation", defaults: ["prefix+shift+down"], labelKey: "shortcuts.action.tree_next" },
   { id: "navigate_mode", group: "navigation", defaults: ["prefix+w"], labelKey: "shortcuts.action.navigate_mode", opensMode: "navigate" },
   { id: "navigate_down", group: "navigation", defaults: ["j", "down"], labelKey: "shortcuts.action.navigate_down", scope: "navigate" },
   { id: "navigate_up", group: "navigation", defaults: ["k", "up"], labelKey: "shortcuts.action.navigate_up", scope: "navigate" },

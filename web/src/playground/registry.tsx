@@ -41,7 +41,7 @@ export interface SectionEntry {
  */
 export const ENTRIES: readonly SectionEntry[] = [
   {
-    def: { id: "dashboard", group: "Dashboard", title: "Dashboard", keywords: ["home", "herd", "AgentList", "tabs", "needs-you", "TabBar", "PaneStrip", "SpaceStrip", "TabStrip", "navigation", "update-band", "UpdateBanner", "UpdateRibbon", "footer", "build-stamp", "crew-link", "SessionSwitcher", "read-only", "write-gate", "worktree", "branch", "tree", "orchestrator", "TreeIndent"] },
+    def: { id: "dashboard", group: "Dashboard", title: "Dashboard", keywords: ["home", "herd", "AgentList", "tabs", "needs-you", "TabBar", "PaneStrip", "SpaceStrip", "TabStrip", "navigation", "update-band", "UpdateBanner", "UpdateRibbon", "footer", "build-stamp", "crew-link", "SessionSwitcher", "read-only", "write-gate", "worktree", "branch", "tree", "orchestrator", "TreeIndent", "TreeRow", "fold"] },
     load: () => import("./sections/dashboard").then((m) => ({ default: m.DashboardSection })),
   },
   {
@@ -157,7 +157,7 @@ export const ENTRIES: readonly SectionEntry[] = [
     load: () => import("./sections/pins").then((m) => ({ default: m.PinsSection })),
   },
   {
-    def: { id: "switcher", group: "Pane", title: "Session switcher", keywords: ["switch", "pane", "sheet", "ThreadSidebar", "sessions", "filter", "crew"] },
+    def: { id: "switcher", group: "Pane", title: "Session switcher", keywords: ["switch", "pane", "sheet", "ThreadSidebar", "sessions", "filter", "crew", "tree", "TreeNavSheet"] },
     load: () => import("./sections/switcher").then((m) => ({ default: m.SwitcherSection })),
   },
   {
