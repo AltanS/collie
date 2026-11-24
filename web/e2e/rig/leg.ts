@@ -77,9 +77,10 @@ export function record(row: LedgerRow): void {
 // ── model turns ──────────────────────────────────────────────────────────────────────────────────
 
 /** Model turns one full run may spend on one harness. */
-// 26 for the leg's own Claude session (the data run's case 36 is the 26th), and 5 for case 38, which runs a
-// Claude session of its own (asks.spec.ts).
-export const TURN_CAP = 31;
+// A clean solo run spends 32 Claude turns: 25 in the leg's own session, 2 for case 37 (queue-edit.spec.ts) and 5
+// for case 38, which runs a Claude session of its own (asks.spec.ts). The data run adds case 36 (33). The cap is
+// the clean run plus a margin of 3, so a re-armed turn does not leave the last case "not reached".
+export const TURN_CAP = 35;
 
 /**
  * Count one model turn (a prompt the agent answers with the model). Throws when the harness has no

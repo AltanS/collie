@@ -29,11 +29,11 @@ The leg is a gate. It runs in these places:
 
 One solo run costs about 11 minutes. Claude Code, pi and omp replay recorded model streams ("Replay"
 below), so a run on recordings sends nothing to OpenRouter or Anthropic and spends no Claude turn. A run
-on a new Claude Code version runs Claude live once and records it, about 24 Claude Haiku turns on the
-subscription for the solo leg and 6 for the crew leg. A run on a new pi or omp version runs that harness live once and records it: the first
+on a new Claude Code version runs Claude live once and records it, 32 Claude turns on the
+subscription for the solo leg (27 on Haiku, 5 on Sonnet for case 38) and 6 for the crew leg. A run on a new pi or omp version runs that harness live once and records it: the first
 recording run (2026-10-26, pi 1.3.0, omp 18.6.1) sent 44 requests to OpenRouter Haiku 4.5, 21 for pi and
 23 for omp (a few cents). The crew leg adds about 4 minutes, 6 Claude turns
-and 4 pi turns, and the nightly run does both and then the core leg (about 30 more minutes). The turn cap is 20 per harness. "Cost of one run" below
+and 4 pi turns, and the nightly run does both and then the core leg (about 30 more minutes). The turn cap is 35 per harness. "Cost of one run" below
 has the detail.
 
 ### The nightly runner
@@ -600,13 +600,13 @@ On replay, pi, omp and Claude spend no model turn: the stub serves them. The tur
 leg asks of each harness, and on a live run (a new version, or forced) they are paid turns: OpenRouter
 for pi and omp, the subscription for Claude.
 
-- Claude: 25 model turns on Haiku (the count of `turns-claude` in the run folder; case 33 is the 25th, so the cap has no room left): the permission
+- Claude: 25 model turns on Haiku in the leg's own session (the count of `turns-claude` in the run folder counts these and the turns of cases 37 and 38): the permission
   request, the pick-many question, the long list plus one message sent while it streams, seven prompts for the Load older history (each reads four tiny files and
   replies with a marker), and 14 for walky talky: the operator's message (6), the nudge from pi (8), the
   permission request, the message that waited behind it, the draft once sent and the message held behind
   it (9), the broadcast (10), the
   forged header (11, two), the long list and the message sent during it (16), and the question and the
-  message that waited behind it (17), and the nudge of `--outside` (33). The picker and cases 18, 30, 31 and 32 need no turn. Case 38 adds 5 turns on Sonnet in a Claude session of its own (two posts, a prompt that settles nothing, two that settle). A run caps each harness at 31 turns (`TURN_CAP` in `leg.ts`; the data run spends 26 Claude turns with case 36, plus case 38's 5), and every turn is logged in
+  message that waited behind it (17), and the nudge of `--outside` (33). The picker and cases 18, 30, 31 and 32 need no turn. Case 37 adds 2 turns (the long list, the answer to the changed text). Case 38 adds 5 turns on Sonnet in a Claude session of its own (two posts, a prompt that settles nothing, two that settle). A clean solo run therefore spends 32 Claude turns (33 on the data run, with case 36). A run caps each harness at 35 turns (`TURN_CAP` in `leg.ts`: the clean run plus a margin of 3), and every turn is logged in
   `~/.cache/collie-lab/browser-leg-state/turns.log`.
 - pi and omp: 11 turns each, replayed from the recordings (no cost), or on Haiku 4.5 when live. Case 26 adds 1 on pi (the long turn; the steered line is answered inside it). Case 28 adds none. Walky talky adds 6 on pi (case 7,
   the send and the reply nudge of case 8, the broadcast, and the two of case 16) and 4 on omp (case 7, the
@@ -615,7 +615,7 @@ for pi and omp, the subscription for Claude.
   without the model and pad the rows past the 40-row page floor. omp's permission case runs
   omp with `--approval-mode write`, so a bash call asks.
 - The crew leg (cases 12 to 15, 19 to 21, 34 and 35; the last two spend no turn) adds 6 Claude turns and 4 pi turns, and about 4 minutes plus the rig's
-  start. A nightly run is therefore about 15 minutes, 29 Claude turns, 21 pi turns and 15 omp turns.
+  start. A solo and a crew leg together are therefore about 15 minutes, 38 Claude turns, 21 pi turns and 15 omp turns.
 - Time: about 11 minutes for all three harnesses, about 3 of them for Claude alone. A case that waits
   out its reply timeouts adds up to 4 minutes.
 
