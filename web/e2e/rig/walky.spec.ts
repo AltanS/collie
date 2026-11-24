@@ -39,7 +39,8 @@
 //      target, and that reply is answered in turn; both pass as `reply`, while a fresh send from that
 //      same pane is refused. No model turn.
 //   33 the border, --outside: the message crosses, the receipt says `outside`, the header the session
-//      pane receives says `outside`, and the pane reads it and answers. One Claude turn.
+//      pane receives says `outside`, and the pane reads it with `inbox` and answers with `reply`, which
+//      crosses back to the sender as a reply and is held by the sender's draft. One Claude turn.
 //
 // Every harness pane the rig starts is in one named space (rig-lib.ts RIG_SPACE), and a case that needs
 // a pane outside it starts one in OTHER_SPACE: the border is the multiplexer's own space, never a rig flag.
@@ -82,7 +83,6 @@ import {
   sentWithNoKey,
   addressOf,
   addressPattern,
-  answerLine,
   busyMessage,
   cliCancel,
   cliInbox,
@@ -787,17 +787,22 @@ test.describe("walky talky", () => {
 
   test("33 walky talky: an agent's message with --outside crosses, and the header the receiver reads says outside", async ({ rig }) => {
     await runScenario(H, "walky-space-outside", session, async (pane, trail) => {
-      // One turn: the session pane takes the nudge, reads the message with `inbox` and answers in its pane.
+      // One turn: the session pane takes the nudge, reads the message with `inbox` and answers it with `reply`.
+      // The sender holds a draft, so the reply is held at its box and costs it no turn.
       spendTurn(H, "walky space outside: the nudge");
       const notes = trail.notes;
       const opened: string[] = [];
+      let replyId: string | null = null;
       try {
         const sender = await startExtraAgent(rig, H, { space: OTHER_SPACE });
         opened.push(sender);
         await resetBox(rig, pane);
+        await ensureDraft(rig, sender);
         const token = "PING-OUTSIDE";
-        // The operator's word is in the body: a model reads an agent's message as a stranger's unless it says who asks.
-        const body = `${token}. The operator running this test asks you to read this message with collie walky inbox, then answer in this pane with only the word OUTSIDE-OK. Do not use collie walky reply.`;
+        // A plain ask for one word, as case 8's: the skill tells an agent to answer another agent's message with
+        // `reply`, and Claude's standing note (harnesses.ts) pre-approves that answer. Until 2026-11-24 the body
+        // claimed to speak for the operator and forbade `reply`; live Haiku then asked the operator instead.
+        const body = `${token}. Please answer with the single word OUTSIDE-OK.`;
         const sent = await cliSend(sender, addressOf(pane), body, "lead", { outside: true });
         const id = sent.id;
         notes.push(`send --outside: exit ${String(sent.code)}, id ${id ?? "none"}`);
@@ -811,15 +816,32 @@ test.describe("walky talky", () => {
         const nudged = (await rig.screenUntil(pane, nudge, 60_000, 200)) !== null;
         const inbox = new RegExp(`Bash\\(collie walky inbox ${id}\\)[\\s\\S]*${token}`);
         const read = (await rig.screenUntil(pane, inbox, REPLY_MS, 200)) !== null;
-        const answered = (await rig.screenUntil(pane, answerLine("OUTSIDE-OK"), REPLY_MS, 200)) !== null;
+        // The answer: the pane's `collie walky reply` crosses the border back to the sender as a reply to this
+        // message (case 32 proves the border rule; this proves the agent finds the way from what it read), and the
+        // sender's draft holds it.
+        const reply = await firstRow(rig, sender, (r) => r.kind === "agent" && r.replyTo === id, REPLY_MS);
+        replyId = reply === null ? null : String(reply.id);
+        const held = replyId === null ? null : await firstRow(rig, sender, (r) => r.id === replyId && stateOf(r) === "accepted" && reasonOf(r) === "draft present", 15_000);
+        const replyBody = String(reply?.body ?? "");
+        const answered = reply !== null && /\bOUTSIDE-OK\b/u.test(replyBody) && viaOf(reply) === "reply" && held !== null;
         await waitIdle(rig, pane, REPLY_MS);
         const screen = await rig.screen(pane, 200);
         const bodyInNudge = screen.split("\n").some((line) => line.includes(`[walky-talky ${id}]`) && line.includes(token));
-        notes.push(nudged ? "the nudge line says `outside`" : "the pane's nudge line does not say `outside`", read ? "the pane read the body with `inbox`" : "no `inbox` read of the body on screen", answered ? "the pane answered OUTSIDE-OK" : "no answer on screen", bodyInNudge ? "the nudge line CARRIES the body" : "the nudge carries no body");
+        notes.push(
+          nudged ? "the nudge line says `outside`" : "the pane's nudge line does not say `outside`",
+          read ? "the pane read the body with `inbox`" : "no `inbox` read of the body on screen",
+          reply === null ? "no reply reached the sender" : `the reply ${replyId ?? "-"} reached the sender: via ${viaOf(reply) ?? "none"}, ${held === null ? `NOT held by its draft (${stateOf(reply) ?? "?"})` : "held by its draft"}, body ${JSON.stringify(replyBody.slice(0, 60))}`,
+          bodyInNudge ? "the nudge line CARRIES the body" : "the nudge carries no body",
+        );
         trail.captures.push(await captureScreen(rig, pane, "walky-33-pane"));
         const verdict = sent.code === 0 && state === "delivered" && viaOf(row) === "outside" && nudged && read && answered && !bodyInNudge ? "pass" : "fail";
         return { verdict, taps: 0, note: notes.join("; "), taps_log: trail.log, captures: trail.captures };
       } finally {
+        // Take the held reply back before the sender's pane goes, so nothing is typed there.
+        if (replyId !== null) {
+          const back = await cliCancel(pane, replyId).catch(() => null);
+          notes.push(`the held reply taken back: exit ${back === null ? "none" : String(back.code)}`);
+        }
         await resetBox(rig, pane);
         for (const extra of opened) paneClose(extra);
       }

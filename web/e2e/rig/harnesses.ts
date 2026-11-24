@@ -148,19 +148,13 @@ const BLOCK_BEGIN = "<!-- collie:walky-talky v2 begin -->";
 const BLOCK_END = "<!-- collie:walky-talky v2 end -->";
 
 /**
- * A `collie` on PATH that runs this checkout's CLI. The rig's agents are started from a shell whose
- * `collie` is the installed release, which may predate the verb under test. The shim runs no verb by
- * itself; the agent's own `collie walky` reaches its machine's bridge through COLLIE_STATE_DIR, which
- * the shim sets to that machine's state dir (the lead's or the member's), so an agent on the member
- * asks the member's bridge and never the lead's.
+ * The names the rig's `collie` shim sets for one machine. The state dir alone is not enough (trick-flow lab,
+ * 2026-11-16): without a config dir the CLI asks Herdr for one and reads the operator's live `.env`, and a
+ * `trick propose` or `hill` that the rig's bridge answers "not here" goes on to every bridge in the hook
+ * target registry under the real HOME. So the shim names the machine's own config, instance and port, and
+ * its bridge HOME for that lookup.
  */
-function writeCollieShim(root: string, stateDir: string, machine: Machine = "lead"): string {
-  const dir = join(root, "bin");
-  mkdirSync(dir, { recursive: true, mode: 0o700 });
-  // The state dir alone is not enough (trick-flow lab, 2026-11-16): without a config dir the CLI asks
-  // Herdr for one and reads the operator's live `.env`, and a `trick propose` or `hill` that the rig's
-  // bridge answers "not here" goes on to every bridge in the hook target registry under the real HOME.
-  // So the shim names the machine's own config, instance and port, and its bridge HOME for that lookup.
+function shimVars(stateDir: string, machine: Machine): [string, string][] {
   const m = machineDirs(machine);
   const run = readRun();
   const port = machine === "lead" ? run?.port : run?.member?.port;
@@ -173,7 +167,22 @@ function writeCollieShim(root: string, stateDir: string, machine: Machine = "lea
     ["HOME", m.bridgeHome],
   ];
   if (port !== undefined) vars.push(["COLLIE_PORT", String(port)], ["COLLIE_HOST", "127.0.0.1"]);
-  const lines = vars.map(([name, value]) => `${name}=${sq(value)}\nexport ${name}\n`).join("");
+  return vars;
+}
+
+/**
+ * A `collie` on PATH that runs this checkout's CLI. The rig's agents are started from a shell whose
+ * `collie` is the installed release, which may predate the verb under test. The shim runs no verb by
+ * itself; the agent's own `collie walky` reaches its machine's bridge through COLLIE_STATE_DIR, which
+ * the shim sets to that machine's state dir (the lead's or the member's), so an agent on the member
+ * asks the member's bridge and never the lead's.
+ */
+function writeCollieShim(root: string, stateDir: string, machine: Machine = "lead"): string {
+  const dir = join(root, "bin");
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  const lines = shimVars(stateDir, machine)
+    .map(([name, value]) => `${name}=${sq(value)}\nexport ${name}\n`)
+    .join("");
   writeFileSync(join(dir, "collie"), `#!/bin/sh\n${lines}exec bun ${sq(join(WORKTREE, "cli", "main.ts"))} "$@"\n`, { mode: 0o700 });
   chmodSync(join(dir, "collie"), 0o700);
   return dir;
@@ -243,6 +252,27 @@ function installedSettings(settings: JsonObject, binary: string): JsonObject {
   return doc;
 }
 
+/**
+ * The command name the full reminder of open asks prints in this rig (cli/beacon-asks.ts `fullReminder`). The
+ * hook's `collie beacon asks` takes it from `resolveHookCommand(loadContext(), realLinkFs).binary` (cli/program.ts
+ * `asksDeps`): the install's own binary, here this checkout's `bin/collie`, not the shim name the rig's skill text
+ * uses. Computed by that same function, in a child with the shim's own environment (the process the hook runs),
+ * so the rig never spells a path itself. Run by Bun: cli/ reaches bridge modules this tsconfig does not take.
+ */
+function reminderBinary(stateDir: string, machine: Machine): string {
+  const script = [
+    `const hooks = await import(${JSON.stringify(join(WORKTREE, "cli", "hooks.ts"))});`,
+    `const context = await import(${JSON.stringify(join(WORKTREE, "cli", "context.ts"))});`,
+    `const link = await import(${JSON.stringify(join(WORKTREE, "cli", "link.ts"))});`,
+    "process.stdout.write(hooks.resolveHookCommand(context.loadContext(() => {}), link.realLinkFs).binary);",
+  ].join("\n");
+  const env = { PATH: process.env.PATH ?? "", COLLIE_TELEMETRY: "0", ...Object.fromEntries(shimVars(stateDir, machine)) };
+  const r = spawnSync("bun", ["-e", script], { env, encoding: "utf8", timeout: 60_000 });
+  const binary = r.status === 0 ? r.stdout.trim() : "";
+  if (!binary.startsWith("/")) throw new Error(`the reminder's binary could not be resolved: ${(r.stderr || r.stdout || "").trim().slice(0, 300)}`);
+  return binary;
+}
+
 /** The line to type into a fresh shell pane, and the harness's project folder. */
 export interface PreparedHarness {
   readonly line: string;
@@ -310,7 +340,15 @@ export function prepareHarness(id: HarnessId, machine: Machine = "lead", options
     }
     // `collie walky` is the verb the walky talky cases run through the agent, so it needs no permission
     // card of its own: the cases that test a dialog use another command.
-    const settings: JsonObject = { hooks, permissions: { allow: ["Bash(collie walky:*)"] } };
+    const allow = ["Bash(collie walky:*)"];
+    if (asks) {
+      // Case 38: the full reminder names the install's binary (an absolute path, {@link reminderBinary}), and a
+      // Claude that runs the command as printed must get no permission card either, or the case would wait on a
+      // dialog nobody answers. So the verb is allowed under both names. That path runs the compiled CLI with
+      // Claude's own environment, not through the shim, so the start below gives this Claude the shim's names too.
+      allow.push(`Bash(${reminderBinary(stateDir, machine)} walky:*)`);
+    }
+    const settings: JsonObject = { hooks, permissions: { allow } };
     if (asks) Object.assign(settings, installedSettings(settings, join(bin, "collie")));
     writeFileSync(join(d.config, "settings.json"), `${JSON.stringify(settings, null, 2)}\n`, { mode: 0o600 });
     writeWalkySkill(join(d.config, "skills", "collie-walky-talky", "SKILL.md"), "file");
@@ -326,6 +364,15 @@ export function prepareHarness(id: HarnessId, machine: Machine = "lead", options
       { mode: 0o600 },
     );
     env.push(`CLAUDE_CONFIG_DIR=${sq(d.config)}`, "DISABLE_AUTOUPDATER=1", "DISABLE_TELEMETRY=1");
+    if (asks) {
+      // The reminder's absolute path runs the compiled CLI straight from Claude's Bash tool, with Claude's real
+      // HOME. So this Claude carries the shim's names (the machine's config, instance, port; no skill sync), and
+      // the hook target registry of the bridge's HOME instead of the real one: a `walky cancel` by that path then
+      // reaches this machine's rig bridge only, never the operator's `.env` or a live bridge. HOME stays real, as
+      // for every rig Claude; COLLIE_STATE_DIR is set below for every harness.
+      for (const [name, value] of shimVars(stateDir, machine)) if (name !== "HOME" && name !== "COLLIE_STATE_DIR") env.push(`${name}=${sq(value)}`);
+      env.push(`XDG_STATE_HOME=${sq(join(machineDirs(machine).bridgeHome, ".local", "state"))}`);
+    }
     // The data path (M99 spec 13, COLLIE_RIG_DATA=1): the mod from this checkout, for this session only,
     // and the hook target folder of this machine's own bridge. Nothing in the default run.
     const data = dataClaude(WORKTREE, machineDirs(machine).bridgeHome);
