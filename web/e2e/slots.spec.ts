@@ -140,7 +140,10 @@ async function moveInsideApp(page: Page, tile: Tile) {
     await slotRecorded(page, tile.slot, tile.address);
     return;
   }
-  await expect(paneControl(page, tile.opens === "claude" ? PANE_A : PANE_B)).toBeVisible();
+  // The pane itself, not only a button that looks the same: the dashboard's header draws an Actions button
+  // too, so on a phone `paneControl` is visible before the tap has left the dashboard. `openSwitcher`
+  // waits for the drawn pane (fixtures/actions.ts says why the URL alone is not enough).
+  await paneShown(page, `${tile.opens === "claude" ? PANE_A : PANE_B}${tile.session === undefined ? "" : SCOPED}`);
   await moveToPane(page, tile.movesTo);
   await paneShown(page, tile.address);
   await slotRecorded(page, tile.slot, tile.address);
