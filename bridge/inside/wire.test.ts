@@ -46,6 +46,13 @@ describe("parseHello", () => {
     expect(parsed).toMatchObject({ ok: true, harnessVersion: null, partVersion: null, session: null, cwd: null, pidStartTime: null, env: {}, capabilities: [], asks: [] });
   });
 
+  test("a hello with no pid (no /proc) must name its session", () => {
+    const { pid: _pid, ...noPid } = hello;
+    expect(parseHello(JSON.stringify({ ...noPid, session: "s1" }))).toMatchObject({ ok: true, pid: null, session: "s1" });
+    expect(parseHello(JSON.stringify({ ...noPid, pid: null, session: "s1" }))).toMatchObject({ ok: true, pid: null });
+    expect(parseHello(JSON.stringify({ ...noPid, session: null }))).toMatchObject({ ok: false });
+  });
+
   test("unknown fields are ignored, unknown capabilities and ask kinds are dropped (fail closed)", () => {
     const parsed = parseHello(JSON.stringify({ ...hello, future: { x: 1 }, capabilities: ["send", "fly", "send", "type-keys"], asks: ["permission", "everything"] }));
     expect(parsed).toMatchObject({ ok: true, capabilities: ["send"], asks: ["permission"] });

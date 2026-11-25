@@ -95,7 +95,7 @@ export class PartRegistry {
   }
 
   /** Bind a placed hello to its pane. `pidStartTime` is the one the placement checked. */
-  bind(hello: Hello, address: PaneAddress, pidStartTime: number | null): PartView {
+  bind(hello: Hello & { readonly pid: number }, address: PaneAddress, pidStartTime: number | null): PartView {
     const at = this.now();
     const oldId = this.byPane.get(keyOf(address));
     const old = oldId === undefined ? undefined : this.byId.get(oldId);

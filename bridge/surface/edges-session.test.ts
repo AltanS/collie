@@ -66,6 +66,16 @@ describe("sessionAfter", () => {
 });
 
 describe("the router keeps the pane's agent session", () => {
+  test("pidOfAgentSession answers the pid of the one live source naming the session", async () => {
+    const { r, feed } = rig();
+    expect(r.pidOfAgentSession("s1")).toBeUndefined();
+    await feed({ event: "UserPromptSubmit", session: "s1" });
+    expect(r.pidOfAgentSession("s1")).toEqual({ pid: PID, pidStartTime: START });
+    expect(r.pidOfAgentSession("s2")).toBeUndefined();
+    await feed({ event: "SessionEnd", session: "s1", at: 1_000_100 });
+    expect(r.pidOfAgentSession("s1")).toBeUndefined();
+  });
+
   test("a prompt names it; /clear (end with the old id, start with the new) keeps the old as previous", async () => {
     const { r, feed } = rig();
     expect(r.agentSessionOf("main", "w1:p1")).toBeUndefined();

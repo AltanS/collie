@@ -14,7 +14,9 @@ import {
   holdsDraft,
   helloBody,
   isTargetFile,
+  NO_PID,
   NOT_MINE_RETRY_MS,
+  notMineWaitMs,
   parseCommand,
   parseHelloAnswer,
   phoneAnswerWord,
@@ -70,6 +72,8 @@ interface Link {
   /** A retry of the state words is waiting on its timer; how many retries this failure has had. */
   retryWaiting: boolean
   retries: number
+  /** How many `no-pid` answers came in a row: the step of the short ladder the next one takes. */
+  noPid: number
 }
 
 const links = new Map<string, Link>()
@@ -255,6 +259,8 @@ async function markerEnv($: $): Promise<Record<string, string>> {
     ['HERDR_SOCKET_PATH', await $.env.get('HERDR_SOCKET_PATH')],
     ['HC_TERMINAL_ID', await $.env.get('HC_TERMINAL_ID')],
     ['HC_TERMINAL_SOCKET', await $.env.get('HC_TERMINAL_SOCKET')],
+    ['REX_BLOCK', await $.env.get('REX_BLOCK')],
+    ['REX_SERVER', await $.env.get('REX_SERVER')],
   ]
   const env: Record<string, string> = {}
   for (const [name, value] of values) if (value !== undefined && value !== '') env[name] = value
@@ -277,16 +283,19 @@ async function helloText($: $): Promise<string | null> {
   } catch {
     self = null
   }
-  // No pid, no binding: the bridge places a part by its pid, and the screen path stays.
-  if (self === null) return null
+  const session = await $.session.id().catch(() => null)
+  // No /proc (macOS): the mod has no other way to its pid, so the hello names none and the bridge takes
+  // the pid this session's own hook edges named (WIRE.md). No pid and no session: nothing to place it by,
+  // and the screen path stays.
+  if (self === null && session === null) return null
   const version = await $.session.version().catch(() => null)
   return helloBody({
     harnessVersion: version?.version ?? null,
     partVersion: await partVersion($),
-    session: await $.session.id().catch(() => null),
+    session,
     cwd: await $.session.cwd().catch(() => null),
-    pid: self.pid,
-    pidStartTime: self.start,
+    pid: self?.pid ?? null,
+    pidStartTime: self?.start ?? null,
     env: await markerEnv($),
   })
 }
@@ -310,6 +319,7 @@ async function greet($: $, link: Link, now: number): Promise<void> {
   if (link.loop !== loop) return
   if (body === null) {
     link.state = 'not-mine'
+    link.noPid = 0
     link.retryAt = now + NOT_MINE_RETRY_MS
     return
   }
@@ -318,18 +328,18 @@ async function greet($: $, link: Link, now: number): Promise<void> {
   if (link.loop !== loop) return
   const parsed = answer === null ? null : parseHelloAnswer(answer.status, answer.text)
   if (parsed === null) {
+    link.noPid = 0
     down($, link, now)
     return
   }
   if (!parsed.mine) {
-    link.state = 'not-mine'
-    link.part = null
-    link.retryAt = now + NOT_MINE_RETRY_MS
+    notMine($, link, now, loop, parsed.reason)
     return
   }
   link.state = 'mine'
   link.part = parsed.part
   link.failures = 0
+  link.noPid = 0
   // A new part knows no word: every state word is said again, the box first, then the turn (unsaid).
   link.saidDraft = null
   link.saidTurn = null
@@ -340,6 +350,26 @@ async function greet($: $, link: Link, now: number): Promise<void> {
   if (link.loop !== loop) return
   await sayState($, link)
   $.clock.after(0, () => poll($, link, loop))
+}
+
+/**
+ * The bridge said "not mine". Most reasons leave it alone for five minutes (or until the next session start).
+ * `no-pid` is asked again soon, on the ladder of {@link NO_PID_RETRY_MS}: on macOS the hello is said in
+ * process at the session start, before the hook edge that names the session has reached the bridge, so
+ * its first answer is usually that one. The ask is a timer, as for a link that is down: the rescan comes
+ * only once a minute, and nothing else calls a hello for a link that is quiet. The timer asks only if the
+ * link is still waiting on this very hello: a newer hello, a session start or a bridge that stopped ends it.
+ */
+function notMine($: $, link: Link, now: number, loop: number, reason: string): void {
+  const wait = notMineWaitMs(reason, link.noPid)
+  link.state = 'not-mine'
+  link.part = null
+  link.retryAt = now + wait
+  link.noPid = reason === NO_PID ? link.noPid + 1 : 0
+  if (wait >= NOT_MINE_RETRY_MS) return
+  $.clock.after(wait, () => {
+    if (link.loop === loop && link.state === 'not-mine') void hello($, link)
+  })
 }
 
 /**
@@ -469,7 +499,7 @@ async function rescan($: $): Promise<void> {
       links.delete(socket)
     }
     for (const socket of sockets) {
-      const link = links.get(socket) ?? { socket, part: null, state: 'new', retryAt: 0, failures: 0, loop: 0, greeting: false, saidDraft: null, saidTurn: null, sayingFor: null, retryWaiting: false, retries: 0 }
+      const link = links.get(socket) ?? { socket, part: null, state: 'new', retryAt: 0, failures: 0, loop: 0, greeting: false, saidDraft: null, saidTurn: null, sayingFor: null, retryWaiting: false, retries: 0, noPid: 0 }
       links.set(socket, link)
       if (link.state !== 'mine') await hello($, link)
     }
@@ -480,7 +510,10 @@ async function rescan($: $): Promise<void> {
 
 /** Start, or start again: every link says hello now, "not mine" ones included. */
 function start($: $): void {
-  for (const link of links.values()) link.retryAt = 0
+  for (const link of links.values()) {
+    link.retryAt = 0
+    link.noPid = 0
+  }
   $.clock.after(0, () => rescan($))
 }
 

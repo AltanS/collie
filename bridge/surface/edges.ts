@@ -568,6 +568,16 @@ export class EdgeRouter {
     return this.sources.get(keyOf(session, paneId))?.agentSession;
   }
 
+  /**
+   * The pid and start time of the live hook source whose edges name this agent session now, when exactly
+   * one does: a part with no pid of its own (macOS) is placed through it (`bridge/inside/place.ts`).
+   */
+  pidOfAgentSession(agentSession: string): { pid: number; pidStartTime: number } | undefined {
+    const named = [...this.sources.values()].filter((source) => source.agentSession?.current === agentSession);
+    const only = named.length === 1 ? named[0] : undefined;
+    return only === undefined ? undefined : { pid: only.pid, pidStartTime: only.pidStartTime };
+  }
+
   /** A pane's source is live, its pid changed, its start named another model, or its latch moved: saved when that is news. */
   private remember(key: string, source: HookSource): void {
     const known = this.sources.get(key);

@@ -23,6 +23,10 @@ import {
   helloBody,
   isTargetFile,
   MARKER_NAMES,
+  NO_PID,
+  NO_PID_RETRY_MS,
+  NOT_MINE_RETRY_MS,
+  notMineWaitMs,
   parseCommand,
   parseHelloAnswer,
   phoneAnswerWord,
@@ -66,6 +70,13 @@ describe("the mod speaks the bridge's wire", () => {
     expect(JSON.parse(text).env).toEqual({ HERDR_PANE_ID: "w1:p1", HERDR_SOCKET_PATH: "/run/h.sock" });
   });
 
+  test("its hello carries every marker variable the bridge reads, the Rex pair included", () => {
+    const env = Object.fromEntries(MARKER_ENV_NAMES.map((name) => [name, `value of ${name}`]));
+    const text = helloBody({ harnessVersion: null, partVersion: null, session: "abc", cwd: null, pid: null, pidStartTime: null, env });
+    expect(JSON.parse(text).env).toEqual(env);
+    expect(parseHello(text)).toMatchObject({ ok: true });
+  });
+
   test("its draft.state parses on the bridge and carries the boolean only, with the word's count", () => {
     expect(parseEvent(draftStateEvent(PART, true, 3))).toEqual({ ok: true, part: PART, kind: "draft.state", present: true, seq: 3 });
     expect(parseEvent(draftStateEvent(PART, false, 4))).toEqual({ ok: true, part: PART, kind: "draft.state", present: false, seq: 4 });
@@ -86,6 +97,15 @@ describe("the mod speaks the bridge's wire", () => {
     // The ladder ends inside the bridge's word age, and no wait is below the second a 429 asks for.
     expect(STATE_RETRY_MS.reduce((sum, ms) => sum + ms, 0)).toBeLessThan(WORD_FRESH_MS);
     expect(Math.min(...STATE_RETRY_MS)).toBeGreaterThanOrEqual(1000);
+  });
+
+  test("a no-pid answer is asked again on a short ladder, one step per answer in a row; any other reason waits five minutes", () => {
+    expect(NO_PID).toBe("no-pid");
+    expect(NO_PID_RETRY_MS.map((_, step) => notMineWaitMs(NO_PID, step))).toEqual([1000, 3000, 10_000, 30_000]);
+    expect(notMineWaitMs(NO_PID, NO_PID_RETRY_MS.length)).toBe(NOT_MINE_RETRY_MS);
+    for (const reason of ["no-pane", "no-markers", "unknown", ""]) expect(notMineWaitMs(reason, 0)).toBe(NOT_MINE_RETRY_MS);
+    // Every step is shorter than the five minutes, so each one is a real retry.
+    expect(Math.max(...NO_PID_RETRY_MS)).toBeLessThan(NOT_MINE_RETRY_MS);
   });
 
   test("it reads back every command the bridge writes", () => {

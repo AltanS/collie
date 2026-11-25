@@ -37,7 +37,7 @@ export const ASKS_PER_PART_MAX = 16;
 
 /** Where a hello lands: a pane of this bridge, or not one of ours (and why). */
 export type PlaceResult =
-  | { readonly kind: "placed"; readonly address: PaneAddress; readonly pidStartTime: number | null }
+  | { readonly kind: "placed"; readonly address: PaneAddress; readonly pid: number; readonly pidStartTime: number | null }
   | { readonly kind: "not-mine"; readonly reason: string };
 
 /** Places a hello on a pane. In the bridge: the edge placement over the live sessions' targets. */
@@ -154,7 +154,8 @@ export class InsideHub {
   async hello(hello: Hello): Promise<HubAnswer> {
     const placed = await this.place(hello).catch((): PlaceResult => ({ kind: "not-mine", reason: "error" }));
     if (placed.kind === "not-mine") return json(200, { wire: hello.wire, mine: false, reason: placed.reason });
-    const part = this.registry.bind(hello, placed.address, placed.pidStartTime);
+    // The pid the placement checked: the hello's own, or the one its session's hook edges named.
+    const part = this.registry.bind({ ...hello, pid: placed.pid }, placed.address, placed.pidStartTime);
     return json(200, {
       wire: hello.wire,
       mine: true,

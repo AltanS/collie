@@ -23,7 +23,7 @@ const owning =
   (panes: string[]): Placer =>
   (hello) => {
     const pane = hello.env.HERDR_PANE_ID;
-    return Promise.resolve(pane !== undefined && panes.includes(pane) ? { kind: "placed", address: { session: "main", paneId: pane }, pidStartTime: 7 } : { kind: "not-mine", reason: "no-pane" });
+    return Promise.resolve(pane !== undefined && panes.includes(pane) ? { kind: "placed", address: { session: "main", paneId: pane }, pid: hello.pid ?? 4242, pidStartTime: 7 } : { kind: "not-mine", reason: "no-pane" });
   };
 
 async function start(stateDir: string, panes: string[] = ["w1:p1"]) {

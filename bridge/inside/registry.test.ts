@@ -15,6 +15,13 @@ function helloOf(fields: JsonObject = {}): Hello {
   return parsed;
 }
 
+/** A hello as the placement hands it to the registry: with its pid. */
+function boundOf(fields: JsonObject = {}): Hello & { readonly pid: number } {
+  const hello = helloOf(fields);
+  if (hello.pid === null) throw new Error("a bound hello has a pid");
+  return { ...hello, pid: hello.pid };
+}
+
 function rig() {
   let now = 1000;
   const lines: string[] = [];
@@ -32,7 +39,7 @@ const HERDR_ENV = { HERDR_PANE_ID: "w1:p1", HERDR_SOCKET_PATH: "/run/herdr.sock"
 
 describe("binding by markers (placeHello)", () => {
   test("a hello whose markers name one live pane is placed on it", async () => {
-    expect(await placeHello(helloOf({ env: HERDR_ENV }), [target("main", ["w1:p1", "w1:p2"])], live)).toEqual({ kind: "placed", address: PANE, pidStartTime: 7 });
+    expect(await placeHello(helloOf({ env: HERDR_ENV }), [target("main", ["w1:p1", "w1:p2"])], live)).toEqual({ kind: "placed", address: PANE, pid: 4242, pidStartTime: 7 });
   });
 
   test("no markers, no pane, another multiplexer, two panes, a dead pid, not the foreground: not mine", async () => {
@@ -45,15 +52,25 @@ describe("binding by markers (placeHello)", () => {
     expect(await placeHello(helloOf({ env: HERDR_ENV }), [target("main", ["w1:p1"], [1, 2])], live)).toMatchObject({ reason: "not-foreground" });
   });
 
+  test("a part with no pid (macOS) is placed by the pid its session's hook edges named", async () => {
+    const agentPid = (session: string) => (session === "s1" ? { pid: 4242, pidStartTime: 7 } : undefined);
+    const pidless = helloOf({ env: HERDR_ENV, pid: null, pidStartTime: null, session: "s1" });
+    expect(await placeHello(pidless, [target("main", ["w1:p1"], [4242])], live, { agentPid })).toEqual({ kind: "placed", address: PANE, pid: 4242, pidStartTime: 7 });
+    // The resolved pid meets the same rule as any edge: it must still be the pane's foreground.
+    expect(await placeHello(pidless, [target("main", ["w1:p1"], [1])], live, { agentPid })).toMatchObject({ reason: "not-foreground" });
+    expect(await placeHello(helloOf({ env: HERDR_ENV, pid: null, session: "s2" }), [target("main", ["w1:p1"])], live, { agentPid })).toEqual({ kind: "not-mine", reason: "no-pid" });
+    expect(await placeHello(pidless, [target("main", ["w1:p1"])], live)).toEqual({ kind: "not-mine", reason: "no-pid" });
+  });
+
   test("a part with no start time of its own is bound to the one the bridge reads", async () => {
-    expect(await placeHello(helloOf({ env: HERDR_ENV, pidStartTime: null }), [target("main", ["w1:p1"], [4242])], live)).toEqual({ kind: "placed", address: PANE, pidStartTime: 7 });
+    expect(await placeHello(helloOf({ env: HERDR_ENV, pidStartTime: null }), [target("main", ["w1:p1"], [4242])], live)).toEqual({ kind: "placed", address: PANE, pid: 4242, pidStartTime: 7 });
   });
 });
 
 describe("the registry", () => {
   test("bind stores the capabilities; partOf reads them; the view names no harness", () => {
     const { registry, lines } = rig();
-    const part = registry.bind(helloOf(), PANE, 7);
+    const part = registry.bind(boundOf(), PANE, 7);
     const read = registry.partOf(PANE);
     expect(read?.partId).toBe(part.partId);
     expect([...(read?.capabilities ?? [])]).toEqual(["send", "wake"]);
@@ -65,8 +82,8 @@ describe("the registry", () => {
 
   test("a new hello for the same pane replaces the old part, whose id is dead from then on", () => {
     const { registry, changes } = rig();
-    const old = registry.bind(helloOf(), PANE, 7);
-    const fresh = registry.bind(helloOf({ capabilities: ["send"] }), PANE, 7);
+    const old = registry.bind(boundOf(), PANE, 7);
+    const fresh = registry.bind(boundOf({ capabilities: ["send"] }), PANE, 7);
     expect(fresh.partId).not.toBe(old.partId);
     expect(registry.touch(old.partId)).toBeNull();
     expect(registry.partOf(PANE)?.partId).toBe(fresh.partId);
@@ -75,17 +92,17 @@ describe("the registry", () => {
 
   test("a replacement by the same pid is logged, with no text; one by another pid is not", () => {
     const { registry, lines } = rig();
-    registry.bind(helloOf(), PANE, 7);
-    registry.bind(helloOf(), PANE, 7);
+    registry.bind(boundOf(), PANE, 7);
+    registry.bind(boundOf(), PANE, 7);
     expect(lines.filter((line) => line.includes("replaced by the same pid"))).toHaveLength(1);
     expect(lines.find((line) => line.includes("replaced by the same pid"))).toMatch(/^\[inside\] replaced by the same pid part=\S+ new=\S+ pane=w1:p1 pid=4242$/u);
-    registry.bind(helloOf({ pid: 5151 }), PANE, 9);
+    registry.bind(boundOf({ pid: 5151 }), PANE, 9);
     expect(lines.filter((line) => line.includes("replaced by the same pid"))).toHaveLength(1);
   });
 
   test("a part that stops polling loses its capabilities: the pane reads as having no part", () => {
     const { registry, advance, changes } = rig();
-    const part = registry.bind(helloOf(), PANE, 7);
+    const part = registry.bind(boundOf(), PANE, 7);
     advance(PART_IDLE_MS - 1);
     expect(registry.sweep()).toEqual([]);
     registry.touch(part.partId);
@@ -97,7 +114,7 @@ describe("the registry", () => {
 
   test("a part with a poll open is alive however long the poll takes", () => {
     const { registry, advance } = rig();
-    const part = registry.bind(helloOf(), PANE, 7);
+    const part = registry.bind(boundOf(), PANE, 7);
     registry.pollStarted(part.partId);
     advance(PART_IDLE_MS * 3);
     expect(registry.sweep()).toEqual([]);
@@ -108,7 +125,7 @@ describe("the registry", () => {
 
   test("bye drops the part at once", () => {
     const { registry, changes } = rig();
-    const part = registry.bind(helloOf(), PANE, 7);
+    const part = registry.bind(boundOf(), PANE, 7);
     expect(registry.drop(part.partId)).toBe(true);
     expect(registry.partOf(PANE)).toBeNull();
     expect(changes.at(-1)).toMatchObject({ kind: "gone", reason: "bye" });
