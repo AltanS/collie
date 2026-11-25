@@ -290,8 +290,9 @@ export interface SendReceipt {
    */
   readonly draftSeen?: true;
   /**
-   * Set on a `menu_open`, on either road (M102 spec 12): which sign the generic menu sign read and on which
-   * screen row. Never the row's text.
+   * Set on a `menu_open`, on either road (M102 spec 12), and on the person's override that went past the
+   * blind road's sign (2026-11-25): which sign the generic menu sign read and on which screen row. Never
+   * the row's text.
    */
   readonly menuSign?: MenuSign;
   /**

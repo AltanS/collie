@@ -2,7 +2,9 @@
 // screen for a menu or a yes/no prompt: the one guard on the person's override ("Send past this screen") on
 // a screen no reader could read. Where it fires, the override is refused `menu_open`, nothing is typed,
 // and the phone shows the key pad: a pasted "1" or "y", or the Enter the person presses next, would
-// otherwise pick an option the person never chose.
+// otherwise pick an option the person never chose. On a pane with no profile (the blind road) it is a
+// guess with no reader behind it, so there it refuses only the first send; the person's override past
+// it is typed with no key (2026-11-25: a guess must not be a wall).
 //
 // It is built from the corpus, not from one harness (menu-sign.corpus.test.ts runs it over every dialog
 // and every idle fixture and pins the hit and false rates). It errs on the side of firing: a false

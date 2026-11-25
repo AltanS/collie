@@ -250,7 +250,9 @@
 // it. Only five things refuse such a send: the pane is gone (or the write grant, at the route); a sign-in
 // field (the secret path keeps it); a question or permission the reader read (hard stop 6a, its card
 // answers it); a screen that moved since the person looked (`stale_surface`); and the generic menu sign
-// (menu-sign.ts, `menu_open`), which also guards an override on the manual Send. Both refusals carry the
+// (menu-sign.ts, `menu_open`), which also guards an override on the manual Send. On the blind road (no
+// profile) the sign is a guess, so there it refuses the first send only: the override past it takes the
+// override road, no key, and its receipt keeps the sign (2026-11-25, a guess must not be a wall). Both refusals carry the
 // rows now and their hash. The rows compare of an override masks digits and spinner glyphs and, over a
 // found box, reads from the box's top edge down ({@link Snap.looseHash}): a clock or a streaming turn
 // above the box is no screen the person must see again. That loose compare never lets a key through: a
@@ -260,7 +262,7 @@
 // could submit it. An override is never held, joins no hold queue, and one id writes at most once. A held
 // row says `heldLong` once it waited HELD_LONG_MS (two minutes). A send Collie makes alone (a held release,
 // a queued send, WalkyTalky, a hook, a steer) never takes this road and is unchanged, with one stricter
-// rule: on the blind road (no profile) the menu sign refuses EVERY send `menu_open`, before any key, by
+// rule: on the blind road (no profile) the menu sign refuses every such send `menu_open`, before any key, by
 // what stands in the pane's foreground (`SendDeps.paneForeground`, pane-binary.ts): a shell reads no sign;
 // a program or an unknown one (no foreground read: tmux, zellij) the sign anchored at the bottom
 // (menu-sign.ts `anchor`), or the whole window where a profile's rows show; the receipt names it (an override's `menu_open` on a pane with a profile too)
@@ -3154,6 +3156,11 @@ interface RunState {
   /** The override found its own text in the box already and typed nothing: the receipt carries `textAlreadyTyped`. */
   textAlreadyTyped?: boolean;
   /**
+   * The blind road's menu sign the person's override went past (2026-11-25): the text went in with no key,
+   * and the receipt keeps the sign (`menuSign`, kind and row) so a report shows the person went past it.
+   */
+  pastSign?: MenuSign;
+  /**
    * A release met a box that is still starting: its probe never showed, or an earlier probe character
    * is still pending there (the header). It goes back to its place, the try does not count, and the
    * pane's next free poll that shows the character, or the end of the window, sends it again.
@@ -4643,6 +4650,7 @@ export class SendProtocol {
     if (state.draftSeen === true) receipt.draftSeen = true;
     if (state.textAlreadyTyped === true) receipt.textAlreadyTyped = true;
     if (outcome === "refused" && note?.menuSign !== undefined) receipt.menuSign = note.menuSign;
+    else if (state.pastSign !== undefined) receipt.menuSign = { kind: state.pastSign.kind, row: state.pastSign.row };
     // The agent's own word may still settle an `unknown` (M102 spec 13): its window, when one is open.
     if (outcome === "unknown") {
       const until = this.awaitingEventUntil(state);
@@ -5512,14 +5520,23 @@ export class SendProtocol {
     }
     // A pane whose last rows look like an agent's (an input box, a dialog, a footer a profile names) is
     // no shell to type into blind: the agent may be starting, or one Collie has no name for here.
-    // No text and no Enter where a menu shows (M102 spec 12; the invariant suite's blind-road case): for
-    // the person's override and for every other send on this road. By what stands in the foreground: a
+    // No text and no Enter where a menu shows (M102 spec 12; the invariant suite's blind-road case), for
+    // every send on this road but the person's override, which goes in with no key (below). By what stands in the foreground: a
     // shell reads no sign (it waits at its prompt, nothing asks), a program or an unknown one the anchored
     // sign (live at the bottom, not old output above a prompt), or the whole window where an agent's rows
     // show (a full-screen program draws its status under a dialog). The refusal names the sign, never its text.
     const road = blindRoadSign(snap.rows, snap.surface);
     const sign = await this.blindMenuSign(state, snap, road !== null);
-    if (sign !== null) throw overrideRefusal("menu_open", snap, MENU_OPEN, sign);
+    if (sign !== null) {
+      // Here the sign is a guess with no reader behind it (wrong on about one idle screen in six), so it
+      // must not be a wall (2026-11-25): the person's override, on the rows they saw after the card showed
+      // them this refusal, takes the override road, the text with NO key, Enter included. They answer or
+      // send with the Keys pad. Every other send here is refused as before, the first tap included.
+      if (!overrideAsked(state.request)) throw overrideRefusal("menu_open", snap, MENU_OPEN, sign);
+      if (!this.rowsSeen(state, snap)) throw overrideRefusal("stale_surface", snap, OVERRIDE_MOVED);
+      state.pastSign = sign;
+      await this.typeOverride(state, snap, lines);
+    }
     if (road !== null) {
       // The person's override: on the rows they saw, the text with no key.
       if (overrideAsked(state.request)) {

@@ -273,7 +273,7 @@ The button that sends your message although Collie cannot check the screen. It h
 places: on the card for a screen Collie cannot read, and in the notice under the box. The word does not
 say whether Enter goes. The answer after your tap says what happened. It is not offered on a sign-in
 field, a question or permission Collie read, a screen that changed since you looked, or a menu or
-yes/no prompt ([Send anyway](multiplexers.md#send-anyway)).
+yes/no prompt on an agent Collie has a profile for ([Send anyway](multiplexers.md#send-anyway)).
 
 ## Type mode
 

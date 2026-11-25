@@ -4,8 +4,10 @@
 //
 //  1. The gate table: every refusal a person's send could meet, before and after.
 //  2. The harm cases: an unread permission dialog of every harness in the corpus, a `(y/n)` prompt, a
-//     numbered menu and a picker, on the manual road and on the newly reached one. Nothing is typed,
-//     no key is pressed, and the refusal is `menu_open` with the rows now and their hash.
+//     numbered menu and a picker, on the manual road and on the newly reached one. No key is pressed.
+//     On a pane with a profile nothing is typed and the refusal is `menu_open` with the rows now and
+//     their hash; on the blind road (no profile, a guessed sign) the override is typed with no key
+//     (2026-11-25, protocol.blind-menu-override.test.ts).
 //  3. A moved screen: refused with the rows now; a spinner, a clock or a turn streaming above the box
 //     is no move; the next tap binds to the new hash.
 //  4. At most once, never held, and the long hold's mark.
@@ -167,9 +169,10 @@ describe("2. the harm cases: an override never answers a question (M102 spec 12)
       refusedClean(await rig(screen, { harness: FRAMELESS }).override("1"), screen, "menu_open");
     });
 
-    test(`${what} on the newly reached road (no profile): refused menu_open, nothing typed, no key`, async () => {
+    // The blind road's sign is a guess (2026-11-25): the override past it is typed, and still no key goes out.
+    test(`${what} on the newly reached road (no profile): the override is typed with no key, Enter included`, async () => {
       const screen = new ScreenPane(PROMPT_ROWS(rows));
-      refusedClean(await rig(screen, { harness: NO_PROFILE }).override("y"), screen, "menu_open");
+      typedNoKey(await rig(screen, { harness: NO_PROFILE }).override("y"), screen, "y");
     });
 
     test(`${what} over a draft the reader read (the newly reached road): refused menu_open, nothing typed, no key`, async () => {

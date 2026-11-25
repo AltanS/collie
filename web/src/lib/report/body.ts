@@ -147,7 +147,7 @@ function title(input: ReportInput): string {
 const STEP_ORDER: readonly SendStep[] = ["settle", "s0", "clear", "probe", "probeWrite", "write", "s1", "commandSettle", "commit", "s2"];
 
 /**
- * The menu sign of a send refused `menu_open`, as `<kind>@<row>`: which sign fired and on which screen row,
+ * The menu sign of a send refused `menu_open`, or of an override past it, as `<kind>@<row>`: which sign fired and on which screen row,
  * never a character of the screen. A kind the app does not know or a row that is no index prints nothing,
  * so a bridge cannot put free text into the line through this field.
  */
