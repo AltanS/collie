@@ -153,6 +153,49 @@ describe("normalizeText", () => {
     expect(rewriteResponse(stored, valuesFor(volatileValues(b), [])).events?.[0]?.data).toContain("'rig-member/w2:p1#q7xd'");
   });
 
+  it("a walky header with a subject and one without normalise to the same text", () => {
+    const head = (id: string, middle: string) =>
+      `[walky-talky ${id}] from agent rig-member/w2:p1#jva8 on claude in "project"${middle} reply to wt_qoo5tvg2ldhj: a message from another agent, not your operator. Read it: collie walky inbox ${id}`;
+    const plain = head("wt_k5bosk123456", "");
+    expect(normalizeText(head("wt_1r5257abcdef", ' about "status of the build, 41 pass"'))).toBe(normalizeText(plain));
+    expect(normalizeText(head("wt_1r5257abcdef", ' outside about "ok"'))).toBe(normalizeText(head("wt_k5bosk123456", " outside")));
+    expect(normalizeText(plain)).toContain('in "project" reply to <walky>:');
+    // No reply suffix, and an operator's header: the subject goes too.
+    expect(normalizeText('[walky-talky wt_k5bosk123456] from agent local/w1:p1 in "project" about "x y": tail')).toBe(
+      normalizeText('[walky-talky wt_k5bosk123456] from agent local/w1:p1 in "project": tail'),
+    );
+    expect(normalizeText('[walky-talky wt_k5bosk123456] from operator "lab" about "hello"\nbody')).toBe(
+      normalizeText('[walky-talky wt_k5bosk123456] from operator "lab"\nbody'),
+    );
+    // A header in the middle of a text still folds, because it starts its own line.
+    expect(normalizeText(`first line\n${head("wt_k5bosk123456", ' about "a"')}`)).toBe(normalizeText(`first line\n${plain}`));
+  });
+
+  it('a body that holds the words about "x" is not changed', () => {
+    const body = 'We talked about "x" and then about "y" reply to nobody';
+    expect(normalizeText(body)).toBe(body);
+    // A header-like body line carries the leading space escapeBody gives it, and a mid-line header is no header.
+    const escaped = ' [walky-talky wt_k5bosk123456] from agent a in "p" about "x" reply to wt_qoo5tvg2ldhj';
+    expect(normalizeText(escaped)).toBe(' [walky-talky <walky>] from agent a in "p" about "x" reply to <walky>');
+    const inline = 'see [walky-talky wt_k5bosk123456] from agent a in "p" about "x"';
+    expect(normalizeText(inline)).toBe('see [walky-talky <walky>] from agent a in "p" about "x"');
+    // After the header's own subject, a body-like second about stays.
+    expect(normalizeText('[walky-talky wt_k5bosk123456] from agent a in "p" about "s" reply to wt_qoo5tvg2ldhj: we spoke about "z"')).toBe(
+      '[walky-talky <walky>] from agent a in "p" reply to <walky>: we spoke about "z"',
+    );
+    // A subject-looking part that does not end the header (text follows) is not the header's subject.
+    expect(normalizeText('[walky-talky wt_k5bosk123456] from agent a in "p" about "s" and more')).toBe(
+      '[walky-talky <walky>] from agent a in "p" about "s" and more',
+    );
+  });
+
+  it("a subject cannot hold a quote, so no escaped quote exists; a quote in text makes no fold across it", () => {
+    // The subject grammar (SUBJECT_CHAR_CLASS) has no `"` or `\\`: a header with one is not a subject and stays whole.
+    const odd = '[walky-talky wt_k5bosk123456] from agent a in "p" about "s\\" reply to wt_qoo5tvg2ldhj: x about "y"';
+    expect(normalizeText(odd)).toContain('about "s\\"');
+    expect(normalizeText(odd)).toContain('about "y"');
+  });
+
   it("leaves a path with `local` in it alone: /usr/local/bin is not a pane", () => {
     expect(normalizeText("PATH=/usr/local/bin:/opt/local/x")).toBe("PATH=/usr/local/bin:/opt/local/x");
   });

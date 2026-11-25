@@ -196,9 +196,21 @@ function marksOf(text: string): string[] {
 /** Each mark as a standalone word: never inside a longer word or an id. */
 const markRe = (mark: string): RegExp => new RegExp(`(?<![A-Za-z0-9_])${mark}(?![A-Za-z0-9])`, "gu");
 
+/**
+ * The optional subject of a walky header line (bridge/walky/types.ts `formatHeader`): `about "<subject>"`
+ * sits right after the sender's quoted label (and the word `outside`), before ` reply to <id>`, the nudge
+ * mark's colon or the end of the line. A subject is free text a model chooses, so a header with one and
+ * the same header without it are the same prompt. A subject holds only the characters of
+ * `SUBJECT_CHAR_CLASS` (web/src/lib/walky-subject.ts), never a quote, a backslash or a newline, so it is
+ * one quoted run and the pattern spells that class out. The fold starts at a line that begins with the
+ * header and takes only that part. A body line that starts with `[walky-talky` was given a leading space
+ * by `escapeBody`, so no body line matches.
+ */
+const WALKY_SUBJECT = /^(\[walky-talky \S+\] from (?:agent \S+(?: on \S+)? in |operator )"[^"\n]*"(?: outside)?) about "[A-Za-z0-9 .,_/#+'?%@=-]+"(?= reply to |:|$)/gmu;
+
 /** Replace every literal (longest first), then every volatile value by its class marker. */
 export function normalizeText(text: string, literals: readonly Literal[] = []): string {
-  let out = replaceLiterals(text, literals);
+  let out = replaceLiterals(text, literals).replace(WALKY_SUBJECT, "$1");
   const marks = marksOf(out);
   for (const { name, re } of VOLATILE) out = out.replace(re, `<${name}>`);
   for (const mark of marks) out = out.replace(markRe(mark), "<mark>");
