@@ -14,7 +14,7 @@ type Wire = { path: string; body: Record<string, unknown> | null }
 /** Event posts the bridge loses: of this kind (and this count, when given), `times` of them, by a time-out or a status. */
 type Lose = { kind: string; seq?: number; how: 'timeout' | number; times: number }
 
-function world(on: Parameters<Parameters<typeof test>[1]>[1], opts: { commands?: string[]; askWait?: boolean; askAnswer?: string; refuse?: boolean; hangAsk?: boolean; draftFails?: boolean; forgetAfterTurn?: 410 | 500; box?: string; lose?: Lose; slow?: { ms: number }; submit?: 'drop' | 'throw'; noProc?: boolean } = {}) {
+function world(on: Parameters<Parameters<typeof test>[1]>[1], opts: { commands?: string[]; askWait?: boolean; askAnswer?: string; refuse?: boolean; hangAsk?: boolean; draftFails?: boolean; forgetAfterTurn?: 410 | 500; box?: string; lose?: Lose; slow?: { ms: number }; submit?: 'drop' | 'throw'; noProc?: boolean; notMine?: { reason: string | null; times: number } } = {}) {
   const clock = mock.clock(on)
   mock.env(on, { HOME: '/h', HERDR_PANE_ID: 'w1:p1', HERDR_SOCKET_PATH: '/run/herdr.sock' })
   const wire: Wire[] = []
@@ -52,7 +52,15 @@ function world(on: Parameters<Parameters<typeof test>[1]>[1], opts: { commands?:
     if (e.init?.socketPath !== SOCKET) return answer(599)
     // A bridge whose socket refuses the connection.
     if (opts.refuse === true) throw new Error('ECONNREFUSED')
-    if (url.pathname === '/v1/hello') return answer(200, { wire: 1, mine: true, part: PART })
+    if (url.pathname === '/v1/hello') {
+      // A bridge that does not take the part yet: it says "not mine" to this many hellos, then binds it.
+      const refused = opts.notMine
+      if (refused !== undefined && refused.times > 0) {
+        refused.times -= 1
+        return answer(200, refused.reason === null ? { wire: 1, mine: false } : { wire: 1, mine: false, reason: refused.reason })
+      }
+      return answer(200, { wire: 1, mine: true, part: PART })
+    }
     if (url.pathname === '/v1/event') {
       // A slow bridge: each event post answers after this long, still inside the part's time limit.
       if (opts.slow !== undefined && opts.slow.ms > 0) await clock.sleep(opts.slow.ms)
@@ -129,6 +137,84 @@ describe('the Collie mod', () => {
     await clock.settle()
     const hello = wire.find((row) => row.path === '/v1/hello')?.body
     expect(hello).toMatchObject({ session: 'sess-1', pid: null, pidStartTime: null, env: { HERDR_PANE_ID: 'w1:p1' } })
+  })
+
+  // On macOS the hello is said in process at the session start, and the hook edge that names the session
+  // comes from a spawned emitter a moment later: the bridge usually says `no-pid` first.
+  describe('a bridge that does not take the part yet', () => {
+    const helloCount = (wire: Wire[]) => wire.filter((row) => row.path === '/v1/hello').length
+    const polls = (wire: Wire[]) => wire.filter((row) => row.path.startsWith('/v1/next')).length
+    const pass = async (clock: ReturnType<typeof world>['clock'], ms: number) => {
+      await clock.advance(ms)
+      for (let i = 0; i < 4; i += 1) await clock.settle()
+    }
+
+    test('a no-pid answer is asked again after 1 s, and binds when the bridge then knows the session', async ($, on) => {
+      const { clock, wire } = world(on, { noProc: true, notMine: { reason: 'no-pid', times: 1 } })
+      await $.session.start({ cwd: '/h/project', surface: 'terminal', isInteractive: true })
+      await clock.settle()
+      expect(helloCount(wire)).toBe(1)
+      expect(polls(wire)).toBe(0)
+      await pass(clock, 900)
+      expect(helloCount(wire)).toBe(1)
+      await pass(clock, 100)
+      expect(helloCount(wire)).toBe(2)
+      expect(polls(wire)).toBeGreaterThan(0)
+    })
+
+    test('after the ladder the wait is five minutes', async ($, on) => {
+      const { clock, wire } = world(on, { noProc: true, notMine: { reason: 'no-pid', times: 100 } })
+      await $.session.start({ cwd: '/h/project', surface: 'terminal', isInteractive: true })
+      await clock.settle()
+      // One step per answer in a row: 1 s, 3 s, 10 s, 30 s after the first hello, so at 1, 4, 14 and 44 s.
+      for (const [wait, hellos] of [[1000, 2], [3000, 3], [10_000, 4], [30_000, 5]] as const) {
+        await pass(clock, wait - 1)
+        expect(helloCount(wire)).toBe(hellos - 1)
+        await pass(clock, 1)
+        expect(helloCount(wire)).toBe(hellos)
+      }
+      // The fifth answer waits five minutes (the minute rescan finds the link not due), counted from 44 s.
+      await pass(clock, 5 * 60_000 - 1000)
+      expect(helloCount(wire)).toBe(5)
+      await pass(clock, 17_000)
+      expect(helloCount(wire)).toBe(6)
+    })
+
+    test('another reason waits five minutes at once', async ($, on) => {
+      const { clock, wire } = world(on, { noProc: true, notMine: { reason: 'no-pane', times: 100 } })
+      await $.session.start({ cwd: '/h/project', surface: 'terminal', isInteractive: true })
+      await clock.settle()
+      expect(helloCount(wire)).toBe(1)
+      await pass(clock, 299_000)
+      expect(helloCount(wire)).toBe(1)
+      await pass(clock, 2000)
+      expect(helloCount(wire)).toBe(2)
+    })
+
+    test('a bridge that gives no reason (an older one) waits five minutes at once', async ($, on) => {
+      const { clock, wire } = world(on, { noProc: true, notMine: { reason: null, times: 100 } })
+      await $.session.start({ cwd: '/h/project', surface: 'terminal', isInteractive: true })
+      await clock.settle()
+      await pass(clock, 299_000)
+      expect(helloCount(wire)).toBe(1)
+      await pass(clock, 2000)
+      expect(helloCount(wire)).toBe(2)
+    })
+
+    test('a session start begins the ladder over', async ($, on) => {
+      const { clock, wire } = world(on, { noProc: true, notMine: { reason: 'no-pid', times: 100 } })
+      await $.session.start({ cwd: '/h/project', surface: 'terminal', isInteractive: true })
+      await clock.settle()
+      // The first answer took the 1 s step; the second takes the 3 s step.
+      await pass(clock, 1000)
+      expect(helloCount(wire)).toBe(2)
+      await $.session.start({ cwd: '/h/project', surface: 'terminal', isInteractive: true })
+      await clock.settle()
+      expect(helloCount(wire)).toBe(3)
+      // The start's hello is the first answer of a new ladder: 1 s again, not 3 s.
+      await pass(clock, 1000)
+      expect(helloCount(wire)).toBe(4)
+    })
   })
 
   test('a prompt goes in as the person\'s words, once, and is reported taken then sent', async ($, on) => {

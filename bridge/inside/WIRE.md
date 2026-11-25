@@ -90,7 +90,10 @@ the multiplexer reports the pane's foreground processes, the pid is among them.
 
 `reason` is one of `no-markers`, `no-pid`, `no-pane`, `foreign-mux`, `ambiguous`, `dead-pid`, `not-foreground`.
 A part that hears "not mine" leaves that socket alone for a while (the Claude mod: five minutes, or
-until its session starts again). A hello with another `wire` is refused with `400` and the bridge's own
+until its session starts again). The one exception is `no-pid`: the hook edge that names the session comes
+from a process the agent spawns, a moment after the part's own hello, so the first hello of a session
+usually gets it. A part asks again soon after a `no-pid` (the Claude mod: after 1, 3, 10 and 30 seconds,
+one wait per answer in a row, then the five minutes). A hello with another `wire` is refused with `400` and the bridge's own
 version in the reason.
 
 One part per pane. A newer hello for the same pane replaces the older part: it passed the placement, so

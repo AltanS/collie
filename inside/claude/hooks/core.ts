@@ -45,6 +45,24 @@ export const WAKE_DOORS: ReadonlySet<string> = new Set(["prompt", "command", "re
 
 /** A bridge that said "not mine" is asked again after this long, or at the next session start. */
 export const NOT_MINE_RETRY_MS = 5 * 60_000;
+/** The reason a bridge gives when it does not yet know the session of a hello that names no pid (macOS). */
+export const NO_PID = "no-pid";
+/**
+ * Where a bridge answered `no-pid`, the part asks again after these waits, one per answer in a row: its
+ * hello is said in process at the session start, and the hook edge that names the session comes from a
+ * spawned emitter a moment later. After the last wait the five minutes above apply. Any other answer, and
+ * a session start, begin the ladder over.
+ */
+export const NO_PID_RETRY_MS = [1_000, 3_000, 10_000, 30_000] as const;
+
+/**
+ * How long a "not mine" answer is left alone: the step of {@link NO_PID_RETRY_MS} for `no-pid` (`noPidAnswers`
+ * is how many `no-pid` answers came in a row before this one), else {@link NOT_MINE_RETRY_MS}. A reason this
+ * part does not know, or none (an older bridge), waits the five minutes.
+ */
+export function notMineWaitMs(reason: string, noPidAnswers: number): number {
+  return reason === NO_PID ? (NO_PID_RETRY_MS[noPidAnswers] ?? NOT_MINE_RETRY_MS) : NOT_MINE_RETRY_MS;
+}
 /** A bridge that did not answer is tried again after these waits, the last one repeating. */
 export const DOWN_RETRY_MS = [1000, 5000, 30_000, 60_000] as const;
 /** How often the hook target folder is read again for a bridge that started later. */
