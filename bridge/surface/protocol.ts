@@ -251,8 +251,8 @@
 // field (the secret path keeps it); a question or permission the reader read (hard stop 6a, its card
 // answers it); a screen that moved since the person looked (`stale_surface`); and the generic menu sign
 // (menu-sign.ts, `menu_open`), which also guards an override on the manual Send. On the blind road (no
-// profile) the sign is a guess, so there it refuses the first send only where the rows look like an
-// agent's (`blindRoadSign`) and the sign is no row of one-key items: the override past it takes the
+// profile) the sign is a guess, so there it refuses the first send only where the screen shows an
+// agent's input box or footer (`blindRoadSign` frame or footer) and the sign is no row of one-key items: the override past it takes the
 // override road, no key, and its receipt keeps the sign (2026-11-25, a guess must not be a wall). On a
 // plain program, or at a one-key row, no override passes, and the refusal carries no rows hash. The
 // override road reads the pane once more right before it writes. Both refusals carry the
@@ -5540,11 +5540,12 @@ export class SendProtocol {
       // must not be a wall (2026-11-25): the person's override, on the rows they saw after the card showed
       // them this refusal, takes the override road, the text with NO key, Enter included. They answer or
       // send with the Keys pad. Every other send here is refused as before, the first tap included.
-      // Two guards (counsel, 2026-11-25, from a live run): only where the last rows look like an agent's
-      // (`road`), for on a plain program the sign is most often real; and never at a row of one-key items
+      // Two guards (counsel, 2026-11-25, from a live run): only where the screen shows an agent's input box
+      // or footer (`road` frame or footer; a strong cue alone, such as a `[y/N]` line, is no agent screen
+      // here), for on a plain program the sign is most often real; and never at a row of one-key items
       // (`single-key`), for a program that reads one key acts on the first byte of the paste, no Enter.
       // There no override passes, so the refusal carries no rows hash to bind one to.
-      const past = road !== null && sign.kind !== "single-key";
+      const past = (road === "frame" || road === "footer") && sign.kind !== "single-key";
       if (!past || !overrideAsked(state.request)) throw overrideRefusal("menu_open", snap, MENU_OPEN, sign, past);
       if (!this.rowsSeen(state, snap)) throw overrideRefusal("stale_surface", snap, OVERRIDE_MOVED);
       state.pastSign = sign;

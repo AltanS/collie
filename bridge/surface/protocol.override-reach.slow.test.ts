@@ -34,9 +34,10 @@ describe("2. the harm cases: an override never answers a question (M102 spec 12)
   }, WALK_TIMEOUT_MS);
 
   // On the blind road the sign is a guess (2026-11-25): it refuses the first send, and the person's override
-  // past it goes in with no key at all, Enter included, where the rows look like an agent's and the sign is no
-  // row of one-key items. Elsewhere the refusal carries no rows hash and the override is refused too. Never a
-  // key on either tap. Measured 2026-11-25: 702 of the 722 dialogs pass, 20 are guarded (3 of them single-key).
+  // past it goes in with no key at all, Enter included, only where the screen shows an agent's input box or
+  // footer and the sign is no row of one-key items. Elsewhere (a strong cue alone included) the refusal carries
+  // no rows hash and the override is refused too. Never a key on either tap. Measured 2026-11-25: 266 of the
+  // 722 dialogs pass (all on a frame), 456 are guarded (436 cue only, 17 no agent rows, 3 single-key on a frame).
   for (const foreground of [undefined, "unknown", "program"] as const) {
     test(`the same dialogs on a pane with no profile (the blind road, foreground ${foreground ?? "not read"}): the first send refused menu_open, the override typed with no key or refused, never a key`, async () => {
       const wrong: string[] = [];
@@ -62,7 +63,7 @@ describe("2. the harm cases: an override never answers a question (M102 spec 12)
         else passed++;
       }
       expect(wrong).toEqual([]);
-      expect({ passed, guarded }).toEqual({ passed: 702, guarded: 20 });
+      expect({ passed, guarded }).toEqual({ passed: 266, guarded: 456 });
     }, WALK_TIMEOUT_MS);
   }
 });

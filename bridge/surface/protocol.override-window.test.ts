@@ -43,9 +43,16 @@ async function moveInWindow(screen: MovingPane, r: ReturnType<typeof rig>, text:
   return r.send(text, { rowsHash: seen, override: true, fromPhone: true });
 }
 
-const QUESTION = ["$ ./tool", "", "Replace the settings file? (y/n)"].join("\n");
-const MOVED = ["$ ./tool", "", "Replace the settings file? (y/n)", "Delete the old copy too? (y/n)"].join("\n");
 const CLAUDE_DRAFT = "claude--draft-footer-single.txt";
+const SGR = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "gu");
+/** A captured agent screen with `rows` put in right over its box: the blind road reads its frame, so an override may pass a sign there. */
+function overBox(name: string, rows: readonly string[]): string {
+  const raw = pane(name).replace(/\r/gu, "").split("\n");
+  const top = raw.findIndex((row) => /^─{8,}/u.test(row.replace(SGR, "")));
+  return [...raw.slice(0, top), ...rows, ...raw.slice(top)].join("\n");
+}
+const QUESTION = overBox(CLAUDE_DRAFT, ["Replace the settings file? (y/n)"]);
+const MOVED = overBox(CLAUDE_DRAFT, ["Replace the settings file? (y/n)", "Delete the old copy too? (y/n)"]);
 
 describe("an override whose screen moves between the check and the write", () => {
   test("an override whose screen moves between the check and the write types nothing (no profile, past a sign)", async () => {
