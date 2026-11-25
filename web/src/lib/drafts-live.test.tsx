@@ -105,6 +105,48 @@ describe("subscribeDrafts", () => {
     expect(listener).toHaveBeenCalledTimes(5);
   });
 
+  // A RESTING DASHBOARD DRAWS NO FRAME (ADR 0138, e2e/idle-repaint.spec.ts), so the store behind every row's
+  // pencil must say nothing while nothing changes: no timer, no expiry tick, no repeat after the first read.
+  it("notifies nobody while nothing changes, however long the page rests and however often rows ask", async () => {
+    vi.useFakeTimers();
+    try {
+      saveDraft(undefined, "w1:p1", "a draft that is not yet 48 hours old");
+      __resetDraftPrune();
+      const listener = vi.fn();
+      const stop = subscribeDrafts(listener);
+      for (let row = 0; row < 3; row += 1) {
+        hasDraft(undefined, "w1:p1");
+        hasDraft(undefined, "w1:p2");
+      }
+      await vi.advanceTimersByTimeAsync(10 * 60 * 1000);
+      await Promise.resolve();
+      expect(listener).not.toHaveBeenCalled();
+      stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("tells the listeners once for the first prune that removed something, and never again for the same read", async () => {
+    vi.useFakeTimers();
+    try {
+      localStorage.setItem(KEY, JSON.stringify({ text: "old", at: Date.now() - 49 * 60 * 60 * 1000 }));
+      const listener = vi.fn();
+      const stop = subscribeDrafts(listener);
+      // The first read prunes. The notice comes off the render's stack, as one microtask.
+      expect(hasDraft(undefined, "w1:p1")).toBe(false);
+      expect(listener).not.toHaveBeenCalled();
+      await Promise.resolve();
+      expect(listener).toHaveBeenCalledTimes(1);
+      for (let row = 0; row < 3; row += 1) hasDraft(undefined, "w1:p1");
+      await vi.advanceTimersByTimeAsync(10 * 60 * 1000);
+      expect(listener).toHaveBeenCalledTimes(1);
+      stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("listens to the storage event once for any number of listeners, and lets go with the last", () => {
     const add = vi.spyOn(window, "addEventListener");
     const remove = vi.spyOn(window, "removeEventListener");
