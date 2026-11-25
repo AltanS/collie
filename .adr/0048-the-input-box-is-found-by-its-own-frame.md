@@ -400,3 +400,21 @@ as before. Shared code names no harness.
 Trail: `bridge/surface/protocol.ts` (`belowCount`, `lostWordsOnly`, `excusedBelow`, `readBelow`) ·
 `bridge/surface/protocol.codex-below-loses-text.test.ts` · `web/src/lib/surface/profile.below-loses-text.test.ts` ·
 `web/src/fixtures/panes/codex--v0171-goal-achieved-*--w120.txt`.
+
+## Addendum 2026-11-25: the last rows under the box may go to the box (#868)
+
+Claude Code in a pane under 16 rows gives the rows under its box to a draft that needs them, last row first: the mode row once the
+box holds three rows (two rows under 14), then the statusline. Both come back when the box is empty. The count of rows under the box
+fell, and a send typed its text and ended `typed_not_submitted` (changed): a long message after #857 made the scrolled box readable,
+and a two-row message in a 12-row pane. The statusline is the person's own text, so no hint pattern can name it.
+
+**A profile may say its last rows under the box may go to the box (`idle.volatile.below.losesRows: true`).** A later read with fewer
+rows under the box keeps the count when the rows that count there are the first rows of S0's, unchanged and in order, and the box grew
+by at least the rows that went. `belowCount` adds them back, so every compare against S0 reads the same rule. A row with new or changed
+text, a row gone from the middle, and rows gone while the box kept its height count as before. Only Claude sets it.
+
+The rule only excuses rows that left, from the end, while the box took their room. It never lets a new row or a new word under the box
+through, and the box must still hold the typed text.
+
+Trail: `bridge/surface/protocol.ts` (`belowCount`, `rowsGivenToBox`) · `bridge/surface/protocol.claude-short-pane.test.ts` ·
+`web/src/lib/surface/profile.below-loses-rows.test.ts`.

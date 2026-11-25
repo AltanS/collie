@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Fixed
+
+- **A message to Claude Code in a pane under 16 rows is sent.** In a short pane Claude Code gives the rows under its input box to a draft that needs them: the mode row goes, and under 14 rows the statusline too. Collie read that as a changed screen, typed the text and did not press Enter, even for a two-row message. Collie now lets those last rows go when the box grew by as many, and still stops on a row with new or changed text. Checked on Claude Code 2.1.332. Thanks @HarderBetterFasterStronger (#868).
+
 ## [1.30.1] - 2026-11-25
 
 ### Changed

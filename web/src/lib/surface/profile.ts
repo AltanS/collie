@@ -693,6 +693,13 @@ export interface Profile {
          */
         readonly losesText?: true;
         /**
+         * The last rows under the box may go to the box when a draft needs their room: Claude Code in a
+         * short pane drops its mode row and then its statusline. The Send Protocol then counts those
+         * rows as kept when the rows left are the first ones, unchanged and in order, and the box grew
+         * by at least as many rows. A row with new or changed text still counts. Optional.
+         */
+        readonly losesRows?: true;
+        /**
          * Rows the harness draws under its box that are neither a statusline nor a dialog, each with a
          * name and a regular expression source (Claude Code's agents panel and its hints). The frame
          * walk steps over them: a run of them at the bottom, set apart by a blank row, is a footer of
@@ -1410,13 +1417,18 @@ function commandListFooter(value: JsonValue, path: string): CommandListFooter {
   return { pattern: compiled.source, maxRows: whole(field(node, "maxRows", path), `${path}.maxRows`, 1) };
 }
 
-/** `idle.volatile.below`: its row counts, and `losesText` (only true, only beside hints), the hint rows, named footer rows, other screens' rows and command list only when the profile names them. */
+/** `idle.volatile.below`: its row counts, `losesText` (only true, only beside hints) and `losesRows` (only true), the hint rows, named footer rows, other screens' rows and command list only when the profile names them. */
 function volatileBelow(node: JsonObject): Profile["idle"]["volatile"]["below"] {
   const maxRows = whole(field(node, "maxRows", "idle.volatile.below"), "idle.volatile.below.maxRows", 0);
   const footerMaxRows = whole(field(node, "footerMaxRows", "idle.volatile.below"), "idle.volatile.below.footerMaxRows", 0);
   if (node.losesText !== undefined && node.losesText !== true) fail("idle.volatile.below.losesText", "must be true when present");
   if (node.losesText === true && node.hints === undefined) fail("idle.volatile.below.losesText", "needs idle.volatile.below.hints: only a hint row may lose text");
-  const base: Profile["idle"]["volatile"]["below"] = node.losesText === true ? { maxRows, footerMaxRows, losesText: true } : { maxRows, footerMaxRows };
+  if (node.losesRows !== undefined && node.losesRows !== true) fail("idle.volatile.below.losesRows", "must be true when present");
+  const base: Profile["idle"]["volatile"]["below"] = Object.assign(
+    { maxRows, footerMaxRows },
+    node.losesText === true ? { losesText: true as const } : {},
+    node.losesRows === true ? { losesRows: true as const } : {},
+  );
   const withHints =
     node.hints === undefined
       ? base

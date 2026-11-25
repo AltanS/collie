@@ -981,6 +981,8 @@ interface Snap {
   readonly belowRows: BelowRows;
   /** The profile's `idle.volatile.below.losesText`: a later row that only lost words of this read's hint row is no new row ({@link belowCount}). */
   readonly belowLosesText: boolean;
+  /** The profile's `idle.volatile.below.losesRows`: the last rows under the box may go to a box that grew by as many ({@link belowCount}). */
+  readonly belowLosesRows: boolean;
   /** The chrome rows of the accepted named footer run ({@link chromeRows}): no count, no settle key and no rows hash reads them. Empty with no frame. */
   readonly chrome: ReadonlySet<number>;
   /** The name of the other screen whose own row stands under the frame ({@link otherScreenOf}); null with no frame. */
@@ -1600,13 +1602,33 @@ function cuesInsideFrame(snap: Snap, frame: Frame): boolean {
 /**
  * How many rows under the box of `after` count against `before` (#847): {@link Snap.below}, less the
  * rows that a hint row of `before` gives by losing words only ({@link excusedBelow}), when the profile
- * says its hint rows may lose text (`idle.volatile.below.losesText`). Every compare of the rows under the
- * box against S0 reads this one count, so the rule holds at the probe, its second read, S1, the turn's
- * compares and a held send's next try alike.
+ * says its hint rows may lose text (`idle.volatile.below.losesText`), plus the last rows that went to a
+ * taller box ({@link rowsGivenToBox}), when the profile says its rows under the box may go that way
+ * (`idle.volatile.below.losesRows`). Every compare of the rows under the box against S0 reads this one
+ * count, so the rule holds at the probe, its second read, S1, the turn's compares and a held send's next
+ * try alike.
  */
 function belowCount(before: Snap, after: Snap): number {
-  if (!after.belowLosesText) return after.below;
-  return after.below - excusedBelow(before.belowRows.hints, after.belowRows.counted);
+  const excused = after.belowLosesText ? excusedBelow(before.belowRows.hints, after.belowRows.counted) : 0;
+  const given = after.belowLosesRows ? rowsGivenToBox(before, after) : 0;
+  return after.below - excused + given;
+}
+
+/**
+ * How many rows under the box of `before` went to the box by `after`: Claude Code in a short pane drops
+ * the last rows under its box, the mode row and then the statusline, when the draft needs their room.
+ * The rows that count under the box of `after` are the first rows of `before`'s, unchanged and in order,
+ * and the box grew by at least the rows that went. 0 otherwise: a row with new or changed text, a row
+ * gone from the middle, or rows gone while the box kept its height still move the screen.
+ */
+function rowsGivenToBox(before: Snap, after: Snap): number {
+  if (before.frame === null || after.frame === null) return 0;
+  const had = before.belowRows.counted;
+  const kept = after.belowRows.counted;
+  const gone = had.length - kept.length;
+  if (gone <= 0 || kept.some((row, i) => row !== had[i])) return 0;
+  const grew = after.frame.bottom - after.frame.top - (before.frame.bottom - before.frame.top);
+  return grew >= gone ? gone : 0;
 }
 
 /** Whether the rows under the box of `after` keep the count of `before`'s ({@link belowCount}). */
@@ -6505,6 +6527,7 @@ export class SendProtocol {
       below: underBox.count,
       belowRows: underBox,
       belowLosesText: idle?.volatile.below.losesText === true,
+      belowLosesRows: idle?.volatile.below.losesRows === true,
       chrome,
       otherScreen: otherScreenOf(texts, frame, idle?.volatile.below.otherScreens ?? []),
       popup,

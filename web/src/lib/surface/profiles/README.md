@@ -49,6 +49,7 @@ need a rule to be read right.
 
 - `idle.volatile.below.hints` lists the rows under the box that the harness hides or swaps while the box holds text. The Send Protocol leaves them out of its count of rows under the box.
 - `idle.volatile.below.losesText: true` says a hint row may lose words when the box gets its first character, and keep the rest (Codex hides `? for shortcuts` and keeps a notice after it). A later row under the box then counts as that hint row when its words are the hint row's words with some left out, in the same order, at least one kept. Each hint row stands for at most one later row. A row with a word added or changed, and a row that no hint row of the first read gives, still count. The field needs `hints` and may only be `true`.
+- `idle.volatile.below.losesRows: true` says the last rows under the box may go to the box when a draft needs their room (Claude Code in a short pane drops its mode row, then its statusline). A later read with fewer rows under the box keeps the count when its rows there are the first rows of the first read, unchanged and in order, and its box grew by at least as many rows. A row with new or changed text, a row gone from the middle, and rows gone while the box kept its height still count. The field may only be `true`.
 
 ## Paste
 
