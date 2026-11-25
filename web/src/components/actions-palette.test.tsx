@@ -328,12 +328,26 @@ describe("the Actions palette, panes that need you", () => {
     expect(highlighted()?.textContent).toContain("bravo");
   });
 
-  it("lists a pane that finished while nobody looked, as the Dashboard's band does", async () => {
+  it("does not list a pane that finished while nobody looked: it is an ordinary pane, free to show in Recent", async () => {
     const user = userEvent.setup();
     const finished: AgentView = { ...PANES[2]!, status: "done", lastActiveAt: 9, lastSeenAt: 1 };
-    mount("/", undefined, [PANES[0]!, PANES[1]!, finished, PANES[3]!]);
+    const herd = [PANES[0]!, PANES[1]!, finished, PANES[3]!];
+    rememberRecentPane(finished, 1);
+    mount("/", undefined, herd);
     await user.click(screen.getByRole("button", { name: "Actions" }));
-    expect(labelsIn("Needs you")).toEqual(named("charlie"));
+    expect(within(palette()).queryByRole("heading", { name: "Needs you" })).toBeNull();
+    expect(labelsIn("Recent")).toEqual(named("charlie"));
+  });
+
+  it("lists only the blocked pane when one is blocked and another finished unseen", async () => {
+    const user = userEvent.setup();
+    const finished: AgentView = { ...PANES[2]!, status: "done", lastActiveAt: 9, lastSeenAt: 1 };
+    const herd = [PANES[0]!, waiting(PANES[1]!), finished, PANES[3]!];
+    rememberRecentPane(finished, 1);
+    mount("/", undefined, herd);
+    await user.click(screen.getByRole("button", { name: "Actions" }));
+    expect(labelsIn("Needs you")).toEqual(named("bravo"));
+    expect(labelsIn("Recent")).toEqual(named("charlie"));
   });
 
   it("leaves the open pane out of the block", async () => {

@@ -29,7 +29,7 @@ import { useRootData } from "@/lib/route-data";
 import type { Scope } from "@/lib/scope";
 import { runShortcutAction } from "@/lib/shortcuts/registry";
 import type { ActionId } from "@/lib/shortcuts/actions";
-import { needsYou } from "@/lib/triage";
+import { isBlockedOnYou } from "@/lib/triage";
 import type { AgentView } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { waitingPanes } from "@/lib/wide-dashboard";
@@ -37,8 +37,8 @@ import { FOCUS_RING, TRIGGER_OPEN } from "@/components/ui/button";
 
 // THE ACTIONS PALETTE (ADR 0165). One modal at the TOP of the screen, over a dimmed scrim, because the
 // soft keyboard owns the bottom half: a search field, then one list. Before anything is typed the list
-// is "Needs you", every pane that waits for the person (the Dashboard's own band: `waitingPanes` over the
-// dashboard's grouping, the `needsYou` predicate, no cap, the open pane left out), only while one waits;
+// is "Needs you", every pane that waits for the person's answer (the blocked ones, `isBlockedOnYou`, in the
+// Dashboard band's order: `waitingPanes` over the dashboard's grouping; no cap, the open pane left out), only while one waits;
 // then "Recent", the last panes this device opened (lib/recent-panes.ts), a pane listed above not again;
 // then "Suggested", four commands for this screen, then "All panes", the Switch pane sheet's own list, so scrolling down lands in the
 // switcher. Typed, it is one ranked list of commands, spaces and panes (lib/actions-palette/rank.ts).
@@ -110,12 +110,13 @@ export function ActionsPalette({ openPane, onClose }: ActionsPaletteProps) {
   const hereKey = openPane === undefined ? null : paneRowKey(openPane);
 
   const rows = useMemo((): PaletteLists => {
-    // The Dashboard's "Needs you" band: its predicate and its order (the list's own: machine, Space, tab,
-    // position), over the palette's pane list. The open pane is left out, and there is no cap. A pane listed
+    // The panes blocked on the person (the triage bucket `needs`, the red ones; a finished pane not yet opened
+    // is not one), in the Dashboard's band order (the list's own: machine, Space, tab, position), over the
+    // palette's pane list. The open pane is left out, and there is no cap. A pane listed
     // here is not offered again in Recent, which fills its four from the next recent panes.
     const waiting = waitingPanes(
       groupPanesByWorkspace(data.agents, data.shellPanes, { order: "fixed", tabs: data.tabs, servers: data.servers, workspaces: data.workspaces, scope: data.scope, sessions: data.sessions }),
-      needsYou,
+      isBlockedOnYou,
     ).filter((pane) => paneRowKey(pane) !== hereKey);
     const waitingKeys = new Set(waiting.map(paneRowKey));
     const needs = waiting.map((pane): Row => ({ key: `n:${paneRowKey(pane)}`, kind: "pane", pane }));

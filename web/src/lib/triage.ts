@@ -108,13 +108,22 @@ export function needsYou(a: AgentView): boolean {
 }
 
 /**
+ * Whether a pane is blocked on you: the "needs" bucket alone, the red ones. A finished pane you have not opened
+ * ("ready") is not, and neither is a trick page. {@link countBlocked} counts with it and the Actions sheet's
+ * "Needs you" block lists with it.
+ */
+export function isBlockedOnYou(a: AgentView): boolean {
+  return bucketOf(a) === "needs";
+}
+
+/**
  * How many panes are blocked on you (the "needs" bucket alone): the "Focus" tab's red count.
  * A finished pane you have not opened is not counted here; the tab marks it with the quiet dot
  * instead, because a count should mean something is waiting on you (ADR 0066).
  */
 export function countBlocked(agents: readonly AgentView[]): number {
   let n = 0;
-  for (const a of realAgentPanes(agents)) if (bucketOf(a) === "needs") n++;
+  for (const a of realAgentPanes(agents)) if (isBlockedOnYou(a)) n++;
   return n;
 }
 

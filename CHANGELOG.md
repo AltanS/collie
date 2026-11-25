@@ -25,7 +25,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Changed
 
-- **The Actions sheet lists the panes that need you first.** Before you type, a "Needs you" block stands above "Recent" with every pane that waits for you or finished while you were away, in the Dashboard's order. The open pane is left out, a pane listed there is not repeated in "Recent", and with no such pane the sheet looks as before.
+- **The Actions sheet lists the panes that need you first.** Before you type, a "Needs you" block stands above "Recent" with every pane that waits for your answer, in the Dashboard's order. The open pane is left out, a pane listed there is not repeated in "Recent", and with no such pane the sheet looks as before.
 
 ### Fixed
 
