@@ -621,7 +621,7 @@ export const zh: Dictionary = {
   "composer.protocol.refused": "发送被拒绝，所以没有输入任何内容。请阅读下方的一行，然后修改文字或再次发送。",
   "composer.protocol.codeRejected": "代理没有接受该登录码。它的回复在下方。请获取新的登录码，然后发送。",
   "composer.protocol.noSecretField": "Collie 现在看不到登录栏。没有输入任何内容。请查看屏幕，或使用“输入”。“输入”会立即发送每个按键，不做检查。",
-  "composer.protocol.menuOpen": "屏幕上有菜单或问题，所以没有输入任何内容。请用按键面板回答。",
+  "composer.protocol.menuOpen": "屏幕上有菜单或问题，所以没有输入任何内容。请用按键面板回答，或使用“输入”不经检查直接发送按键。",
   "composer.protocol.overrideTypedDraft": "你的文字在代理的输入框中，排在原有的文字之后。Collie 没有按 Enter。请检查输入框，然后在按键面板上按 Enter。",
   "composer.protocol.overrideMoved": "你的文字输入前屏幕已变化，所以没有输入任何内容。请现在查看屏幕，然后点按“发送”，再点按“仍然发送”。",
   "composer.protocol.overrideTyped": "你的文字已在代理的输入框中。Collie 没有按 Enter。请检查屏幕，然后在按键面板上按 Enter。",

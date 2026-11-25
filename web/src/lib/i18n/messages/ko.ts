@@ -633,7 +633,7 @@ export const ko: Dictionary = {
   "composer.protocol.refused": "전송이 거부되어 아무것도 입력되지 않았습니다. 아래 줄을 읽은 뒤 텍스트를 바꾸거나 다시 전송하세요.",
   "composer.protocol.codeRejected": "에이전트가 코드를 받지 않았습니다. 에이전트의 말은 아래에 있습니다. 새 코드를 받아 다시 전송하세요.",
   "composer.protocol.noSecretField": "Collie가 지금 로그인 입력란을 볼 수 없습니다. 아무것도 입력되지 않았습니다. 화면을 확인하거나 ‘입력’을 사용하세요. ‘입력’은 확인 없이 키를 하나씩 바로 보냅니다.",
-  "composer.protocol.menuOpen": "화면에 메뉴나 질문이 열려 있어서 아무것도 입력되지 않았습니다. 키 패드로 답하세요.",
+  "composer.protocol.menuOpen": "화면에 메뉴나 질문이 열려 있어서 아무것도 입력되지 않았습니다. 키 패드로 답하거나, ‘입력’으로 확인 없이 키를 보내세요.",
   "composer.protocol.overrideTypedDraft": "입력하신 텍스트가 에이전트 입력란에 이미 있던 글 뒤에 들어 있습니다. Collie는 Enter를 누르지 않았습니다. 입력란을 확인한 뒤 키 패드에서 Enter를 누르세요.",
   "composer.protocol.overrideMoved": "텍스트가 들어가기 전에 화면이 바뀌어서 아무것도 입력되지 않았습니다. 지금 화면을 확인한 뒤 ‘전송’을 탭하고, 이어서 ‘그래도 전송’을 탭하세요.",
   "composer.protocol.overrideTyped": "입력하신 텍스트가 에이전트 입력란에 들어 있습니다. Collie는 Enter를 누르지 않았습니다. 화면을 확인한 뒤 키 패드에서 Enter를 누르세요.",

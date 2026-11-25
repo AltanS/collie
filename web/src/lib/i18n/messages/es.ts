@@ -647,7 +647,7 @@ export const es: Dictionary = {
   "composer.protocol.refused": "Se rechazó el envío, así que no se escribió nada. Lee la línea de abajo y luego cambia el texto o envía de nuevo.",
   "composer.protocol.codeRejected": "El agente no aceptó el código. Sus palabras están abajo. Consigue un código nuevo y envíalo.",
   "composer.protocol.noSecretField": "Collie no ve ahora el campo de inicio de sesión. No se escribió nada. Mira la pantalla o usa Escribir. Escribir envía cada tecla al instante, sin comprobación.",
-  "composer.protocol.menuOpen": "Hay un menú o una pregunta en la pantalla, así que no se escribió nada. Respóndelo con Teclas.",
+  "composer.protocol.menuOpen": "Hay un menú o una pregunta en la pantalla, así que no se escribió nada. Respóndelo con Teclas, o usa Escribir para enviar teclas sin comprobación.",
   "composer.protocol.overrideTypedDraft": "Tu texto está en la caja del agente, después de unas palabras que ya estaban allí. Collie no pulsó Intro. Revisa la caja y luego pulsa Intro en Teclas.",
   "composer.protocol.overrideMoved": "La pantalla cambió antes de que entrara tu texto, así que no se escribió nada. Mira la pantalla ahora, toca Enviar y luego Enviar de todos modos.",
   "composer.protocol.overrideTyped": "Tu texto está en la caja del agente. Collie no pulsó Intro. Mira la pantalla y luego pulsa Intro en Teclas.",

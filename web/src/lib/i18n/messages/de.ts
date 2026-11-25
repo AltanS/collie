@@ -650,7 +650,7 @@ export const de: Dictionary = {
   "composer.protocol.refused": "Das Senden wurde abgelehnt, daher wurde nichts getippt. Lies die Zeile unten, ändere dann den Text oder sende erneut.",
   "composer.protocol.codeRejected": "Der Agent hat den Code nicht angenommen. Seine Worte stehen unten. Hole einen neuen Code und sende ihn dann.",
   "composer.protocol.noSecretField": "Collie sieht das Anmeldefeld gerade nicht. Es wurde nichts getippt. Sieh dir den Bildschirm an oder nutze Tippen. Tippen sendet jede Taste sofort, ohne Prüfung.",
-  "composer.protocol.menuOpen": "Auf dem Bildschirm ist ein Menü oder eine Frage, daher wurde nichts getippt. Beantworte sie mit den Tasten.",
+  "composer.protocol.menuOpen": "Auf dem Bildschirm ist ein Menü oder eine Frage, daher wurde nichts getippt. Beantworte sie mit den Tasten oder nutze Tippen, um Tasten ohne Prüfung zu senden.",
   "composer.protocol.overrideTypedDraft": "Dein Text steht im Feld des Agenten, hinter Wörtern, die schon dort standen. Collie hat kein Enter gedrückt. Prüfe das Feld, drücke dann Enter über die Tasten.",
   "composer.protocol.overrideMoved": "Der Bildschirm hat sich geändert, bevor dein Text eingegeben wurde, daher wurde nichts getippt. Sieh dir jetzt den Bildschirm an, tippe dann auf Senden und danach auf Trotzdem senden.",
   "composer.protocol.overrideTyped": "Dein Text steht im Feld des Agenten. Collie hat kein Enter gedrückt. Prüfe den Bildschirm, drücke dann Enter über die Tasten.",

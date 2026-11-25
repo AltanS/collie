@@ -585,7 +585,7 @@ export const tr: Dictionary = {
   "composer.protocol.refused": "Gönderim reddedildi, bu yüzden hiçbir şey yazılmadı. Aşağıdaki satırı okuyun, sonra metni değiştirin veya tekrar gönderin.",
   "composer.protocol.codeRejected": "Ajan kodu kabul etmedi. Söyledikleri aşağıda. Yeni bir kod alın, sonra gönderin.",
   "composer.protocol.noSecretField": "Collie oturum açma alanını şu an göremiyor. Hiçbir şey yazılmadı. Ekrana bakın veya Yaz'ı kullanın. Yaz her tuşu kontrol olmadan hemen gönderir.",
-  "composer.protocol.menuOpen": "Ekranda bir menü veya soru var, bu yüzden hiçbir şey yazılmadı. Tuşlar ile yanıtlayın.",
+  "composer.protocol.menuOpen": "Ekranda bir menü veya soru var, bu yüzden hiçbir şey yazılmadı. Tuşlar ile yanıtlayın veya tuşları kontrol olmadan göndermek için Yaz'ı kullanın.",
   "composer.protocol.overrideTypedDraft": "Metniniz ajanın kutusunda, orada zaten bulunan sözcüklerin ardından. Collie Enter'a basmadı. Kutuyu kontrol edin, sonra Tuşlar'dan Enter'a basın.",
   "composer.protocol.overrideMoved": "Metnin girilmesinden önce ekran değişti, bu yüzden hiçbir şey yazılmadı. Şimdi ekrana bak, sonra Gönder'e, ardından Yine de gönder'e dokun.",
   "composer.protocol.overrideTyped": "Metniniz ajanın kutusunda. Collie Enter'a basmadı. Ekranı kontrol edin, sonra Tuşlar'dan Enter'a basın.",
