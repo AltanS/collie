@@ -183,3 +183,10 @@ reporter to see why. The setup block now carries those facts itself.
 - **The link's length.** `fitLink` cuts these rows after the screen and before the oldest sends:
   `screen-*` rows first, then `holds-*`, then `sends-*`. The sheet says how many it left out, and
   Copy report keeps all of them.
+
+## Amendment, 2026-11-25: the send line names the menu sign
+
+A send refused `menu_open` keeps which sign of the generic menu sign fired and on which screen row
+(`menuSign: { kind, row }`, M102 spec 12). The send line now prints it as `sign=<kind>@<row>`, after
+`saw=`, by kind and row number only, never a character of the screen, and a kind the app does not
+know prints nothing. The link's length rule and its cutting order are unchanged.

@@ -26,6 +26,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Changed
 
 - **The Actions sheet lists the panes that need you first.** Before you type, a "Needs you" block stands above "Recent" with every pane that waits for your answer, in the Dashboard's order. The open pane is left out, a pane listed there is not repeated in "Recent", and with no such pane the sheet looks as before.
+- **A report about a refused send names the menu Collie saw.** When Collie refuses a send because it read a menu or a yes/no prompt, the send line in the Report a problem preview gains `sign=<kind>@<row>`: the kind of sign and the screen row it stood on, never a word from the screen.
 
 ### Fixed
 
