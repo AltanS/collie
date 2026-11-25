@@ -138,8 +138,10 @@ const TURN_SPINNER_ROW = /^[·*✢✳✶✻✽] [^\s…]+…(?: · tool use)?(?:
 // When the credentials expire mid-session, the turn's API call fails first, and Claude Code (2.1.318)
 // draws its retry row in the spinner's place while the refresh runs. Its lead is "API error" on the
 // first attempts and the error's own text or "Usage limit reached" after, so the row is matched by
-// its countdown and attempt count.
-const API_RETRY_ROW = /^✻ .+ · Retrying in \d+[dhms](?: \d+[dhms])*(?: \(.*\))? · attempt \d+\/\d+$/;
+// its retry word and attempt count. The retry word takes three forms: "Retrying in 3s" (2.1.318),
+// "retrying in 3s", and "retrying…" once the countdown reaches zero (both from 2.1.330 at the latest,
+// issue 862). A row with the word and no countdown and no ellipsis is not one of them.
+const API_RETRY_ROW = /^✻ .+ · (?:[Rr]etrying in \d+[dhms](?: \d+[dhms])*(?: \(.*\))?|retrying…) · attempt \d+\/\d+$/;
 
 function skipBlankRows(texts: readonly string[], from: number): number {
   let row = from;
