@@ -383,6 +383,7 @@ export const LUCIDE = {
   "option-pointer": ChevronRight,
   "pairing": KeyRound,
   "pane-count": LayoutGrid,
+  "pane-draft": Pencil,
   "pane-menu": EllipsisVertical,
   "pane-nav-down": ArrowDown,
   "pane-nav-left": ArrowLeft,

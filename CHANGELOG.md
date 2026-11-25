@@ -27,6 +27,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 - **The Actions sheet lists the panes that need you first.** Before you type, a "Needs you" block stands above "Recent" with every pane that waits for your answer, in the Dashboard's order. The open pane is left out, a pane listed there is not repeated in "Recent", and with no such pane the sheet looks as before.
 - **A report about a refused send names the menu Collie saw.** When Collie refuses a send because it read a menu or a yes/no prompt, the send line in the Report a problem preview gains `sign=<kind>@<row>`: the kind of sign and the screen row it stood on, never a word from the screen.
+- **A pane with an unsent draft shows a pencil on its row.** The small muted pencil marks a pane where this device keeps words or an attachment you typed in its reply box and did not send, on the dashboard, in the sidebar, in the Switch pane sheet and in the Actions palette. It goes when you send or clear the draft.
 
 ### Fixed
 

@@ -250,6 +250,7 @@ export const ICON_KEYS = {
   "option-pointer": { meaning: "cursor on the option the agent menu points at", area: "chat", lucide: "ChevronRight" },
   "pairing": { meaning: "pair this phone with the bridge", area: "sheets", lucide: "KeyRound" },
   "pane-count": { meaning: "count of panes", area: "navigation", lucide: "LayoutGrid" },
+  "pane-draft": { meaning: "this pane holds an unsent draft", area: "navigation", lucide: "Pencil" },
   "pane-menu": { meaning: "open the pane menu (header)", area: "chat", lucide: "EllipsisVertical" },
   "pane-nav-down": { meaning: "pane navigation down", area: "navigation", lucide: "ArrowDown" },
   "pane-nav-left": { meaning: "pane navigation left", area: "navigation", lucide: "ArrowLeft" },

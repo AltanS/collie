@@ -703,6 +703,7 @@ export const pt: Dictionary = {
   "chat.fullReply.showingTerminal": "mostrando o terminal",
   "chat.output.empty": "(nenhuma saída recente)",
   "pane.saved.none": "Nenhuma cópia deste painel salva neste telefone.",
+  "pane.draftMark": "Rascunho não enviado",
   "chat.switcher.aria": "Trocar painel",
   "chat.switcher.ariaNeedsYou": "Troque de painel, outro painel precisa de você",
   "chat.switcher.title": "Trocar painel",

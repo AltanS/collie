@@ -142,6 +142,11 @@ interface AgentListProps {
    * of it (M55). Omit and the lead's primary session is asked, as before.
    */
   scope?: Scope;
+  /**
+   * The snapshot's session registry, so a row's own address (`paneScope`) names its session as its composer does,
+   * for the pencil of an unsent draft (ui/draft-mark.tsx). Omit and the heading's `newTab.sessions` is read.
+   */
+  sessions?: readonly SessionSummary[] | undefined;
   /** Pick a hidden machine's "Show <machine>'s panes" option: show that machine again. */
   onShowMachine?: (host: string) => void;
   /**
@@ -242,6 +247,7 @@ const NO_WORKSPACES: readonly WorkspaceView[] = [];
 const tabRowKey = (tab: TabView): string => `${tab.host ?? ""}\u0000${tab.tabId}`;
 const workspaceRowKey = (w: WorkspaceView): string => `${w.host ?? ""}\u0000${w.workspaceId}`;
 const NO_KEYS: readonly string[] = [];
+const NO_SCOPE: Scope = {};
 const NO_PINS: readonly Pin[] = [];
 const NO_MACHINES: readonly string[] = [];
 
@@ -348,6 +354,7 @@ export function AgentList({
   hiddenMachines = NO_MACHINES,
   addressedHost,
   scope: viewScope,
+  sessions: registry,
   onShowMachine,
   needsYouOnly = false,
   onNeedsYouOnlyChange,
@@ -737,6 +744,7 @@ export function AgentList({
       tint
       stale={stale}
       match={hitOf(a)}
+      draftScope={paneScope(viewScope ?? newTab?.scope ?? NO_SCOPE, a, servers, registry ?? newTab?.sessions)}
     />
   );
 

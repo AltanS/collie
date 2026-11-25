@@ -772,6 +772,7 @@ export const es: Dictionary = {
   "chat.fullReply.showingTerminal": "mostrando la terminal",
   "chat.output.empty": "(sin salida reciente)",
   "pane.saved.none": "No hay ninguna copia guardada de este panel en este dispositivo.",
+  "pane.draftMark": "Borrador sin enviar",
   "chat.switcher.aria": "Cambiar panel",
   "chat.switcher.ariaNeedsYou": "Cambiar panel, otro panel te necesita",
   "chat.switcher.title": "Cambiar panel",

@@ -705,6 +705,7 @@ export const fr: Dictionary = {
   "chat.fullReply.showingTerminal": "affichage du terminal",
   "chat.output.empty": "(aucune sortie récente)",
   "pane.saved.none": "Aucune copie enregistrée de ce volet sur ce téléphone.",
+  "pane.draftMark": "Brouillon non envoyé",
   "chat.switcher.aria": "Changer de volet",
   "chat.switcher.ariaNeedsYou": "Changer de volet, un autre volet a besoin de vous",
   "chat.switcher.title": "Changer de volet",

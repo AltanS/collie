@@ -745,6 +745,7 @@ export const zhTW: Dictionary = {
   "chat.fullReply.showingTerminal": "正在顯示終端機",
   "chat.output.empty": "（暫無近期輸出）",
   "pane.saved.none": "此裝置上沒有這個窗格的儲存副本。",
+  "pane.draftMark": "未傳送的草稿",
   "chat.switcher.aria": "切換窗格",
   "chat.switcher.ariaNeedsYou": "切換窗格，另一個窗格需要你",
   "chat.switcher.title": "切換窗格",

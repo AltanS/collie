@@ -711,6 +711,7 @@ export const ru: Dictionary = {
   "chat.fullReply.showingTerminal": "показан терминал",
   "chat.output.empty": "(нет недавнего вывода)",
   "pane.saved.none": "На этом телефоне нет сохраненной копии этой панели.",
+  "pane.draftMark": "Неотправленный черновик",
   "chat.switcher.aria": "Переключить панель",
   "chat.switcher.ariaNeedsYou": "Переключить панель: требуется действие в другой панели",
   "chat.switcher.title": "Переключить панель",

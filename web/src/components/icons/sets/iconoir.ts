@@ -211,6 +211,7 @@ export const ICONOIR = {
   "option-pointer": "nav-arrow-right", // cursor on the option the agent menu points at · lucide ChevronRight
   "pairing": "key", // pair this phone with the bridge · lucide KeyRound
   "pane-count": "view-grid", // count of panes · lucide LayoutGrid
+  "pane-draft": "edit-pencil", // this pane holds an unsent draft · lucide Pencil
   "pane-menu": "more-vert", // open the pane menu (header) · lucide EllipsisVertical
   "pane-nav-down": "arrow-down", // pane navigation down · lucide ArrowDown
   "pane-nav-left": "arrow-left", // pane navigation left · lucide ArrowLeft

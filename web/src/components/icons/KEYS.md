@@ -6,7 +6,7 @@ Every glyph the app draws is named by what it means. A theme's `glyphs` picks th
 them (ADR 0137). A family with no fitting glyph for a key draws the lucide one, shown as `(lucide)`.
 Phosphor's three sets share one map; the fill and duotone files add `-fill` and `-duotone`.
 
-346 keys.
+347 keys.
 
 Phosphor Fill draws these keys in the regular weight, so a cross stays a cross and an empty or
 not-started state stays empty: `action-check`, `action-x`, `answered`, `clear`, `close`, `confirm`, `copied`, `copy-failed`, `decision-dismissed`, `dismiss`, `done`, `mod-icon-check`, `mod-icon-x`, `mod-step-done`, `mod-step-failed`, `mod-step-todo`, `ok`, `plan-done`, `plan-pending`, `remove`, `selected`, `sent-ok`, `update-step-done`, `update-step-failed`, `update-step-skipped`, `voice-setup`, `zoom-out`.
@@ -193,6 +193,7 @@ These keys are solid in every set: `Icon` fills the lucide and iconoir glyph, an
 | `open-beside` | open beside the current pane | `Columns2` | `columns` | `view-columns-2` |
 | `open-here` | open here | `Replace` | `swap` | `data-transfer-both` |
 | `pane-count` | count of panes | `LayoutGrid` | `squares-four` | `view-grid` |
+| `pane-draft` | this pane holds an unsent draft | `Pencil` | `pencil-simple` | `edit-pencil` |
 | `pane-nav-down` | pane navigation down | `ArrowDown` | `arrow-down` | `arrow-down` |
 | `pane-nav-left` | pane navigation left | `ArrowLeft` | `arrow-left` | `arrow-left` |
 | `pane-nav-right` | pane navigation right | `ArrowRight` | `arrow-right` | `arrow-right` |

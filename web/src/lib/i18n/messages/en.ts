@@ -848,6 +848,8 @@ export const en = {
   // The pane page with the bridge away and nothing kept for this pane: what the phone can say
   // without a live answer. Never "gone", which only a live answer can state (M46 spec 10).
   "pane.saved.none": "No saved copy of this pane on this phone.",
+  // The pencil on a pane's row while this device holds an unsent draft for it (ui/draft-mark.tsx): its name for a screen reader.
+  "pane.draftMark": "Unsent draft",
   "chat.switcher.aria": "Switch pane",
   "chat.switcher.ariaNeedsYou": "Switch pane, another pane needs you",
   "chat.switcher.title": "Switch pane",

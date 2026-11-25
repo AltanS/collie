@@ -707,6 +707,7 @@ export const it: Dictionary = {
   "chat.fullReply.showingTerminal": "mostra il terminale",
   "chat.output.empty": "(nessun output recente)",
   "pane.saved.none": "Nessuna copia salvata di questo riquadro sul telefono.",
+  "pane.draftMark": "Bozza non inviata",
   "chat.switcher.aria": "Cambia riquadro",
   "chat.switcher.ariaNeedsYou": "Cambia riquadro, un altro riquadro richiede attenzione",
   "chat.switcher.title": "Cambia riquadro",

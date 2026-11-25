@@ -211,6 +211,7 @@ export const PHOSPHOR = {
   "option-pointer": "caret-right", // cursor on the option the agent menu points at · lucide ChevronRight
   "pairing": "key", // pair this phone with the bridge · lucide KeyRound
   "pane-count": "squares-four", // count of panes · lucide LayoutGrid
+  "pane-draft": "pencil-simple", // this pane holds an unsent draft · lucide Pencil
   "pane-menu": "dots-three-vertical", // open the pane menu (header) · lucide EllipsisVertical
   "pane-nav-down": "arrow-down", // pane navigation down · lucide ArrowDown
   "pane-nav-left": "arrow-left", // pane navigation left · lucide ArrowLeft

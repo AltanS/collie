@@ -757,6 +757,7 @@ export const ja: Dictionary = {
   "chat.fullReply.showingTerminal": "ターミナルを表示中",
   "chat.output.empty": "(直近の出力なし)",
   "pane.saved.none": "このペインの保存済みコピーはこの端末にありません。",
+  "pane.draftMark": "未送信の下書き",
   "chat.switcher.aria": "ペインを切り替え",
   "chat.switcher.ariaNeedsYou": "ペインを切り替え、別のペインが対応を待っています",
   "chat.switcher.title": "ペインを切り替え",

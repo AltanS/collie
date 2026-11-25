@@ -703,6 +703,7 @@ export const tr: Dictionary = {
   "chat.fullReply.showingTerminal": "terminal gösteriliyor",
   "chat.output.empty": "(yakın tarihli çıktı yok)",
   "pane.saved.none": "Bu bölmenin bu telefonda kayıtlı kopyası yok.",
+  "pane.draftMark": "Gönderilmemiş taslak",
   "chat.switcher.aria": "Bölmeyi değiştir",
   "chat.switcher.ariaNeedsYou": "Bölmeyi değiştir, başka bir bölmenin size ihtiyacı var",
   "chat.switcher.title": "Bölmeyi değiştir",

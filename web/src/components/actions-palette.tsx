@@ -254,7 +254,14 @@ export function ActionsPalette({ openPane, onClose }: ActionsPaletteProps) {
   }
 
   const rowAt = (row: Row): ReactNode => (
-    <PaletteRow key={row.key} row={row} highlighted={row.key === current} here={hereKey} onRun={run} />
+    <PaletteRow
+      key={row.key}
+      row={row}
+      highlighted={row.key === current}
+      here={hereKey}
+      onRun={run}
+      draftScope={row.kind === "pane" ? paneScope(data.scope, row.pane, data.servers, data.sessions) : undefined}
+    />
   );
   const highlightedPane = current?.startsWith(ALL_PANES_KEY) ? current.slice(ALL_PANES_KEY.length) : null;
   // The shell (scrim, panel, focus, Escape, the room above the keyboard) is the shared modal's, at the top
@@ -386,15 +393,18 @@ function PaletteRow({
   highlighted,
   here,
   onRun,
+  draftScope,
 }: {
   row: Row;
   highlighted: boolean;
   here: string | null;
   onRun: (row: Row) => void;
+  /** A pane row's own address, for the pencil of an unsent draft (ui/draft-mark.tsx). */
+  draftScope?: Scope | undefined;
 }) {
   let body: ReactNode;
   if (row.kind === "pane") {
-    body = <PaneRow pane={row.pane} active={paneRowKey(row.pane) === here} onSelect={() => onRun(row)} roomy={false} match={row.hit?.match} />;
+    body = <PaneRow pane={row.pane} active={paneRowKey(row.pane) === here} onSelect={() => onRun(row)} roomy={false} match={row.hit?.match} draftScope={draftScope} />;
   } else if (row.kind === "space") {
     body = (
       <ActionRow

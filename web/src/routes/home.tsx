@@ -580,6 +580,7 @@ export function HomeRoute() {
               hiddenMachines={hiddenMachines}
               addressedHost={data.scope.host}
               scope={data.scope}
+              sessions={data.sessions}
               onShowMachine={(host) => setMachineHidden(host, false, data.servers)}
               pins={pins}
               // The same per-device preference the pane switcher and Settings write (ADR 0071).

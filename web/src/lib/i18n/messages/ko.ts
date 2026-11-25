@@ -758,6 +758,7 @@ export const ko: Dictionary = {
   "chat.fullReply.showingTerminal": "터미널 표시 중",
   "chat.output.empty": "(최근 출력 없음)",
   "pane.saved.none": "이 기기에 이 창의 저장된 사본이 없습니다.",
+  "pane.draftMark": "보내지 않은 초안",
   "chat.switcher.aria": "창 전환",
   "chat.switcher.ariaNeedsYou": "창 전환, 다른 창이 응답을 기다립니다",
   "chat.switcher.title": "창 전환",

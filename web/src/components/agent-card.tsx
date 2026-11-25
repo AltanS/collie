@@ -3,6 +3,8 @@ import { useEffect, useState } from "react";
 import { shownStatus } from "@/lib/triage";
 import { cn } from "@/lib/utils";
 import { LIST_ROW_CORNERS } from "@/components/ui/list-group";
+import { DraftMark } from "@/components/ui/draft-mark";
+import type { Scope } from "@/lib/scope";
 import { UnseenMark } from "@/components/ui/unseen-mark";
 import { Card } from "@/components/ui/card";
 import { ShellBadge, StatusBadge, StatusDot } from "@/components/status-badge";
@@ -100,6 +102,12 @@ interface AgentCardProps {
    * in the same line box. Absent, with no query, the row is drawn exactly as it was.
    */
   match?: PaneMatch | undefined;
+  /**
+   * The pane's own address (`paneScope`, lib/hosts.ts): the scope its composer saves a draft under, so the
+   * row can say "this pane holds an unsent draft" with the pencil (ui/draft-mark.tsx). Absent: the lead's
+   * primary session, which is every pane of a solo install.
+   */
+  draftScope?: Scope | undefined;
 }
 
 /** The row's text: line 1's name, and line 2's two runs. */
@@ -151,6 +159,7 @@ export function AgentCard({
   tint = false,
   stale = false,
   match,
+  draftScope,
 }: AgentCardProps) {
   useLocale();
   // The read for this row's pane is out and has taken longer than the glide waits (lib/pane-opening.ts).
@@ -405,6 +414,9 @@ export function AgentCard({
             {/* The program's small mark (a count, or a short word), 16px like the tile so line 1 holds
                 its height. Nothing without one. */}
             <PaneBadge pane={agent} className="shrink-0 self-center" />
+            {/* An unsent draft this device holds for the pane: the muted pencil, after the badge. Its slot is
+                reserved on a flat row, as the unseen mark's is. */}
+            <DraftMark scope={draftScope} paneId={agent.paneId} reserve={flat} />
             <UnseenMark on={unseen} reserve={flat} className="ml-2" />
             <PaneMeta
               host={agent.host}
