@@ -51,6 +51,19 @@ describe("reportFields: local paths stay on the machine", () => {
   });
 });
 
+describe("reportFields: a refused code", () => {
+  it("a code_rejected send's report holds no screen row", () => {
+    // The bridge's detail for this reason is the agent's own error row, read off the screen.
+    const rejected = row(1, { reason: "code_rejected", detail: "Invalid code for marker-row-qz7", keys: ["text", "Enter"] });
+    const input: ReportInput = { ...BASE, sends: [rejected] };
+    const fields = reportFields(input);
+    const link = fitLink(fields);
+    const everything = [fields.title, fields.what, fields.sends, fields.setup, fields.screen, reportText(fields), link.url, decodeURIComponent(link.url)].join("\n");
+    expect(everything).not.toContain("marker-row-qz7");
+    expect(fields.sends).toContain("detail: The agent did not take the code.");
+  });
+});
+
 describe("reportFields: what a report holds by default", () => {
   it("names the trouble, the harness and version from the receipt, and the mux, in the title and the signature", () => {
     const fields = reportFields(BASE);

@@ -47,6 +47,7 @@ import { asJsonObject, asJsonString, parseJson, type JsonObject } from "../json"
 import type { ReportContext, ReportDoctorRow } from "./context";
 import type { SendReceiptRow, SendStep } from "../surface/send";
 import { MENU_SIGN_KINDS } from "../surface/menu-sign";
+import { CODE_REJECTED_PLAIN } from "../surface/secret-field";
 import { harnessOf } from "./signal";
 import type { DialogTrouble, Episode } from "./store";
 
@@ -158,6 +159,16 @@ function signWord(row: SendReceiptRow): string | null {
   return `${sign.kind}@${String(sign.row)}`;
 }
 
+/**
+ * The detail line a report prints for a send. A `code_rejected` refusal's detail is the agent's own error
+ * row off the screen (M102 spec 05), so a report never prints it: the line is the fixed sentence instead.
+ * The phone's refusal notice still shows the bridge's detail; only the report leaves it out.
+ */
+function reportDetail(row: SendReceiptRow): string | undefined {
+  if (row.reason === "code_rejected") return CODE_REJECTED_PLAIN;
+  return row.detail;
+}
+
 /** One send as one line: when, how it ended, its id, keys and gaps, what the bridge saw and said. */
 export function sendLine(row: SendReceiptRow, includeTyped: boolean): string {
   const parts = [new Date(row.at).toISOString(), endWord(row), `id=${row.requestId}`, `mode=${row.mode}`];
@@ -171,7 +182,8 @@ export function sendLine(row: SendReceiptRow, includeTyped: boolean): string {
   // The person's word beside what Collie saw (M102 spec 01): a technical token, never read as proof.
   if (row.word !== undefined) parts.push(`word=${row.word}`);
   let line = parts.join("  ");
-  if (row.detail !== undefined) line += `\n    detail: ${row.detail}`;
+  const detail = reportDetail(row);
+  if (detail !== undefined) line += `\n    detail: ${detail}`;
   if (includeTyped && row.line !== undefined) line += `\n    typed: ${row.line}`;
   return line;
 }

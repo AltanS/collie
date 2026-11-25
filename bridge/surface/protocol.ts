@@ -7304,8 +7304,9 @@ export class SendProtocol {
       }
     }
     state.marks.s2 = result.snap;
-    // The agent's words go into the receipt, the report line and the phone: never when they hold the
-    // code or a run of it, and never longer than a receipt's detail (rejectionDetail).
+    // The agent's words go into the receipt and the phone: never when they hold the code or a run of
+    // it, and never longer than a receipt's detail (rejectionDetail). A report prints the plain
+    // sentence instead, since the words are a screen row (web/src/lib/report/body.ts).
     if (rejected.words !== null) {
       const detail = rejectionDetail(rejected.words, state.request.text, RECEIPT_DETAIL_MAX);
       throw new Ended("refused", "code_rejected", detail === null ? { framed: false, detail: CODE_REJECTED_PLAIN } : { framed: false, detail });
