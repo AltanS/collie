@@ -63,6 +63,11 @@ short reason and changes nothing. Unknown fields are ignored everywhere, so a ne
 - `harness` is an open lower-case word. Shared code never matches it; it is kept for the log.
 - `pid` is the agent program's process id. `pidStartTime` is field 22 of `/proc/<pid>/stat`, or null
   where the part cannot read it; the bridge then reads it itself.
+- Where the part cannot read its pid at all (a Claude mod on macOS: no `/proc`, and the engine names no
+  pid), `pid` is null or absent and `session` must name the agent session; a hello with neither is
+  refused. The bridge takes the pid and start time of the one live hook source whose edges name that
+  session now (`collie hooks install claude` sends those edges), then places the hello by the same rule.
+  No such source, or more than one: "not mine" with `no-pid`.
 - `env` carries the raw values of the multiplexer marker variables, the ones the hook emitter reads
   (`bridge/beacon/env-markers.ts`, `MARKER_ENV_NAMES`): `TMUX_PANE` `TMUX`, `TERN_PANE`
   `TERN_PANE_SOCKET`, `ZELLIJ_PANE_ID` `ZELLIJ_SESSION_NAME`, `HERDR_PANE_ID` `HERDR_SOCKET_PATH`,
@@ -83,7 +88,7 @@ the multiplexer reports the pane's foreground processes, the pid is among them.
 { "wire": 1, "mine": false, "reason": "no-pane" }
 ```
 
-`reason` is one of `no-markers`, `no-pane`, `foreign-mux`, `ambiguous`, `dead-pid`, `not-foreground`.
+`reason` is one of `no-markers`, `no-pid`, `no-pane`, `foreign-mux`, `ambiguous`, `dead-pid`, `not-foreground`.
 A part that hears "not mine" leaves that socket alone for a while (the Claude mod: five minutes, or
 until its session starts again). A hello with another `wire` is refused with `400` and the bridge's own
 version in the reason.

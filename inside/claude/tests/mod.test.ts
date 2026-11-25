@@ -14,7 +14,7 @@ type Wire = { path: string; body: Record<string, unknown> | null }
 /** Event posts the bridge loses: of this kind (and this count, when given), `times` of them, by a time-out or a status. */
 type Lose = { kind: string; seq?: number; how: 'timeout' | number; times: number }
 
-function world(on: Parameters<Parameters<typeof test>[1]>[1], opts: { commands?: string[]; askWait?: boolean; askAnswer?: string; refuse?: boolean; hangAsk?: boolean; draftFails?: boolean; forgetAfterTurn?: 410 | 500; box?: string; lose?: Lose; slow?: { ms: number }; submit?: 'drop' | 'throw' } = {}) {
+function world(on: Parameters<Parameters<typeof test>[1]>[1], opts: { commands?: string[]; askWait?: boolean; askAnswer?: string; refuse?: boolean; hangAsk?: boolean; draftFails?: boolean; forgetAfterTurn?: 410 | 500; box?: string; lose?: Lose; slow?: { ms: number }; submit?: 'drop' | 'throw'; noProc?: boolean } = {}) {
   const clock = mock.clock(on)
   mock.env(on, { HOME: '/h', HERDR_PANE_ID: 'w1:p1', HERDR_SOCKET_PATH: '/run/herdr.sock' })
   const wire: Wire[] = []
@@ -35,7 +35,11 @@ function world(on: Parameters<Parameters<typeof test>[1]>[1], opts: { commands?:
     if (e.path === `${TARGETS}/0123456789abcdef.json`) {
       return { value: JSON.stringify({ schemaVersion: 1, stateDir: '/h/.local/state/collie-next', pid: 1, pidStartTime: 1, bootedAt: 1, inside: { wire: 1, socket: SOCKET } }) }
     }
-    if (e.path === '/proc/self/stat') return { value: STAT }
+    // macOS has no /proc: the read fails as for any missing file.
+    if (e.path === '/proc/self/stat') {
+      if (opts.noProc === true) throw new Error('ENOENT: no such file or directory')
+      return { value: STAT }
+    }
     if (e.path.endsWith('/.claude-plugin/plugin.json')) return { value: '{"name":"collie","version":"1.29.0"}' }
     return { value: '' }
   })
@@ -117,6 +121,14 @@ describe('the Collie mod', () => {
       capabilities: ['send', 'mail', 'draft', 'draft.state', 'wake'],
       asks: ['permission'],
     })
+  })
+
+  test('with no /proc (macOS) the hello names no pid, only its session, for the bridge to place', async ($, on) => {
+    const { clock, wire } = world(on, { noProc: true })
+    await $.session.start({ cwd: '/h/project', surface: 'terminal', isInteractive: true })
+    await clock.settle()
+    const hello = wire.find((row) => row.path === '/v1/hello')?.body
+    expect(hello).toMatchObject({ session: 'sess-1', pid: null, pidStartTime: null, env: { HERDR_PANE_ID: 'w1:p1' } })
   })
 
   test('a prompt goes in as the person\'s words, once, and is reported taken then sent', async ($, on) => {

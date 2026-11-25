@@ -97,7 +97,11 @@ export interface Hello {
   /** The harness's own session id, when the part knows it. */
   readonly session: string | null;
   readonly cwd: string | null;
-  readonly pid: number;
+  /**
+   * The agent program's pid, or null where the part cannot read it (no `/proc`, macOS): such a hello
+   * must name its `session`, and the bridge takes the pid that session's own hook edges named.
+   */
+  readonly pid: number | null;
   /** The pid's start time in the platform's probe unit (`bridge/beacon/liveness.ts`), or null. */
   readonly pidStartTime: number | null;
   /** The raw marker variables, only the names in {@link MARKER_ENV_NAMES}. */
@@ -248,6 +252,9 @@ export function parseHello(text: string): Hello | WireRefusal {
     if (wire !== WIRE_VERSION) throw new Refused(`wire ${String(wire)} is not spoken here; this bridge speaks ${String(WIRE_VERSION)}`);
     const cwd = optionalString(row, "cwd", CWD_MAX);
     if (cwd !== null && !cwd.startsWith("/") && !/^[A-Za-z]:[\\/]/u.test(cwd)) throw new Refused("bad cwd");
+    const session = optionalString(row, "session", SESSION_MAX);
+    const pid = row.pid === undefined || row.pid === null ? null : pidOf(row.pid);
+    if (pid === null && session === null) throw new Refused("bad pid");
     let pidStartTime: number | null = null;
     if (row.pidStartTime !== undefined && row.pidStartTime !== null) {
       const start = asJsonNumber(row.pidStartTime);
@@ -260,9 +267,9 @@ export function parseHello(text: string): Hello | WireRefusal {
       harness: requiredString(row, "harness", WORD),
       harnessVersion: optionalString(row, "harnessVersion", VERSION_MAX),
       partVersion: optionalString(row, "partVersion", VERSION_MAX),
-      session: optionalString(row, "session", SESSION_MAX),
+      session,
       cwd,
-      pid: pidOf(row.pid),
+      pid,
       pidStartTime,
       env: envOf(row.env),
       capabilities: wordsOf(row.capabilities, CAPABILITIES),

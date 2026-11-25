@@ -37,6 +37,10 @@ listen. A pi extension could listen, but two shapes of wire for two programs is 
 3. **The pane comes from inside, by the edge placement.** `hello` carries the pid and the raw marker
    variables of the part's own environment. The bridge places it exactly as a hook edge: one pane
    matches, the pid is alive with that start time, the pane's foreground holds it. No heuristic.
+   *Amended 2026-11-25:* a part that cannot read its pid (a Claude mod on macOS has neither `/proc` nor
+   a pid on `$`) names its agent session instead, and the bridge takes the pid of the one live hook
+   source whose edges name that session. The pid still comes from outside the part (the hook's parent),
+   and the placement that follows is the same, so the rule above stands; the part spawns no process.
 4. **Capabilities per session, fail closed.** The data path runs only for a word the part declared, and
    only while it polls. Otherwise the screen path runs, unchanged.
 5. **One request id, never twice.** A command handed to a part is taken for good: never withdrawn,

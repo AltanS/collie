@@ -277,16 +277,19 @@ async function helloText($: $): Promise<string | null> {
   } catch {
     self = null
   }
-  // No pid, no binding: the bridge places a part by its pid, and the screen path stays.
-  if (self === null) return null
+  const session = await $.session.id().catch(() => null)
+  // No /proc (macOS): the mod has no other way to its pid, so the hello names none and the bridge takes
+  // the pid this session's own hook edges named (WIRE.md). No pid and no session: nothing to place it by,
+  // and the screen path stays.
+  if (self === null && session === null) return null
   const version = await $.session.version().catch(() => null)
   return helloBody({
     harnessVersion: version?.version ?? null,
     partVersion: await partVersion($),
-    session: await $.session.id().catch(() => null),
+    session,
     cwd: await $.session.cwd().catch(() => null),
-    pid: self.pid,
-    pidStartTime: self.start,
+    pid: self?.pid ?? null,
+    pidStartTime: self?.start ?? null,
     env: await markerEnv($),
   })
 }

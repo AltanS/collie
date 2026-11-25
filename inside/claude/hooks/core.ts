@@ -146,7 +146,8 @@ export interface HelloFacts {
   readonly partVersion: string | null;
   readonly session: string | null;
   readonly cwd: string | null;
-  readonly pid: number;
+  /** Null where the part cannot read its pid (no `/proc`): the bridge then places it by `session`. */
+  readonly pid: number | null;
   readonly pidStartTime: number | null;
   readonly env: Readonly<Record<string, string>>;
 }

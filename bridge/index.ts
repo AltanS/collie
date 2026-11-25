@@ -1914,7 +1914,9 @@ const insideHub =
         queue: new CommandQueue(),
         place: (hello) => {
           const live = new Set(registry.ordered().map((runtime) => runtime.name));
-          return placeHello(hello, [...edgeTargets].filter(([name]) => live.has(name)).map(([, target]) => target), procBeaconLiveness());
+          return placeHello(hello, [...edgeTargets].filter(([name]) => live.has(name)).map(([, target]) => target), procBeaconLiveness(), {
+            agentPid: (agentSession) => edgeRouter?.pidOfAgentSession(agentSession),
+          });
         },
       });
 /** Whether a pane is linked: the pane read, the install ping's trouble rows and its tally all read this one function. */
