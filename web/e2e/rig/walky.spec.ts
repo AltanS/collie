@@ -39,7 +39,7 @@
 //      target, and that reply is answered in turn; both pass as `reply`, while a fresh send from that
 //      same pane is refused. No model turn.
 //   33 the border, --outside: the message crosses, the receipt says `outside`, the header the session
-//      pane receives says `outside`, and the pane reads it and answers. One Claude turn.
+//      pane receives says `outside`, and the pane reads it and its turn ends (the word asked for is a note, not the verdict). One Claude turn.
 //
 // Every harness pane the rig starts is in one named space (rig-lib.ts RIG_SPACE), and a case that needs
 // a pane outside it starts one in OTHER_SPACE: the border is the multiplexer's own space, never a rig flag.
@@ -93,6 +93,7 @@ import {
   firstRow,
   mintId,
   nudgePattern,
+  outsideVerdict,
   olderOperatorHeader,
   operatorHeaderPattern,
   operatorMessage,
@@ -787,7 +788,7 @@ test.describe("walky talky", () => {
 
   test("33 walky talky: an agent's message with --outside crosses, and the header the receiver reads says outside", async ({ rig }) => {
     await runScenario(H, "walky-space-outside", session, async (pane, trail) => {
-      // One turn: the session pane takes the nudge, reads the message with `inbox` and answers in its pane.
+      // One turn: the session pane takes the nudge and reads the message with `inbox`. The verdict needs that turn to end, not the word.
       spendTurn(H, "walky space outside: the nudge");
       const notes = trail.notes;
       const opened: string[] = [];
@@ -811,13 +812,15 @@ test.describe("walky talky", () => {
         const nudged = (await rig.screenUntil(pane, nudge, 60_000, 200)) !== null;
         const inbox = new RegExp(`Bash\\(collie walky inbox ${id}\\)[\\s\\S]*${token}`);
         const read = (await rig.screenUntil(pane, inbox, REPLY_MS, 200)) !== null;
-        const answered = (await rig.screenUntil(pane, answerLine("OUTSIDE-OK"), REPLY_MS, 200)) !== null;
-        await waitIdle(rig, pane, REPLY_MS);
+        // The verdict waits for the turn that read the message to end. Whether the pane printed the word the
+        // other agent asked for is a note only: a model may decline a peer's request and ask its operator.
+        const turnEnded = await waitIdle(rig, pane, REPLY_MS);
         const screen = await rig.screen(pane, 200);
+        const answered = answerLine("OUTSIDE-OK").test(screen);
         const bodyInNudge = screen.split("\n").some((line) => line.includes(`[walky-talky ${id}]`) && line.includes(token));
-        notes.push(nudged ? "the nudge line says `outside`" : "the pane's nudge line does not say `outside`", read ? "the pane read the body with `inbox`" : "no `inbox` read of the body on screen", answered ? "the pane answered OUTSIDE-OK" : "no answer on screen", bodyInNudge ? "the nudge line CARRIES the body" : "the nudge carries no body");
+        notes.push(nudged ? "the nudge line says `outside`" : "the pane's nudge line does not say `outside`", read ? "the pane read the body with `inbox`" : "no `inbox` read of the body on screen", turnEnded ? "the turn that read it ended" : "the turn did NOT end in time", answered ? "the pane answered OUTSIDE-OK" : "the pane read it and did not print the word, which a model may do for a peer's request", bodyInNudge ? "the nudge line CARRIES the body" : "the nudge carries no body");
         trail.captures.push(await captureScreen(rig, pane, "walky-33-pane"));
-        const verdict = sent.code === 0 && state === "delivered" && viaOf(row) === "outside" && nudged && read && answered && !bodyInNudge ? "pass" : "fail";
+        const verdict = outsideVerdict({ code: sent.code, state, via: viaOf(row), nudged, read, turnEnded, bodyInNudge });
         return { verdict, taps: 0, note: notes.join("; "), taps_log: trail.log, captures: trail.captures };
       } finally {
         await resetBox(rig, pane);

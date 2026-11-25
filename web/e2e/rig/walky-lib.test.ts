@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 
 import { formatNudge, formatRead, type WalkyMessage } from "../../../bridge/walky/types.ts";
 import { DEVICE_LABEL } from "./rig-lib";
-import { ABOUT, SENDER, aboutExactly, addressPattern, answerLine, nudgePattern, operatorHeaderPattern, withoutSubjects, wrapped } from "./walky-lib";
+import { ABOUT, SENDER, aboutExactly, addressPattern, answerLine, nudgePattern, operatorHeaderPattern, outsideVerdict, withoutSubjects, wrapped } from "./walky-lib";
 
 const ID = "wt_qoo5tvg2ldhj";
 const REPLY = "wt_8ab2k1m4q7zx";
@@ -133,5 +133,20 @@ describe("answerLine", () => {
   it("does not take a line that only quotes the word", () => {
     expect(screen.split("\n").slice(0, 3).join("\n")).not.toMatch(answerLine("OUTSIDE-OK"));
     expect('● Bash(collie walky reply wt_33ua92uutej8 "OUTSIDE-OK")').not.toMatch(answerLine("OUTSIDE-OK"));
+  });
+});
+
+describe("outsideVerdict", () => {
+  const facts = { code: 0, state: "delivered", via: "outside", nudged: true, read: true, turnEnded: true, bodyInNudge: false };
+
+  it("passes when the product did its part and the turn that read the message ended, whether or not the word came", () => {
+    // The facts hold no field for the word: a pane that declined a peer's request and asked its operator passes the same.
+    expect(outsideVerdict(facts)).toBe("pass");
+  });
+
+  it("fails on each part of the product's work, and on a turn that did not end", () => {
+    for (const bad of [{ code: 4 }, { state: "refused" }, { via: "in" }, { via: undefined }, { nudged: false }, { read: false }, { turnEnded: false }, { bodyInNudge: true }]) {
+      expect({ bad, verdict: outsideVerdict({ ...facts, ...bad }) }).toEqual({ bad, verdict: "fail" });
+    }
   });
 });
