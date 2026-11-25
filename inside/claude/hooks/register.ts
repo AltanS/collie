@@ -259,6 +259,8 @@ async function markerEnv($: $): Promise<Record<string, string>> {
     ['HERDR_SOCKET_PATH', await $.env.get('HERDR_SOCKET_PATH')],
     ['HC_TERMINAL_ID', await $.env.get('HC_TERMINAL_ID')],
     ['HC_TERMINAL_SOCKET', await $.env.get('HC_TERMINAL_SOCKET')],
+    ['REX_BLOCK', await $.env.get('REX_BLOCK')],
+    ['REX_SERVER', await $.env.get('REX_SERVER')],
   ]
   const env: Record<string, string> = {}
   for (const [name, value] of values) if (value !== undefined && value !== '') env[name] = value

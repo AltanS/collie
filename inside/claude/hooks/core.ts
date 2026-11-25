@@ -35,6 +35,8 @@ export const MARKER_NAMES = [
   "HERDR_SOCKET_PATH",
   "HC_TERMINAL_ID",
   "HC_TERMINAL_SOCKET",
+  "REX_BLOCK",
+  "REX_SERVER",
 ] as const;
 
 /**

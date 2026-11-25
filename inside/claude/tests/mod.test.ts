@@ -16,7 +16,7 @@ type Lose = { kind: string; seq?: number; how: 'timeout' | number; times: number
 
 function world(on: Parameters<Parameters<typeof test>[1]>[1], opts: { commands?: string[]; askWait?: boolean; askAnswer?: string; refuse?: boolean; hangAsk?: boolean; draftFails?: boolean; forgetAfterTurn?: 410 | 500; box?: string; lose?: Lose; slow?: { ms: number }; submit?: 'drop' | 'throw'; noProc?: boolean; notMine?: { reason: string | null; times: number } } = {}) {
   const clock = mock.clock(on)
-  mock.env(on, { HOME: '/h', HERDR_PANE_ID: 'w1:p1', HERDR_SOCKET_PATH: '/run/herdr.sock' })
+  mock.env(on, { HOME: '/h', HERDR_PANE_ID: 'w1:p1', HERDR_SOCKET_PATH: '/run/herdr.sock', REX_BLOCK: 'block:01ab', REX_SERVER: 'unix:///run/rex/server.sock' })
   const wire: Wire[] = []
   const submitted: string[] = []
   const commands = [...(opts.commands ?? [])]
@@ -125,7 +125,7 @@ describe('the Collie mod', () => {
       session: 'sess-1',
       pid: 4242,
       pidStartTime: 987654,
-      env: { HERDR_PANE_ID: 'w1:p1', HERDR_SOCKET_PATH: '/run/herdr.sock' },
+      env: { HERDR_PANE_ID: 'w1:p1', HERDR_SOCKET_PATH: '/run/herdr.sock', REX_BLOCK: 'block:01ab', REX_SERVER: 'unix:///run/rex/server.sock' },
       capabilities: ['send', 'mail', 'draft', 'draft.state', 'wake'],
       asks: ['permission'],
     })
@@ -517,7 +517,7 @@ describe('the Collie mod', () => {
 
   test('several bridges on one machine: it dials only those that speak its wire, and binds only where the bridge says mine', async ($, on) => {
     const clock = mock.clock(on)
-    mock.env(on, { HOME: '/h', HERDR_PANE_ID: 'w1:p1', HERDR_SOCKET_PATH: '/run/herdr.sock' })
+    mock.env(on, { HOME: '/h', HERDR_PANE_ID: 'w1:p1', HERDR_SOCKET_PATH: '/run/herdr.sock', REX_BLOCK: 'block:01ab', REX_SERVER: 'unix:///run/rex/server.sock' })
     // Four target files: the bridge that owns this pane, one that does not, a 1.28 bridge (no inside
     // field: it serves no wire) and a bridge of a later wire.
     const OWNER = '/h/.local/state/collie-next/inside/sock'
