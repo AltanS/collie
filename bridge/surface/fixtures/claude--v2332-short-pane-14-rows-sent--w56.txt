@@ -1,0 +1,14 @@
+[48;5;237m  [38;5;231mbox, so the box scrolls and shows how many rows are [39m
+  [38;5;231mabove it, and Claude Code also gives the rows under [39m
+  [38;5;231mthe box to the draft once the box needs them. Nothing[39m
+  [38;5;231melse to do here, only the one word ok in reply.[39m
+
+[38;5;231m[49m⏺[39m ok
+
+[38;5;246m✻[39m [38;5;246mSautéed for 0s · done 12:45 PM[39m
+                                    [38;5;246m◐ medium · /effort[39m
+[38;5;244m────────────────────────────────────────────────────────
+[39m❯ 
+[38;5;244m────────────────────────────────────────────────────────
+[39m  [38;5;246m~/project · Haiku 5.5[39m
+  [38;5;147m⏵⏵ accept edits on[38;5;246m (shift+tab to cycle)[39m
