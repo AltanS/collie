@@ -109,7 +109,6 @@ These wait for the milestone "No block without an exit"; until then the old rule
 - 0116, 0117, 0140: a Stop and a steer are a person's tap with a receipt; a send by data, never twice.
 - 0122 to 0124: a queued send is a card with an exit in each state; three failed sends offer an issue.
 
-
 ## Addendum (2026-11-17): the override reaches every screen, never a menu (M102 spec 12)
 
 An override (`override` plus the rows hash seen) is typed on any reading but five: no pane or grant, a
@@ -118,3 +117,4 @@ menu sign (`menu_open`, `menu-sign.ts`; on the blind road none for a shell foreg
 bottom). On a manual Send it is the commit, submit key on the exact hash only (loose match: no key); else
 one piece, no probe, no key: `typed_not_submitted(override)`. Spec 13: an `unknown` whose submit went out
 waits `awaitingEventUntil` for the agent's prompt event (data road too); a match settles it `effective`.
+Amended 2026-11-25 (#863): a guess is no wall: no profile, an agent's box or footer, no one-key row: typed, no key.

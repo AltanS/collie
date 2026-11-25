@@ -4230,3 +4230,48 @@ Privacy: the scratch folder reads `~/project`, and the stub model names itself `
 | --- | --- | --- |
 | `mcode--v077-idle-w200.txt` | The welcome panel (`v0.7.7 … ● Ready`), three tip rows, the what's-new box, the `Start · @ file or Plugin · / autocomplete` row, the composer between two rules with `›  Ask Mcode to do anything`, and the status row `~/project │ Auto │ ✦ stub-model · Thinking On │ Context 100K` | idle, composer found and empty |
 | `mcode--v077-turn-suggestion-w200.txt` | One finished turn: the prompt row, `└ • Ran  ls -la · 5 output lines`, the reply, `└ Completed in 1s · ⚡ 1667 tok/s`, then `Suggested next message · Tab accept` over a composer whose text is the grey suggestion — plain text cannot mark it grey, so the bridge reads a draft | draft |
+
+## Claude Code 2.1.331 draft taller than its box (captured 2026-11-23, Herdr 0.9.5, 59 x 16)
+
+Claude Code caps its input box at a share of the terminal's height. A draft that wraps past that
+cap scrolls the box: the `❯` row leaves the top, and the top edge carries a count of the hidden rows,
+`─── ↑ 5 more ───` (the bundle's ``h>0?`↑ ${h} more`:""``, in every release from 2.1.322 to 2.1.331).
+The frame walk needed the `❯` row, so a long send typed its text and stopped short of Enter
+(`typed_not_submitted`), and every later send was refused as `no-match` until the box was emptied.
+The profile's `idle.frame.scroll.marker` names that edge.
+
+Captured in a throwaway Herdr tab split down to 59 x 16, in an empty `/tmp/collie-lab`, with
+`claude --settings '{"statusLine":{"type":"command","command":"true"}}'` so no status line drew,
+and the draft typed with `herdr pane send-text`. `herdr pane read --source visible --format ansi
+--raw`, CRLF as read, cut to the blank row above the box: the rows above it held the welcome banner
+and a notice from a local plugin. Nothing else was altered.
+
+| Fixture | What's in it | Reads as |
+| --- | --- | --- |
+| `claude--v2331-draft-scrolled-up--w59.txt` | A 404-character draft scrolled to its last three rows under `─── ↑ 5 more ───`, the bypass-permissions mode row under the box | draft, frame `scrolled`, S1 compares the tail |
+
+## omp 18.22.0 prompt suggestion in three themes (captured 2026-11-24, issue 854, herdr 0.9.5, 120 columns by 40 rows)
+
+omp's prompt suggestion (`composer.predictions`: on by default since 19.0.0, a setting since 18.10) fills
+the empty box after a turn in the active theme's `dim` colour: one foreground, no attribute. The rig's
+scratch omp 18.22.0 (the newest version npm's 7-day age guard allowed that day; it draws the suggestion
+with the same editor code as 19.0.1) ran with `composer.predictions: true` and `theme.dark` set to
+`titanium` (omp's default), `dark` and `light` in turn, switched live in its scratch `config.yml`, so the
+same suggestion `Mountains.` shows in three colours. Each screen was read as the bridge reads it
+(`herdr pane read --source visible --format ansi`), transport CRLF normalised to LF. Privacy: the folder
+shows as the rig's scratch path (`…uggestion-rig/state/harness/omp/project`), the prompts are lab
+prompts, nothing else private was on screen.
+
+The six files live in `web/src/fixtures/surface/`, beside omp 19.0.1's suggestion capture, not in
+this folder: omp 18.22's box (a status row over `╰─`, with no `╭─` top) is a layout the omp chrome
+reader's corpus tests do not cover, and the dark and light screens read as a draft on purpose (only
+the probe tells them apart). The tests that read them name the folder.
+
+| Fixture | State | What it shows |
+| --- | --- | --- |
+| `omp--v18-22-0-suggestion-titanium--w120.txt` | `idle` | `╰─ Mountains.` in `rgb(107,114,128)`, titanium's `dim`, the one colour the profile names (`idle.placeholders.fg`): reads empty |
+| `omp--v18-22-0-suggestion-dark--w120.txt` | `idle` | The same suggestion in `rgb(95,102,115)`, the built-in `dark` theme's `dim`. A pure read takes it for a draft; the Send Protocol and Clear prove it by the probe (`idle.placeholders.anyStyle`) |
+| `omp--v18-22-0-suggestion-light--w120.txt` | `idle` | The same in `rgb(118,118,118)`, the built-in `light` theme's `dim`, typed text there is `rgb(0,0,0)` |
+| `omp--v18-22-0-suggestion-probe-dark--w120.txt` | `draft` | One probe character `⌁` typed into the dark box: the suggestion is gone, the box shows `⌁` alone in the typed colour `rgb(229,229,231)`. One Backspace brings `Mountains.` back |
+| `omp--v18-22-0-suggestion-typed-light--w120.txt` | `draft` | `hey` typed in the light theme, in `rgb(0,0,0)`: a typed draft, the suggestion gone |
+| `omp--v18-22-0-suggestion-under-typed-dark--w120.txt` | `draft` | `Moun` typed (it starts the suggestion), so omp keeps the rest `tains.` after it in the `dim` colour: `Moun` in `rgb(229,229,231)`, `tains.` in `rgb(95,102,115)`. A real draft: a probe after `Moun` keeps `Moun` |

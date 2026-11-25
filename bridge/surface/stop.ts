@@ -36,6 +36,7 @@ import type { MuxAck, MuxGrid, MuxGridRequest, MuxOutcome } from "../mux/types.t
 import { parseAnsi } from "../../web/src/lib/ansi.ts";
 import { splitLines } from "../../web/src/lib/blocks.ts";
 import { surfaceOfScreen } from "../../web/src/lib/surface/fold.ts";
+import { wholeDraft } from "../../web/src/lib/surface/frame.ts";
 import { liftAsk, readerBlocks } from "../../web/src/lib/surface/lift.ts";
 import type { ProfileMatch } from "../../web/src/lib/surface/profile.ts";
 import type { StopReason, StopReceipt } from "../../web/src/lib/surface/stop.ts";
@@ -221,7 +222,8 @@ export class StopService {
 
   /**
    * One fresh read of the pane, folded into its Surface, with its input box's text ("" when empty, the
-   * placeholder read as empty; null when the read found no box) and when it was read. Null when the
+   * placeholder read as empty; null when the read found no box, or a box that shows only the tail of its
+   * draft, {@link wholeDraft}) and when it was read. Null when the
    * multiplexer could not read it.
    */
   private async look(paneId: string, harness: string, match: ProfileMatch): Promise<{ readonly surface: Surface; readonly box: string | null; readonly at: number } | null> {
@@ -231,7 +233,7 @@ export class StopService {
     const rows = splitLines(parseAnsi(grid.value.text));
     const ask = liftAsk(readerBlocks(rows, harness), grid.value.revision);
     const read = surfaceOfScreen({ seq: 0, source: "screen", at, revision: grid.value.revision, rows, ask }, match.profile.idle);
-    const box = read.frame === null ? null : read.frame.placeholder ? "" : read.frame.interior.text;
+    const box = read.frame === null ? null : wholeDraft(read.frame);
     return { surface: read.surface, box, at };
   }
 }

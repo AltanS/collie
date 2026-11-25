@@ -290,8 +290,9 @@ export interface SendReceipt {
    */
   readonly draftSeen?: true;
   /**
-   * Set on a blind-road `menu_open` (M102 spec 12): which sign the generic menu sign read and on which
-   * screen row. Never the row's text.
+   * Set on a `menu_open`, on either road (M102 spec 12), and on the person's override that went past the
+   * blind road's sign (2026-11-25): which sign the generic menu sign read and on which screen row. Never
+   * the row's text.
    */
   readonly menuSign?: MenuSign;
   /**
@@ -354,7 +355,17 @@ export interface SurfaceWords {
   readonly modal: "none" | "ask" | "unreadable" | "unknown";
   readonly composer: Surface["composer"];
   readonly reason?: SawReason;
+  /**
+   * On a receipt whose words say `draft`: the foreground colour of the box text, when one colour covers
+   * all of it on its one row (`rgb(r,g,b)`, or `var(--ansi-N)` for a palette colour). A colour, never
+   * text. It tells a harness's suggestion drawn in a theme colour from typed text (issue 854). Absent
+   * otherwise, and on a read with no styling.
+   */
+  readonly ink?: string;
 }
+
+/** The shape of {@link SurfaceWords.ink}. */
+const WORD_INK = /^(?:rgb\((?:\d{1,3}),(?:\d{1,3}),(?:\d{1,3})\)|var\(--ansi-\d{1,2}\))$/u;
 
 const WORD_TURNS = ["idle", "running", "unknown"] as const satisfies readonly SurfaceWords["turn"][];
 const WORD_MODALS = ["none", "ask", "unreadable", "unknown"] as const satisfies readonly SurfaceWords["modal"][];
@@ -369,9 +380,12 @@ export function readSurfaceWords(value: JsonValue | undefined): SurfaceWords | n
   const modal = WORD_MODALS.find((word) => word === node.modal);
   const composer = WORD_COMPOSERS.find((word) => word === node.composer);
   if (turn === undefined || modal === undefined || composer === undefined) return null;
-  if (node.reason === undefined) return { turn, modal, composer };
+  // A colour that is not one is dropped, the words stand.
+  const inkWord = asJsonString(node.ink);
+  const ink = inkWord !== undefined && WORD_INK.test(inkWord) ? { ink: inkWord } : {};
+  if (node.reason === undefined) return { turn, modal, composer, ...ink };
   const reason = WORD_REASONS.find((word) => word === node.reason);
-  return reason === undefined ? null : { turn, modal, composer, reason };
+  return reason === undefined ? null : { turn, modal, composer, reason, ...ink };
 }
 
 /** The words of a Surface (see {@link SurfaceWords}). */
@@ -414,7 +428,7 @@ export interface SendReceiptRow {
   readonly awaitingEventUntil?: number;
   /** The override typed after a draft (see {@link SendReceipt.draftSeen}). */
   readonly draftSeen?: true;
-  /** The sign a blind-road `menu_open` read (see {@link SendReceipt.menuSign}). */
+  /** The sign a `menu_open` read (see {@link SendReceipt.menuSign}). */
   readonly menuSign?: MenuSign;
   /** The override found its text in the box already (see {@link SendReceipt.textAlreadyTyped}). */
   readonly textAlreadyTyped?: true;
@@ -533,7 +547,7 @@ export interface SendAnswer {
    * answer; a receipt never keeps a row, so a replay has none.
    */
   readonly rows?: readonly string[];
-  /** The sign a blind-road `menu_open` read (see {@link SendReceipt.menuSign}). */
+  /** The sign a `menu_open` read (see {@link SendReceipt.menuSign}). */
   readonly menuSign?: MenuSign;
 }
 

@@ -230,7 +230,9 @@ for a reason that points at Collie: it could not read or write the input box, th
 Enter did not follow, or it lost track of the send. A refusal that protects you (a draft in the box,
 a running turn, an open dialog) does not count. Tap **Report** on the card. The sheet shows the whole
 issue before anything leaves: the Collie and agent versions, the multiplexer, and each failed send's
-codes. The setup also lists Collie's own count of recent sends for that agent, the held sends and
+codes. A send that Collie refused because it saw a menu also names which sign it saw, as
+`sign=<kind>@<row>` (for example `sign=hint@17`): a kind and a screen row number, never a word of the
+screen. The setup also lists Collie's own count of recent sends for that agent, the held sends and
 the screen problems, the same `sends-`, `holds-` and `screen-` rows `collie doctor` prints. It holds
 no text you typed and no screen unless you turn on **Include what I typed** or
 **Include the screen**. The screen is the pane's last 40 rows with known secret shapes masked; read

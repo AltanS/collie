@@ -7,7 +7,7 @@ import { __resetPins, setPinned, usePins } from "@/lib/pins";
 import { ROOT_ROUTE_ID } from "@/lib/loaders";
 import { forgetRecentPanes, rememberRecentPane } from "@/lib/recent-panes";
 import { __resetShortcutRegistry, registerShortcutHandler, runShortcutAction } from "@/lib/shortcuts/registry";
-import type { AgentView } from "@/lib/types";
+import type { AgentView, ServerSummary } from "@/lib/types";
 
 import { ActionsButton, ActionsPaletteDoor } from "./actions-palette";
 import { ThreadSidebar } from "./agent-sidebar";
@@ -41,7 +41,7 @@ function Where() {
   return <p data-testid="where">{pathname}</p>;
 }
 
-function mount(path = "/", openPane?: AgentView) {
+function mount(path = "/", openPane?: AgentView, panes: AgentView[] = PANES, extra: { servers?: ServerSummary[] } = {}) {
   const element = (
     <>
       <ActionsButton />
@@ -54,11 +54,12 @@ function mount(path = "/", openPane?: AgentView) {
     hydrationData: {
       loaderData: {
         [ROOT_ROUTE_ID]: {
-          agents: PANES,
+          agents: panes,
           shellPanes: [],
           workspaces: WORKSPACES,
           tabs: [],
           scope: {},
+          ...extra,
         },
       },
     },
@@ -297,5 +298,152 @@ describe("the Actions palette", () => {
     expect(within(palette()).queryByRole("heading", { name: "Recent" })).toBeNull();
     expect(palette().querySelector('[data-slot="actions-all-panes"]')).toBeNull();
     expect(highlighted()?.textContent).toContain("Settings");
+  });
+});
+
+// NEEDS YOU FIRST. Before anything is typed, the panes that wait for the person lead the sheet, above Recent:
+// the Dashboard's own band (its predicate and its order), every one of them, the open pane left out.
+describe("the Actions palette, panes that need you", () => {
+  const waiting = (p: AgentView): AgentView => ({ ...p, status: "blocked" });
+  const named = (...labels: string[]) => labels.map((label) => expect.stringContaining(label));
+  const blockOf = (name: string) => within(palette()).getByRole("heading", { name }).closest("section")!;
+  const labelsIn = (name: string) => within(blockOf(name)).getAllByRole("button").map((b) => b.textContent);
+  const headings = () =>
+    within(palette())
+      .getAllByRole("heading")
+      .map((h) => h.textContent)
+      .filter((text) => ["Needs you", "Recent", "Suggested", "All panes"].includes(text ?? ""));
+
+  it("lists the panes that wait for an answer first, above Recent, in the Dashboard's order", async () => {
+    const user = userEvent.setup();
+    const herd = [PANES[0]!, waiting(PANES[1]!), PANES[2]!, waiting(PANES[3]!)];
+    rememberRecentPane(PANES[0]!, 1);
+    rememberRecentPane(herd[3]!, 2);
+    registerShortcutHandler("settings", () => {});
+    mount("/", undefined, herd);
+    await user.click(screen.getByRole("button", { name: "Actions" }));
+    expect(headings()).toEqual(["Needs you", "Recent", "Suggested", "All panes"]);
+    // Space, tab, position, as the Dashboard's band reads: bravo before delta, though delta was opened last.
+    expect(labelsIn("Needs you")).toEqual(named("bravo", "delta"));
+    expect(highlighted()?.textContent).toContain("bravo");
+  });
+
+  it("does not list a pane that finished while nobody looked: it is an ordinary pane, free to show in Recent", async () => {
+    const user = userEvent.setup();
+    const finished: AgentView = { ...PANES[2]!, status: "done", lastActiveAt: 9, lastSeenAt: 1 };
+    const herd = [PANES[0]!, PANES[1]!, finished, PANES[3]!];
+    rememberRecentPane(finished, 1);
+    mount("/", undefined, herd);
+    await user.click(screen.getByRole("button", { name: "Actions" }));
+    expect(within(palette()).queryByRole("heading", { name: "Needs you" })).toBeNull();
+    expect(labelsIn("Recent")).toEqual(named("charlie"));
+  });
+
+  it("lists only the blocked pane when one is blocked and another finished unseen", async () => {
+    const user = userEvent.setup();
+    const finished: AgentView = { ...PANES[2]!, status: "done", lastActiveAt: 9, lastSeenAt: 1 };
+    const herd = [PANES[0]!, waiting(PANES[1]!), finished, PANES[3]!];
+    rememberRecentPane(finished, 1);
+    mount("/", undefined, herd);
+    await user.click(screen.getByRole("button", { name: "Actions" }));
+    expect(labelsIn("Needs you")).toEqual(named("bravo"));
+    expect(labelsIn("Recent")).toEqual(named("charlie"));
+  });
+
+  it("leaves the open pane out of the block", async () => {
+    const user = userEvent.setup();
+    const herd = [PANES[0]!, waiting(PANES[1]!), waiting(PANES[2]!), PANES[3]!];
+    mount("/pane/w1%3Ap2", herd[1], herd);
+    await user.click(screen.getByRole("button", { name: "Actions" }));
+    expect(labelsIn("Needs you")).toEqual(named("charlie"));
+  });
+
+  it("shows every waiting pane, with no cap", async () => {
+    const user = userEvent.setup();
+    const many = ["p1", "p2", "p3", "p4", "p5", "p6", "p7"].map((id) => waiting(pane(id, `pane-${id}`)));
+    mount("/", undefined, many);
+    await user.click(screen.getByRole("button", { name: "Actions" }));
+    expect(labelsIn("Needs you")).toEqual(named(...many.map((p) => p.paneLabel!)));
+  });
+
+  it("shows a waiting pane once above, and Recent fills its four from the next recent panes", async () => {
+    const user = userEvent.setup();
+    const more = ["p5", "p6", "p7"].map((id) => pane(id, `extra-${id}`));
+    const herd = [PANES[0]!, waiting(PANES[1]!), PANES[2]!, PANES[3]!, ...more];
+    // Newest first: bravo (waiting), extra-p6, extra-p5, delta, charlie, alpha.
+    [PANES[0]!, PANES[2]!, PANES[3]!, more[0]!, more[1]!, herd[1]!].forEach((p, i) => rememberRecentPane(p, i + 1));
+    mount("/", undefined, herd);
+    await user.click(screen.getByRole("button", { name: "Actions" }));
+    expect(labelsIn("Needs you")).toEqual(named("bravo"));
+    expect(labelsIn("Recent")).toEqual(named("extra-p6", "extra-p5", "delta", "charlie"));
+  });
+
+  it("draws no block and no label when no pane waits, the sheet as it was", async () => {
+    const user = userEvent.setup();
+    rememberRecentPane(PANES[0]!, 1);
+    mount();
+    await user.click(screen.getByRole("button", { name: "Actions" }));
+    expect(headings()).toEqual(["Recent", "All panes"]);
+    expect(within(palette()).queryByRole("heading", { name: "Needs you" })).toBeNull();
+  });
+
+  it("draws no block when the only waiting pane is the open one", async () => {
+    const user = userEvent.setup();
+    const herd = [waiting(PANES[0]!), PANES[1]!, PANES[2]!, PANES[3]!];
+    mount("/pane/w1%3Ap1", herd[0], herd);
+    await user.click(screen.getByRole("button", { name: "Actions" }));
+    expect(within(palette()).queryByRole("heading", { name: "Needs you" })).toBeNull();
+  });
+
+  it("lists a waiting pane of another machine of the crew", async () => {
+    const user = userEvent.setup();
+    const far: AgentView = { ...waiting(pane("p1", "far-away")), host: "workshop" };
+    const near: AgentView = { ...waiting(pane("p1", "near-by")), host: "lodge" };
+    mount("/", undefined, [near, far], {
+      servers: [
+        { id: "lodge", name: "lodge", isLead: true, reachable: true, protocol: "ok", lastSeenAt: 1 },
+        { id: "workshop", name: "workshop", isLead: false, reachable: true, protocol: "ok", lastSeenAt: 1 },
+      ],
+    });
+    await user.click(screen.getByRole("button", { name: "Actions" }));
+    expect(labelsIn("Needs you")).toEqual(named("near-by", "far-away"));
+  });
+
+  it("walks the arrows from the Needs you rows down through Recent", async () => {
+    const user = userEvent.setup();
+    const herd = [PANES[0]!, waiting(PANES[1]!), waiting(PANES[2]!), PANES[3]!];
+    rememberRecentPane(PANES[0]!, 1);
+    mount("/", undefined, herd);
+    await user.click(screen.getByRole("button", { name: "Actions" }));
+    expect(highlighted()?.textContent).toContain("bravo");
+    await user.keyboard("{ArrowDown}");
+    expect(highlighted()?.textContent).toContain("charlie");
+    await user.keyboard("{ArrowDown}");
+    expect(highlighted()?.textContent).toContain("alpha");
+    expect(highlighted()?.closest("section")).toBe(blockOf("Recent"));
+    await user.keyboard("{ArrowUp}{ArrowUp}{Enter}");
+    await waitFor(() => expect(screen.getByTestId("where")).toHaveTextContent("/pane/w1%3Ap2"));
+  });
+
+  it("opens a waiting pane on a tap, as a Recent row does", async () => {
+    const user = userEvent.setup();
+    const herd = [PANES[0]!, PANES[1]!, waiting(PANES[2]!), PANES[3]!];
+    mount("/", undefined, herd);
+    await user.click(screen.getByRole("button", { name: "Actions" }));
+    await user.click(within(blockOf("Needs you")).getByRole("button", { name: /charlie/ }));
+    await waitFor(() => expect(screen.getByTestId("where")).toHaveTextContent("/pane/w1%3Ap3"));
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("hides the block with the other blocks once something is typed", async () => {
+    const user = userEvent.setup();
+    const herd = [PANES[0]!, waiting(PANES[1]!), PANES[2]!, PANES[3]!];
+    mount("/", undefined, herd);
+    await user.click(screen.getByRole("button", { name: "Actions" }));
+    expect(within(palette()).getByRole("heading", { name: "Needs you" })).toBeInTheDocument();
+    await user.type(field(), "alpha");
+    expect(within(palette()).queryByRole("heading", { name: "Needs you" })).toBeNull();
+    await user.clear(field());
+    expect(within(palette()).getByRole("heading", { name: "Needs you" })).toBeInTheDocument();
   });
 });

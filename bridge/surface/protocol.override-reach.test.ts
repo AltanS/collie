@@ -4,8 +4,10 @@
 //
 //  1. The gate table: every refusal a person's send could meet, before and after.
 //  2. The harm cases: an unread permission dialog of every harness in the corpus, a `(y/n)` prompt, a
-//     numbered menu and a picker, on the manual road and on the newly reached one. Nothing is typed,
-//     no key is pressed, and the refusal is `menu_open` with the rows now and their hash.
+//     numbered menu and a picker, on the manual road and on the newly reached one. No key is pressed.
+//     On a pane with a profile nothing is typed and the refusal is `menu_open` with the rows now and
+//     their hash; on the blind road (no profile, a guessed sign) the override is typed with no key
+//     (2026-11-25, protocol.blind-menu-override.test.ts).
 //  3. A moved screen: refused with the rows now; a spinner, a clock or a turn streaming above the box
 //     is no move; the next tap binds to the new hash.
 //  4. At most once, never held, and the long hold's mark.
@@ -167,9 +169,21 @@ describe("2. the harm cases: an override never answers a question (M102 spec 12)
       refusedClean(await rig(screen, { harness: FRAMELESS }).override("1"), screen, "menu_open");
     });
 
-    test(`${what} on the newly reached road (no profile): refused menu_open, nothing typed, no key`, async () => {
+    // The blind road's sign is a guess (2026-11-25): the override passes it only where the screen shows an
+    // agent's input box or footer, with no key; on a plain program (a cue alone is none) it is refused as
+    // before, nothing typed (protocol.blind-menu-override.test.ts).
+    test(`${what} on the newly reached road (no profile): on a plain program refused menu_open, nothing typed, no key`, async () => {
       const screen = new ScreenPane(PROMPT_ROWS(rows));
-      refusedClean(await rig(screen, { harness: NO_PROFILE }).override("y"), screen, "menu_open");
+      const answer = await rig(screen, { harness: NO_PROFILE }).override("y");
+      expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "menu_open", keys: [] });
+      expect(answer.rowsHash).toBeUndefined();
+      expect(screen.writes).toEqual([]);
+      expect(screen.keys).toEqual([]);
+    });
+
+    test(`${what} over an agent's box on the newly reached road (no profile): the override is typed with no key`, async () => {
+      const screen = new ScreenPane(overBox(CLAUDE_DRAFT, rows));
+      typedNoKey(await rig(screen, { harness: NO_PROFILE }).override("y"), screen, "y");
     });
 
     test(`${what} over a draft the reader read (the newly reached road): refused menu_open, nothing typed, no key`, async () => {
@@ -186,6 +200,36 @@ describe("2. the harm cases: an override never answers a question (M102 spec 12)
       expect(screen.writes).toEqual([]);
       expect(screen.keys).toEqual([]);
     }
+  });
+
+  test("a menu refusal on a pane with a reader profile stores the sign, kind and row", async () => {
+    for (const [, rows] of MENUS) {
+      const screen = new ScreenPane(overBox(CLAUDE_DRAFT, rows));
+      const r = rig(screen);
+      const answer = await r.override("2");
+      expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "menu_open", keys: [] });
+      const sign = answer.receipt?.menuSign;
+      expect(sign).toBeDefined();
+      expect(answer.menuSign).toEqual(sign);
+      expect(Number.isInteger(sign?.row)).toBe(true);
+      expect(r.protocol.recent("%1", 1)[0]?.menuSign).toEqual(sign);
+      expect(r.store.list().at(-1)?.receipt?.menuSign).toEqual(sign);
+    }
+    // The manual road (a reader that finds no box) stores it too.
+    const unread = new ScreenPane(PROMPT_ROWS(MENUS[0]![1]));
+    const answer = await rig(unread, { harness: FRAMELESS }).override("y");
+    expect(answer.receipt?.menuSign).toEqual({ kind: "yes-no", row: expect.any(Number) });
+  });
+
+  test("the stored sign holds no screen text", async () => {
+    const marker = "ZQXMARKERTEXT";
+    const screen = new ScreenPane(overBox(CLAUDE_DRAFT, [`${marker} Overwrite config.toml? (y/n)`]));
+    const r = rig(screen);
+    const answer = await r.override("y");
+    expect(answer.receipt).toMatchObject({ reason: "menu_open" });
+    const kept = [JSON.stringify(answer.receipt), JSON.stringify(r.protocol.recent("%1", 1)), JSON.stringify(r.store.list().at(-1)?.receipt)].join("\n");
+    expect(kept).not.toContain(marker);
+    expect(Object.keys(answer.receipt?.menuSign ?? {}).toSorted()).toEqual(["kind", "row"]);
   });
 
   test("the menu sign answers with the rows its hash covers, and the next tap on them still refuses", async () => {

@@ -196,6 +196,9 @@ export function SpaceRoute() {
                 glideKeyOf={paneOpen.glideKeyOf}
                 onPress={paneOpen.press}
                 host={navHost}
+                scope={data.scope}
+                servers={data.servers}
+                sessions={data.sessions}
               />
             </main>
             {plus.sheet}

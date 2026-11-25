@@ -26,7 +26,7 @@ import { parseAnsi } from "../../web/src/lib/ansi.ts";
 import { splitLines } from "../../web/src/lib/blocks.ts";
 import { DEFAULT_EDGE_PROFILE, type EdgeKind } from "../../web/src/lib/surface/edges.ts";
 import { emptyFoldState, readFold, stepFold, type FoldContext, type FoldState, type SurfaceInput, type SurfaceRead } from "../../web/src/lib/surface/fold.ts";
-import { readIsUnstyled, rowText, type IdleProfile } from "../../web/src/lib/surface/frame.ts";
+import { boxInk, readIsUnstyled, rowText, wholeDraft, type IdleProfile } from "../../web/src/lib/surface/frame.ts";
 import { legacyFree, liftAsk, liftDialog, readerBlocks } from "../../web/src/lib/surface/lift.ts";
 import { findProfile, loadProfiles, profileFor, type Profile } from "../../web/src/lib/surface/profile.ts";
 import { askOf, frameImageKey, isFree, modalWord, shortHash, type Ask, type Surface, type SurfaceTurn } from "../../web/src/lib/surface/surface.ts";
@@ -155,6 +155,8 @@ interface PaneState {
   logged: Map<string, number>;
   /** The box rows a request proved stale ({@link SurfaceShadow.markStale}), until a read shows other rows; null with none. */
   staleFrame: string | null;
+  /** The suggestion a request's probe proved in this pane's box ({@link SurfaceShadow.markSuggestion}), until a read shows another box; null with none. */
+  suggestion: { readonly text: string; readonly ink: string } | null;
 }
 
 function emptyCounters(): ShadowCounters {
@@ -212,7 +214,7 @@ export class SurfaceShadow {
    * The input box of the pane's newest screen read, when it was read and the turn the Surface claimed
    * (ADR 0122): the box's text, "" when
    * empty or showing the placeholder, null when that read found no box (a dialog over it, an unreadable
-   * screen). Null before the pane's first read. The Send Protocol reads it for queued sends that came
+   * screen) or a box that shows only the tail of its draft ({@link wholeDraft}, a box at its scroll height). Null before the pane's first read. The Send Protocol reads it for queued sends that came
    * back to the box; the box text never leaves the bridge from here.
    */
   boxOf(paneId: string): { readonly box: string | null; readonly at: number; readonly turn: SurfaceTurn; readonly plain: boolean } | null {
@@ -223,7 +225,9 @@ export class SurfaceShadow {
     const turn = state?.read?.surface.turn ?? "unknown";
     // A read with no styling at all (herdr-core): a draft there may be the placeholder (M78 spec 06).
     const plain = fold.screen.rows !== null && readIsUnstyled(fold.screen.rows);
-    return { box: frame === null ? null : frame.placeholder ? "" : frame.interior.text, at: fold.screen.at, turn, plain };
+    // A box at its scroll height has no whole draft (null) before any suggestion check (PR 857, issue 854).
+    const whole = frame === null ? null : wholeDraft(frame);
+    return { box: whole === null ? null : this.showsSuggestion(state!) ? "" : whole, at: fold.screen.at, turn, plain };
   }
 
   /**
@@ -400,6 +404,7 @@ export class SurfaceShadow {
         idle,
         logged: new Map(),
         staleFrame: null,
+        suggestion: null,
       };
       this.panes.set(agent.paneId, state);
     }
@@ -454,9 +459,35 @@ export class SurfaceShadow {
     if (state.read !== null) state.read = this.folded(state);
   }
 
+  /**
+   * A request's probe proved the box a pane shows the harness's own suggestion (issue 854): its words
+   * and the one colour they wear. The pane's Surface reads `composer: empty` on every read whose box
+   * shows those words in that colour, and the mark goes at the first read that shows anything else (a
+   * new suggestion, the same words typed or accepted, which wear the typed colour). The phone then shows
+   * no draft for it and offers no Clear. A pane the shadow has not read takes no mark. Never throws.
+   */
+  markSuggestion(paneId: string, ghost: { readonly text: string; readonly ink: string }): void {
+    const state = this.panes.get(paneId);
+    if (state === undefined) return;
+    state.suggestion = ghost;
+    if (state.read !== null) state.read = this.folded(state);
+  }
+
+  /** Whether the pane's newest screen shows, in its box, the suggestion a request proved ({@link markSuggestion}); drops the mark when it does not. */
+  private showsSuggestion(state: PaneState): boolean {
+    const mark = state.suggestion;
+    if (mark === null) return false;
+    const rows = state.fold.screen?.rows ?? null;
+    const frame = state.fold.screenRead?.frame ?? null;
+    // A box at its scroll height is never the suggestion (PR 857): text stands above its view.
+    if (rows !== null && frame !== null && !frame.placeholder && frame.scrolled !== true && frame.interior.text === mark.text && !readIsUnstyled(rows) && boxInk(rows, frame) === mark.ink) return true;
+    state.suggestion = null;
+    return false;
+  }
+
   /** The fold's read of a pane, marked `staleFrame` while its newest screen shows the box rows a request proved stale. */
   private folded(state: PaneState): SurfaceRead {
-    const read = readFold(state.fold, this.contextOf(state));
+    const read = this.withoutSuggestion(state, readFold(state.fold, this.contextOf(state)));
     if (state.staleFrame === null) return read;
     const rows = state.fold.screen?.rows ?? null;
     const frame = state.fold.screenRead?.frame ?? null;
@@ -465,6 +496,12 @@ export class SurfaceShadow {
       return read;
     }
     return { ...read, surface: { ...read.surface, staleFrame: true } };
+  }
+
+  /** A read whose box shows the proven suggestion ({@link markSuggestion}), as the empty box. */
+  private withoutSuggestion(state: PaneState, read: SurfaceRead): SurfaceRead {
+    if (read.surface.composer !== "draft" || !this.showsSuggestion(state)) return read;
+    return { ...read, surface: { ...read.surface, composer: "empty" } };
   }
 
   /** The ask a read lifted: through the session's book when it has one, else named by its content. */

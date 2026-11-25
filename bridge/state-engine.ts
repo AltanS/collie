@@ -380,10 +380,11 @@ export class StateEngine {
   // quit, then a bare `muse` in the same pane changes the argv and binds nothing, and the old
   // session's name must not stay on the new one.
   private readonly museBindings = new Map<string, string>();
-  // Revision at which each pane was last enriched. enrichSessionNames skips the readGrid /
-  // foreground RPC for any pane whose revision hasn't moved — O(enriched panes) socket calls
-  // per poll → O(changed).
-  private readonly enrichedAt = new Map<string, number>();
+  // Revision and session ref at which each pane was last enriched. enrichSessionNames skips the
+  // readGrid / foreground RPC when neither has moved — O(enriched panes) socket calls per poll →
+  // O(changed), while still re-checking if a hook attaches or switches the session ref at the
+  // same revision.
+  private readonly enrichedAt = new Map<string, string>();
   private readonly transitionListeners = new Set<TransitionListener>();
   private readonly removeListeners = new Set<RemoveListener>();
   private readonly updateListeners = new Set<UpdateListener>();
@@ -855,7 +856,10 @@ export class StateEngine {
    * THEN TWO FALLBACKS, each for a harness that declares one as data (harness-name-sources.ts), and
    * only while the journal named no person-set name for the pane. A screen read: Claude paints its
    * `/rename` name into its input box (see {@link extractClaudeSessionName}), which matters where the
-   * pane reports no session id. An argv-bound journal read: Muse names no session ref
+   * pane reports no session id. On a multiplexer that hands out plain text (`MuxGrid.unstyled`, the
+   * Herdr core) the read is skipped for a pane that has a session ref, because the journal can answer
+   * there and a mode badge cannot be told from a name without colour; a pane with no ref keeps the read.
+   * An argv-bound journal read: Muse names no session ref
    * ({@link ArgvNameProbe}). Reads run in parallel and are individually best-effort: a read that fails
    * or times out, a screen with no input box in view, or a probe that cannot bind the pane exactly keeps
    * the last-known name (sticky cache) and never fails the poll; a proven-unnamed answer drops it, and so
@@ -870,13 +874,19 @@ export class StateEngine {
     const fallback = agents.filter((a) => journal.get(a.paneId)?.person === undefined);
     const screened = fallback.filter((a) => SCREEN_NAME_READERS.has(a.agent));
     const argvBound = fallback.filter((a) => this.argvNames[a.agent] !== undefined);
-    const unchanged = (a: AgentView): boolean => {
+    const enrichKey = (a: AgentView): string | undefined => {
       const rev = revisions.get(a.paneId);
-      return rev !== undefined && this.enrichedAt.get(a.paneId) === rev;
+      if (rev === undefined) return undefined;
+      const session = a.agentSession === undefined ? "" : `${a.agentSession.kind}:${a.agentSession.value}`;
+      return `${String(rev)}:${session}`;
+    };
+    const unchanged = (a: AgentView): boolean => {
+      const key = enrichKey(a);
+      return key !== undefined && this.enrichedAt.get(a.paneId) === key;
     };
     const markRead = (a: AgentView): void => {
-      const rev = revisions.get(a.paneId);
-      if (rev !== undefined) this.enrichedAt.set(a.paneId, rev);
+      const key = enrichKey(a);
+      if (key !== undefined) this.enrichedAt.set(a.paneId, key);
     };
     await Promise.all([
       ...screened.map(async (a) => {
@@ -894,6 +904,17 @@ export class StateEngine {
             styling: "preserve",
           });
           if (!grid.ok) return;
+          // A multiplexer that hands out plain text (`unstyled`, the Herdr core) leaves nothing to tell a
+          // `/rename` name from a mode badge such as `ultracode` in the same rule. Where the journal
+          // can answer instead, the pane has a session ref and a title tracker is wired, the screen
+          // is not guessed from and the cached screen name is dropped, so it never outlives the ref.
+          // A pane with no ref keeps the screen read as it always did: a badge may show there as a
+          // name, but a real name is not lost. A styled read is never skipped.
+          if (grid.value.unstyled === true && this.titles !== undefined && a.agentSession !== undefined) {
+            this.sessionNames.delete(a.paneId);
+            markRead(a);
+            return;
+          }
           const name = read(grid.value.text);
           // An input box in view with no name forgets the old one: a name renamed away, or a badge
           // once mistaken for a name, must not outlive the screen that showed it.

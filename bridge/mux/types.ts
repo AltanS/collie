@@ -475,6 +475,13 @@ export interface MuxGrid {
    */
   readonly partial?: true;
   /**
+   * The multiplexer hands out plain text with no ANSI colour escapes even when `styling: "preserve"`
+   * is requested. Consumers that rely on colour to distinguish two renderings (such as a Claude
+   * `/rename` title vs a coloured mode badge in the input rule) must not guess from this grid.
+   * Absent on adapters that preserve styling.
+   */
+  readonly unstyled?: true;
+  /**
    * A sentence for the person, set only on an `older` read ({@link MuxGridRequest.purpose}) that
    * answered without the rows above the screen, and saying why: on herdr-core, the agent waits on a
    * person, or the core still runs an earlier history read. Absent on every other read and adapter.

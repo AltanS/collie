@@ -5,6 +5,7 @@ import {
   countBlocked,
   flipDir,
   hasReady,
+  isBlockedOnYou,
   isErrorBlocked,
   isQuestion,
   isUnseen,
@@ -330,6 +331,12 @@ describe("countBlocked and hasReady — the Focus tab's two marks (ADR 0066)", (
     expect(countBlocked(herd)).toBe(2);
     expect(countBlocked([agent("u1", "done", { active: 2, seen: 1 })])).toBe(0);
     expect(countBlocked([])).toBe(0);
+  });
+
+  it("isBlockedOnYou is the blocked bucket alone, the one countBlocked counts", () => {
+    expect(herd.filter(isBlockedOnYou).map((a) => a.paneId)).toEqual(["b1", "b2"]);
+    expect(herd.filter(isBlockedOnYou)).toHaveLength(countBlocked(herd));
+    expect(isBlockedOnYou(agent("u1", "done", { active: 2, seen: 1 }))).toBe(false);
   });
 
   it("reports a finished and unseen pane, and nothing else, as ready", () => {

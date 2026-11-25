@@ -2255,6 +2255,8 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
           blindSent: sentRecorder(sentStore, () => engine.current().shellPanes),
           // A box proven stale (a probe that missed it, and a second read of the same rows): the Surface says so until the rows change.
           staleFrame: (paneId, frame) => surface?.markStale(paneId, frame),
+          // A suggestion a probe proved (issue 854): the Surface reads that box as empty until it shows anything else.
+          suggestion: (paneId, ghost) => surface?.markSuggestion(paneId, ghost),
           // The data road (M99 spec 03): only with the inside socket open, and read again per send.
           data: insideHub === null ? undefined : { enabled: insideOn, door: insideHub },
         })
@@ -2413,7 +2415,7 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
   const stop = endpoint.kind === "terminal" ? new StopService(stopped === undefined ? stopDeps : { ...stopDeps, stopped }) : undefined;
   const withStop = stop === undefined ? withHold : { ...withHold, stop };
   // A Clear of the harness's box (ADR 0116, the Clear paragraph): the same mux, key gate and profile as the Stop.
-  const clear = endpoint.kind === "terminal" ? new ClearService({ mux: herdr, gate: gateFor(herdr), profile: paneProfile, staleFrame: (paneId, frame) => surface?.markStale(paneId, frame) }) : undefined;
+  const clear = endpoint.kind === "terminal" ? new ClearService({ mux: herdr, gate: gateFor(herdr), profile: paneProfile, staleFrame: (paneId, frame) => surface?.markStale(paneId, frame), suggestion: (paneId, ghost) => surface?.markSuggestion(paneId, ghost) }) : undefined;
   const withClear = clear === undefined ? withStop : { ...withStop, clear };
   // The take-back of a waiting queue (ADR 0122, the 2026-11-22 addendum): the Stop's mux, key gate and profile,
   // inside the Send Protocol's pane lock, so it needs the protocol on.

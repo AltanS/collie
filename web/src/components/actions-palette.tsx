@@ -22,20 +22,25 @@ import { paneRowKey, paneScope } from "@/lib/hosts";
 import { t } from "@/lib/i18n";
 import { useMuxHasSpaces } from "@/lib/mux-capability";
 import { crewPath, panePath, spacePath, trickSessionPath } from "@/lib/nav";
+import { groupPanesByWorkspace } from "@/lib/pane-groups";
 import { usePins } from "@/lib/pins";
 import { recentLivePanes, useRecentPanes } from "@/lib/recent-panes";
 import { useRootData } from "@/lib/route-data";
 import type { Scope } from "@/lib/scope";
 import { runShortcutAction } from "@/lib/shortcuts/registry";
 import type { ActionId } from "@/lib/shortcuts/actions";
+import { isBlockedOnYou } from "@/lib/triage";
 import type { AgentView } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { waitingPanes } from "@/lib/wide-dashboard";
 import { FOCUS_RING, TRIGGER_OPEN } from "@/components/ui/button";
 
 // THE ACTIONS PALETTE (ADR 0165). One modal at the TOP of the screen, over a dimmed scrim, because the
 // soft keyboard owns the bottom half: a search field, then one list. Before anything is typed the list
-// is "Recent", the last panes this device opened (lib/recent-panes.ts), then "Suggested", four commands
-// for this screen, then "All panes", the Switch pane sheet's own list, so scrolling down lands in the
+// is "Needs you", every pane that waits for the person's answer (the blocked ones, `isBlockedOnYou`, in the
+// Dashboard band's order: `waitingPanes` over the dashboard's grouping; no cap, the open pane left out), only while one waits;
+// then "Recent", the last panes this device opened (lib/recent-panes.ts), a pane listed above not again;
+// then "Suggested", four commands for this screen, then "All panes", the Switch pane sheet's own list, so scrolling down lands in the
 // switcher. Typed, it is one ranked list of commands, spaces and panes (lib/actions-palette/rank.ts).
 //
 // A COMMAND IS LISTED ONLY WHERE IT WORKS. The registry answers that (`useAvailableShortcutActions`, the
@@ -67,6 +72,7 @@ type Row =
 
 /** The list before typing (Recent, Suggested) and the ranked list of a typed field. */
 interface PaletteLists {
+  readonly needs: readonly Row[];
   readonly recent: readonly Row[];
   readonly suggested: readonly Row[];
   readonly typed: readonly Row[];
@@ -104,13 +110,26 @@ export function ActionsPalette({ openPane, onClose }: ActionsPaletteProps) {
   const hereKey = openPane === undefined ? null : paneRowKey(openPane);
 
   const rows = useMemo((): PaletteLists => {
-    const recent = recentLivePanes({ recent: recentStore, panes: herd, hereKey, limit: RECENT_COUNT }).map(
-      (pane): Row => ({ key: `p:${paneRowKey(pane)}`, kind: "pane", pane }),
-    );
+    // The panes blocked on the person (the triage bucket `needs`, the red ones; a finished pane not yet opened
+    // is not one), in the Dashboard's band order (the list's own: machine, Space, tab, position), over the
+    // palette's pane list. The open pane is left out, and there is no cap. A pane listed
+    // here is not offered again in Recent, which fills its four from the next recent panes.
+    const waiting = waitingPanes(
+      groupPanesByWorkspace(data.agents, data.shellPanes, { order: "fixed", tabs: data.tabs, servers: data.servers, workspaces: data.workspaces, scope: data.scope, sessions: data.sessions }),
+      isBlockedOnYou,
+    ).filter((pane) => paneRowKey(pane) !== hereKey);
+    const waitingKeys = new Set(waiting.map(paneRowKey));
+    const needs = waiting.map((pane): Row => ({ key: `n:${paneRowKey(pane)}`, kind: "pane", pane }));
+    const recent = recentLivePanes({
+      recent: recentStore,
+      panes: herd.filter((pane) => !waitingKeys.has(paneRowKey(pane))),
+      hereKey,
+      limit: RECENT_COUNT,
+    }).map((pane): Row => ({ key: `p:${paneRowKey(pane)}`, kind: "pane", pane }));
     const suggested = suggestedCommands(inPane ? "pane" : "dashboard", available).map(
       (command): Row => ({ key: `c:${command.id}`, kind: "command", command }),
     );
-    if (!typed) return { recent, suggested, typed: [] };
+    if (!typed) return { needs, recent, suggested, typed: [] };
     const commands = availableCommands(available);
     const byId = new Map(commands.map((command) => [command.id, command]));
     const entries: CommandEntry[] = commands.map((command) => ({ id: command.id, label: t(command.labelKey), destructive: isDestructive(command.id) }));
@@ -125,13 +144,13 @@ export function ActionsPalette({ openPane, onClose }: ActionsPaletteProps) {
       if (hit.kind === "space") return { key: hitKey(hit), kind: "space", workspaceId: hit.space.key, label: hit.space.label, marks: hit.marks };
       return { key: hitKey(hit), kind: "pane", pane: hit.pane, hit };
     });
-    return { recent, suggested, typed: typedRows };
-  }, [recentStore, herd, hereKey, inPane, available, typed, query, hasSpaces, data.workspaces, data.servers]);
+    return { needs, recent, suggested, typed: typedRows };
+  }, [recentStore, herd, hereKey, inPane, available, typed, query, hasSpaces, data.agents, data.shellPanes, data.tabs, data.workspaces, data.servers, data.scope, data.sessions]);
 
-  const flat = typed ? rows.typed : [...rows.recent, ...rows.suggested];
+  const flat = typed ? rows.typed : [...rows.needs, ...rows.recent, ...rows.suggested];
   // The first row is highlighted unless it closes something: ranking puts a safe row first wherever
   // one matches, so this is the list with nothing but Close rows, where Enter waits for an arrow. With
-  // no Recent and no Suggested row, the first highlight is the arrow's to give.
+  // no Needs you, Recent or Suggested row, the first highlight is the arrow's to give.
   const first = flat[0];
   const current = highlight ?? (first !== undefined && !isDestructiveRow(first) ? first.key : null);
   const paneByKey = useMemo(() => new Map(herd.map((pane) => [paneRowKey(pane), pane])), [herd]);
@@ -169,7 +188,7 @@ export function ActionsPalette({ openPane, onClose }: ActionsPaletteProps) {
   }
 
   /**
-   * The rows the arrows walk, in the order they are drawn: Recent and Suggested (or the ranked list),
+   * The rows the arrows walk, in the order they are drawn: Needs you, Recent and Suggested (or the ranked list),
    * then the All panes list's rows. Read from the list itself at the key press, so the sheet's own list
    * needs no second copy of its order and nothing is measured on open.
    */
@@ -235,7 +254,14 @@ export function ActionsPalette({ openPane, onClose }: ActionsPaletteProps) {
   }
 
   const rowAt = (row: Row): ReactNode => (
-    <PaletteRow key={row.key} row={row} highlighted={row.key === current} here={hereKey} onRun={run} />
+    <PaletteRow
+      key={row.key}
+      row={row}
+      highlighted={row.key === current}
+      here={hereKey}
+      onRun={run}
+      draftScope={row.kind === "pane" ? paneScope(data.scope, row.pane, data.servers, data.sessions) : undefined}
+    />
   );
   const highlightedPane = current?.startsWith(ALL_PANES_KEY) ? current.slice(ALL_PANES_KEY.length) : null;
   // The shell (scrim, panel, focus, Escape, the room above the keyboard) is the shared modal's, at the top
@@ -292,6 +318,7 @@ export function ActionsPalette({ openPane, onClose }: ActionsPaletteProps) {
           )
         ) : (
           <div className="flex flex-col gap-2 p-1">
+            {rows.needs.length > 0 && <Block label={t("status.section.needsYou")}>{rows.needs.map(rowAt)}</Block>}
             {rows.recent.length > 0 && <Block label={t("actions.recent")}>{rows.recent.map(rowAt)}</Block>}
             {rows.suggested.length > 0 && <Block label={t("actions.suggested")}>{rows.suggested.map(rowAt)}</Block>}
             {/* ALL PANES: the Switch pane sheet's own list (agent-sidebar.tsx), with the props that sheet
@@ -366,15 +393,18 @@ function PaletteRow({
   highlighted,
   here,
   onRun,
+  draftScope,
 }: {
   row: Row;
   highlighted: boolean;
   here: string | null;
   onRun: (row: Row) => void;
+  /** A pane row's own address, for the pencil of an unsent draft (ui/draft-mark.tsx). */
+  draftScope?: Scope | undefined;
 }) {
   let body: ReactNode;
   if (row.kind === "pane") {
-    body = <PaneRow pane={row.pane} active={paneRowKey(row.pane) === here} onSelect={() => onRun(row)} roomy={false} match={row.hit?.match} />;
+    body = <PaneRow pane={row.pane} active={paneRowKey(row.pane) === here} onSelect={() => onRun(row)} roomy={false} match={row.hit?.match} draftScope={draftScope} />;
   } else if (row.kind === "space") {
     body = (
       <ActionRow

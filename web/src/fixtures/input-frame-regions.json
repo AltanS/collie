@@ -2804,6 +2804,22 @@
   "frame": null
  },
  {
+  "fixture": "claude--v2331-draft-scrolled-up--w59.txt",
+  "frame": {
+   "top": 1,
+   "prompt": 2,
+   "bottom": 5,
+   "label": "↑ 5 more",
+   "text": "of view. Collie looks for that prompt line to find the box, so it cannot find it, and the send stops after typing without pressing Enter.",
+   "placeholder": false,
+   "status": null,
+   "footer": {
+    "first": 7,
+    "last": 7
+   }
+  }
+ },
+ {
   "fixture": "claude--wizard-multiselect-checked.txt",
   "frame": null
  },

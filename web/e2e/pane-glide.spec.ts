@@ -408,11 +408,14 @@ async function rowOnScreen(page: Page): Promise<boolean> {
   }, W1);
 }
 
+/** How long the slow-read case holds each pane read back. */
+const SLOW_READ_MS = 500;
+
 test("a slow pane read opens the plain way, with the slide, and the screen never freezes", async ({ page }, testInfo) => {
   await instrument(page);
-  // Registered after the stub, so it answers first: every pane read takes 500 ms.
+  // Registered after the stub, so it answers first: every pane read takes SLOW_READ_MS.
   await page.route(/\/api\/pane\/[^/?]+(\?.*)?$/u, async (route) => {
-    await new Promise((r) => setTimeout(r, 500));
+    await new Promise((r) => setTimeout(r, SLOW_READ_MS));
     await route.fallback();
   });
   const reads: string[] = [];
@@ -443,10 +446,15 @@ test("a slow pane read opens the plain way, with the slide, and the screen never
   // page counts from the start of the switch, pinned with a fake clock in `src/lib/loaders.test.ts`.
   // The timing stays in the annotation for a person to read.
   await expect(screen(page)).toHaveClass(/slide-in-from-right/u);
-  // Frames kept coming the whole time the read was out: the old screen stayed live.
+  // Frames kept coming the whole time the read was out: the old screen stayed live. A frozen screen
+  // is one gap as long as the read (SLOW_READ_MS), because nothing paints while the page waits. A
+  // bound of 150 ms was a dropped-frame meter, not that check: this case measured 92 to 116 ms
+  // pinned to one core, and 162 and 150 ms on GitHub's WebKit runner, with no fault in the app
+  // (v1.31.0-edge.1, 2026-11-24). So the bound is half the read, which the runner's slowness stays
+  // far under and a real freeze (a full read) stays far over.
   const gap = await longestFrameGap(page, tapAt, arrivedAt);
   testInfo.annotations.push({ type: "timing", description: `slow read: longest frame gap ${Math.round(gap)}ms` });
-  expect(gap).toBeLessThan(150);
+  expect(gap).toBeLessThan(SLOW_READ_MS / 2);
 });
 
 test("with reduced motion the tap and the back arrow navigate with no view transition", async ({ page }) => {

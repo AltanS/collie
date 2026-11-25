@@ -5,7 +5,8 @@
 // ── WHAT A REPORT HOLDS ──────────────────────────────────────────────────────
 // By default: Collie's version and line, the OS, the multiplexer, the harness and its version from the
 // receipt, the reader profile and its status, and each failing send's request id, outcome, reason, the
-// bridge's line for it, its gaps and keys by name. Never the text and never the screen. Two switches,
+// bridge's line for it, its gaps and keys by name, and, on a send refused `menu_open`, the menu sign that
+// fired as `sign=<kind>@<row>` (kind and row number, never a character of the screen). Never the text and never the screen. Two switches,
 // both off by default, add the line the bridge kept of each text (`row.line`, which the bridge already
 // leaves out when it looks like a secret) and the pane's last rows, masked by the bridge.
 //
@@ -45,6 +46,8 @@
 import { asJsonObject, asJsonString, parseJson, type JsonObject } from "../json";
 import type { ReportContext, ReportDoctorRow } from "./context";
 import type { SendReceiptRow, SendStep } from "../surface/send";
+import { MENU_SIGN_KINDS } from "../surface/menu-sign";
+import { CODE_REJECTED_PLAIN } from "../surface/secret-field";
 import { harnessOf } from "./signal";
 import type { DialogTrouble, Episode } from "./store";
 
@@ -144,6 +147,28 @@ function title(input: ReportInput): string {
 
 const STEP_ORDER: readonly SendStep[] = ["settle", "s0", "clear", "probe", "probeWrite", "write", "s1", "commandSettle", "commit", "s2"];
 
+/**
+ * The menu sign of a send refused `menu_open`, or of an override past it, as `<kind>@<row>`: which sign fired and on which screen row,
+ * never a character of the screen. A kind the app does not know or a row that is no index prints nothing,
+ * so a bridge cannot put free text into the line through this field.
+ */
+function signWord(row: SendReceiptRow): string | null {
+  const sign = row.menuSign;
+  if (sign === undefined) return null;
+  if (!MENU_SIGN_KINDS.includes(sign.kind) || !Number.isInteger(sign.row) || sign.row < 0) return null;
+  return `${sign.kind}@${String(sign.row)}`;
+}
+
+/**
+ * The detail line a report prints for a send. A `code_rejected` refusal's detail is the agent's own error
+ * row off the screen (M102 spec 05), so a report never prints it: the line is the fixed sentence instead.
+ * The phone's refusal notice still shows the bridge's detail; only the report leaves it out.
+ */
+function reportDetail(row: SendReceiptRow): string | undefined {
+  if (row.reason === "code_rejected") return CODE_REJECTED_PLAIN;
+  return row.detail;
+}
+
 /** One send as one line: when, how it ended, its id, keys and gaps, what the bridge saw and said. */
 export function sendLine(row: SendReceiptRow, includeTyped: boolean): string {
   const parts = [new Date(row.at).toISOString(), endWord(row), `id=${row.requestId}`, `mode=${row.mode}`];
@@ -151,11 +176,14 @@ export function sendLine(row: SendReceiptRow, includeTyped: boolean): string {
   const gaps = STEP_ORDER.flatMap((step) => (row.gapsMs[step] === undefined ? [] : [`${step}:${String(row.gapsMs[step])}`]));
   if (gaps.length > 0) parts.push(`gapsMs=${gaps.join(",")}`);
   if (row.saw !== undefined) parts.push(`saw=${row.saw.turn}/${row.saw.modal}/${row.saw.composer}${row.saw.reason === undefined ? "" : `/${row.saw.reason}`}`);
+  const sign = signWord(row);
+  if (sign !== null) parts.push(`sign=${sign}`);
   if (row.queued === true) parts.push("queued");
   // The person's word beside what Collie saw (M102 spec 01): a technical token, never read as proof.
   if (row.word !== undefined) parts.push(`word=${row.word}`);
   let line = parts.join("  ");
-  if (row.detail !== undefined) line += `\n    detail: ${row.detail}`;
+  const detail = reportDetail(row);
+  if (detail !== undefined) line += `\n    detail: ${detail}`;
   if (includeTyped && row.line !== undefined) line += `\n    typed: ${row.line}`;
   return line;
 }

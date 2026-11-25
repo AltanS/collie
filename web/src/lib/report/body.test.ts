@@ -51,6 +51,19 @@ describe("reportFields: local paths stay on the machine", () => {
   });
 });
 
+describe("reportFields: a refused code", () => {
+  it("a code_rejected send's report holds no screen row", () => {
+    // The bridge's detail for this reason is the agent's own error row, read off the screen.
+    const rejected = row(1, { reason: "code_rejected", detail: "Invalid code for marker-row-qz7", keys: ["text", "Enter"] });
+    const input: ReportInput = { ...BASE, sends: [rejected] };
+    const fields = reportFields(input);
+    const link = fitLink(fields);
+    const everything = [fields.title, fields.what, fields.sends, fields.setup, fields.screen, reportText(fields), link.url, decodeURIComponent(link.url)].join("\n");
+    expect(everything).not.toContain("marker-row-qz7");
+    expect(fields.sends).toContain("detail: The agent did not take the code.");
+  });
+});
+
 describe("reportFields: what a report holds by default", () => {
   it("names the trouble, the harness and version from the receipt, and the mux, in the title and the signature", () => {
     const fields = reportFields(BASE);
@@ -182,6 +195,70 @@ describe("the link", () => {
 
   it("the duplicate search looks for the signature line", () => {
     expect(decodeURIComponent(searchLink(BASE))).toBe('https://github.com/AltanS/collie/issues?q=is:issue "collie-sig: send/probe_failed/claude@2.1.291/herdr"');
+  });
+});
+
+describe("the menu sign of a refused send (issues 861, 863)", () => {
+  const refused = (extra: Partial<SendReceiptRow> = {}): SendReceiptRow => row(1, { outcome: "refused", reason: "menu_open", keys: [], saw: { turn: "idle", modal: "unreadable", composer: "unknown" }, ...extra });
+
+  it("a refused send with a menu sign prints sign=<kind>@<row>", () => {
+    const line = sendLine(refused({ menuSign: { kind: "hint", row: 17 } }), false);
+    expect(line).toContain("refused/menu_open");
+    expect(line).toContain("saw=idle/unreadable/unknown  sign=hint@17");
+    expect(sendLine(refused({ menuSign: { kind: "pointed-list", row: 3 }, queued: true, word: "override" }), false)).toContain("sign=pointed-list@3  queued  word=override");
+    expect(reportText(reportFields({ ...BASE, sends: [refused({ menuSign: { kind: "numbered", row: 9 } })] }))).toContain("sign=numbered@9");
+  });
+
+  it("a send with no menu sign prints no sign", () => {
+    expect(sendLine(refused(), false)).not.toContain("sign=");
+    expect(sendLine(row(1), false)).not.toContain("sign=");
+  });
+
+  it("the sign holds no screen text: kind and row only, and a receipt with rows or a stray kind prints none of it", () => {
+    const marker = "MARKER-SCREEN-TEXT-7f3a";
+    // A receipt the way a bridge could send it: rows beside the sign, and a kind that is no kind of ours.
+    const withRows = { ...refused({ menuSign: { kind: "yes-no", row: 5 } }), rows: [marker, `1. ${marker}`] };
+    // SAFETY: the test plays a bridge that sent a kind outside MENU_SIGN_KINDS; sendLine must print none of it.
+    const stray = refused({ menuSign: { kind: marker as never, row: 4 } });
+    const noIndex = refused({ menuSign: { kind: "hint", row: Number.NaN } });
+    const input: ReportInput = { ...BASE, sends: [stray, noIndex, withRows] };
+    const fields = reportFields(input);
+    const everything = [fields.title, fields.what, fields.sends, fields.setup, reportText(fields), issueLink(fields), decodeURIComponent(issueLink(fields)), searchLink(input)].join("\n");
+    expect(everything).not.toContain(marker);
+    expect(fields.sends).toContain("sign=yes-no@5");
+    expect(fields.sends.match(/sign=/gu)).toHaveLength(1);
+  });
+
+  it("the longest report still fits the link, and the cut order is the same with signs", () => {
+    const signs = (n: number) => refused({ requestId: `rep-${String(n).padStart(6, "0")}`, at: AT + n * 1000, detail: "d".repeat(240), menuSign: { kind: "pointed-list", row: 23 } });
+    const doctor: readonly ReportDoctorRow[] = [
+      { check: "sends-claude", status: "warn", detail: "s".repeat(150), harness: "claude" },
+      { check: "holds-claude", status: "warn", detail: "h".repeat(150), harness: "claude" },
+      { check: "screen-claude", status: "warn", detail: "c".repeat(150), harness: "claude" },
+    ];
+    const sends = Array.from({ length: 10 }, (_, i) => signs(i + 1)).toReversed();
+    const plain = sends.map(({ menuSign: _sign, ...rest }) => rest);
+    const input = (list: readonly SendReceiptRow[]): ReportInput => ({ ...BASE, sends: list, context: { ...CONTEXT, doctor }, screen: "z".repeat(5000), note: "n".repeat(600) });
+    // The stage a link reached: the screen goes first, then the doctor rows, then the sends, then the note.
+    const stage = (link: ReturnType<typeof fitLink>): number => (link.cut.note ? 4 : link.cut.sends > 0 ? 3 : link.cut.doctor > 0 ? 2 : link.cut.screen !== "none" ? 1 : 0);
+    for (const list of [sends, plain]) {
+      const full = reportFields(input(list));
+      const whole = fitLink(full);
+      expect(whole.clipboard).toBe(false);
+      expect(whole.url.length).toBeLessThanOrEqual(ISSUE_URL_MAX);
+      expect(whole.fields.sends.split("\n").at(-1)).toBe(signature(input(list)));
+      let last = 0;
+      for (let max = ISSUE_URL_MAX; max > 400; max -= 50) {
+        const link = fitLink(full, max);
+        if (link.clipboard) break;
+        expect(link.url.length).toBeLessThanOrEqual(max);
+        expect(stage(link)).toBeGreaterThanOrEqual(last);
+        last = stage(link);
+      }
+      expect(last).toBe(4);
+    }
+    // A sign costs a few bytes a line: `  sign=pointed-list@23`.
+    expect(sendLine(signs(1), false).length - sendLine(plain[0]!, false).length).toBe("  sign=pointed-list@23".length);
   });
 });
 

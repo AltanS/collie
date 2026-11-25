@@ -20,7 +20,8 @@
       "bottom": { "pattern": "^─+$", "minCells": 8, "column": 0 },
       "continuationIndent": 2,
       "maxDraftRows": 100,
-      "maxTailRows": 60
+      "maxTailRows": 60,
+      "scroll": { "keeps": "tail", "rows": 100, "marker": "^↑ \\d+ more$" }
     },
     "frameAlternates": [
       {
@@ -99,8 +100,8 @@
     ],
     "notices": [
       { "head": "^✦ (?:Heads up|You should know) ·(?:\\s|$)", "body": true },
-      { "head": "^● How is Claude doing this session\\? \\(optional\\)$" },
-      { "head": "^● Can Anthropic look at your session transcript to help us improve Claude Code\\?$", "letters": true },
+      { "head": "^[●⏺] How is Claude doing this session\\? \\(optional\\)$" },
+      { "head": "^[●⏺] Can Anthropic look at your session transcript to help us improve Claude Code\\?$", "letters": true },
       { "head": "^✦ Dismissed\\.(?=\\s|$)" }
     ],
     "promptEchoes": true,

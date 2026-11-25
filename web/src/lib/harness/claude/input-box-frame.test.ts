@@ -237,6 +237,8 @@ describe("parity with the old walk on the real corpus", () => {
     "claude--v2323-rc-on-idle-usage--w100.txt",
     "claude--v2323-rc-on-running--w100.txt",
     "claude--v2323-rc-on-slash-list--w100.txt",
+    // A draft taller than the box (2.1.331): the `↑ 5 more` edge stands where the `❯` row would be.
+    "claude--v2331-draft-scrolled-up--w59.txt",
     "claude--working-esc-to-interrupt.txt",
     "claude--working.txt",
     // Claude Code 2.1.325 `/login` (2026-11-15): the sign-in field is a box of its own layout

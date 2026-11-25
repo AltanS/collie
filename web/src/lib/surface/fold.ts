@@ -47,7 +47,7 @@
 
 import { signInShown } from "./secret-field";
 import { edgeListHolds, readCuesFor, runningSign, type CueRead } from "./cues";
-import { coveredFrame, dialogRowShown, findInputFrame, frameEdge, overlayInRows, rowText, type Frame, type FrameRow, type IdleProfile } from "./frame";
+import { coveredFrame, dialogRowShown, findInputFrame, frameEdge, overlayInRows, pastPrompt, rowText, type Frame, type FrameRow, type IdleProfile } from "./frame";
 import { LOST_STOP_READS, LOST_STOP_SPAN_MS, SETTLE_MS, type EdgeKind } from "./edges";
 import { isFree, type Ask, type Surface, type SurfaceComposer, type SurfaceModal, type SurfaceReason, type SurfaceTurn } from "./surface";
 
@@ -257,13 +257,38 @@ export function endsInsideFrame(rows: readonly FrameRow[], idle: IdleProfile): b
   return edge === "top" || edge === "bottom";
 }
 
+/**
+ * What the box holds, as the Surface claims it: `unknown` with no box or one a key cannot reach
+ * (`blocked`), `empty` for an empty box or its placeholder, else `draft`. A box at its scroll height
+ * may hide text above its view (`frame.scrolled`), so it is never empty, whatever its rows in view
+ * hold: a person's draft that ends in blank rows shows only blank rows there.
+ */
+function composerOf(frame: Frame | null, blocked: boolean): SurfaceComposer {
+  if (frame === null || blocked) return "unknown";
+  if (frame.scrolled === true) return "draft";
+  return frame.placeholder || frame.interior.text.length === 0 ? "empty" : "draft";
+}
+
+/**
+ * The input frame of a screen read ({@link findInputFrame}), with one more rule for a box scrolled past
+ * its prompt row ({@link pastPrompt}): it stands only where the screen read without it shows no dialog
+ * cue. Its anchors are an edge with a label and a plain rule, which a transcript row (an echo of such a
+ * box) and a rule may also draw over a dialog; there the screen reads as it does with no box at all, so
+ * a dialog under it is never read as "no dialog". A box with its prompt row in view is taken as before.
+ */
+export function inputFrameOf(rows: readonly FrameRow[], idle: IdleProfile): Frame | null {
+  const found = findInputFrame(rows, idle);
+  if (found === null || !pastPrompt(found)) return found;
+  return readCuesFor(rows, null, idle).strength === "none" ? found : null;
+}
+
 /** The Surface of one screen read, before time is applied. */
 export function surfaceOfScreen(input: ScreenInput, idle: IdleProfile | null): SurfaceRead {
   if (input.rows === null) {
     return { surface: { revision: input.revision, turn: "unknown", modal: "unknown", composer: "unreachable" }, frame: null, cues: null };
   }
   const rows = input.rows;
-  const found = idle === null ? null : findInputFrame(rows, idle);
+  const found = idle === null ? null : inputFrameOf(rows, idle);
   const cues = readCuesFor(rows, found, idle);
   // A dialog drawn in the box's place (`idle.dialogsInBox`) hides the box: the screen makes no claim about it.
   const frame = idle?.dialogsInBox === true && cues.strength === "strong" ? null : found;
@@ -294,8 +319,7 @@ export function surfaceOfScreen(input: ScreenInput, idle: IdleProfile | null): S
 
   // Under a panel that takes the keys the box is not what a key reaches, so the screen claims nothing
   // of it: a panel's dismiss hint over the box, or a dialog the profile names over it.
-  const composer: SurfaceComposer =
-    frame === null || cues.panelFoot === true || cues.cutWrap === true || covered ? "unknown" : frame.placeholder || frame.interior.text.length === 0 ? "empty" : "draft";
+  const composer = composerOf(frame, cues.panelFoot === true || cues.cutWrap === true || covered);
 
   let reason: SurfaceReason | undefined;
   // Torn is a read cut inside the box. A whole box the dialog rule hid above is not one: its strong cue

@@ -121,6 +121,27 @@ export function nudgePattern(parts: NudgeParts): string {
  */
 export const answerLine = (word: string): RegExp => new RegExp(`^\\s*(?:⏺|●)?\\s*${escape(word)}\\.?\\s*$`, "mu");
 
+/** What case 33 saw: the send, the receipt, the screen, and whether the turn that read the message ended. */
+export interface OutsideFacts {
+  readonly code: number;
+  readonly state: string;
+  readonly via: string | null | undefined;
+  readonly nudged: boolean;
+  readonly read: boolean;
+  /** The pane's box is free again after the `inbox` read: the turn that read the message ended. */
+  readonly turnEnded: boolean;
+  readonly bodyInNudge: boolean;
+}
+
+/**
+ * Case 33's verdict. It judges what the product did: the send, the delivery, the border word, the nudge,
+ * the read through `inbox`, no body in the nudge, and that the turn ended. It does not judge whether the
+ * model printed the word the OTHER agent asked for: a model may rightly decline a peer agent's request and
+ * ask its operator first (Claude Code 2.1.332, 2 of 4 live runs), and that is no product defect.
+ */
+export const outsideVerdict = (facts: OutsideFacts): "pass" | "fail" =>
+  facts.code === 0 && facts.state === "delivered" && facts.via === "outside" && facts.nudged && facts.read && facts.turnEnded && !facts.bodyInNudge ? "pass" : "fail";
+
 /** The single-pane address of a pane on a solo install, which is what the rig's bridge is. */
 export const addressOf = (paneId: string): string => `local/${paneId}`;
 

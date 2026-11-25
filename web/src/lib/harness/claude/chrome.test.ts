@@ -1172,6 +1172,9 @@ describe("real corpus — pinned so any change to the walk shows up as a diff", 
     { fixture: "v2323-rc-off-permission-bash--w100", statusRows: 0, draft: null, stripped: 8 },
     { fixture: "v2323-rc-on-ask-single--w100", statusRows: 0, draft: null, stripped: 2 },
     { fixture: "v2323-rc-on-draft--w100", statusRows: 3, draft: "hello there", stripped: 30 },
+    // A draft taller than the box (2.1.331): the `↑ 5 more` edge, no `❯` row. The visible tail is no
+    // whole draft, so no draft is read (wholeDraft), as before the box was read at all.
+    { fixture: "v2331-draft-scrolled-up--w59", statusRows: 0, draft: null, stripped: 8 },
     { fixture: "v2323-rc-on-idle-joined--w100", statusRows: 1, draft: null, stripped: 14 },
     { fixture: "v2323-rc-on-idle-notice--w100", statusRows: 3, draft: null, stripped: 30 },
     { fixture: "v2323-rc-on-idle-usage--w100", statusRows: 3, draft: null, stripped: 30 },

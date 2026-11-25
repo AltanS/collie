@@ -1455,6 +1455,11 @@
    "version": "2.1.323",
    "state": "popup"
   },
+  "claude--v2331-draft-scrolled-up--w59.txt": {
+   "harness": "claude",
+   "version": "2.1.331",
+   "state": "draft"
+  },
   "claude--wizard-multiselect-checked.txt": {
    "harness": "claude",
    "version": "unversioned",

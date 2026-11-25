@@ -231,7 +231,9 @@
       "sgr": 2,
       "fg": [
         "rgb(107,114,128)"
-      ]
+      ],
+      "anyStyle": true,
+      "anyStyleNote": "Issue 854, 2026-11-24: after a turn omp's prompt suggestion (`composer.predictions`, on by default since 19.0.0, opt-in since 18.10) fills the empty box in the theme's `dim` colour, one foreground and no attribute. The 102 bundled themes use 92 `dim` colours and omp switches between its dark and light theme with the terminal, so `fg` above names only the default `titanium`. Read only (omp source, v18.22.0 and v19.0.1) and live (18.22.0 under titanium, dark and light): a typed character that does not start the suggestion makes it go, so the probe stands alone in the box; Backspace brings it back; Enter submits only what was typed; Tab or Right accepts it. The Send Protocol and Clear prove the box by that on every read. Fixtures omp--v18-22-0-suggestion-*."
     },
     "volatile": {
       "above": {

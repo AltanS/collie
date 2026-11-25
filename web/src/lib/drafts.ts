@@ -148,6 +148,9 @@ export function pruneDrafts(now: number = Date.now()): void {
       if (entry === null || now - entry.at > MAX_AGE_MS) stale.push(key);
     }
     for (const key of stale) store.removeItem(key);
+    // After the removal, off this call's stack: the first prune runs inside a `loadDraftEntry` that a
+    // row's snapshot read made, and a listener must never run in the middle of a render.
+    if (stale.length > 0) queueMicrotask(() => changed(null));
   } catch {
     // Enumeration can throw in locked-down storage — nothing to do but leave the drafts be.
   }
@@ -258,12 +261,17 @@ export function loadDraft(scope: Scope | undefined, paneId: string): string | nu
   return loadDraftEntry(scope, paneId)?.text ?? null;
 }
 
-/** {@link loadDraft} with the chips: the whole draft, or null when the pane has none. */
-export function loadDraftEntry(scope: Scope | undefined, paneId: string): Draft | null {
+/** The newer of a pane's two tiers' entries, with the moment it was written, or null. */
+function newestEntry(scope: Scope | undefined, paneId: string): DraftEntry | null {
   prunedOnce();
   const cached = memory.get(keyFor(scope, paneId)) ?? null;
   const stored = loadStored(scope, paneId);
-  const entry = cached === null ? stored : stored === null ? cached : stored.at > cached.at ? stored : cached;
+  return cached === null ? stored : stored === null ? cached : stored.at > cached.at ? stored : cached;
+}
+
+/** {@link loadDraft} with the chips: the whole draft, or null when the pane has none. */
+export function loadDraftEntry(scope: Scope | undefined, paneId: string): Draft | null {
+  const entry = newestEntry(scope, paneId);
   if (entry === null) return null;
   const attachments = entry.attachments ? [...entry.attachments] : [];
   return { text: entry.text, attachments, next: nextNumber(attachments, entry.next) };
@@ -282,9 +290,20 @@ export function saveDraft(
   attachments: readonly DraftAttachment[] = [],
   next = 1,
 ): void {
+  persistDraft(scope, paneId, text, attachments, next);
+  changed(keyFor(scope, paneId));
+}
+
+function persistDraft(
+  scope: Scope | undefined,
+  paneId: string,
+  text: string,
+  attachments: readonly DraftAttachment[],
+  next: number,
+): void {
   prunedOnce();
   if (text.trim() === "" && attachments.length === 0) {
-    clearDraft(scope, paneId);
+    removeDraft(scope, paneId);
     return;
   }
   const key = keyFor(scope, paneId);
@@ -333,6 +352,7 @@ function evictMemory(keep: string): void {
     .toSorted((a, b) => a[1].at - b[1].at);
   for (const [key, entry] of byAge) {
     memory.delete(key);
+    held.delete(key);
     total -= draftCharCount(entry.text, entry.attachments);
     if (total <= MEMORY_MAX_CHARS) return;
   }
@@ -365,6 +385,11 @@ export function fillEmptyDraft(scope: Scope | undefined, paneId: string, text: s
 /** Drop a pane's draft from BOTH tiers. The password-prompt outcome (ADR 0017) calls this, and it is
  *  the reason the memory tier needs no gate of its own — see the note on `memory`. */
 export function clearDraft(scope: Scope | undefined, paneId: string): void {
+  removeDraft(scope, paneId);
+  changed(keyFor(scope, paneId));
+}
+
+function removeDraft(scope: Scope | undefined, paneId: string): void {
   const key = keyFor(scope, paneId);
   memory.delete(key);
   const store = storage();
@@ -381,6 +406,11 @@ export function clearDraft(scope: Scope | undefined, paneId: string): void {
 export function clearAllDrafts(): void {
   memory.clear();
   backMemory.clear();
+  wipeStored();
+  changed(null);
+}
+
+function wipeStored(): void {
   const store = storage();
   if (!store) return;
   try {
@@ -393,6 +423,77 @@ export function clearAllDrafts(): void {
   } catch {
     // Enumeration can throw in locked-down storage. The memory tier above is gone either way.
   }
+}
+
+// ── WHO HOLDS A DRAFT, LIVE (a row's pencil) ─────────────────────────────────────────────────────────
+//
+// A list of panes draws a mark on each row whose pane has an unsent draft on this device. A row must not read
+// localStorage on every render, so the answer is a cached boolean per pane ({@link hasDraft}), and the cache is
+// refreshed by the notifications below. A write, a clear and an eviction drop one pane's answer and tell the
+// listeners; the prune, the device wipe and a `storage` event with no readable key drop all of them. A listener
+// that finds its pane's boolean unchanged re-renders nothing, so a keystroke in one composer costs the other
+// rows one map lookup each. Another tab of this browser writes only to disk: its `storage` event is the way in.
+
+/** One pane's cached answer, and the moment the draft behind it comes of age (the 48-hour rule). */
+interface HeldAnswer {
+  has: boolean;
+  until: number;
+}
+
+const held = new Map<string, HeldAnswer>();
+const listeners = new Set<() => void>();
+let watching = false;
+
+/** A pane's draft changed (its disk key), or any of them may have (null): forget, then tell the listeners. */
+function changed(key: string | null): void {
+  if (key === null) held.clear();
+  else held.delete(key);
+  for (const listener of listeners) listener();
+}
+
+function onStorage(event: StorageEvent): void {
+  // `key` is null when another tab cleared the whole store. A first-version key is not this version's key
+  // for the pane, so it drops every answer. A key outside the drafts' is none of this store's business.
+  if (event.key !== null && event.key.startsWith(PREFIX_V2)) {
+    changed(event.key);
+    return;
+  }
+  if (event.key !== null && !event.key.startsWith(PREFIX)) return;
+  changed(null);
+}
+
+/**
+ * Listen for a change in which panes hold a draft. The listener runs after every save and clear on this page, and
+ * after a write by another tab of this browser (the `storage` event). The returned function stops it.
+ */
+export function subscribeDrafts(listener: () => void): () => void {
+  listeners.add(listener);
+  if (!watching && typeof window !== "undefined") {
+    watching = true;
+    window.addEventListener("storage", onStorage);
+  }
+  return () => {
+    listeners.delete(listener);
+    if (listeners.size > 0 || !watching) return;
+    watching = false;
+    window.removeEventListener("storage", onStorage);
+  };
+}
+
+/**
+ * Whether this device holds an unsent draft for the pane: text that is not blank, or at least one chip. The
+ * Put back list does not count. Cached per pane until a notification or the draft's 48th hour, so it is cheap
+ * to ask on every render.
+ */
+export function hasDraft(scope: Scope | undefined, paneId: string): boolean {
+  const key = keyFor(scope, paneId);
+  const cached = held.get(key);
+  if (cached !== undefined && Date.now() <= cached.until) return cached.has;
+  const entry = newestEntry(scope, paneId);
+  const has = entry !== null && (entry.text.trim() !== "" || (entry.attachments?.length ?? 0) > 0);
+  // A draft in the memory tier never ages (see `memory`), so only a stored one carries a 48-hour end.
+  held.set(key, { has, until: entry === null || !has ? Infinity : entry.at + MAX_AGE_MS });
+  return has;
 }
 
 // ── PUT BACK, STORED WITH THE DRAFT (the M102 review 3) ──────────────────────────────────────────────
@@ -530,4 +631,5 @@ export function __resetDraftPrune(): void {
   pruned = false;
   memory.clear();
   backMemory.clear();
+  held.clear();
 }

@@ -1,0 +1,40 @@
+ [0m[3m[38;2;119;125;136mThe user is asking me a simple math question: what is two plus two? This is a straightforward arithmetic question that [0m
+ [0m[3m[38;2;119;125;136mdoesn't require any tools or complex analysis.[0m                                                                         
+                                                                                                                        
+ [0m[3m[38;2;119;125;136mTwo plus two equals four.[0m                                                                                              
+                                                                                                                        
+ [0m[3m[38;2;119;125;136mThe user wants one short sentence, so I should keep it brief and direct.[0m                                               
+
+ Two plus two is four.                                                                                                  
+
+[0m[48;2;34;29;26m                                                                                                                        [0m
+[0m[48;2;34;29;26m [0m[38;2;229;229;231m[48;2;34;29;26mDo not use tools. Offer me two options, A or B, for a greeting to write, and ask me to pick one by replying with just  [0m
+[0m[48;2;34;29;26m [0m[38;2;229;229;231m[48;2;34;29;26mthe letter.[0m[48;2;34;29;26m                                                                                                            [0m
+[0m[48;2;34;29;26m                                                                                                                        [0m
+
+ [0m[3m[38;2;119;125;136mThe user is asking me to:[0m                                                                                              
+ [0m[38;2;254;188;56m1. [0m[3m[38;2;119;125;136mNOT use tools[0m                                                                                                       
+ [0m[38;2;254;188;56m2. [0m[3m[38;2;119;125;136mOffer two greeting options (A and B)[0m                                                                                
+ [0m[38;2;254;188;56m3. [0m[3m[38;2;119;125;136mAsk them to pick one by replying with just the letter[0m                                                               
+                                                                                                                        
+ [0m[3m[38;2;119;125;136mThis is straightforward - I should present two greeting options and ask them to choose. No tools needed.[0m               
+
+ [0m[1m[38;2;188;63;188mA:[0m Hello! Nice to see you today.                                                                                       
+                                                                                                                        
+ [0m[1m[38;2;188;63;188mB:[0m Hey there! What can I help you with?                                                                                
+                                                                                                                        
+ Which do you prefer, A or B?                                                                                           
+
+[0m[48;2;34;29;26m                                                                                                                        [0m
+[0m[48;2;34;29;26m [0m[38;2;229;229;231m[48;2;34;29;26mDo not use tools. Ask me whether you should write a short poem about the sea or about the mountains.[0m[48;2;34;29;26m                   [0m
+[0m[48;2;34;29;26m                                                                                                                        [0m
+
+ [0m[3m[38;2;119;125;136mThe user is asking me to ask them whether I should write a short poem about the sea or about the mountains. They've    [0m
+ [0m[3m[38;2;119;125;136msaid "Do not use tools" so I should just ask them directly without using any of the tools available.[0m                   
+                                                                                                                        
+ [0m[3m[38;2;119;125;136mI should pose a simple question asking them to choose between a poem about the sea or about the mountains.[0m             
+
+ Should I write a short poem about the sea or about the mountains?                                                      
+
+[0m[48;2;18;18;18m [0m[38;2;95;102;115m[48;2;18;18;18mπ[0m[48;2;18;18;18m [0m[38;5;244m[48;2;18;18;18m>[0m[48;2;18;18;18m [0m[38;2;215;135;175m[48;2;18;18;18m◒ Haiku 4.5[0m[48;2;18;18;18m [0m[38;5;244m[48;2;18;18;18m>[0m[48;2;18;18;18m [0m[38;2;0;175;175m[48;2;18;18;18m📁 …uggestion-rig/state/harness/omp/project[0m[48;2;18;18;18m [0m[38;5;244m[48;2;18;18;18m>[0m[48;2;18;18;18m [0m[38;5;205m[48;2;18;18;18m$0.07[0m[48;2;18;18;18m [0m[38;2;18;18;18m▶[0m[38;2;0;136;250m──5%[0m[38;2;23;143;185m─────────────────────────────────[0m[38;2;56;128;187m┃[0m[38;2;23;143;185m─────[0m[38;2;56;128;187m200K[0m[38;2;23;143;185m─[0m
+[0m[38;2;178;129;214m╰─ [0m[38;2;229;229;231m⌁[0m                                                                                                                    

@@ -797,23 +797,29 @@ When Collie cannot send your message as it stands, the card and the notice under
 the answer after your tap. This works on
 every screen except four: a sign-in field (enter the code again there), a question or permission
 Collie read (answer it on its own card), a screen that changed since you looked, and a screen that
-shows a menu or a yes/no prompt. A screen that changed comes back with the rows as they are now; look
-at them and tap again. On a menu, use the keys to pick an option, because typed text could pick one.
+shows a menu or a yes/no prompt on an agent Collie has a profile for. A screen that changed comes back
+with the rows as they are now; look at them and tap again. On a menu, use the keys to pick an option,
+because typed text could pick one, or use Type to send keys with no check.
 
 Where Collie can still place and check your text, on a screen that takes the manual Send, your second
 tap sends it, Enter included: you tapped twice with the screen in view. If only a number on the screen
 changed since you looked, Collie types your text but presses no key, so you check it first. Where it cannot, on a box that
 is not free, a box that already holds a draft, a turn it cannot read or does not queue into, or a stale
-or torn read, Collie pastes your text into the box in one piece and presses no key at all. A menu on
-the screen stops both. The card
+or torn read, Collie pastes your text into the box in one piece and presses no key at all. On an agent
+Collie has a profile for, a menu on the screen stops both. The card
 then says your text is in the box, and offers the keys: check the screen, and press Enter there when
 it is right. When the box already held a draft, the card can say so: your text went in after it. A message of more than one line goes this way only on Herdr, which pastes it whole;
 elsewhere send it one line at a time. On a turn the agent queues into, it goes in as any send does. Collie never holds a
 message you typed this way, and one tap types it at most once. When the box already holds the same
 text, left there by an earlier send, Collie types nothing again: press Enter on the Keys pad.
 
-On an agent Collie has no profile for, no message goes into a screen that shows a menu or a yes/no
-prompt at its bottom, whether you sent it or Collie did; answer the menu with the keys. On Herdr and
+On an agent Collie has no profile for, Collie can only guess that the bottom of the screen shows a menu
+or a yes/no prompt, and the guess is sometimes wrong. There it refuses every message Collie sends by
+itself and your first send: answer the menu with the keys, or use Type. Only where the screen shows an
+agent's input box or footer can you look at it and tap **Send anyway**: Collie pastes your text and
+presses no key; press Enter on the Keys pad when the screen is right. On a plain program, also one that
+asks a yes/no question, or at a prompt that takes one key with no Enter, Send anyway is not offered,
+because a pasted character could pick an option there: use the Keys pad. On Herdr and
 the Herdr core, Collie also asks which program runs in the pane: a plain shell at its prompt takes every
 message, also with a numbered list or an answered `[Y/n]` above the prompt. On tmux, zellij, tuios and
 Tern Collie cannot ask, so it reads only the bottom of the screen: output above a shell prompt is no menu.

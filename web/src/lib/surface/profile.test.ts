@@ -860,11 +860,12 @@ describe("the frame schema of the interior walk (M56 spec 14)", () => {
 
   it("reads a scrolling box (`scroll`, omp gang 2026-10-25) and refuses a bad one", () => {
     expect(parseProfile(parseJsonObject(readFileSync(join(PROFILES_DIR, "omp.json"), "utf8"))!).idle.frame.scroll).toEqual({ keeps: "tail", rows: 17 });
-    expect(parseProfile(rawClaude()).idle.frame.scroll).toBeUndefined();
+    expect(parseProfile(rawClaude()).idle.frame.scroll).toEqual({ keeps: "tail", rows: 100, marker: "^↑ \\d+ more$" });
     expect(failure(change(rawClaude(), ["idle", "frame", "scroll"], { keeps: "head", rows: 17 })).path).toBe("idle.frame.scroll.keeps");
     expect(failure(change(rawClaude(), ["idle", "frame", "scroll"], { keeps: "tail", rows: 0 })).path).toBe("idle.frame.scroll.rows");
     expect(failure(change(rawClaude(), ["idle", "frame", "scroll"], { keeps: "tail", rows: 999 })).path).toBe("idle.frame.scroll.rows");
     expect(failure(change(rawClaude(), ["idle", "frame", "scroll"], "tail")).path).toBe("idle.frame.scroll");
+    expect(failure(change(rawClaude(), ["idle", "frame", "scroll"], { keeps: "tail", rows: 17, marker: "(" })).path).toBe("idle.frame.scroll.marker");
   });
 
   it("takes a widget bound (`maxWidgetRows`) only on an open box, and only above the tail bound", () => {
@@ -989,8 +990,8 @@ describe("the frame schema of the interior walk (M56 spec 14)", () => {
     expect(failure(change(rawClaude(), ["idle", "notices", 0], "no object")).path).toBe("idle.notices[0]");
     expect(parseProfile(rawClaude()).idle.notices).toEqual([
       { head: "^✦ (?:Heads up|You should know) ·(?:\\s|$)", body: true },
-      { head: "^● How is Claude doing this session\\? \\(optional\\)$" },
-      { head: "^● Can Anthropic look at your session transcript to help us improve Claude Code\\?$", letters: true },
+      { head: "^[●⏺] How is Claude doing this session\\? \\(optional\\)$" },
+      { head: "^[●⏺] Can Anthropic look at your session transcript to help us improve Claude Code\\?$", letters: true },
       { head: "^✦ Dismissed\\.(?=\\s|$)" },
     ]);
     expect(parseProfile(rawOpencode()).idle.notices).toBeUndefined();
@@ -998,7 +999,7 @@ describe("the frame schema of the interior walk (M56 spec 14)", () => {
 
   it("accepts `body: true` on a notice head and rejects any other value", () => {
     expect(parseProfile(change(rawClaude(), ["idle", "notices", 1, "body"], true)).idle.notices?.[1]).toEqual({
-      head: "^● How is Claude doing this session\\? \\(optional\\)$",
+      head: "^[●⏺] How is Claude doing this session\\? \\(optional\\)$",
       body: true,
     });
     for (const bad of [false, "true", 1, null, {}]) {
@@ -1008,7 +1009,7 @@ describe("the frame schema of the interior walk (M56 spec 14)", () => {
 
   it("accepts `letters: true` on a notice head and rejects any other value", () => {
     expect(parseProfile(change(rawClaude(), ["idle", "notices", 1, "letters"], true)).idle.notices?.[1]).toEqual({
-      head: "^● How is Claude doing this session\\? \\(optional\\)$",
+      head: "^[●⏺] How is Claude doing this session\\? \\(optional\\)$",
       letters: true,
     });
     for (const bad of [false, "true", 1, null, {}]) {

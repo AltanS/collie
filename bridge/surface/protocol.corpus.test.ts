@@ -319,6 +319,34 @@ describe("real screens from the fixture corpus", () => {
     expect(pane.transcript.at(-1)).toBe("> 4");
   });
 
+  // 2026-11-24, Claude Code 2.1.330 and 2.1.331 on macOS: the bullet is `⏺`, not `●`. Under the idle
+  // /clear hint and the update item every send was refused `unconfirmed` (single-key cue, modal
+  // unreadable), five times in four days on one pane, walky talky deliveries among them.
+  const onMac = (rows: readonly string[]) => rows.map((row) => row.replace(/^●/u, "⏺"));
+  const MAC_UPDATE_ROWS = [UPDATE_ROW, RESTART_COMMAND_ROW, IDLE_HINT_ROW, IDLE_HINT_ALONE_ROW];
+
+  test("on macOS's ⏺ rating survey: a sentence goes on one tap", async () => {
+    for (const update of MAC_UPDATE_ROWS) {
+      const { pane, send } = rig();
+      pane.over = [...onMac(SURVEY_ROWS), update];
+      const answer = await send("ok merge the five, running the crew update now");
+      expect(answer.receipt, update.trim()).toMatchObject({ outcome: "sent" });
+      expect(answer.cause).toBeUndefined();
+      expect(pane.transcript.at(-1)).toBe("> ok merge the five, running the crew update now");
+    }
+  });
+
+  test("on macOS's ⏺ rating survey: a digit takes the notice path", async () => {
+    for (const [digit, update] of ["0", "1", "2", "3"].flatMap((d) => MAC_UPDATE_ROWS.map((row) => [d, row] as const))) {
+      const { pane, send } = rig();
+      pane.over = [...onMac(SURVEY_ROWS), update];
+      const first = await send(digit);
+      expect(first.receipt, `${digit} ${update.trim()}`).toMatchObject({ outcome: "refused", reason: "unconfirmed", keys: [] });
+      expect(first.cause).toBe("notice_key");
+      expect(first.offers).toEqual(["commit", "keys"]);
+    }
+  });
+
   // 2026-11-05, Claude Code 2.1.317 (issue 705): Claude's right-aligned context field, `N% until
   // auto-compact`, sits on the row under the survey's keys. All ten sends on that box were refused
   // `unconfirmed` or `stale_surface` (modal unreadable, the single-key cue on the key row).
@@ -379,6 +407,20 @@ describe("real screens from the fixture corpus", () => {
     expect(answer.receipt).toMatchObject({ outcome: "sent" });
     expect(answer.cause).toBeUndefined();
     expect(pane.transcript.at(-1)).toBe("> done reviewing, ship FIX-2 to the frontend dev");
+  });
+
+  test("on macOS's ⏺ transcript question: a sentence goes on one tap, and a printed letter takes the notice path", async () => {
+    const sentence = rig();
+    sentence.pane.over = [...onMac(TRANSCRIPT_ROWS), ""];
+    expect((await sentence.send("done reviewing, ship FIX-2 to the frontend dev")).receipt).toMatchObject({ outcome: "sent" });
+
+    for (const letter of ["y", "n", "d"]) {
+      const { pane, send } = rig();
+      pane.over = [...onMac(TRANSCRIPT_ROWS), ""];
+      const first = await send(letter);
+      expect(first.receipt, letter).toMatchObject({ outcome: "refused", reason: "unconfirmed", keys: [] });
+      expect(first.cause, letter).toBe("notice_key");
+    }
   });
 
   test("on the transcript question: a printed letter, in either case, takes the notice path", async () => {
