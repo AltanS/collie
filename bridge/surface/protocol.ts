@@ -5980,6 +5980,12 @@ export class SendProtocol {
     if (this.answersNotice(state, snap)) throw noticeRefusal(snap);
     const { mux } = this.deps;
     if (lines.length > 1 && mux.pasteBlock === undefined) throw new Ended("refused", "multiline", { surface: snap.surface, framed: snap.frame !== null, offers: ["keys"], detail: OVERRIDE_ONE_LINE });
+    // The rows were checked on `snap`; the pane is read once more right before the first byte, so a screen
+    // that moved since (a program that printed, a menu that opened) types nothing (counsel, 2026-11-25).
+    // The loose compare, as `rowsSeen`: a clock, a spinner or a turn streaming above a found box is no move.
+    const again = await this.read(state, "s0");
+    if (again === null) throw this.noRead(state);
+    if (again.rowsHash !== snap.rowsHash && again.looseHash !== snap.looseHash) throw overrideRefusal("stale_surface", again, OVERRIDE_MOVED);
     this.lap(state, "s0");
     state.overrode = true;
     // Text Collie may not read was in the box: the person's text goes after it, and the receipt says so.

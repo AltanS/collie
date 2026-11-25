@@ -129,4 +129,21 @@ describe("the person's override past the blind road's menu sign", () => {
     // Without the phone's word the override is no override: the sign refuses.
     refusedClean(await r.send("y", { rowsHash: hash, override: true }), screen, "menu_open");
   });
+  test("the override past a sign writes no control byte: a Tab is a space, ESC, BEL and the paste markers are cut", async () => {
+    const screen = new ScreenPane(PROMPT_ROWS(MENUS[0]![1]));
+    const answer = await rig(screen, { harness: NO_PROFILE }).override("a\tb\u001b[Ac\u0007d\u001b[201~e");
+    expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "override", keys: [] });
+    expect(screen.writes).toEqual([{ how: "paste", text: "a b[Acde" }]);
+    expect(screen.keys).toEqual([]);
+  });
+
+  test("a text of more than one line past a sign is refused multiline on every multiplexer, nothing typed", async () => {
+    for (const write of ["type", "paste", "block"] as const) {
+      const screen = new ScreenPane(PROMPT_ROWS(MENUS[0]![1]));
+      const answer = await rig(screen, { harness: NO_PROFILE, write }).override("yes\nand more");
+      expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "multiline", keys: [] });
+      expect(screen.writes).toEqual([]);
+      expect(screen.keys).toEqual([]);
+    }
+  });
 });
