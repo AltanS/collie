@@ -263,7 +263,7 @@
 // rule: on the blind road (no profile) the menu sign refuses EVERY send `menu_open`, before any key, by
 // what stands in the pane's foreground (`SendDeps.paneForeground`, pane-binary.ts): a shell reads no sign;
 // a program or an unknown one (no foreground read: tmux, zellij) the sign anchored at the bottom
-// (menu-sign.ts `anchor`), or the whole window where a profile's rows show; the receipt names it
+// (menu-sign.ts `anchor`), or the whole window where a profile's rows show; the receipt names it (an override's `menu_open` on a pane with a profile too)
 // (`menuSign: { kind, row }`, never the text). The
 // manual Send's turn rule (`steeringTurn`) refuses no override: a turn that does not queue it is typed
 // with no key too. An override typed after a draft says so on its receipt (`draftSeen`).
@@ -3304,7 +3304,7 @@ interface EndNote {
   keepDetail?: true;
   /** The rows the hash covers, on a refused override (M102 spec 12); the answer only, never the receipt. */
   rows?: readonly string[];
-  /** The sign a blind-road `menu_open` read (M102 spec 12): its kind and row, on the answer and the receipt. */
+  /** The sign a `menu_open` read (M102 spec 12, either road): its kind and row, on the answer and the receipt. */
   menuSign?: MenuSign;
   /** The draft the offer is over ({@link draftShown}); the answer only, never the receipt, a log or a trace. */
   draftText?: string;
@@ -5922,7 +5922,8 @@ export class SendProtocol {
     if (!overrideAsked(state.request) || isFree(s0.surface)) return;
     if (state.secretField === true || askOf(s0.surface.modal) !== null) return;
     if (!this.rowsSeen(state, s0)) throw overrideRefusal("stale_surface", s0, OVERRIDE_MOVED);
-    if (menuSignOf(s0) !== null) throw overrideRefusal("menu_open", s0, MENU_OPEN);
+    const sign = menuSignOf(s0);
+    if (sign !== null) throw overrideRefusal("menu_open", s0, MENU_OPEN, sign);
     // A match by the loose compare alone (a ticking clock or spinner moved, or a digit) presses no key: the
     // manual Send's commit would press Enter, so the text goes in on the override road instead.
     if (!this.reaches(state, s0) && !this.looseOnly(state, s0)) return;

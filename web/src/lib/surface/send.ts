@@ -290,7 +290,7 @@ export interface SendReceipt {
    */
   readonly draftSeen?: true;
   /**
-   * Set on a blind-road `menu_open` (M102 spec 12): which sign the generic menu sign read and on which
+   * Set on a `menu_open`, on either road (M102 spec 12): which sign the generic menu sign read and on which
    * screen row. Never the row's text.
    */
   readonly menuSign?: MenuSign;
@@ -427,7 +427,7 @@ export interface SendReceiptRow {
   readonly awaitingEventUntil?: number;
   /** The override typed after a draft (see {@link SendReceipt.draftSeen}). */
   readonly draftSeen?: true;
-  /** The sign a blind-road `menu_open` read (see {@link SendReceipt.menuSign}). */
+  /** The sign a `menu_open` read (see {@link SendReceipt.menuSign}). */
   readonly menuSign?: MenuSign;
   /** The override found its text in the box already (see {@link SendReceipt.textAlreadyTyped}). */
   readonly textAlreadyTyped?: true;
@@ -546,7 +546,7 @@ export interface SendAnswer {
    * answer; a receipt never keeps a row, so a replay has none.
    */
   readonly rows?: readonly string[];
-  /** The sign a blind-road `menu_open` read (see {@link SendReceipt.menuSign}). */
+  /** The sign a `menu_open` read (see {@link SendReceipt.menuSign}). */
   readonly menuSign?: MenuSign;
 }
 

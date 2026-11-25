@@ -188,6 +188,36 @@ describe("2. the harm cases: an override never answers a question (M102 spec 12)
     }
   });
 
+  test("a menu refusal on a pane with a reader profile stores the sign, kind and row", async () => {
+    for (const [, rows] of MENUS) {
+      const screen = new ScreenPane(overBox(CLAUDE_DRAFT, rows));
+      const r = rig(screen);
+      const answer = await r.override("2");
+      expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "menu_open", keys: [] });
+      const sign = answer.receipt?.menuSign;
+      expect(sign).toBeDefined();
+      expect(answer.menuSign).toEqual(sign);
+      expect(Number.isInteger(sign?.row)).toBe(true);
+      expect(r.protocol.recent("%1", 1)[0]?.menuSign).toEqual(sign);
+      expect(r.store.list().at(-1)?.receipt?.menuSign).toEqual(sign);
+    }
+    // The manual road (a reader that finds no box) stores it too.
+    const unread = new ScreenPane(PROMPT_ROWS(MENUS[0]![1]));
+    const answer = await rig(unread, { harness: FRAMELESS }).override("y");
+    expect(answer.receipt?.menuSign).toEqual({ kind: "yes-no", row: expect.any(Number) });
+  });
+
+  test("the stored sign holds no screen text", async () => {
+    const marker = "ZQXMARKERTEXT";
+    const screen = new ScreenPane(overBox(CLAUDE_DRAFT, [`${marker} Overwrite config.toml? (y/n)`]));
+    const r = rig(screen);
+    const answer = await r.override("y");
+    expect(answer.receipt).toMatchObject({ reason: "menu_open" });
+    const kept = [JSON.stringify(answer.receipt), JSON.stringify(r.protocol.recent("%1", 1)), JSON.stringify(r.store.list().at(-1)?.receipt)].join("\n");
+    expect(kept).not.toContain(marker);
+    expect(Object.keys(answer.receipt?.menuSign ?? {}).toSorted()).toEqual(["kind", "row"]);
+  });
+
   test("the menu sign answers with the rows its hash covers, and the next tap on them still refuses", async () => {
     const screen = new ScreenPane(PROMPT_ROWS(MENUS[0]![1]));
     const r = rig(screen, { harness: FRAMELESS });
