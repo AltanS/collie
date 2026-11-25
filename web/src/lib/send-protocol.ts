@@ -39,6 +39,16 @@ import type { ProfileStatus } from "./surface/profile";
 import { ASK_CHANNELS, askOf, type Ask, type AskOption, type Surface, type SurfaceComposer, type SurfaceModal, type SurfaceReason, type SurfaceTurn } from "./surface/surface";
 import { CODE_REJECTED_PLAIN } from "./surface/secret-field";
 
+/**
+ * Whether the person's override ("Send anyway") can go past the screen this answer refused on. A `menu_open`
+ * with no rows hash is one no override passes (the bridge's blind-road guards, 2026-11-25: a plain program
+ * with no agent's rows, or a row of one-key items): the hash is what an override binds to, so with none there
+ * is nothing to go past, and the card offers no Send anyway. Every other answer leaves the card as it was.
+ */
+export function overridePasses(reply: Pick<SendReply, "reason" | "rowsHash">): boolean {
+  return !(reply.reason === "menu_open" && reply.rowsHash === null);
+}
+
 /** What the composer needs of an answer. The receipt's marks and gaps are for the log. */
 export interface SendReply {
   readonly outcome: SendOutcome | null;

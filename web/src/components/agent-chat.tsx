@@ -1132,7 +1132,8 @@ export function AgentChat({
   // or question keeps its own card (hard stop 6a). It stays while the pane is unread, whatever its rows or revision
   // do, and goes when a read LATER than the one it opened on is one Collie can read, or the pane changes (the M102
   // review 2, H). A later read only: the phone's own read may be a moment old when the refusal comes back.
-  const [unreadOpenedOn, setUnreadOpenedOn] = useState<{ readonly paneId: string; readonly revision: number } | null>(null);
+  // `past`: whether the refusal that opened it is one an override can go past (overridePasses); false hides Send anyway.
+  const [unreadOpenedOn, setUnreadOpenedOn] = useState<{ readonly paneId: string; readonly revision: number; readonly past: boolean } | null>(null);
   const composerRevisionRef = useRef(composerSurface.revision);
   composerRevisionRef.current = composerSurface.revision;
   useEffect(() => {
@@ -1141,6 +1142,7 @@ export function AgentChat({
     if (ended) setUnreadOpenedOn(null);
   }, [unreadOpenedOn, paneId, composerSurface]);
   const unreadFallback = unreadOpenedOn !== null && unreadOpenedOn.paneId === paneId && !hasDialogCard(blocks) ? screenLines : null;
+  const unreadPast = unreadOpenedOn === null || unreadOpenedOn.paneId !== paneId || unreadOpenedOn.past;
   const unreadOnScreen = blocks.find((b) => b.kind === "unread-dialog");
   // The unread STATE the composer's Keys drawer follows: a word, never the rows (the M102 review 2, I).
   const unreadState = unreadOnScreen !== undefined || unreadFallback !== null ? "unread" : null;
@@ -3591,7 +3593,7 @@ export function AgentChat({
                 exitShown === null ? null : { caption: t(EXIT_SENTENCE[exitShown.why]), lines: screenLines, onClose: () => setAnswerExit(null) }
               }
               onUnreadPadKeys={(keys) => composerRef.current?.padKeys(keys) ?? Promise.resolve(false)}
-              onUnreadTypeAnyway={() => composerRef.current?.typeAnyway()}
+              onUnreadTypeAnyway={unreadPast ? () => composerRef.current?.typeAnyway() : undefined}
               unreadSecret={unreadSecret || composerSurface.field === "secret"}
               // The send Collie cannot tell about: the screen as it is now, and the person's two answers (M102 spec 04).
               cannotTell={
@@ -3874,7 +3876,7 @@ export function AgentChat({
                   dialogCard={display ? hasDialogCard(blocks) || unreadFallback !== null || exitShown !== null : false}
                   // An exit's Keys drawer opens once per exit raised, as the unread card's does once per screen.
                   unreadState={display ? (exitShown !== null ? `exit:${exitShown.n}` : unreadState) : null}
-                  onScreenUnread={() => setUnreadOpenedOn({ paneId, revision: composerRevisionRef.current })}
+                  onScreenUnread={(past) => setUnreadOpenedOn({ paneId, revision: composerRevisionRef.current, past })}
                   // The `answer` slot with no card for its dialog (M102 spec 10, diagnosis B): the exit opens.
                   onAnswerUnseen={() => raiseExit(composerAsk === null ? null : askExitKey(composerAsk), "unseen")}
                   onCannotTell={setCannotTell}

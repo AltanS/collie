@@ -808,9 +808,11 @@ text, left there by an earlier send, Collie types nothing again: press Enter on 
 
 On an agent Collie has no profile for, Collie can only guess that the bottom of the screen shows a menu
 or a yes/no prompt, and the guess is sometimes wrong. There it refuses every message Collie sends by
-itself and your first send: answer the menu with the keys, or use Type. When you look at the screen and
-tap **Send anyway**, Collie pastes your text and presses no key; press Enter on the Keys pad when the
-screen is right. On Herdr and
+itself and your first send: answer the menu with the keys, or use Type. Where the screen looks like an
+agent's (an input box, a dialog or a question), you can look at it and tap **Send anyway**: Collie pastes
+your text and presses no key; press Enter on the Keys pad when the screen is right. On a plain program,
+or at a prompt that takes one key with no Enter, Send anyway is not offered, because a pasted character
+could pick an option there: use the Keys pad. On Herdr and
 the Herdr core, Collie also asks which program runs in the pane: a plain shell at its prompt takes every
 message, also with a numbered list or an answered `[Y/n]` above the prompt. On tmux, zellij, tuios and
 Tern Collie cannot ask, so it reads only the bottom of the screen: output above a shell prompt is no menu.

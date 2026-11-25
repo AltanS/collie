@@ -39,7 +39,7 @@ import { BottomSheet } from "@/components/ui/sheet";
 import { SendOfferStrip } from "@/components/send-offer-strip";
 import { offerDraft, opensAsModal, SendOfferModal, type OfferDraft } from "@/components/send-offer-modal";
 import { HeldCard, drawnHeldRows, type HeldAction } from "@/components/composer-held";
-import { offerMode, type SendNote } from "@/lib/send-protocol";
+import { offerMode, overridePasses, type SendNote } from "@/lib/send-protocol";
 import { SecretField } from "@/components/secret-field";
 import { modeFor, sendText } from "@/lib/reply-action";
 import { viewRefusalKey, type ViewRequestNote } from "@/lib/agent-view/reader";
@@ -530,8 +530,11 @@ interface ComposerProps {
    * (the M102 review 2, I). It also asks Enter on the Keys pad for a second tap.
    */
   unreadState?: string | null | undefined;
-  /** A send was refused on a screen Collie cannot read: the pane opens the unread card (M102 spec 03). */
-  onScreenUnread?: (() => void) | undefined;
+  /**
+   * A send was refused on a screen Collie cannot read: the pane opens the unread card (M102 spec 03). `past`
+   * is false where no override can go past that screen ({@link overridePasses}): the card then offers no Send anyway.
+   */
+  onScreenUnread?: ((past: boolean) => void) | undefined;
   /**
    * A send met the `answer` slot while no card shows its dialog (M102 spec 10, the sign-in code case): the
    * pane opens the exit, the live screen and the person's Keys pad. Absent, the slot only says to answer first.
@@ -2612,7 +2615,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       // anyway", instead of a sentence only (M102 spec 03).
       // A not_free refusal now offers Send anyway (invariant I4), so its step is the offer; the card of a screen
       // Collie cannot read opens for it all the same.
-      if (reading.step === "screen" || (reading.offers.includes("commit") && (reading.surface === "unknown" || reading.surface === "unreachable" || reading.surface === "unreadable"))) onScreenUnread?.();
+      if (reading.step === "screen" || (reading.offers.includes("commit") && (reading.surface === "unknown" || reading.surface === "unreachable" || reading.surface === "unreadable"))) onScreenUnread?.(overridePasses(reply));
       // An override that met a menu, or whose text waits for the person's Enter (M102 spec 12): the Keys
       // pad opens, unless the person has a drawer open. A refused override carries the screen now and
       // its hash, so "Send past this screen" stays armed on the rows the card shows next.

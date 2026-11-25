@@ -169,10 +169,17 @@ describe("2. the harm cases: an override never answers a question (M102 spec 12)
       refusedClean(await rig(screen, { harness: FRAMELESS }).override("1"), screen, "menu_open");
     });
 
-    // The blind road's sign is a guess (2026-11-25): the override past it is typed, and still no key goes out.
-    test(`${what} on the newly reached road (no profile): the override is typed with no key, Enter included`, async () => {
+    // The blind road's sign is a guess (2026-11-25): where the rows look like an agent's (here the strong cue
+    // of a (y/n) prompt or a picker) the override past it is typed with no key; on a plain program's numbered
+    // menu, no agent's rows, it is refused as before (protocol.blind-menu-override.test.ts).
+    test(`${what} on the newly reached road (no profile): no key either way; typed only where the rows look like an agent's`, async () => {
       const screen = new ScreenPane(PROMPT_ROWS(rows));
-      typedNoKey(await rig(screen, { harness: NO_PROFILE }).override("y"), screen, "y");
+      const answer = await rig(screen, { harness: NO_PROFILE }).override("y");
+      if (what === "a numbered menu") {
+        expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "menu_open", keys: [] });
+        expect(screen.writes).toEqual([]);
+        expect(screen.keys).toEqual([]);
+      } else typedNoKey(answer, screen, "y");
     });
 
     test(`${what} over a draft the reader read (the newly reached road): refused menu_open, nothing typed, no key`, async () => {

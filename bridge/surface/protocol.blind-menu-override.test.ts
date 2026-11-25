@@ -38,25 +38,79 @@ function typedNoKey(answer: SendAnswer, screen: ScreenPane, text: string): void 
   expect(answer.offers).toEqual(["keys"]);
 }
 
+/** A `menu_open` no override can pass: nothing typed, no key, the sign named, and no rows hash to bind a Send anyway to. */
+function refusedNoPast(answer: SendAnswer, screen: ScreenPane): void {
+  expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "menu_open", keys: [] });
+  expect(answer.receipt?.menuSign).toBeDefined();
+  expect(answer.rowsHash).toBeUndefined();
+  expect(answer.offers).toEqual(["keys"]);
+  expect(screen.writes).toEqual([]);
+  expect(screen.keys).toEqual([]);
+}
+
 describe("the person's override past the blind road's menu sign", () => {
-  for (const [what, rows] of MENUS) {
-    test(`on a pane with no profile, a send past a menu sign with the override types the text and presses no Enter (${what})`, async () => {
-      const screen = new ScreenPane(PROMPT_ROWS(rows));
-      typedNoKey(await rig(screen, { harness: NO_PROFILE }).override("y"), screen, "y");
+  // Agent rows: an input box a profile's frame finds (`blindRoadSign` "frame"), or a strong modal cue ("cue").
+  // The override goes past a sign only there, and never at a row of one-key items (counsel, 2026-11-25).
+  const AGENT_SIGNS: readonly (readonly [string, string])[] = [
+    ["a (y/n) prompt, a strong cue", PROMPT_ROWS(MENUS[0]![1])],
+    ["a picker, a strong cue", PROMPT_ROWS(MENUS[2]![1])],
+    ["a numbered menu over an agent's box", overBox(CLAUDE_DRAFT, MENUS[1]![1])],
+    ["two key hints over an agent's box", overBox(CLAUDE_DRAFT, ["Ready when you are", "enter go on   esc go back"])],
+  ];
+  /** A plain program with no agent's rows: the numbered menu and the key hints, nothing a profile names. */
+  const PLAIN_SIGNS: readonly (readonly [string, string])[] = [
+    ["a numbered menu", PROMPT_ROWS(MENUS[1]![1])],
+    ["two key hints", PROMPT_ROWS(MENUS[3]![1])],
+  ];
+  const SINGLE_KEY = ["Review the change:", "a approve  |  s request changes  |  c comment"];
+
+  for (const [what, rows] of AGENT_SIGNS) {
+    test(`at another kind of sign on a pane that shows agent rows the override types the text and presses no key (${what})`, async () => {
+      const screen = new ScreenPane(rows);
+      const answer = await rig(screen, { harness: NO_PROFILE }).override("y");
+      typedNoKey(answer, screen, "y");
+      expect(answer.receipt?.menuSign?.kind).not.toBe("single-key");
     });
   }
 
-  for (const foreground of ["program", "unknown", undefined] as const) {
-    test(`on a pane with no profile, a send past a menu sign with the override types the text and presses no Enter (no agent's rows, foreground ${foreground ?? "not read"})`, async () => {
-      // No profile's rows show, so without the sign this road would press Enter after the text: past the sign it presses none.
-      const screen = new ScreenPane(LIVE_YN);
-      typedNoKey(await rig(screen, { harness: NO_PROFILE, foreground }).override("n"), screen, "n");
-    });
+  for (const [what, rows] of PLAIN_SIGNS) {
+    for (const foreground of ["program", "unknown", undefined] as const) {
+      test(`at a sign on a plain program with no agent rows the override is refused and nothing is typed (${what}, foreground ${foreground ?? "not read"})`, async () => {
+        const screen = new ScreenPane(rows);
+        const r = rig(screen, { harness: NO_PROFILE, foreground });
+        const first = await r.send("2", { fromPhone: true });
+        refusedNoPast(first, screen);
+        refusedNoPast(await r.override("2"), screen);
+      });
+    }
   }
+
+  test("at a single-key sign the override is refused on a pane that shows agent rows", async () => {
+    for (const rows of [overBox(CLAUDE_DRAFT, SINGLE_KEY), PROMPT_ROWS(SINGLE_KEY)]) {
+      const screen = new ScreenPane(rows);
+      const r = rig(screen, { harness: NO_PROFILE });
+      const first = await r.send("a", { fromPhone: true });
+      refusedNoPast(first, screen);
+      expect(first.menuSign?.kind).toBe("single-key");
+      refusedNoPast(await r.override("a"), screen);
+    }
+  });
+
+  test("a refusal the override cannot pass does not offer Send anyway: no rows hash, the key pad only", async () => {
+    const screen = new ScreenPane(PROMPT_ROWS(MENUS[1]![1]));
+    const answer = await rig(screen, { harness: NO_PROFILE }).send("2", { fromPhone: true });
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "menu_open", keys: [] });
+    expect(answer.rowsHash).toBeUndefined();
+    expect(answer.offers).toEqual(["keys"]);
+    expect(answer.menuSign).toBeDefined();
+    // A refusal the override can pass keeps its hash: the card binds Send anyway to it.
+    const passable = await rig(new ScreenPane(PROMPT_ROWS(MENUS[0]![1])), { harness: NO_PROFILE }).send("y", { fromPhone: true });
+    expect(passable.rowsHash).toMatch(/^[0-9a-f]+$/u);
+  });
 
   test("the first send at a menu sign is refused as before", async () => {
-    for (const [, rows] of MENUS) {
-      const screen = new ScreenPane(PROMPT_ROWS(rows));
+    for (const [, rows] of AGENT_SIGNS) {
+      const screen = new ScreenPane(rows);
       const answer = await rig(screen, { harness: NO_PROFILE }).send("y", { fromPhone: true });
       refusedClean(answer, screen, "menu_open");
       expect(answer.offers).toEqual(["keys"]);
@@ -68,11 +122,11 @@ describe("the person's override past the blind road's menu sign", () => {
   });
 
   test("the card's second tap, bound to the refusal's own rows hash, goes in with no key: the loop ends", async () => {
-    const screen = new ScreenPane(PROMPT_ROWS(MENUS[1]![1]));
+    const screen = new ScreenPane(PROMPT_ROWS(MENUS[0]![1]));
     const r = rig(screen, { harness: NO_PROFILE });
-    const first = await r.send("2", { fromPhone: true });
+    const first = await r.send("y", { fromPhone: true });
     refusedClean(first, screen, "menu_open");
-    typedNoKey(await r.send("2", { rowsHash: first.rowsHash!, override: true, fromPhone: true }), screen, "2");
+    typedNoKey(await r.send("y", { rowsHash: first.rowsHash!, override: true, fromPhone: true }), screen, "y");
   });
 
   test("the overridden send's receipt keeps the sign", async () => {

@@ -34,10 +34,14 @@ describe("2. the harm cases: an override never answers a question (M102 spec 12)
   }, WALK_TIMEOUT_MS);
 
   // On the blind road the sign is a guess (2026-11-25): it refuses the first send, and the person's override
-  // past it goes in with no key at all, Enter included. Never a key on either tap.
+  // past it goes in with no key at all, Enter included, where the rows look like an agent's and the sign is no
+  // row of one-key items. Elsewhere the refusal carries no rows hash and the override is refused too. Never a
+  // key on either tap. Measured 2026-11-25: 702 of the 722 dialogs pass, 20 are guarded (3 of them single-key).
   for (const foreground of [undefined, "unknown", "program"] as const) {
-    test(`the same dialogs on a pane with no profile (the blind road, foreground ${foreground ?? "not read"}): the first send refused menu_open, the override typed with no key`, async () => {
+    test(`the same dialogs on a pane with no profile (the blind road, foreground ${foreground ?? "not read"}): the first send refused menu_open, the override typed with no key or refused, never a key`, async () => {
       const wrong: string[] = [];
+      let passed = 0;
+      let guarded = 0;
       for (const [name] of dialogs) {
         const screen = new ScreenPane(pane(name));
         const r = rig(screen, { harness: NO_PROFILE, foreground });
@@ -46,11 +50,19 @@ describe("2. the harm cases: an override never answers a question (M102 spec 12)
           wrong.push(`${name}: first ${first.receipt?.outcome ?? "-"}(${first.receipt?.reason ?? "-"})`);
           continue;
         }
-        const answer = await r.send("y", { rowsHash: first.rowsHash!, override: true, fromPhone: true });
-        const typed = answer.receipt?.outcome === "typed_not_submitted" && answer.receipt.reason === "override" && answer.receipt.menuSign !== undefined;
+        if (first.rowsHash === undefined) {
+          guarded++;
+          const again = await r.override("y");
+          if (again.receipt?.reason !== "menu_open" || screen.writes.length > 0 || screen.keys.length > 0) wrong.push(`${name}: guarded, then ${again.receipt?.outcome ?? "-"}(${again.receipt?.reason ?? "-"})`);
+          continue;
+        }
+        const answer = await r.send("y", { rowsHash: first.rowsHash, override: true, fromPhone: true });
+        const typed = answer.receipt?.outcome === "typed_not_submitted" && answer.receipt.reason === "override" && answer.receipt.menuSign !== undefined && answer.receipt.menuSign.kind !== "single-key";
         if (!typed || answer.receipt?.keys.length !== 0 || screen.keys.length > 0 || screen.writes.length !== 1) wrong.push(`${name}: ${answer.receipt?.outcome ?? "-"}(${answer.receipt?.reason ?? "-"}) keys=${screen.keys.join(",")}`);
+        else passed++;
       }
       expect(wrong).toEqual([]);
+      expect({ passed, guarded }).toEqual({ passed: 702, guarded: 20 });
     }, WALK_TIMEOUT_MS);
   }
 });

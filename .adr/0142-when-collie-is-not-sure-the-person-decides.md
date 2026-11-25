@@ -117,4 +117,4 @@ menu sign (`menu_open`, `menu-sign.ts`; on the blind road none for a shell foreg
 bottom). On a manual Send it is the commit, submit key on the exact hash only (loose match: no key); else
 one piece, no probe, no key: `typed_not_submitted(override)`. Spec 13: an `unknown` whose submit went out
 waits `awaitingEventUntil` for the agent's prompt event (data road too); a match settles it `effective`.
-Amended 2026-11-25 (#863): a guess must not be a wall; with no profile the override past the sign is typed, no key.
+Amended 2026-11-25 (#863): a guess is no wall: no profile, agent rows, no one-key row: the override passes, no key.

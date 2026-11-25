@@ -1,4 +1,4 @@
-import { createRef } from "react";
+import { createRef, useState } from "react";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router";
@@ -9,6 +9,7 @@ import { splitLines } from "@/lib/blocks";
 import { markLive, resetLiveness } from "@/lib/liveness";
 import { __forgetSendAgainMemory } from "@/lib/send-again";
 import { __forgetSendIntentMemory } from "@/lib/send-intent";
+import { overridePasses } from "@/lib/send-protocol";
 import { clearStatus } from "@/lib/status";
 import type { Surface } from "@/lib/surface/surface";
 import { recordedSends, sendAnswer, sendHandler } from "@/test/handlers";
@@ -37,13 +38,17 @@ beforeEach(() => {
 });
 afterEach(() => cleanup());
 
-/** The pane as the app draws it here: the unread card over the composer, its "Send anyway" wired to the composer. */
+/**
+ * The pane as the app draws it here (agent-chat.tsx): the unread card over the composer, its "Send anyway"
+ * wired to the composer, and drawn only while the refusal that opened the card is one an override can pass.
+ */
 function mount() {
   const handle = createRef<ComposerHandle>();
   function Pane() {
+    const [past, setPast] = useState(true);
     return (
       <CrewProvider servers={undefined}>
-        <UnreadDialogBlock cancel={null} lines={LINES} onAction={vi.fn()} onTypeAnyway={() => void handle.current?.typeAnyway()} />
+        <UnreadDialogBlock cancel={null} lines={LINES} onAction={vi.fn()} onTypeAnyway={past ? () => void handle.current?.typeAnyway() : undefined} />
         <Composer
           ref={handle}
           paneId="w1:p1"
@@ -58,6 +63,7 @@ function mount() {
           prefs={{ wrap: true, fontSize: 11, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true, stretchText: false }}
           display={{ open: false, onToggle: vi.fn() }}
           onSent={vi.fn()}
+          onScreenUnread={(p) => setPast(p !== false)}
         />
       </CrewProvider>
     );
@@ -110,5 +116,28 @@ describe("the unread card at a guessed menu (no reader profile)", () => {
     expect(recordedSends()[3]).toMatchObject({ text: "and then this" });
     expect(recordedSends()[3]?.override).toBeUndefined();
     expect(recordedSends()[3]?.rowsHash).toBeUndefined();
+  });
+
+  it("a refusal the override cannot pass does not offer Send anyway: the card keeps the Keys pad, and the next send carries no override", async () => {
+    // The bridge's guarded menu_open: no rows hash, the key pad only.
+    server.use(...sendHandler((request) => sendAnswer(request.id, "refused", "menu_open", { offers: ["keys"], surface: UNREAD })));
+    const user = userEvent.setup();
+    mount();
+    const field = screen.getByRole("textbox");
+    await user.type(field, "go on");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(refusalText()).toMatch(/Answer it with the Keys pad, or use Type to send keys with no check\./u));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Send anyway" })).toBeNull());
+    expect(screen.getByRole("button", { name: "Keys" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(recordedSends()).toHaveLength(2));
+    expect(recordedSends()[1]?.override).toBeUndefined();
+    expect(recordedSends()[1]?.rowsHash).toBeUndefined();
+  });
+
+  it("names which refusals an override can pass: a menu_open with no rows hash is none", () => {
+    expect(overridePasses({ reason: "menu_open", rowsHash: null })).toBe(false);
+    expect(overridePasses({ reason: "menu_open", rowsHash: "0a0a01" })).toBe(true);
+    expect(overridePasses({ reason: "not_free", rowsHash: null })).toBe(true);
   });
 });

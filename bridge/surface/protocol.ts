@@ -251,8 +251,11 @@
 // field (the secret path keeps it); a question or permission the reader read (hard stop 6a, its card
 // answers it); a screen that moved since the person looked (`stale_surface`); and the generic menu sign
 // (menu-sign.ts, `menu_open`), which also guards an override on the manual Send. On the blind road (no
-// profile) the sign is a guess, so there it refuses the first send only: the override past it takes the
-// override road, no key, and its receipt keeps the sign (2026-11-25, a guess must not be a wall). Both refusals carry the
+// profile) the sign is a guess, so there it refuses the first send only where the rows look like an
+// agent's (`blindRoadSign`) and the sign is no row of one-key items: the override past it takes the
+// override road, no key, and its receipt keeps the sign (2026-11-25, a guess must not be a wall). On a
+// plain program, or at a one-key row, no override passes, and the refusal carries no rows hash. The
+// override road reads the pane once more right before it writes. Both refusals carry the
 // rows now and their hash. The rows compare of an override masks digits and spinner glyphs and, over a
 // found box, reads from the box's top edge down ({@link Snap.looseHash}): a clock or a streaming turn
 // above the box is no screen the person must see again. That loose compare never lets a key through: a
@@ -2216,10 +2219,15 @@ function overrideAsked(request: SendRequest): boolean {
   return request.secret !== true && request.view === undefined && request.when !== "steer" && request.draftHolds !== true;
 }
 
-/** The refusal of an override (`stale_surface`, `menu_open`): nothing typed, the rows now and their hash, the key pad offered. */
-function overrideRefusal(reason: "stale_surface" | "menu_open", snap: Snap, detail: string, sign?: MenuSign): Ended {
+/**
+ * The refusal of an override (`stale_surface`, `menu_open`): nothing typed, the rows now and their hash, the
+ * key pad offered. `past: false` is a refusal no override can pass (the blind road's guards, 2026-11-25): it
+ * carries no rows hash, so nothing binds a "Send anyway" to it, and the phone's card offers none.
+ */
+function overrideRefusal(reason: "stale_surface" | "menu_open", snap: Snap, detail: string, sign?: MenuSign, past = true): Ended {
   const win = bottomWindow(snap.texts);
-  const note: EndNote = { surface: snap.surface, framed: snap.frame !== null, rowsHash: snap.rowsHash, rows: snap.texts.slice(win.first, win.end), offers: ["keys"], detail };
+  const note: EndNote = { surface: snap.surface, framed: snap.frame !== null, rows: snap.texts.slice(win.first, win.end), offers: ["keys"], detail };
+  if (past) note.rowsHash = snap.rowsHash;
   // The blind road names which sign it read and where (never the row's text): the receipt keeps it.
   if (sign !== undefined) note.menuSign = { kind: sign.kind, row: sign.row };
   return new Ended("refused", reason, note);
@@ -5532,7 +5540,12 @@ export class SendProtocol {
       // must not be a wall (2026-11-25): the person's override, on the rows they saw after the card showed
       // them this refusal, takes the override road, the text with NO key, Enter included. They answer or
       // send with the Keys pad. Every other send here is refused as before, the first tap included.
-      if (!overrideAsked(state.request)) throw overrideRefusal("menu_open", snap, MENU_OPEN, sign);
+      // Two guards (counsel, 2026-11-25, from a live run): only where the last rows look like an agent's
+      // (`road`), for on a plain program the sign is most often real; and never at a row of one-key items
+      // (`single-key`), for a program that reads one key acts on the first byte of the paste, no Enter.
+      // There no override passes, so the refusal carries no rows hash to bind one to.
+      const past = road !== null && sign.kind !== "single-key";
+      if (!past || !overrideAsked(state.request)) throw overrideRefusal("menu_open", snap, MENU_OPEN, sign, past);
       if (!this.rowsSeen(state, snap)) throw overrideRefusal("stale_surface", snap, OVERRIDE_MOVED);
       state.pastSign = sign;
       await this.typeOverride(state, snap, lines);
