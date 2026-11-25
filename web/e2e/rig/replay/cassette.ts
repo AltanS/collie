@@ -208,9 +208,18 @@ const markRe = (mark: string): RegExp => new RegExp(`(?<![A-Za-z0-9_])${mark}(?!
  */
 const WALKY_SUBJECT = /^(\[walky-talky \S+\] from (?:agent \S+(?: on \S+)? in |operator )"[^"\n]*"(?: outside)?) about "[A-Za-z0-9 .,_/#+'?%@=-]+"(?= reply to |:|$)/gmu;
 
+/**
+ * The text with the subject of each walky header line folded away. normalizeText does it for a prompt as
+ * it is stored or read, and matchKeyOf does it again on both sides of a compare, because a cassette
+ * recorded before this fold keeps its subject in the stored prompt.
+ */
+export function foldWalkySubject(text: string): string {
+  return text.replace(WALKY_SUBJECT, "$1");
+}
+
 /** Replace every literal (longest first), then every volatile value by its class marker. */
 export function normalizeText(text: string, literals: readonly Literal[] = []): string {
-  let out = replaceLiterals(text, literals).replace(WALKY_SUBJECT, "$1");
+  let out = foldWalkySubject(replaceLiterals(text, literals));
   const marks = marksOf(out);
   for (const { name, re } of VOLATILE) out = out.replace(re, `<${name}>`);
   for (const mark of marks) out = out.replace(markRe(mark), "<mark>");
@@ -474,11 +483,13 @@ function withoutLeadingBlocks(prompt: string): string {
 
 /**
  * What a request is matched on: its digest with the session blocks left out of the prompt (omp's and
- * Claude's). Computed from a stored entry's summary and from a live request alike, so the cassettes keep
- * their digests.
+ * Claude's) and the subject of a walky header folded away. Computed from a stored entry's summary and
+ * from a live request alike (every compare, matchTurn, matchTurnAcross and matchSide, goes through it),
+ * so the cassettes keep their digests and a recording that holds a subject matches a prompt without one,
+ * and the reverse.
  */
 export function matchKeyOf(summary: RequestSummary): string {
-  const prompt = withoutLeadingBlocks(summary.prompt);
+  const prompt = foldWalkySubject(withoutLeadingBlocks(summary.prompt));
   return prompt === summary.prompt ? digestOf(summary) : digestOf({ ...summary, prompt });
 }
 

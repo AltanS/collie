@@ -377,6 +377,32 @@ describe("matchTurn", () => {
     expect("entry" in hit && hit.index).toBe(1);
   });
 
+  it("a cassette recorded with a subject matches a live prompt without one, and the reverse", () => {
+    const nudge = (subject: string) =>
+      `[walky-talky wt_k5bosk123456] from agent rig-member/w2:p1#jva8 on claude in "project"${subject}: a message from another agent, not your operator. Read it: collie walky inbox wt_k5bosk123456`;
+    const withSubject = nudge(' about "ping check"');
+    const without = nudge("");
+    // A stored entry as an older normaliser wrote it: the subject stays in its prompt and its digest.
+    const old = summarize("/api/v1/messages", piBody(without));
+    const stored = (prompt: string): Entry => {
+      const request = { ...old, prompt };
+      return { kind: "turn", machine: "lead", ordinal: 0, request: { ...request, path: "/api/v1/messages", digest: digestOf(request) }, response: sse(delta("ok")) };
+    };
+    const live = (prompt: string) => ({ ...old, prompt });
+    const hit = (pool: readonly Entry[], prompt: string) => "entry" in matchTurn(pool, "lead", live(prompt), new Set(), "claude.walky-crew-agents");
+    expect(stored(withSubject).request.prompt).toContain('about "ping check"');
+    expect(hit([stored(withSubject)], without)).toBe(true);
+    expect(hit([stored(without)], withSubject)).toBe(true);
+    expect(hit([stored(withSubject)], nudge(' about "another one"'))).toBe(true);
+    // Across cases and for a side request the same key is used.
+    const across = matchTurnAcross(new Map([["claude.other", [stored(withSubject)]]]), "claude.walky-crew-agents", "lead", live(without), () => new Set());
+    expect("entry" in across).toBe(true);
+    expect(matchSide([{ ...stored(withSubject), kind: "side" }], live(without))).not.toBeNull();
+    // Only the subject folds: another word in the header, or in the prompt, is still a mismatch.
+    expect(hit([stored(withSubject)], without.replace("on claude", "on pi"))).toBe(false);
+    expect(hit([stored(withSubject)], `${without} extra`)).toBe(false);
+  });
+
   it("fails a changed prompt as a cassette mismatch that says to re-record, never a nearby answer", () => {
     const miss = matchTurn(entries, "lead", summarize("/api/v1/messages", piBody("a changed prompt")), new Set(), "pi.x");
     expect("mismatch" in miss && miss.mismatch).toMatch(/^cassette mismatch: case pi\.x turn 0 expected prompt "first".*re-record/u);
