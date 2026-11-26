@@ -248,6 +248,34 @@ describe("parseAnsi — colon-delimited SGR (ISO 8613-6 sub-parameters)", () => 
     expect(colonForm[0]!.bg).toBe("rgb(50,100,150)");
     expect(colonForm[0]!.bg).toBe(semiForm[0]!.bg);
   });
+
+  it("38:2:cs:r:g:b with a colorspace id reads r, g and b after it", () => {
+    const segs = parseAnsi(`${ESC}[38:2:0:10:20:30mx`);
+    expect(segs[0]!.fg).toBe("rgb(10,20,30)");
+  });
+
+  it("4:3 (curly underline, as tmux capture-pane -e writes it) is an underline, not italic", () => {
+    const segs = parseAnsi(`${ESC}[31;4:3mx`);
+    expect(segs[0]!.underline).toBe(true);
+    expect(segs[0]!.italic).toBeFalsy();
+    expect(segs[0]!.fg).toBe("var(--ansi-1)");
+  });
+
+  it("4:0 turns the underline off and keeps the colour", () => {
+    const segs = parseAnsi(`${ESC}[31;4mx${ESC}[4:0my`);
+    expect(segs[1]!.underline).toBe(false);
+    expect(segs[1]!.fg).toBe("var(--ansi-1)");
+  });
+
+  it("an underline colour (58:2::r:g:b, 58:5:n, 58;5;n) changes nothing else", () => {
+    for (const ul of ["58:2::255:0:0", "58:5:7", "58;5;7", "58;2;255;0;0"]) {
+      const segs = parseAnsi(`${ESC}[1;31m${ESC}[${ul}mx`);
+      expect(segs[0]!.fg).toBe("var(--ansi-1)");
+      expect(segs[0]!.bold).toBe(true);
+      expect(segs[0]!.dim).toBeFalsy();
+      expect(segs[0]!.inverse).toBeFalsy();
+    }
+  });
 });
 
 describe("parseAnsi — DEC-private and non-SGR CSI are fully consumed (no leaked text)", () => {
