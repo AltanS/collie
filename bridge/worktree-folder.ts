@@ -96,9 +96,8 @@ export function expandHome(path: string, home: string): string {
 
 /** Whether `child` is `parent` or sits under it, on whole segments. */
 export function isWithin(child: string, parent: string): boolean {
-  if (child === parent) return true;
   const rel = relative(parent, child);
-  return rel !== "" && !rel.startsWith("..") && !isAbsolute(rel);
+  return rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel);
 }
 
 /** The file calls the rule makes, injected so the tests drive every branch on a temp dir. */
@@ -154,14 +153,14 @@ export async function resolveParentTarget(req: ParentRequest): Promise<FolderOut
   if (!parent.ok) return parent;
   const real = parent.path;
 
-  // 6: not inside the repo it branches from.
-  if (isWithin(real, req.repoRoot)) return { ok: false, code: "worktree.folder_in_repo" };
+  // 6: check the generated destination too; the parent can be the repo's parent.
+  const target = join(real, slug);
+  if (isWithin(target, req.repoRoot)) return { ok: false, code: "worktree.folder_in_repo" };
 
   // 7: the child must not be there yet, unless it is the same worktree of THIS repo, finished, that a
   // half-done create left behind (the checkout was made, the space did not open). That one is no
   // link, git's own list names it on the branch asked for, and the create then only opens it
   // (bridge/worktree-add.ts, `existed`).
-  const target = join(real, slug);
   if (await fs.exists(target)) return ownWorktreeVerdict(target, req.repoRoot, req.branch, fs);
   return { ok: true, path: target };
 }
@@ -234,8 +233,11 @@ export async function resolveSetFolderTarget(req: SetFolderRequest): Promise<Fol
   if (slug === "") return { ok: false, code: "worktree.invalid_branch" };
   const dir = await checkedParentDir(req.dir, req.home, fs);
   if (!dir.ok) return dir;
-  if (isWithin(dir.path, req.repoRoot)) return { ok: false, code: "worktree.folder_in_repo" };
-  const repoDir = join(dir.path, basename(req.repoRoot));
+  const repoName = basename(req.repoRoot);
+  if (repoName.startsWith(".")) return { ok: false, code: "worktree.folder_hidden" };
+  const repoDir = join(dir.path, repoName);
+  const target = join(repoDir, slug);
+  if (isWithin(target, req.repoRoot)) return { ok: false, code: "worktree.folder_in_repo" };
   if (await fs.exists(repoDir)) {
     try {
       if ((await fs.realpath(repoDir)) !== repoDir || !(await fs.isDirectory(repoDir))) return { ok: false, code: "worktree.folder_link", path: repoDir };
@@ -243,7 +245,6 @@ export async function resolveSetFolderTarget(req: SetFolderRequest): Promise<Fol
       return { ok: false, code: "worktree.folder_link", path: repoDir };
     }
   }
-  const target = join(repoDir, slug);
   if (await fs.exists(target)) return ownWorktreeVerdict(target, req.repoRoot, req.branch, fs);
   return { ok: true, path: target };
 }
