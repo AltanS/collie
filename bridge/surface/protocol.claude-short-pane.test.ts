@@ -11,7 +11,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Profile } from "../../web/src/lib/surface/profile.ts";
-import { FakePane, PROBE, neverEscape, rig, useScratchDir } from "./protocol.rig.ts";
+import { DIALOG, FakePane, PROBE, neverEscape, rig, useScratchDir } from "./protocol.rig.ts";
 
 useScratchDir();
 
@@ -152,4 +152,62 @@ describe("Claude Code 2.1.332 in a short pane gives the rows under its box to th
     expect(answer.receipt?.reason).toBe("probe_failed");
     expect(pane.keysSeen).not.toContain("Enter");
   });
+});
+
+// The same lab reads with the rule on and the box grown, where something else moved as well. The rule excuses
+// rows that left from the end of the rows under the box and nothing else: each of these still ends without Enter.
+describe("losesRows never lets a screen that moved for another reason through", () => {
+  const plain = (row: string): string => row.replace(SGR, "").trimEnd();
+  const typedRows = (c: Case): string[] => capture(c.rows, "typed").split("\n");
+  const bottomEdge = (rows: readonly string[]): number => rows.findLastIndex((row) => /^─{8,}$/u.test(plain(row)));
+  /** The read cut to the pane's height from the top, so a row added under the box does not make the pane taller. */
+  const fit = (c: Case, rows: readonly string[]): string => rows.slice(rows.length - c.rows).join("\n");
+
+  test("14 rows: a permission dialog opens under the box while the mode row went: typed_not_submitted (modal_cue), never submitted", async () => {
+    const c = panes[0];
+    const rows = typedRows(c);
+    const edge = bottomEdge(rows);
+    const pane = replay(c, fit(c, [...rows.slice(0, edge + 1), ...DIALOG]));
+    const answer = await rig({ pane, version: "2.1.332" }).send(c.text);
+    expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "modal_cue" });
+    expect(pane.keysSeen).not.toContain("Enter");
+  });
+
+  test("12 rows: the rows went and a NEW notice row stands under the box: typed_not_submitted (changed), never submitted", async () => {
+    const c = panes[1];
+    const rows = typedRows(c);
+    const edge = bottomEdge(rows);
+    const pane = replay(c, fit(c, [...rows.slice(0, edge + 1), "  Background task finished"]));
+    const answer = await rig({ pane, version: "2.1.332" }).send(c.text);
+    expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "changed" });
+    expect(pane.keysSeen).not.toContain("Enter");
+  });
+
+  test("14 rows: the mode row is replaced by the agents screen's key-hint row, the count of rows is kept: typed_not_submitted (changed, the other screen), never submitted", async () => {
+    const c = panes[0];
+    const rows = typedRows(c);
+    const status = rows.findIndex((row) => plain(row).includes("~/project · Haiku 5.5"));
+    expect(status).toBeGreaterThan(0);
+    const pane = replay(c, fit(c, [...rows.slice(0, status + 1), "  enter to return"]));
+    const answer = await rig({ pane, version: "2.1.332" }).send(c.text);
+    expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "changed" });
+    expect(pane.keysSeen).not.toContain("Enter");
+  });
+
+  // With rows under the box (14 rows) the read with no box is a changed screen; with nothing under it (12 rows) the Surface
+  // cannot read the pane at all and claims an unreadable modal. Both end without Enter.
+  const noFrame = [
+    { c: panes[0], reason: "changed" },
+    { c: panes[1], reason: "modal_cue" },
+  ] as const;
+  for (const { c, reason } of noFrame) {
+    test(`${String(c.rows)} rows: the frame is gone at the later read: typed_not_submitted (${reason}), never submitted`, async () => {
+      // The lab's typed read with both edges of the box blanked: the text stands where it stood, with no box around it.
+      const rows = typedRows(c).map((row) => (plain(row).startsWith("─") ? "" : row));
+      const pane = replay(c, rows.join("\n"));
+      const answer = await rig({ pane, version: "2.1.332" }).send(c.text);
+      expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason });
+      expect(pane.keysSeen).not.toContain("Enter");
+    });
+  }
 });
