@@ -117,22 +117,53 @@ function applySgr(state: State, codes: number[]): void {
     else if (c === 49) state.bg = undefined;
     else if (c >= 90 && c <= 97) state.fg = ansiVar(8 + c - 90);
     else if (c >= 100 && c <= 107) state.bg = ansiVar(8 + c - 100);
-    else if (c === 38 || c === 48) {
-      const isFg = c === 38;
+    else if (c === 38 || c === 48 || c === 58) {
+      // 58 is the underline colour. Collie does not paint it, but its arguments must still be
+      // consumed, or `58;2;255;0;0` would read as dim and then a full reset.
       const mode = codes[i + 1];
+      let col: string | undefined;
       if (mode === 5) {
-        const col = color256(codes[i + 2] ?? 0);
-        if (isFg) state.fg = col;
-        else state.bg = col;
+        col = color256(codes[i + 2] ?? 0);
         i += 2;
       } else if (mode === 2) {
-        const col = `rgb(${codes[i + 2] ?? 0},${codes[i + 3] ?? 0},${codes[i + 4] ?? 0})`;
-        if (isFg) state.fg = col;
-        else state.bg = col;
+        col = `rgb(${codes[i + 2] ?? 0},${codes[i + 3] ?? 0},${codes[i + 4] ?? 0})`;
         i += 4;
       }
+      if (col && c === 38) state.fg = col;
+      else if (col && c === 48) state.bg = col;
     }
   }
+}
+
+const sgrNumber = (p: string | undefined): number => Number.parseInt(p ?? "", 10) || 0;
+
+/**
+ * The SGR parameter field as the flat code list applySgr reads. `;` separates parameters and `:`
+ * separates the sub-parameters of ONE parameter (ISO 8613-6), so a colon group is read as a unit:
+ * `38:2:r:g:b`, the ISO `38:2:cs:r:g:b` (colorspace often empty, `38:2::r:g:b`) and `38:5:n` become
+ * their semicolon spellings, and `4:n` is an underline style (`4:0` is none, `4:3` curly). Reading
+ * the sub-parameters as codes of their own would make `4:3` italic and `58:2::255:0:0` a reset.
+ * A colon group Collie does not paint (an underline colour, say) adds no codes at all.
+ */
+function sgrCodes(raw: string): number[] {
+  const codes: number[] = [];
+  for (const param of raw.split(";")) {
+    if (param === "") continue;
+    if (!param.includes(":")) {
+      codes.push(sgrNumber(param));
+      continue;
+    }
+    const sub = param.split(":");
+    const head = sgrNumber(sub[0]);
+    const mode = sgrNumber(sub[1]);
+    if ((head === 38 || head === 48) && mode === 5) codes.push(head, 5, sgrNumber(sub[2]));
+    else if ((head === 38 || head === 48) && mode === 2) {
+      // Six fields carry the colorspace id before r, five leave it out.
+      const r = sub.length >= 6 ? 3 : 2;
+      codes.push(head, 2, sgrNumber(sub[r]), sgrNumber(sub[r + 1]), sgrNumber(sub[r + 2]));
+    } else if (head === 4) codes.push(mode === 0 ? 24 : 4);
+  }
+  return codes;
 }
 
 // Context-free parser check: a segment that's nothing but box-drawing / horizontal-rule glyphs
@@ -259,14 +290,10 @@ export function parseAnsi(input: string): AnsiSegment[] {
         if (final === "m" && !hasPrivate) {
           flush();
           const raw = input.slice(i + 2, j);
-          // Split by both ';' (common form) and ':' (ISO sub-parameter separator).
-          // Filter empty strings to absorb the empty colorspace field in 38:2::r:g:b.
-          const codes = raw
-            .split(/[;:]/)
-            .filter((s) => s !== "")
-            .map((p) => Number.parseInt(p, 10) || 0);
-          // Empty params (ESC[m) → treat as full reset (code 0).
-          applySgr(state, codes.length ? codes : [0]);
+          const codes = sgrCodes(raw);
+          // Empty params (ESC[m) → treat as full reset (code 0). A colon group that adds no
+          // codes (an underline colour) is not empty: it changes nothing.
+          applySgr(state, codes.length || raw.includes(":") ? codes : [0]);
         }
         i = j; // for-loop ++ will move past the final byte
         continue;
