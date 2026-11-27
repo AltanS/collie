@@ -40,10 +40,25 @@ export interface Finding {
    * has none, which is nearly all of them; the renderers never read it.
    */
   readonly data?: JsonValue;
+  /**
+   * Set on an `error` only, and only where an update cannot finish while it stands or would leave it
+   * worse: the restart is refused, the new bridge and the rollback both exit at boot, or there is no
+   * version left to roll back to. **Absent means it does not block**, which is what `collie update
+   * --check` reads (ADR 0050's rule, now ADR 0143 rule 11): most errors are a health report an update
+   * neither needs nor worsens, and a check added later lands amber until its line is stamped.
+   *
+   * A flag on the finding, not a list of check ids, because one id can mean both: `bind` on a peer is
+   * a lead that has not dialled in yet, and `bind` outside a crew is a bridge that refuses to start.
+   * Each is stamped at its own line, like {@link scope}.
+   */
+  readonly blocksUpdate?: true;
 }
 
 /** Stamp a finding as being about the crew rather than about this machine (ADR 0050). */
 export const aboutCrew = (finding: Finding): Finding => ({ ...finding, scope: "crew" });
+
+/** Stamp an error as one an update cannot get past. See {@link Finding.blocksUpdate}. */
+export const blockingUpdate = (finding: Finding): Finding => ({ ...finding, blocksUpdate: true });
 
 /** Whether this finding is about the machine it was produced on. Absent scope is local. */
 export const isLocal = (finding: Finding): boolean => finding.scope !== "crew";

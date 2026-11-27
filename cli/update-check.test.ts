@@ -239,15 +239,15 @@ describe("preflight — the doctor check", () => {
     const report = await preflight(
       harness({
         findings: [
-          { check: "bind", status: "error", detail: "wildcard", remedy: "set COLLIE_HOST" },
-          { check: "web-dist", status: "error", detail: "missing", remedy: "collie build" },
+          { check: "bind", status: "error", detail: "wildcard", remedy: "set COLLIE_HOST", blocksUpdate: true },
+          { check: "update-source", status: "error", detail: "fork origin", remedy: "…", blocksUpdate: true },
         ],
       }).deps,
     );
     const check = byId(report, "doctor");
     expect(check.verdict).toBe("red");
     expect(check.reason).toContain("bind");
-    expect(check.reason).toContain("web-dist");
+    expect(check.reason).toContain("update-source");
     expect(check.remedy).toContain("collie doctor");
   });
 
@@ -327,14 +327,14 @@ describe("preflight — the doctor check", () => {
   test("a local error still blocks, and a crew error beside it does not soften it", async () => {
     const h = harness({
       findings: [
-        { check: "web-dist", status: "error", detail: "missing", remedy: "collie build" },
+        { check: "update-source", status: "error", detail: "fork origin", remedy: "…", blocksUpdate: true },
         { check: "member-reach", status: "error", detail: "workshop did not answer", remedy: "…", scope: "crew" },
       ],
     });
     const report = await preflight(h.deps);
     const check = byId(report, "doctor");
     expect(check.verdict).toBe("red");
-    expect(check.reason).toContain("web-dist");
+    expect(check.reason).toContain("update-source");
     // The red names the local fault ALONE. Listing the crew one beside it would send the operator
     // to wake a laptop that has nothing to do with why this machine cannot build.
     expect(check.reason).not.toContain("member-reach");
@@ -342,8 +342,54 @@ describe("preflight — the doctor check", () => {
   });
 
   test("a finding with no scope is local, which is what every check answered before the field", async () => {
-    const h = harness({ findings: [{ check: "bind", status: "error", detail: "wildcard", remedy: "set COLLIE_HOST" }] });
+    const h = harness({ findings: [{ check: "bind", status: "error", detail: "wildcard", remedy: "set COLLIE_HOST", blocksUpdate: true }] });
     expect(byId(await preflight(h.deps), "doctor").verdict).toBe("red");
+  });
+
+  // 2026-11-27: one Claude pane on its own config folder made `agent-sessions` red, and the phone's
+  // Update button stayed off while that pane ran. Only an error doctor stamped as blocking is red.
+  test("a local error doctor did not stamp as blocking is amber, named by id, and the update proceeds", async () => {
+    const h = harness({
+      findings: [
+        { check: "agent-sessions", status: "error", detail: "1 report NO session: p7xq (claude)", remedy: "…" },
+        { check: "web-dist", status: "error", detail: "missing", remedy: "collie build" },
+      ],
+    });
+    const report = await preflight(h.deps);
+    const check = byId(report, "doctor");
+    expect(check.verdict).toBe("amber");
+    expect(report.verdict).toBe("amber");
+    expect(check.reason).toContain("this machine can still update");
+    expect(check.reason).toContain("agent-sessions, web-dist");
+    expect(check.reason).not.toContain("p7xq");
+    expect(await cmdUpdateCheck(h.deps, ["--json"])).toBe(EXIT.OK);
+  });
+
+  test("a stamped error beside unstamped ones is red and names only itself", async () => {
+    const check = byId(
+      await preflight(
+        harness({
+          findings: [
+            { check: "agent-sessions", status: "error", detail: "…", remedy: "…" },
+            { check: "versions", status: "error", detail: "current resolves to nothing", remedy: "…", blocksUpdate: true },
+          ],
+        }).deps,
+      ),
+      "doctor",
+    );
+    expect(check.verdict).toBe("red");
+    expect(check.reason).toContain("1 problem: versions");
+    expect(check.reason).not.toContain("agent-sessions");
+  });
+
+  test("a crew error's stamp does not make it red: it is about another machine", async () => {
+    const check = byId(
+      await preflight(
+        harness({ findings: [{ check: "member-reach", status: "error", detail: "…", remedy: "…", scope: "crew", blocksUpdate: true }] }).deps,
+      ),
+      "doctor",
+    );
+    expect(check.verdict).toBe("amber");
   });
 
   // M71 spec 01: a `sends-<harness>` error is local, and still amber. An update is often the fix for
@@ -365,7 +411,7 @@ describe("preflight — the doctor check", () => {
       await preflight(
         harness({
           findings: [
-            { check: "web-dist", status: "error", detail: "missing", remedy: "collie build" },
+            { check: "update-source", status: "error", detail: "fork origin", remedy: "…", blocksUpdate: true },
             { check: "sends-codex", status: "error", detail: "…", remedy: "…" },
           ],
         }).deps,
@@ -373,7 +419,7 @@ describe("preflight — the doctor check", () => {
       "doctor",
     );
     expect(red.verdict).toBe("red");
-    expect(red.reason).toContain("1 problem: web-dist");
+    expect(red.reason).toContain("1 problem: update-source");
     expect(red.reason).not.toContain("sends-codex");
     const both = byId(
       await preflight(
@@ -1085,7 +1131,7 @@ describe("the JSON contract", () => {
       harness({ answers: [["df -Pk", { stdout: df(1000) }]] }),
       harness({ answers: [[`${GIT} status --porcelain --untracked-files=no`, { stdout: " M cli/x.ts\n" }]] }),
       harness({ answers: [[`${GIT} ls-remote --tags`, { code: 128 }]] }),
-      harness({ findings: [{ check: "bind", status: "error", detail: "d", remedy: "r" }] }),
+      harness({ findings: [{ check: "bind", status: "error", detail: "d", remedy: "r", blocksUpdate: true }] }),
     ]) {
       const report = await preflight(h.deps);
       reds.push(...report.checks.filter((c) => c.verdict === "red"));

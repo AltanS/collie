@@ -66,7 +66,7 @@ import { CrewOpsStore } from "../bridge/crew/ops-store.ts";
 import { crewDelta, deltaLines } from "./crew-delta.ts";
 import { projectFileFindings } from "./project-file-finding.ts";
 import { shortcutsFinding } from "./shortcuts-finding.ts";
-import { aboutCrew, bad, ok, skipped, warn, type DoctorStatus, type Finding } from "./finding.ts";
+import { aboutCrew, bad, blockingUpdate, ok, skipped, warn, type DoctorStatus, type Finding } from "./finding.ts";
 import { statusLineState } from "./statusline.ts";
 import { parseAccountWindowsSetting } from "../bridge/account-windows-setting.ts";
 import { accountWindowsDoctorLine, grokAuthPath, hasOpencodeGoEntry, opencodeAuthPath } from "../bridge/account-windows.ts";
@@ -312,7 +312,7 @@ export async function cmdDoctor(deps: DoctorDeps, args: readonly string[]): Prom
     // The programs in `sources.json` (M55): one row for the file, then one block per program, each row
     // named `<row>:<program>`. Nothing when there is no file. The `durable-lead` row comes once: with
     // the env form's rows above on a durable-only install, after these blocks otherwise.
-    ...(await sourcesFindings({ ctx: deps.ctx, crew: chosen.name === DURABLE_MUX ? undefined : { mode, marker: runtimeMarker } })),
+    ...(await sourcesFindings({ ctx: deps.ctx, durableOnly: chosen.name === DURABLE_MUX, crew: chosen.name === DURABLE_MUX ? undefined : { mode, marker: runtimeMarker } })),
     // Windows only: who the Task Scheduler task belongs to (M43 spec 05), the long-path switch, and
     // whether the secret folders are owner-only by their access list (M43 spec 04). No line elsewhere:
     // on POSIX the mode bits are checked where the files are read, as before.
@@ -390,8 +390,9 @@ export async function cmdDoctor(deps: DoctorDeps, args: readonly string[]): Prom
   //                       above. Its own remedy says "whichever machine is off", so the machine at
   //                       fault may be the far one. Stamped there, at its line.
   //   `store-drift`     — CAN be an error, and is NOT a crew fact. It compares this machine's running
-  //                       bridge to this machine's own store, so it is local and stays red, exactly
-  //                       as it was before ADR 0050. Not stamped; see the note at the list below.
+  //                       bridge to this machine's own store, so it is local. The update's restart
+  //                       cures it, so it holds an update back (`blocksUpdate`) only on a packaged
+  //                       install, where no update restarts anything; see the note at the list below.
   //   `secret-generation` — `warn` at worst, so it never reaches the preflight's error filter and the
   //                       stamp changes nothing for it. A rotation a member slept through does strand
   //                       that member, which is why it is reported at all, but the strand is already
@@ -401,8 +402,9 @@ export async function cmdDoctor(deps: DoctorDeps, args: readonly string[]): Prom
   //                       on the wire, so it is never an error to begin with.
   //
   // `cli/doctor.test.ts` holds that last pair to `warn` by reading this file, so a future `bad(` in
-  // either is a failing test rather than a silent downgrade to amber. Two checks can therefore turn
-  // the preflight amber: `reach` and `clock`. Stamping anything else means re-arguing it here.
+  // either is a failing test rather than a silent downgrade to amber. Two crew checks can therefore
+  // turn the preflight amber: `reach` and `clock`. Stamping anything else crew means re-arguing it
+  // here. A local error is amber too unless its line stamps `blocksUpdate` (cli/finding.ts).
   const crew: Finding[] =
     inCrew && data !== null
       ? [
@@ -411,9 +413,9 @@ export async function cmdDoctor(deps: DoctorDeps, args: readonly string[]): Prom
           // anywhere else, and its remedy is `collie restart` HERE. `scope` says which machine a
           // finding is about (`cli/finding.ts`), so stamping this one `crew` would be the group pass
           // ADR 0050 refuses, and it would read on the phone as "the crew reports: store-drift" when
-          // no other machine reported anything. Left local, it also stays red on a PACKAGED install,
-          // where `collie update` refuses outright, so no update is ever going to restart anything.
-          storeDrift(deps, data),
+          // no other machine reported anything. On a PACKAGED install it is stamped `blocksUpdate`, so
+          // it stays red there: `collie update` refuses outright, and no update will restart anything.
+          storeDrift(deps, data, install),
           ...[
             secretGeneration(data, members),
             reach(data, members, reaches),
@@ -779,19 +781,22 @@ function versionsLayout(deps: DoctorDeps, install: InstallKind): Finding {
   const previous = newestFirst.filter((v) => v.complete && v.dir !== at).map((v) => v.dir);
   const kept = `${previous.length} retained${previous.length === 0 ? "" : ` (${previous.join(", ")})`}`;
   const drift = staged ? worktreeDrift(deps, layout, newestFirst.map((v) => v.dir)) : null;
+  // Both errors below block an update: the runner rolls back only to the `current` it found, so with
+  // no complete one a new version that fails its health check has nothing to switch back to, and
+  // the service stays down. A retained version is no help there: the runner never picks one.
   if (at === null) {
-    return bad(
+    return blockingUpdate(bad(
       "versions",
       `${layout.currentLink} resolves to no version under ${layout.versionsDir} — ${kept}`,
       "`collie update` re-stages and re-points it; a binary install reinstalls with docs/install.md",
-    );
+    ));
   }
   if (live === undefined || !live.complete) {
-    return bad(
+    return blockingUpdate(bad(
       "versions",
       `${layout.currentLink} → ${at}, which is ${live === undefined ? "not on disk" : `incomplete (no ${BUILD_MARKER})`} — ${kept}`,
       "`collie update --rollback` returns to the newest retained version",
-    );
+    ));
   }
   if (drift !== null) return warn("versions", `current ${at} · ${kept} · ${drift}`, "`git worktree prune`");
   return ok("versions", `current ${at} · ${kept}`);
@@ -859,11 +864,12 @@ function updateSource(deps: DoctorDeps, install: InstallKind): Finding {
     );
   }
   const named = origin.kind === "repo" ? `github.com/${origin.repo}` : origin.url;
-  return bad(
+  // Blocks an update: it refuses before the fetch.
+  return blockingUpdate(bad(
     "update-source",
     `origin is ${named} but updates are configured to come from github.com/${repo}`,
     '`collie update` will refuse; see docs/upgrading.md → "You run a fork"',
-  );
+  ));
 }
 
 /**
@@ -973,11 +979,12 @@ function bindCheck(input: {
       allowNonLoopbackBind: envBool("COLLIE_ALLOW_NON_LOOPBACK_BIND", false, deps.ctx.env),
     }) !== null
   ) {
-    return bad(
+    // Blocks an update: the new bridge and the rollback both exit at boot on the same setting.
+    return blockingUpdate(bad(
       "bind",
       `COLLIE_HOST=${shown} is not loopback and this collie is in no crew — the bridge refuses to start`,
       `set COLLIE_HOST=127.0.0.1 in ${join(deps.ctx.configDir, ".env")} and put your ingress in front, or set COLLIE_ALLOW_NON_LOOPBACK_BIND=1 if you meant it`,
-    );
+    ));
   }
   return ok("bind", `${shown} (mode ${mode})`);
 }
@@ -1075,7 +1082,7 @@ function acl(deps: DoctorDeps): Finding {
  * record is ours (ADR 0001); a mapping we do not own is REPORTED, never touched — and a **peer** with
  * any mapping at all is an error, because a peer publishes nothing (ADR 0013).
  */
-function frontDoor(deps: DoctorDeps, mode: string): Finding {
+export function frontDoor(deps: DoctorDeps, mode: string): Finding {
   const skip = deps.ctx.env.COLLIE_SKIP_SERVE === "1";
   const raw = deps.files.read(deps.ctx.handlerFile);
 
@@ -1158,6 +1165,8 @@ function frontDoor(deps: DoctorDeps, mode: string): Finding {
       return skipped("front-door", "the serve status was not readable", "run `tailscale serve status --json` by hand");
     }
     if (mode === "peer") {
+      // Does not block an update: the mapping listens on the serve port, not on the port the peer
+      // binds, so the new version starts beside it, and the update leaves it no worse.
       return availability === "adoptable"
         ? bad(
             "front-door",
@@ -2182,7 +2191,7 @@ async function beacons(deps: DoctorDeps, installed: boolean): Promise<Finding> {
  * The comparison is `parseMarker` + `rosterDrift`, i.e. the two pure functions `crew status`'s
  * `reportDrift` prints from, so the two verbs cannot disagree about what drift is.
  */
-function storeDrift(deps: DoctorDeps, data: TrustStoreData): Finding {
+export function storeDrift(deps: DoctorDeps, data: TrustStoreData, install: InstallKind): Finding {
   const marker = parseMarker(deps.files.read(crewRuntimePath(deps.ctx.stateDir)));
   if (marker === null) {
     return skipped(
@@ -2198,11 +2207,14 @@ function storeDrift(deps: DoctorDeps, data: TrustStoreData): Finding {
   if (drift.gained.length > 0) parts.push(`not yet active: ${drift.gained.join(", ")}`);
   if (drift.lost.length > 0) parts.push(`still wired for: ${drift.lost.join(", ")}`);
   if (drift.modeChanged !== null) parts.push(`a ${drift.modeChanged} on disk, a ${marker.mode} in memory`);
-  return bad(
+  const drifted = bad(
     "store-drift",
     `enrolled but INACTIVE — ${parts.join("; ")}`,
     "`collie restart` on THIS machine (nothing is lost meanwhile: the store is correct, the process is behind)",
   );
+  // An update's restart is the cure everywhere but a packaged install, where `collie update` refuses
+  // and no update will ever restart anything (ADR 0050), so only there does the drift hold it back.
+  return install.kind === "packaged" ? blockingUpdate(drifted) : drifted;
 }
 
 /** A member that missed a rotation (§8.4), or one a rotation already dropped. */

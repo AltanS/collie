@@ -356,6 +356,17 @@ describe("the whole check", () => {
     const f = row(setupFindings(d), "mux");
     expect(f.status).toBe("error");
     expect(`${f.detail} ${f.remedy ?? ""}`).toContain("COLLIE_MUX");
+    // An update's restart refuses before it stops the old bridge.
+    expect(f.blocksUpdate).toBe(true);
+  });
+
+  // A name written to the config file after the bridge started: the restart stops the running bridge,
+  // the new one exits on the name, and so does the rollback on the same file.
+  test("a COLLIE_MUX this build does not drive blocks an update", () => {
+    const f = row(setupFindings(deps({ env: { COLLIE_MUX: "screen" } })), "mux");
+    expect(f.status).toBe("error");
+    expect(f.detail).toContain("is not a multiplexer this build drives");
+    expect(f.blocksUpdate).toBe(true);
   });
 
   test("a printed row is two lines, no arrow glyph; a remedy with several actions gets one line each", () => {

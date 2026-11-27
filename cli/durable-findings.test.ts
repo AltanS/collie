@@ -293,6 +293,20 @@ describe("doctor sources", () => {
     expect(file.status).toBe("error");
     expect(file.detail).toContain("mode 0644");
     expect(file.remedy).toBe(`run \`chmod 600 ${join(dir, "sources.json")}\``);
+    // The bridge tightens the mode or warns, and starts: an update does not wait for it.
+    expect(file.blocksUpdate).toBeUndefined();
+  });
+
+  // The boot runs the same name check and exits on it, so a file that parses can still stop the bridge.
+  test("an entry named like the primary session is an error that blocks an update", async () => {
+    const dir = configDir([{ name: "default", kind: "durable", socket: "/nonexistent/d.sock" }]);
+    for (const durableOnly of [false, true]) {
+      const env = durableOnly ? { COLLIE_DURABLE_SOCKET: "/nonexistent/main.sock" } : {};
+      const findings = await sourcesFindings({ ctx: context(env, { configDir: dir }), platform: "linux", mode: () => 0o600, durableOnly });
+      expect(rows(findings)).toEqual([["sources", "error"]]);
+      expect(row(findings, "sources").detail).toContain('entry "default"');
+      expect(row(findings, "sources").blocksUpdate).toBe(true);
+    }
   });
 
   test("a bad file is one error row naming the entry and the field", async () => {
@@ -300,6 +314,8 @@ describe("doctor sources", () => {
     const findings = await sourcesFindings({ ctx: context({}, { configDir: dir }) });
     expect(rows(findings)).toEqual([["sources", "error"]]);
     expect(row(findings, "sources").detail).toContain('entry "desk": set "socket" or "url", not both');
+    // The new bridge and the rollback both read this file at boot and exit on it.
+    expect(row(findings, "sources").blocksUpdate).toBe(true);
   });
 
   test("with programs off one skipped row says so, and the file is not read", async () => {
