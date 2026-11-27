@@ -99,8 +99,9 @@ const COMMAND_LIST_MIN = 3;
 /** Cells a soft-wrapped row may stop short of the box's width before its next word would have fit. */
 const WRAP_SLACK = 8;
 
-/** Glyphs a dialog draws in front of the highlighted row. */
-const POINTERS = "❯›>▶►→➜❱▸➤⟩❭〉";
+/** Glyphs a dialog draws in front of the highlighted row. U+F054 is the Nerd Font chevron (nf-fa-chevron_right),
+ *  which a list draws in a Nerd Font symbol set in place of `❯` (omp 19.1.1's Ask form, issue 866). */
+const POINTERS = "❯›>▶►→➜❱▸➤⟩❭〉\u{F054}";
 /** Border glyphs a dialog draws at the left and right of its rows; read as blank columns. */
 const BORDERS = /[│┃║▌▐]/gu;
 /** Every box glyph, for the slash query: a prompt row is often a box's own edge ("╰─ /"). */

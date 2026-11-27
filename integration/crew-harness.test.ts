@@ -1014,10 +1014,15 @@ describe("the lead speaks for the crew", () => {
     // Nothing was typed on the member: an id its book never minted sends no key.
     expect(peer.herdr!.writes).toEqual([]);
     // Two logs of one tap: the lead's line for the forward, and the member's own, stamped `via: crew`.
+    // Each bridge records its line before it answers, but the append is fire-and-forget (bridge/audit.ts,
+    // `AuditLog.record`): the answer can reach this test before the line reaches the disk. So each
+    // line is waited for, with a bound, and a line that never lands still fails the case (issue 871).
     const askLines = (at: Instance): string[] => readFileSync(join(at.stateDir, "audit.log"), "utf8").split("\n").filter((line) => line.includes('"action":"ask"'));
-    expect(askLines(lead).some((line) => line.includes(`"host":"${peerId}"`) && line.includes('"forwarded":"http 200"'))).toBe(true);
-    expect(askLines(peer).some((line) => line.includes('"via":"crew"') && line.includes('"reason":"ask_unknown"'))).toBe(true);
-  });
+    const leadForward = (): boolean => askLines(lead).some((line) => line.includes(`"host":"${peerId}"`) && line.includes('"forwarded":"http 200"'));
+    const memberAnswer = (): boolean => askLines(peer).some((line) => line.includes('"via":"crew"') && line.includes('"reason":"ask_unknown"'));
+    await waitFor(() => Promise.resolve(leadForward()), 5_000, () => `no forwarded ask line on the lead: ${JSON.stringify(askLines(lead))}`);
+    await waitFor(() => Promise.resolve(memberAnswer()), 5_000, () => `no crew ask line on the member: ${JSON.stringify(askLines(peer))}`);
+  }, 15_000);
 });
 
 describe("walky talky across the crew (CREW_PROTOCOL §21)", () => {
