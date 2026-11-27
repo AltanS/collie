@@ -26,6 +26,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Fixed
 
 - **A message to Claude Code in a pane under 16 rows is sent.** In a short pane Claude Code gives the rows under its input box to a draft that needs them: the mode row goes, and under 14 rows the statusline too. Collie read that as a changed screen, typed the text and did not press Enter, even for a two-row message. Collie now lets those last rows go when the box grew by as many, and still stops on a row with new or changed text. Checked on Claude Code 2.1.332. Thanks @HarderBetterFasterStronger (#868).
+- **A curly underline or an underline colour from tmux no longer restyles the mirror.** When a program in a tmux pane draws a curly underline (`4:3`) or sets an underline colour (`58`), tmux passes it on in a colon form that Collie read as several codes: the text turned italic, or lost its bold and colour. Collie now reads a colon group as one value, so the text keeps its colours and nothing turns italic. Thanks @bardrop (#870).
 
 ## [1.30.1] - 2026-11-25
 
