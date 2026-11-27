@@ -67,9 +67,9 @@ List who you can reach. When you pick an address yourself, copy it from this lis
 
 ```text
 ADDRESS                     MACHINE   HARNESS  SPACE   FOLDER                 NAME          TITLE                       STATE
-collie-04rj6a/w54:p1B#sx56  bluefin   claude   collie  collie-workspace#main  lead          Release train for 1.29      working  (you)
-collie-04rj6a/w54:p1J#anx6  bluefin   claude   collie  collie-workspace#main  dialog pings  Dialog ping sounds          done
-minibuch/w11:p4#8h9h        minibuch  omp      collie  walky-live             -             Walky live leg on the core  idle
+collie-04rj6a/w54:p1B#sx56  lodge     claude   collie  collie-workspace#main  lead          Release train for 1.29      working  (you)
+collie-04rj6a/w54:p1J#anx6  lodge     claude   collie  collie-workspace#main  dialog pings  Dialog ping sounds          done
+workshop/w11:p4#8h9h        workshop  omp      collie  walky-live             -             Walky live leg on the core  idle
 2 panes are outside your space. List every pane: collie walky who --all
 ```
 
