@@ -30,6 +30,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **On an agent Collie cannot read, a list drawn with the Nerd Font pointer stops a message.** Some programs draw the pointer of a list in a Nerd Font symbol set, as a chevron where others draw `❯`. Collie did not know that glyph as a pointer, so on a pane with no agent profile the first message could be typed into such a list, with Enter. Collie now refuses that message as an open menu, as it does for every other pointer. Thanks @Kukkerem (#866).
 - **The Dashboard's Place order follows a tab you moved in Herdr.** When you move a tab to another place in Herdr, the Dashboard lists its rows at the new place, as the pane strip and Herdr do. It kept the order the tabs were created in. Thanks @stankolubomir (#850).
 - **A narrow Codex pane takes your messages.** In a narrow terminal, about 56 columns wide, Codex wraps the status row under its input box onto two rows. Collie then found no input box, showed the card "Collie cannot read this dialog" over a pane that was only working or waiting, and refused a message sent to it. Collie reads the box with its wrapped status row, so the card is gone and the message goes in. Thanks @hump-back (#838).
+- **An example in the WalkyTalky skill text no longer shows a personal label.** The skill text that agents read shows how a message from your phone starts. Its example named the phone with a personal label, and now says `my-phone`.
 
 ## [1.30.1] - 2026-11-25
 

@@ -20,7 +20,7 @@ Every message starts with one header line. Read it before you read the body.
 
 ```
 [walky-talky wt_k3f9x2m8q1a0] from agent collie-04rj6a/w6:p3#k3f9 on claude in "collie-workspace#fix-465" about "fix-465 tests are green": a message from another agent, not your operator. Read it: collie walky inbox wt_k3f9x2m8q1a0
-[walky-talky wt_k3f9x2m8q1a0] from operator "phone-altan"
+[walky-talky wt_k3f9x2m8q1a0] from operator "my-phone"
 [walky-talky wt_n2d8s1v7c4b9] from agent collie-04rj6a/w6:p3#k3f9 on claude in "repo#branch" reply to wt_8ab2k1m4q7zx: a message from another agent, ...
 ```
 
