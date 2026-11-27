@@ -27,7 +27,9 @@ import {
 } from "../bridge/mux/durable/http-client.ts";
 import { HOST } from "../bridge/host.ts";
 import { chooseDurableTransport, type DurableEnv } from "../bridge/mux/durable/transport.ts";
-import { PROGRAMS_OFF_NOTE, programsOff, readSources, sourcesPath, sourceTransportEnv, SourcesError, type DurableSource } from "../bridge/sources.ts";
+import { planPrograms, PROGRAMS_OFF_NOTE, programsOff, readSources, sourcesPath, sourceTransportEnv, SourcesError, type DurableSource } from "../bridge/sources.ts";
+import { sessionNameFor } from "../bridge/sessions.ts";
+import { deriveConfigRoot } from "../bridge/mux/herdr/sessions.ts";
 import {
   DURABLE_SERVICE,
   incompatibleDetail,
@@ -41,7 +43,7 @@ import type { CrewRuntimeMarker } from "../bridge/crew/staleness.ts";
 import { DURABLE_LEAD_MINIMUM, leadIsOld, oldLeadSentence } from "../bridge/durable/old-lead.ts";
 import type { CrewMode } from "../bridge/types.ts";
 import type { CliContext } from "./context.ts";
-import { bad, ok, skipped, warn, type Finding } from "./finding.ts";
+import { bad, blockingUpdate, ok, skipped, warn, type Finding } from "./finding.ts";
 
 // ── Can this install reach its durable program? ──────────────────────────────
 //
@@ -408,6 +410,8 @@ export interface SourcesDeps {
    * carry their own, are not printed.
    */
   readonly crew?: DurableDeps["crew"];
+  /** Whether this instance runs `COLLIE_MUX=durable`, whose primary session is named `default`. */
+  readonly durableOnly?: boolean;
 }
 
 function diskMode(path: string): number | null {
@@ -435,9 +439,24 @@ export async function sourcesFindings(deps: SourcesDeps): Promise<Finding[]> {
     sources = readSources(deps.ctx.configDir);
   } catch (err) {
     const detail = err instanceof SourcesError ? err.message : String(err);
-    return [bad(SOURCES_ROW, detail, `fix ${path} (an array of { "name", "kind": "durable", "socket" } or { ..., "url", "token" }), then \`collie restart\`; the bridge does not start while it is wrong`)];
+    // Blocks an update: the new bridge and the rollback both read this file at boot and exit on it.
+    // The mode error below does not: the bridge tightens the mode or warns, and starts.
+    return [blockingUpdate(bad(SOURCES_ROW, detail, `fix ${path} (an array of { "name", "kind": "durable", "socket" } or { ..., "url", "token" }), then \`collie restart\`; the bridge does not start while it is wrong`))];
   }
   if (sources.length === 0) return [];
+  // The boot's own name check, so a file that parses but takes the primary session's name is the same
+  // stop here as an unparseable one: the bridge exits on it before it listens.
+  try {
+    planPrograms({
+      durableOnly: deps.durableOnly ?? false,
+      env: deps.ctx.env,
+      sources,
+      primaryName: sessionNameFor(deps.ctx.socket, deriveConfigRoot(deps.ctx.socket)),
+    });
+  } catch (err) {
+    if (!(err instanceof SourcesError)) throw err;
+    return [blockingUpdate(bad(SOURCES_ROW, err.message, `rename that entry in ${path}, then \`collie restart\`; the bridge does not start while it is wrong`))];
+  }
   const platform = deps.platform ?? HOST.platform;
   const counted = `${String(sources.length)} durable agent${sources.length === 1 ? "" : "s"} in ${path}`;
   const mode = platform === "win32" ? null : (deps.mode ?? diskMode)(path);

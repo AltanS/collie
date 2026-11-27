@@ -284,9 +284,13 @@ const SENDS_CHECK_PREFIX = "sends-";
 /**
  * `doctor` — the existing per-instance diagnostic, consumed rather than re-implemented.
  *
- * Doctor's own error severity is the red: it has already decided which of its findings is
- * actionable. Its warnings ride along as amber, and its `skipped` findings say nothing at all —
- * a check that could not run is not evidence that an update would fail.
+ * Red is a local error doctor stamped `blocksUpdate` (cli/finding.ts): the restart is refused, the
+ * new bridge and the rollback both exit at boot, or no version is left to roll back to. Every other
+ * error is amber — most are a health report an update neither needs nor worsens, such as a pane
+ * whose session cannot be found — and so is a check added later until its line is stamped.
+ * Disk, bun, the tree, the tag and the service are their own checks below, not doctor's. Warnings
+ * ride along as amber, and `skipped` findings say nothing at all — a check that could not run is
+ * not evidence that an update would fail.
  *
  * Crew state reaches the lead's own move at FOUR gates, and the ADR 0050 rule changed only the first
  * two. The two terminal gates still refuse, and this table is the place that says so:
@@ -296,10 +300,6 @@ const SENDS_CHECK_PREFIX = "sends-";
  *   `mergedUpdateVerdict`, an `unknown` row       the tap, POST /api/update  blocks  tolerated when absent
  *   `skewCheck`, on the CLI member walk           `collie update --check` red      unchanged
  *   `preflightGate` (`cli/crew-update.ts`)        `collie crew update`    refuses  unchanged
- *
- * Known gap: the LOCAL list was not audited under the same rule. `web-dist`'s remedy is `collie build`,
- * which an update performs, so it is arguably not a precondition either. The end state is an explicit
- * allowlist of the doctor ids that really are update preconditions, failing safe to amber on a rename.
  */
 export async function doctorCheck(deps: UpdateCheckDeps): Promise<PreflightCheck> {
   let findings: readonly Finding[];
@@ -308,10 +308,15 @@ export async function doctorCheck(deps: UpdateCheckDeps): Promise<PreflightCheck
   } catch (err) {
     return amber("doctor", `could not run doctor here (${String(err)})`, "collie doctor");
   }
-  // ── ONLY A LOCAL ERROR IS RED (ADR 0050) ──────────────────────────────────
+  // ── ONLY A LOCAL ERROR THAT BLOCKS AN UPDATE IS RED (ADR 0050, ADR 0143 rule 11) ──
   // This check answers one question — can THIS machine take a new version — and a fault on another
   // machine is not an answer to it. `cli/doctor.ts` already builds its findings as two lists and
   // stamps the crew's; this reads that stamp rather than a list of check ids.
+  //
+  // Nor is every local error an answer to it. Measured 2026-11-27: one Claude pane started on its own
+  // config folder reported no session, `agent-sessions` went red, and the phone's Update button stayed
+  // off for as long as that pane ran, though the only effect was a hidden History link. The red is
+  // the `blocksUpdate` stamp, set at the line that knows the update cannot get past it.
   //
   // Measured 2026-09-20: a laptop went to sleep, `member-reach` went red, and a healthy desktop with
   // the disk, the bun and a clean tree could not take a release for the rest of the day. A crew of
@@ -322,20 +327,26 @@ export async function doctorCheck(deps: UpdateCheckDeps): Promise<PreflightCheck
   // ADR 0045's floor check is NOT here and is untouched — it is `skewCheck`, its own preflight check
   // on the member walk. A member the update would strand still blocks the confirm.
   //
-  // ONE LOCAL ERROR IS AMBER: a `sends-<harness>` row (M71 spec 01, cli/send-findings.ts). It says
+  // A LOCAL ERROR IS RED ONLY WHEN ITS FINDING CARRIES `blocksUpdate` (cli/finding.ts): the doctor
+  // branch that knows the update cannot finish, or would leave it worse, stamps it. Every other local
+  // error is amber and named by check id, like a crew error.
+  //
+  // A `sends-<harness>` row is one such amber error (M71 spec 01, cli/send-findings.ts). It says
   // Collie cannot send to that harness on this machine, and a new version is often the fix: a reader
   // or a profile that does not know the harness's new build. Holding the update back on it would keep
   // the machine on the version that cannot send. It is named by check id, like a crew error.
   const errors = findings.filter((f) => f.status === "error");
-  const sends = errors.filter((f) => isLocal(f) && f.check.startsWith(SENDS_CHECK_PREFIX)).map((f) => f.check);
-  const local = errors.filter((f) => isLocal(f) && !f.check.startsWith(SENDS_CHECK_PREFIX)).map((f) => f.check);
-  if (local.length > 0) {
+  const blocking = errors.filter((f) => isLocal(f) && f.blocksUpdate === true).map((f) => f.check);
+  if (blocking.length > 0) {
     return red(
       "doctor",
-      `collie doctor reports ${local.length} problem${local.length === 1 ? "" : "s"}: ${local.join(", ")}`,
-      "collie doctor — clear each error it names, then re-run this check",
+      `collie doctor reports ${blocking.length} problem${blocking.length === 1 ? "" : "s"}: ${blocking.join(", ")}`,
+      "collie doctor — fix the errors this line names, then re-run this check",
     );
   }
+  const unstamped = errors.filter((f) => isLocal(f) && f.blocksUpdate !== true);
+  const sends = unstamped.filter((f) => f.check.startsWith(SENDS_CHECK_PREFIX)).map((f) => f.check);
+  const local = unstamped.filter((f) => !f.check.startsWith(SENDS_CHECK_PREFIX)).map((f) => f.check);
   // ── A CREW ERROR IS AMBER, AND IS REPORTED BY CHECK ID ────────────────────
   // By ID, never by the finding's `detail`. Every check's reason is rendered verbatim on the phone,
   // in the update card's preflight list, and a red one also becomes the card's `blockedReason`. The
@@ -350,11 +361,11 @@ export async function doctorCheck(deps: UpdateCheckDeps): Promise<PreflightCheck
   // unreachable and, once a rotation passes it, enrolled but inactive — and reporting one would hide
   // the other behind a fault the operator then cannot see.
   const crew = errors.filter((f) => !isLocal(f)).map((f) => f.check);
-  const notSent = sends.length === 0 ? "" : `; sends do not arrive: ${sends.join(", ")}, and an update may fix them`;
-  if (crew.length > 0) {
-    return amber("doctor", `this machine can still update; the crew reports: ${crew.join(", ")}${notSent}`);
-  }
-  if (sends.length > 0) return amber("doctor", `this machine can still update${notSent}`);
+  const said: string[] = [];
+  if (crew.length > 0) said.push(`the crew reports: ${crew.join(", ")}`);
+  if (local.length > 0) said.push(`collie doctor reports ${local.join(", ")}, which an update does not depend on`);
+  if (sends.length > 0) said.push(`sends do not arrive: ${sends.join(", ")}, and an update may fix them`);
+  if (said.length > 0) return amber("doctor", `this machine can still update; ${said.join("; ")}`);
   const warns = findings.filter((f) => f.status === "warn").map((f) => f.check);
   if (warns.length > 0) {
     return amber("doctor", `collie doctor warns about ${warns.join(", ")} — an update still proceeds`);

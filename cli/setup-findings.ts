@@ -14,7 +14,7 @@ import { resolveZellijBinary, zellijBinaryCandidates } from "../bridge/mux/zelli
 import { chooseSession, parseSessionList, ZELLIJ_LIST_SESSIONS_ARGS } from "../bridge/mux/zellij/protocol.ts";
 import { envGet } from "../bridge/tools.ts";
 import type { CliContext } from "./context.ts";
-import { bad, ok, skipped, warn, type Finding } from "./finding.ts";
+import { bad, blockingUpdate, ok, skipped, warn, type Finding } from "./finding.ts";
 import { publishedBinary } from "./install-kind.ts";
 import { classifyLink, linkDir, linkPath, type LinkReader } from "./link.ts";
 import { explicitMux, probeMuxes, refusedMux, type MuxSighting } from "./mux.ts";
@@ -498,15 +498,19 @@ export function muxFinding(deps: MuxDeps): Finding {
   const registry = buildMuxRegistry();
   if (settings.origin.kind === "undecided") {
     const { detail, remedy } = refusedMux(settings.origin.found, deps.ctx.configDir, deps.ctx.env);
-    return bad("mux", `${detail}, so \`collie start\` refuses`, remedy);
+    // Blocks an update: its restart refuses before it stops the old bridge.
+    return blockingUpdate(bad("mux", `${detail}, so \`collie start\` refuses`, remedy));
   }
+  // Blocks an update too. The setting is read from the config file, so a running bridge can sit
+  // behind a name written after it started: the restart stops it, the new bridge exits on the name,
+  // and the rollback restarts on the same file and exits as well.
   if (factoryFor(registry, settings.name) === undefined) {
-    return bad(
+    return blockingUpdate(bad(
       "mux",
       `COLLIE_MUX="${settings.name}" is not a multiplexer this build drives, so the bridge refuses to start`,
       `set COLLIE_MUX to one of ${muxNames(registry).join(", ")} in ${join(deps.ctx.configDir, ".env")},` +
         " then `collie restart`",
-    );
+    ));
   }
   if (settings.name === DEFAULT_MUX) {
     return ok("mux", `${DEFAULT_MUX} — see herdr-socket${originSuffix(settings.origin)}`);

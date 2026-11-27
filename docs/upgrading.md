@@ -106,10 +106,18 @@ Under that sits the preflight, one line per check: `doctor`, `disk`, `bun`, `tre
 
 - **Green** is clear.
 - **Amber** is worth knowing and never blocks: version skew across a crew, an unusual install kind,
-  a major that is out but is not being taken. Untracked scratch files in a checkout stay green.
-- **Red** blocks the update. The line names the reason, such as a red `collie doctor`, less than
-  1 GB free for the staged build, no `bun` on the host, or an upstream that cannot be reached. Where
-  one command clears it, the card prints that command as `Fix: <command>`.
+  a major that is out but is not being taken, a `collie doctor` error the update does not depend
+  on. Untracked scratch files in a checkout stay green.
+- **Red** blocks the update. The line names the reason, such as a `collie doctor` error the update
+  cannot get past, less than 1 GB free for the staged build, no `bun` on the host, or an upstream
+  that cannot be reached. Where one command clears it, the card prints that command as
+  `Fix: <command>`.
+
+Only a few `collie doctor` errors turn the line red: an `origin` that is not the update source, a
+`current` version that is missing or incomplete, a bind, a `COLLIE_MUX` or a `sources.json` the
+bridge refuses to start with, and on a packaged install in a crew a bridge still running crew state
+older than its trust store (`store-drift`). Anything else, such as a pane whose session cannot be
+found, shows amber and the update goes ahead.
 
 Tapping **Update to `<version>`** opens the update screen, and **Start update** on it is the one
 confirmation. The screen says what happens: "While it runs, the app is locked on this phone. Your
