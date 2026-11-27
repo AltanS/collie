@@ -5,8 +5,8 @@
   "legs": {
     "solo": {
       "model": "openrouter/anthropic/claude-haiku-4.5",
-      "skill": "338c503a5f7bab2b",
-      "recordedAt": "2026-11-16T16:39:34.054Z",
+      "skill": "1d126c1956f974ed",
+      "recordedAt": "2026-11-27T13:34:47.525Z",
       "cases": [
         "claude.walky-broadcast",
         "claude.walky-space-reply",
