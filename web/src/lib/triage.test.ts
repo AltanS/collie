@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  bucketOf,
   countAlerting,
   countBlocked,
   flipDir,
@@ -362,5 +363,15 @@ describe("countAlerting — the installed app's icon count", () => {
     expect(countAlerting(herd, { blocked: true, done: false })).toBe(1);
     expect(countAlerting(herd, { blocked: false, done: true })).toBe(2);
     expect(countAlerting([], { blocked: true, done: true })).toBe(0);
+  });
+
+  it("never counts a manually marked-unseen pane in the app icon badge even when it sits in Ready · unseen", () => {
+    const manualDone = { ...agent("m1", "done", { active: 2, seen: 1 }), manualUnseen: true };
+    const manualIdle = { ...agent("m2", "idle", { active: 2, seen: 1 }), manualUnseen: true };
+    expect(isUnseen(manualDone)).toBe(true);
+    expect(bucketOf(manualDone)).toBe("ready");
+    expect(bucketOf(manualIdle)).toBe("ready");
+    expect(countAlerting([...herd, manualDone, manualIdle], { blocked: true, done: true })).toBe(3);
+    expect(countAlerting([manualDone, manualIdle], { blocked: true, done: true })).toBe(0);
   });
 });

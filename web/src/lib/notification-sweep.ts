@@ -24,7 +24,7 @@ import { paneScope } from "./hosts";
 import { herdSlotTag, paneSlotTag } from "./pane-notifications";
 import type { NotifData } from "./push-decision";
 import { normalizeScope, type Scope } from "./scope";
-import { needsYou } from "./triage";
+import { bucketOf } from "./triage";
 import type { AgentView, ServerSummary, SessionSummary } from "./types";
 
 /** What a sweep judges against: the snapshot's panes and the address and breadth they cover. */
@@ -62,15 +62,28 @@ function covers(view: SweepView, scope: Scope): boolean {
   return view.viewAll || scope.session === addressed.session;
 }
 
+const ALL_ALERT_KINDS = { blocked: true, done: true } as const;
+
+/** Whether a pane holds a genuine alert (manual unseen never suppresses a blocked pane, and never holds a ready alert). */
+export function hasPendingAlert(
+  a: AgentView,
+  kinds: { blocked: boolean; done: boolean } = ALL_ALERT_KINDS,
+): boolean {
+  const b = bucketOf(a);
+  if (b === "needs") return kinds.blocked;
+  if (b === "ready") return kinds.done && a.manualUnseen !== true;
+  return false;
+}
+
 /** Whether nothing in `view` still waits on the person for this notification. */
 function handled(view: SweepView, tag: string, data: NotifData): boolean {
   if (data.target !== undefined) return false;
   const scope = normalizeScope({ host: data.host, session: data.session });
   const inScope = view.agents.filter((pane) => sameScope(scopeOfPane(view, pane), scope));
-  if (tag === herdSlotTag(scope)) return covers(view, scope) && !inScope.some(needsYou);
+  if (tag === herdSlotTag(scope)) return covers(view, scope) && !inScope.some((p) => hasPendingAlert(p));
   if (data.paneId === undefined || tag !== paneSlotTag(data.paneId, scope)) return false;
   const pane = inScope.find((p) => p.paneId === data.paneId);
-  return pane === undefined ? covers(view, scope) : !needsYou(pane);
+  return pane === undefined ? covers(view, scope) : !hasPendingAlert(pane);
 }
 
 /** The shown notifications the snapshot says nothing waits on any more. Pure. */

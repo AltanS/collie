@@ -111,4 +111,17 @@ describe("useNotificationSweep", () => {
     await waitFor(() => expect(stale.close).toHaveBeenCalledOnce());
     expect(getNotifications).toHaveBeenCalledTimes(2);
   });
+
+  it("re-sweeps and closes the notification when an unseen pane becomes manualUnseen", async () => {
+    const natural = { ...pane("w1:p1", "done"), lastActiveAt: 200, lastSeenAt: 100 };
+    const { rerender } = renderHook(({ data }) => useNotificationSweep(data), {
+      initialProps: { data: home([natural]) },
+    });
+    await waitFor(() => expect(getNotifications).toHaveBeenCalledTimes(1));
+    expect(stale.close).not.toHaveBeenCalled();
+
+    rerender({ data: home([{ ...natural, manualUnseen: true }]) });
+    await waitFor(() => expect(stale.close).toHaveBeenCalledOnce());
+    expect(getNotifications).toHaveBeenCalledTimes(2);
+  });
 });

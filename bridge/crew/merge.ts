@@ -444,12 +444,13 @@ function untagSession(s: SessionSummary): SessionSummary {
  * is then a plain `blocked`, what an older member sends.
  */
 function untagPane(p: PaneWire): PaneWire {
-  const { host: _ignored, instance, pins, workspaceNamed, blockedBy, ...rest } = p;
+  const { host: _ignored, instance, pins, workspaceNamed, blockedBy, manualUnseen, ...rest } = p;
   const errored = p.status === "blocked" && blockedBy === "error" ? { ...rest, blockedBy } : rest;
   const tokened = typeof instance === "string" && INSTANCE_TOKEN.test(instance) ? { ...errored, instance } : errored;
   // M98: the space's "named" fact is kept only as a boolean; anything else reads as absent, which is the default.
   const named = typeof workspaceNamed === "boolean" ? { ...tokened, workspaceNamed } : tokened;
-  return Number.isSafeInteger(pins) && pins !== undefined && pins > 0 ? { ...named, pins } : named;
+  const manual = manualUnseen === true ? { ...named, manualUnseen: true as const } : named;
+  return Number.isSafeInteger(pins) && pins !== undefined && pins > 0 ? { ...manual, pins } : manual;
 }
 
 function untagWorkspace(w: WorkspaceView): WorkspaceView {

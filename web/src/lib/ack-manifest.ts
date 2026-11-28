@@ -180,6 +180,10 @@ export const ACK_MANIFEST = {
     channel: "status",
     why: "The one act whose outcome lands on a screen the operator is not looking at (the terminal, ADR 0031) — nothing here can show it, so the phone has to say it.",
   },
+  setPaneSeen: {
+    channel: "status",
+    why: "The sheet closes on success, so the status toast confirms the shared seen mark flipped before the next snapshot poll redraws the row.",
+  },
   renamePane: {
     channel: "status",
     why: "The sheet closes on success and the new label only reaches the strip on the next poll, so at the moment of the tap there is nothing on screen that changed.",

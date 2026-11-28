@@ -4,6 +4,7 @@ import { Icon } from "@/components/icons/icon";
 import { cn } from "@/lib/utils";
 import { useTabLook, type TabLook } from "@/lib/tab-look";
 import { LabelledStrip, STRIP_TAP_TARGET } from "@/components/ui/labelled-strip";
+import { UnseenMark } from "@/components/ui/unseen-mark";
 import { StatusDot } from "@/components/status-badge";
 import { PaneActionsSheet } from "@/components/pane-actions-sheet";
 import { useLongPress } from "@/hooks/use-long-press";
@@ -11,7 +12,7 @@ import { CrossfadeText } from "@/components/ui/crossfade-text";
 import { paneRowKey } from "@/lib/hosts";
 import { paneName } from "@/lib/pane-name";
 import { paneOrdinals } from "@/lib/pane-ordinal";
-import { shownStatus } from "@/lib/triage";
+import { isUnseen, shownStatus } from "@/lib/triage";
 import type { AgentView } from "@/lib/types";
 import type { Scope } from "@/lib/scope";
 import { t } from "@/lib/i18n";
@@ -34,6 +35,8 @@ interface PaneStripProps {
   onRenamed?: () => void;
   /** Navigate/refresh after a close (Home if it's the open pane). Enables long-press with onRenamed. */
   onClosed?: (paneId: string) => void;
+  /** Revalidate after marking a sibling pane seen or unseen (withheld on the active pill). */
+  onSeenChange?: (paneId: string, seen: boolean) => void;
   /** Every pane of the herd, for the sheet's Pin to top row (lib/pins.ts reads it on a pin). */
   herd?: readonly AgentView[];
 }
@@ -74,6 +77,7 @@ export function PaneStrip({
   savedCopy,
   onRenamed,
   onClosed,
+  onSeenChange,
   herd,
 }: PaneStripProps) {
   useLocale();
@@ -167,6 +171,7 @@ export function PaneStrip({
           savedCopy={savedCopy}
           onRenamed={onRenamed}
           onClosed={onClosed}
+          onSeenChange={sheetPane?.paneId === currentPaneId ? undefined : onSeenChange}
           herd={herd}
         />
       )}
@@ -265,6 +270,8 @@ function PanePill({
     >
       {isShell ? (
         <Icon name="shell-pane" className="size-3.5 shrink-0" />
+      ) : isUnseen(pane) ? (
+        <UnseenMark on className="size-2.5" />
       ) : (
         <StatusDot status={shownStatus(pane)} live className="size-2.5" />
       )}

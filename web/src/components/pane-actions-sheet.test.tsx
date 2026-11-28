@@ -743,3 +743,137 @@ describe("PaneActionsSheet — report a problem (ADR 0123)", () => {
     expect(screen.queryByRole("button", { name: "Report a problem" })).toBeNull();
   });
 });
+
+describe("PaneActionsSheet — manual mark seen / unseen", () => {
+  it("marks a settled seen pane unseen at the end of the write rows, uses decorative UnseenMark, closes the sheet, stamps topology, and calls onSeenChange", async () => {
+    const user = userEvent.setup();
+    const onSeenChange = vi.fn();
+    const status = renderHook(() => useStatus());
+    const bodies: unknown[] = [];
+    server.use(
+      http.post(/\/api\/pane\/[^/]+\/seen$/, async ({ request }) => {
+        bodies.push(await request.json());
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+
+    const seenPane: AgentView = { ...agent, status: "idle", lastActiveAt: 100, lastSeenAt: 200 };
+    const props = renderSheet({ pane: seenPane, onSeenChange });
+    expect(screen.queryByRole("button", { name: "Mark as seen" })).toBeNull();
+
+    const closeBtn = screen.getByRole("button", { name: "Close pane" });
+    const markBtn = screen.getByRole("button", { name: "Mark as unseen" });
+    expect(closeBtn.compareDocumentPosition(markBtn) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(markBtn.querySelector("svg[role='img']")).toBeNull();
+    expect(markBtn.querySelector("span[aria-hidden='true'] svg")).not.toBeNull();
+
+    await user.click(markBtn);
+    await waitFor(() => expect(onSeenChange).toHaveBeenCalledOnce());
+    expect(bodies).toEqual([{ seen: false }]);
+    expect(props.onClose).toHaveBeenCalledOnce();
+    expect(topologyBursting()).toBe(true);
+    expect(status.result.current).toMatchObject({ text: "Marked as unseen", tone: "success" });
+  });
+
+  it("marks an unseen pane seen using the done icon and notifies onSeenChange", async () => {
+    const user = userEvent.setup();
+    const onSeenChange = vi.fn();
+    const status = renderHook(() => useStatus());
+    const bodies: unknown[] = [];
+    server.use(
+      http.post(/\/api\/pane\/[^/]+\/seen$/, async ({ request }) => {
+        bodies.push(await request.json());
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+
+    const unseenPane: AgentView = { ...agent, status: "done", lastActiveAt: 500, lastSeenAt: 100 };
+    renderSheet({ pane: unseenPane, onSeenChange });
+    expect(screen.queryByRole("button", { name: "Mark as unseen" })).toBeNull();
+
+    const markBtn = screen.getByRole("button", { name: "Mark as seen" });
+    expect(markBtn.querySelector("svg.lucide-check")).not.toBeNull();
+    await user.click(markBtn);
+    await waitFor(() => expect(onSeenChange).toHaveBeenCalledOnce());
+    expect(bodies).toEqual([{ seen: true }]);
+    expect(status.result.current).toMatchObject({ text: "Marked as seen", tone: "success" });
+  });
+
+  it("reports direction-specific failure toasts when the endpoint refuses without a detail message", async () => {
+    const user = userEvent.setup();
+    const status = renderHook(() => useStatus());
+    server.use(http.post(/\/api\/pane\/[^/]+\/seen$/, () => HttpResponse.json({ ok: false })));
+
+    const { rerender } = render(
+      <PaneActionsSheet {...renderProps({ pane: { ...agent, status: "idle", lastActiveAt: 100, lastSeenAt: 200 }, onSeenChange: vi.fn() })} />,
+    );
+    await user.click(screen.getByRole("button", { name: "Mark as unseen" }));
+    await waitFor(() => expect(status.result.current).toMatchObject({ text: "Couldn't mark as unseen", tone: "error" }));
+
+    rerender(
+      <PaneActionsSheet {...renderProps({ pane: { ...agent, status: "done", lastActiveAt: 200, lastSeenAt: 100 }, onSeenChange: vi.fn() })} />,
+    );
+    await user.click(screen.getByRole("button", { name: "Mark as seen" }));
+    await waitFor(() => expect(status.result.current).toMatchObject({ text: "Couldn't mark as seen", tone: "error" }));
+
+    server.use(
+      http.post(/\/api\/pane\/[^/]+\/seen$/, () => new HttpResponse("pane is not settled", { status: 409 })),
+    );
+    const onSeenChange = vi.fn();
+    rerender(
+      <PaneActionsSheet
+        {...renderProps({
+          pane: { ...agent, status: "done", lastActiveAt: 200, lastSeenAt: 100 },
+          onSeenChange,
+        })}
+      />,
+    );
+    resetPollIntent();
+    await user.click(screen.getByRole("button", { name: "Mark as seen" }));
+    await waitFor(() => expect(status.result.current).toMatchObject({ text: "pane is not settled", tone: "error" }));
+    expect(topologyBursting()).toBe(true);
+    expect(onSeenChange).toHaveBeenCalledOnce();
+  });
+
+  it("hides the stale seen action when the refreshed pane is no longer settled after a 409", async () => {
+    const user = userEvent.setup();
+    server.use(http.post(/\/api\/pane\/[^/]+\/seen$/, () => new HttpResponse("pane is not settled", { status: 409 })));
+
+    const pane: AgentView = { ...agent, status: "done", lastActiveAt: 200, lastSeenAt: 100 };
+    const onSeenChange = vi.fn();
+    const props = renderProps({ pane, onSeenChange, herd: [pane] });
+    const { rerender } = render(<PaneActionsSheet {...props} />);
+    await user.click(screen.getByRole("button", { name: "Mark as seen" }));
+    await waitFor(() => expect(onSeenChange).toHaveBeenCalledOnce());
+
+    rerender(<PaneActionsSheet {...props} herd={[{ ...pane, status: "working" }]} />);
+    expect(screen.queryByRole("button", { name: "Mark as seen" })).not.toBeInTheDocument();
+    expect(props.onClose).not.toHaveBeenCalled();
+  });
+
+  it("hides the row when onSeenChange is omitted, lastActiveAt is absent/0, or on shells, tricks, working/blocked, conversations, read-only, and saved copies", () => {
+    const settledSeen: AgentView = { ...agent, status: "idle", lastActiveAt: 100, lastSeenAt: 200 };
+    const { unmount: unmountNoCb } = render(<PaneActionsSheet {...renderProps({ pane: settledSeen })} />);
+    expect(screen.queryByRole("button", { name: /Mark as (un)?seen/ })).toBeNull();
+    unmountNoCb();
+
+    for (const candidate of [
+      { ...settledSeen, lastActiveAt: undefined },
+      { ...settledSeen, lastActiveAt: 0 },
+      { ...settledSeen, kind: "shell" as const, agent: "shell", status: "unknown" as const },
+      { ...settledSeen, kind: "trick" as const, agent: "trick", status: "idle" as const },
+      { ...settledSeen, status: "working" as const },
+      { ...settledSeen, status: "blocked" as const },
+    ]) {
+      const { unmount } = render(<PaneActionsSheet {...renderProps({ pane: candidate, onSeenChange: vi.fn() })} />);
+      expect(screen.queryByRole("button", { name: /Mark as (un)?seen/ })).toBeNull();
+      unmount();
+    }
+
+    for (const flags of [{ conversation: true }, { readOnly: true }, { savedCopy: true }]) {
+      const { unmount } = render(<PaneActionsSheet {...renderProps({ pane: settledSeen, onSeenChange: vi.fn(), ...flags })} />);
+      expect(screen.queryByRole("button", { name: /Mark as (un)?seen/ })).toBeNull();
+      unmount();
+    }
+  });
+});

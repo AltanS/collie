@@ -397,3 +397,36 @@ describe("PaneStrip under the folder look", () => {
     }
   });
 });
+
+describe("PaneStrip — unseen mark and list-only seen toggle", () => {
+  it("renders UnseenMark on an unseen pill and offers Mark as seen/unseen only on sibling pills, never on the active pill", async () => {
+    const user = userEvent.setup();
+    const onSeenChange = vi.fn();
+    render(
+      <PaneStrip
+        panes={[
+          pane("w1:p1", "claude", "agent", { status: "idle", lastActiveAt: 100, lastSeenAt: 200 }),
+          pane("w1:p2", "codex", "agent", { status: "done", lastActiveAt: 500, lastSeenAt: 100 }),
+        ]}
+        currentPaneId="w1:p1"
+        onSelect={vi.fn()}
+        onRenamed={vi.fn()}
+        onClosed={vi.fn()}
+        onSeenChange={onSeenChange}
+      />,
+    );
+
+    const sibling = screen.getByRole("button", { name: /codex/ });
+    expect(sibling.querySelector("svg[aria-label='unseen']")).not.toBeNull();
+
+    // Tapping the active pill opens its sheet WITHOUT Mark as unseen / Mark as seen.
+    await user.click(screen.getByRole("button", { name: "claude" }));
+    expect(screen.getByRole("button", { name: "Rename" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Mark as (un)?seen/ })).toBeNull();
+    await user.keyboard("{Escape}");
+
+    // Long-pressing a sibling unseen pill opens its sheet WITH Mark as seen.
+    fireEvent.contextMenu(sibling);
+    expect(screen.getByRole("button", { name: "Mark as seen" })).toBeInTheDocument();
+  });
+});

@@ -1,7 +1,7 @@
 // Thin REST client for the bridge. Everything is same-origin, so credentials/headers are
 // minimal. Each call throws on a non-2xx so callers (route loaders / action handlers) surface errors.
 
-import { apiErrorFieldsOf, parseApiErrorFields, type ApiErrorCode, type ApiErrorDetail, type ApiErrorFields } from "./api-error-codes";
+import { apiErrorFieldsOf, isApiErrorCode, parseApiErrorFields, type ApiErrorCode, type ApiErrorDetail, type ApiErrorFields } from "./api-error-codes";
 import { trackBusy } from "./busy";
 import { isReadableWords } from "./readable-words";
 import {
@@ -2177,6 +2177,30 @@ export function focusPane(paneId: string, scope?: Scope): Promise<ActionResponse
   return req<ActionResponse>(withScope(`/api/pane/${encodeURIComponent(paneId)}/focus`, scope), {
     method: "POST",
   });
+}
+
+const recoverSeenConflict: Recover<ActionResponse> = (status, detail) => {
+  if (status !== 409) return null;
+  const fields = parseApiErrorFields(detail);
+  if (fields === undefined) return { ok: false, error: detail.trim() };
+  const response: ActionResponse = { ok: false, error: fields.error ?? "" };
+  if (isApiErrorCode(fields.code)) response.code = fields.code;
+  if (fields.detail !== undefined) response.detail = fields.detail;
+  return response;
+};
+
+/** Set or clear a pane's shared seen mark (`true` = seen, `false` = unseen). */
+export async function setPaneSeen(paneId: string, seen: boolean, scope?: Scope): Promise<ActionResponse> {
+  const res = await req<ActionResponse>(
+    withScope(`/api/pane/${encodeURIComponent(paneId)}/seen`, scope),
+    {
+      method: "POST",
+      body: JSON.stringify({ seen }),
+    },
+    recoverSeenConflict,
+  );
+  if (seen && res.ok) void closePaneNotifications(paneId, scope);
+  return res;
 }
 
 /** Set (or clear) a pane's label. An empty/blank `label` clears it (the bridge sends `null` on). */
