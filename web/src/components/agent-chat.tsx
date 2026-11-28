@@ -3955,6 +3955,7 @@ export function AgentChat({
                   returnedDraft={chatFeed.window.queuedSends.some((row) => row.state === "returned")}
                   isShell={isShell}
                   cwd={agent?.cwd || undefined}
+                  filesDir={filesDir}
                   held={agent?.held}
                   // The screen a held row that waited two minutes shows under its label (M102 spec 12).
                   heldScreen={{ lines: screenLines, wrap: prefs.wrap }}

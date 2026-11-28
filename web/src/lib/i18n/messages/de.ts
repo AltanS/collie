@@ -3139,6 +3139,7 @@ export const de: Dictionary = {
   "sent.clear.confirm": "Zum Leeren erneut tippen",
   "sent.clear.error": "Sent konnte nicht geleert werden.",
   "sent.suggest.aria": "Vorschläge von Sent",
+  "files.suggest.aria": "Dateivorschläge",
   "sent.suggest.all": "Alle",
   "sent.suggest.all.aria": "Alle gesendeten Zeilen",
   "settings.sentSuggestions.title": "Vorschläge von Sent",
