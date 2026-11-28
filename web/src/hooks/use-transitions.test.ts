@@ -53,4 +53,34 @@ describe("useAgentTransitions", () => {
     expect(setStatus).toHaveBeenCalledTimes(1);
     expect(setStatus).toHaveBeenCalledWith("claude is done · build", "success");
   });
+
+  it("suppresses foreground done notice for a child pane with a live parent while keeping blocked alerts", () => {
+    const poll = render([
+      pane({ paneId: "w1:p1", status: "working", workspaceLabel: "alpha" }),
+      pane({ paneId: "w1:p2", status: "working", workspaceLabel: "alpha", parentPaneId: "w1:p1" }),
+    ]);
+
+    // Child finishes: no foreground done status.
+    poll([
+      pane({ paneId: "w1:p1", status: "working", workspaceLabel: "alpha" }),
+      pane({ paneId: "w1:p2", status: "done", workspaceLabel: "alpha", parentPaneId: "w1:p1" }),
+    ]);
+    expect(setStatus).not.toHaveBeenCalled();
+
+    // Child blocks: warn status still fires.
+    poll([
+      pane({ paneId: "w1:p1", status: "working", workspaceLabel: "alpha" }),
+      pane({ paneId: "w1:p2", status: "blocked", workspaceLabel: "alpha", parentPaneId: "w1:p1" }),
+    ]);
+    expect(setStatus).toHaveBeenCalledTimes(1);
+    expect(setStatus).toHaveBeenCalledWith("claude needs you · alpha", "warn");
+
+    // Normal parent without parentPaneId still announces done.
+    poll([
+      pane({ paneId: "w1:p1", status: "done", workspaceLabel: "alpha" }),
+      pane({ paneId: "w1:p2", status: "blocked", workspaceLabel: "alpha", parentPaneId: "w1:p1" }),
+    ]);
+    expect(setStatus).toHaveBeenCalledTimes(2);
+    expect(setStatus).toHaveBeenLastCalledWith("claude is done · alpha", "success");
+  });
 });

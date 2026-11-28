@@ -5,6 +5,7 @@ import { ThreadSidebar } from "./agent-sidebar";
 import { CrewProvider } from "./crew-provider";
 import { BottomSheet } from "./ui/sheet";
 import { paneRowKey } from "@/lib/hosts";
+import { __resetFoldedParents } from "@/lib/pane-tree";
 import { currentPins, setPinned } from "@/lib/pins";
 import { fixtureAgents, fixtureCrewAgents, fixtureServers, fixtureShellPanes } from "@/test/handlers";
 import type { AgentView, Launcher, WorkspaceView } from "@/lib/types";
@@ -800,6 +801,71 @@ describe("ThreadSidebar: the order toggle", () => {
     // The oldest pane of the three, first on the sheet, because it is pinned.
     expect(names()[0]).toContain("webapp");
   });
+
+  it("keeps activity order as a frozen flat list: a child arriving after freeze stays at the end after Q", () => {
+    __resetFoldedParents();
+    const p = { ...herd[1]!, paneId: "w2:p1", paneLabel: "parent-P", lastActiveAt: 900 };
+    const q = { ...herd[0]!, paneId: "w1:p1", paneLabel: "sibling-Q", lastActiveAt: 500 };
+    const { rerender } = render(
+      <ThreadSidebar agents={[p, q]} currentPaneKey="" onSelect={vi.fn()} order="activity" onOrderChange={vi.fn()} />,
+    );
+    expect(names()).toEqual([expect.stringContaining("parent-P"), expect.stringContaining("sibling-Q")]);
+
+    const c: AgentView = {
+      ...p,
+      paneId: "w2:p2",
+      paneLabel: "child-C",
+      parentPaneId: "w2:p1",
+      unpaned: true,
+      lastActiveAt: 9_999,
+    };
+    rerender(
+      <ThreadSidebar agents={[p, q, c]} currentPaneKey="" onSelect={vi.fn()} order="activity" onOrderChange={vi.fn()} />,
+    );
+    expect(names()).toEqual([
+      expect.stringContaining("parent-P"),
+      expect.stringContaining("sibling-Q"),
+      expect.stringContaining("child-C"),
+    ]);
+    expect(screen.queryByRole("button", { name: /sub-agents/i })).toBeNull();
+
+    rerender(
+      <ThreadSidebar agents={[p, q, c]} currentPaneKey="" onSelect={vi.fn()} order="place" onOrderChange={vi.fn()} />,
+    );
+    expect(screen.getByRole("button", { name: /sub-agents/i })).toBeInTheDocument();
+  });
+
+  it("keeps a blocked child under a folded idle parent urgent and jumps to the visible parent row", async () => {
+    __resetFoldedParents();
+    const user = userEvent.setup();
+    const p: AgentView = {
+      ...idleAgent,
+      paneId: "w1:p1",
+      paneLabel: "parent-P",
+      workspaceId: "w1",
+      workspaceLabel: "alpha",
+      tabId: "w1:t1",
+      status: "idle",
+    };
+    const c: AgentView = {
+      ...p,
+      paneId: "w1:p2",
+      paneLabel: "child-C",
+      parentPaneId: "w1:p1",
+      unpaned: true,
+      status: "blocked",
+    };
+    render(<ThreadSidebar agents={[p, c]} currentPaneKey="" onSelect={vi.fn()} />);
+    await user.click(screen.getByRole("button", { name: /sub-agents/i }));
+    expect(screen.queryByText("child-C")).toBeNull();
+    expect(screen.queryByText(/Nothing needs you/i)).toBeNull();
+    const summaryBtn = screen.getByRole("button", { name: /1 needs you/i });
+    const parentRow = screen.getByRole("button", { name: /parent-P/i });
+    parentRow.scrollIntoView = vi.fn();
+    await user.click(summaryBtn);
+    expect(parentRow).toHaveFocus();
+    __resetFoldedParents();
+  });
 });
 
 describe("ThreadSidebar: subtitle and badge of a durable pane", () => {
@@ -903,6 +969,39 @@ describe("ThreadSidebar: each row says its own status (#695)", () => {
     expect(order()).toEqual(before);
     expect(within(row("reader")).getByRole("img", { name: "working" })).toBeInTheDocument();
   });
+
+  it("nests child panes under their parent in place order, expanded by default, with fold toggle", async () => {
+    __resetFoldedParents();
+    const user = userEvent.setup();
+    const onSelect = vi.fn();
+    const parent = inSpace("t1", "main-session", { status: "idle" });
+    const worker = inSpace("t2", "audit-auth", { parentPaneId: "t1", status: "working" });
+
+    render(<ThreadSidebar agents={[parent, worker]} currentPaneKey="" onSelect={onSelect} order="place" />);
+    expect(screen.getByText("audit-auth")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Collapse sub-agents (1)" }));
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(screen.queryByText("audit-auth")).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Expand sub-agents (1)" }));
+    expect(screen.getByText("audit-auth")).toBeInTheDocument();
+    __resetFoldedParents();
+  });
+
+  it("jumps from the summary line to an urgent child nested under P before a later sibling X in Place order", async () => {
+    __resetFoldedParents();
+    const user = userEvent.setup();
+    Element.prototype.scrollIntoView = vi.fn();
+    const p = inSpace("w3:p1", "parent-P", { status: "idle", tabPosition: 0 });
+    const x = inSpace("w3:p2", "sibling-X", { status: "blocked", tabPosition: 1 });
+    const c = inSpace("w3:p3", "child-C", { status: "blocked", parentPaneId: "w3:p1", tabPosition: 2 });
+
+    render(<ThreadSidebar agents={[p, x, c]} currentPaneKey="" onSelect={vi.fn()} order="place" />);
+    await user.click(screen.getByRole("button", { name: /2 needs you/i }));
+    expect(row("child-C")).toHaveFocus();
+    expect(row("sibling-X")).not.toHaveFocus();
+  });
 });
 
 // THE FILTER (M97 spec 03): a field over a long list, a loose match, the matched letters marked.
@@ -938,6 +1037,7 @@ describe("ThreadSidebar: the filter", () => {
 
   afterEach(() => {
     filterSwitch.off = false;
+    __resetFoldedParents();
   });
 
   it("renders exactly what it rendered before below the block while the field is empty", () => {
@@ -1170,5 +1270,44 @@ describe("ThreadSidebar: the filter", () => {
     expect(field()).toHaveValue("");
     const landing = [...container.querySelectorAll<HTMLElement>("button[data-pane-key]")].find((b) => b.dataset.paneKey === paneRowKey(LANDING));
     expect(landing).toHaveFocus();
+  });
+
+  it("opens a folded parent while a query runs so a matched child is shown, and restores the fold when cleared", async () => {
+    const user = userEvent.setup();
+    const child = at("w2:p10", "w2", "moonward", 2, {
+      paneLabel: "api worker",
+      sessionName: "api worker",
+      parentPaneId: API.paneId,
+      unpaned: true,
+    });
+    const { container } = render(list({ agents: [...AGENTS, child] }));
+    await user.click(screen.getByRole("button", { name: "Collapse sub-agents (1)" }));
+    expect(rows(container)).not.toContain(paneRowKey(child));
+
+    await user.type(field(), "api");
+    expect(rows(container)).toEqual([paneRowKey(API), paneRowKey(child)]);
+    expect(screen.queryByRole("button", { name: /sub-agents/i })).toBeNull();
+
+    await user.clear(field());
+    expect(rows(container)).not.toContain(paneRowKey(child));
+    expect(screen.getByRole("button", { name: "Expand sub-agents (1)" })).toBeInTheDocument();
+  });
+
+  it("keeps activity order flat on Enter even when a child is newer than its parent", async () => {
+    const user = userEvent.setup();
+    const onSelect = vi.fn();
+    const parent = { ...API, lastActiveAt: 100 };
+    const child = at("w2:p10", "w2", "moonward", 2, {
+      paneLabel: "api worker",
+      sessionName: "api worker",
+      parentPaneId: API.paneId,
+      unpaned: true,
+      lastActiveAt: 999,
+    });
+    const ranked = [RELEASE, TRIAGE, parent, child, MIGRATE, LANDING];
+    const { container } = render(list({ agents: ranked, order: "activity", onOrderChange: vi.fn(), onSelect }));
+    await user.type(field(), "api{Enter}");
+    expect(rows(container)).toEqual([paneRowKey(child), paneRowKey(parent)]);
+    expect(onSelect).toHaveBeenCalledExactlyOnceWith(child);
   });
 });

@@ -767,6 +767,11 @@ lint guard, the crew-wire guard or the `flake.lock` guard.
   person saw. The ground truth is
   [`ASK_FIELD_NOTES.md`](./web/src/lib/grammar/ASK_FIELD_NOTES.md); re-walk it before touching the
   recipe. Other harnesses' free-text rows (Grok, pi, opencode) stay `free-text` and untyped.
+- **A `herdr-core` child terminal nests under its live parent and reports completion through it** —
+  an unlabelled `hc run --parent` terminal borrows its ancestor's space and tab (`unpaned: true`),
+  stays out of `PaneStrip` unless open itself or a live ancestor of the open child, and suppresses
+  its own unread square, foreground `done` status and `done` push while keeping `blocked` alerts
+  ([ADR 0180](./.adr/0180-a-child-terminal-reports-completion-to-its-parent.md)).
 - **The phone parses what the phone draws; the bridge parses only what it must act on alone.** Every
   pane grammar is client-side, under `web/src/lib/harness/`. The bridge holds one,
   `extractClaudeSessionName`, and only because the bridge itself consumes it, for a label that must

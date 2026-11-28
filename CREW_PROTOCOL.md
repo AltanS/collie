@@ -1616,6 +1616,13 @@ prevents (`web/src/lib/api.ts:201-203`).
   an answer: no ask is open, Load older reads, and its push goes once the pane is seen. The lead keeps
   it only as `"error"` and only on a `blocked` pane, and drops anything else; a pane without it is a
   plain `blocked`, which is what every older member sends. `CREW_PROTOCOL_VERSION` stays `2`.
+- **A pane may carry `parentPaneId?: string` and `unpaned?: true`** (additive-optional, §7.1, added
+  2026-11-15, [ADR 0180](./.adr/0180-a-child-terminal-reports-completion-to-its-parent.md)): present
+  on a `herdr-core` child terminal whose parent is live on the same machine and session in the same
+  snapshot, and omitted otherwise (`unpaned: true` is set only when the child is unlabelled and
+  inherits its ancestor's space and tab without a split pane of its own). Absent means a top-level
+  pane, which is what every older member and every other multiplexer sends. The merge passes both
+  through like `asks` and `turnId`, and a lead that predates them does the same.
 - **A session may carry `label`** (additive-optional, §7.1, added 2026-10-19): the display label
   the member's own operator wrote in its `spaces.toml`. It is display-only: `name` stays the
   session's identity on the link and in every address. The lead keeps it only as a string and runs

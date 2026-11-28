@@ -73,13 +73,14 @@ const B1 = pane("w2:p1", "w2", "beta");
 
 // A test that needs a space with tabs sets these; afterEach clears them.
 let extraAgents: AgentView[] = [];
+let extraShells: AgentView[] = [];
 let tabs: TabView[] = [];
 let device: DeviceAuth | undefined;
 
 const home = (): HomeData => ({
   bridge: "connected",
   agents: [A1, A2, A3, B1, ...extraAgents],
-  shellPanes: [SH],
+  shellPanes: [SH, ...extraShells],
   workspaces: [],
   tabs,
   device,
@@ -169,6 +170,7 @@ afterEach(() => {
   posture = "flat";
   windowHeight = 900;
   extraAgents = [];
+  extraShells = [];
   tabs = [];
   device = undefined;
   vi.unstubAllGlobals();
@@ -791,6 +793,21 @@ describe("the space's tab actions", () => {
     await closeTabOf(container, /w1:p4/);
     await waitFor(() => expect(closed).toBe(true));
     expect(router.state.location.pathname).toBe(panePath("w1:p1"));
+  });
+
+  it("closing the focused tab prefers a visible shell parent over an unpaned child on the neighbour tab", async () => {
+    const T3: TabView = { tabId: "w1:t3", workspaceId: "w1", number: 3, label: "workers", focused: false, paneCount: 1 };
+    const shellParent: AgentView = { ...pane("w1:p10", "w1", "alpha", "shell"), tabId: "w1:t3" };
+    const unpanedChild: AgentView = { ...pane("w1:p11", "w1", "alpha"), tabId: "w1:t3", parentPaneId: "w1:p10", unpaned: true };
+    extraAgents = [A4, unpanedChild];
+    extraShells = [shellParent];
+    tabs = [T1, T2, T3];
+    server.use(
+      http.post(/\/api\/tab\/[^/]+\/close$/, () => HttpResponse.json({ ok: true })),
+    );
+    const { container, router } = await mount("w1:p4", 1200);
+    await closeTabOf(container, /w1:p4/);
+    await waitFor(() => expect(router.state.location.pathname).toBe(panePath("w1:p10")));
   });
 });
 

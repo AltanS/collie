@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
 
 import { shownStatus } from "@/lib/triage";
+import type { PaneTreeRow } from "@/lib/pane-tree";
 import { cn } from "@/lib/utils";
-import { LIST_ROW_CORNERS } from "@/components/ui/list-group";
+import { LIST_ROW_CORNERS, LIST_ROW_CORNERS_END, LIST_ROW_CORNERS_START } from "@/components/ui/list-group";
 import { DraftMark } from "@/components/ui/draft-mark";
+import { PaneTreeFoldButton, PaneTreeGuides } from "@/components/ui/pane-tree-chrome";
 import type { Scope } from "@/lib/scope";
 import { UnseenMark } from "@/components/ui/unseen-mark";
 import { Card } from "@/components/ui/card";
@@ -108,6 +110,10 @@ interface AgentCardProps {
    * primary session, which is every pane of a solo install.
    */
   draftScope?: Scope | undefined;
+  /** Parent-child tree guides and child summary when rendered inside a nested pane list. */
+  tree?: Pick<PaneTreeRow, "guides" | "childCount" | "childStatus" | "folded">;
+  /** Fold or unfold this parent's sub-agents. Rendered as a sibling button when `tree.childCount > 0`. */
+  onToggleFold?: () => void;
 }
 
 /** The row's text: line 1's name, and line 2's two runs. */
@@ -160,6 +166,8 @@ export function AgentCard({
   stale = false,
   match,
   draftScope,
+  tree,
+  onToggleFold,
 }: AgentCardProps) {
   useLocale();
   // The read for this row's pane is out and has taken longer than the glide waits (lib/pane-opening.ts).
@@ -278,8 +286,10 @@ export function AgentCard({
   const cornerDot = statusStyle === "dot" && !isShell;
 
   const Shell = flat ? "div" : Card;
+  const hasFold = (tree?.childCount ?? 0) > 0 && onToggleFold !== undefined;
+  const rowCorners = hasFold ? LIST_ROW_CORNERS_START : LIST_ROW_CORNERS;
 
-  return (
+  const mainButton = (
     <button
       id={id}
       type="button"
@@ -316,7 +326,7 @@ export function AgentCard({
       data-glide-origin={glideKey === undefined ? undefined : "pane"}
       data-glide-key={glideKey}
       className={cn(
-        "w-full text-left transition-transform active:scale-[0.99]",
+        hasFold ? "min-w-0 flex-1 text-left transition-transform active:scale-[0.99]" : "w-full text-left transition-transform active:scale-[0.99]",
         PRESS_REACH_ROW,
         // A held row must not start iOS's selection loupe or touch callout: both end in a
         // `pointercancel` that kills the hold timer (hooks/use-long-press.ts).
@@ -328,7 +338,7 @@ export function AgentCard({
         flat && "transition-colors hover:bg-muted/50",
         // ...except at the GROUP's corners under a soft or round theme: the first and last row's
         // fills follow the group's rounded corner there (LIST_ROW_CORNERS, 0 at Collie's 2px).
-        flat && LIST_ROW_CORNERS,
+        flat && rowCorners,
       )}
     >
       <Shell
@@ -339,7 +349,7 @@ export function AgentCard({
           // alignment against a group that had no border to supply the 1px.
           "relative",
           flat
-            ? cn("flex flex-row items-center gap-3 px-3.5 py-2.5", LIST_ROW_CORNERS)
+            ? cn("flex flex-row items-center gap-3 px-3.5 py-2.5", rowCorners)
             : "flex-row items-center gap-3 rounded-xl px-3.5 py-3 shadow-sm",
           // Every flat row states its own pitch — `py-0` because the height IS the statement, and
           // the flat row's own `py-2.5` around two lines would make it 56px and the number would
@@ -347,6 +357,7 @@ export function AgentCard({
           // row (`scope="herd"`, `density="row"`) gets the same 44px as a workspace-grouped one —
           // the two are meant to read as the SAME kind of row (agent-list.tsx's urgent section).
           flat && "h-11 py-0",
+          hasFold && flat && "pr-1.5",
           // The blocked TINT survives both treatments — it's the one cue that reads at a glance.
           // A card sits in a gap list and already carries a border in every state, so it only
           // recolours. A flat row sits in a divide-y list, where a four-sided edge would double the
@@ -361,6 +372,7 @@ export function AgentCard({
           stale && "opacity-50",
         )}
       >
+        {tree !== undefined && <PaneTreeGuides guides={tree.guides} className="-mr-1.5" />}
         <div className="min-w-0 flex-1">
           {/* LINE 1 IS THE NAME, AND THE ADDRESS ENDS IT. The dot and the tile stay centred on the
               row's own line box — neither has a baseline worth chasing — but the name and the
@@ -540,5 +552,25 @@ export function AgentCard({
         {opening && <span aria-hidden="true" className="row-opening pointer-events-none absolute inset-x-3.5 top-0" />}
       </Shell>
     </button>
+  );
+
+  if (!hasFold || tree === undefined) return mainButton;
+
+  return (
+    <div className={cn("flex items-stretch", !flat && "gap-1.5")}>
+      {mainButton}
+      <PaneTreeFoldButton
+        count={tree.childCount}
+        status={tree.childStatus}
+        folded={tree.folded}
+        onToggle={onToggleFold}
+        surface={flat ? "bg-background" : "bg-card"}
+        className={cn(
+          flat ? LIST_ROW_CORNERS_END : "rounded-xl border bg-card shadow-sm",
+          flat && blocked && (tint ? "bg-status-blocked/10" : "bg-status-blocked/5"),
+          stale && "opacity-50",
+        )}
+      />
+    </div>
   );
 }

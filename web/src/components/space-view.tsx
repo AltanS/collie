@@ -1,6 +1,7 @@
+import { nestPanes, toggleFoldedParent, useFoldedParents } from "@/lib/pane-tree";
 import { groupPanesByTab } from "@/lib/spaces";
 import { CrossfadeText } from "@/components/ui/crossfade-text";
-import { paneScope, spaceKey, tabKey } from "@/lib/hosts";
+import { paneRowKey, paneScope, spaceKey, tabKey } from "@/lib/hosts";
 import { tabTitle } from "@/lib/pane-name";
 import type { AgentView, ServerSummary, SessionSummary, TabView, WorkspaceView } from "@/lib/types";
 import type { Scope } from "@/lib/scope";
@@ -52,6 +53,7 @@ export function SpaceView({
   sessions,
 }: SpaceViewProps) {
   useLocale();
+  const folded = useFoldedParents();
   // Host-qualified: another machine's `w1` is not this space, however identically it is numbered.
   const allGroups = groupPanesByTab(workspace.workspaceId, tabs, agents, shellPanes, host);
   const groups = selectedTab ? allGroups.filter((g) => g.tabId === selectedTab) : allGroups;
@@ -68,55 +70,63 @@ export function SpaceView({
         </p>
       </div>
 
-      {groups.map((g) => (
-        <section key={g.tabId} className="flex flex-col gap-2">
-          {selectedTab === null && (
-            <h3 className="flex items-center text-xs font-semibold label-caps text-muted-foreground">
-              {/* A positional label is not a name (lib/pane-name.ts § tabTitle): a tab the
-                  multiplexer only numbered heads its group with `tab 2`, the same words and the
-                  same lighter ink every other surface gives it, instead of with the multiplexer's
-                  raw number. Only an empty label falls to the dot the tab strip gives it. The label
-                  stays the heading's spoken text either way. */}
-              {(() => {
-                const title = tabTitle(g.label);
-                if (title === null) {
-                  return (
-                    <>
-                      <span aria-hidden="true" className="size-1 rounded-full bg-current opacity-50" />
-                      <span className="sr-only">{g.label}</span>
-                    </>
+      {groups.map((g) => {
+        const treeRows = nestPanes(g.panes, folded);
+        return (
+          <section key={g.tabId} className="flex flex-col gap-2">
+            {selectedTab === null && (
+              <h3 className="flex items-center text-xs font-semibold label-caps text-muted-foreground">
+                {/* A positional label is not a name (lib/pane-name.ts § tabTitle): a tab the
+                    multiplexer only numbered heads its group with `tab 2`, the same words and the
+                    same lighter ink every other surface gives it, instead of with the multiplexer's
+                    raw number. Only an empty label falls to the dot the tab strip gives it. The label
+                    stays the heading's spoken text either way. */}
+                {(() => {
+                  const title = tabTitle(g.label);
+                  if (title === null) {
+                    return (
+                      <>
+                        <span aria-hidden="true" className="size-1 rounded-full bg-current opacity-50" />
+                        <span className="sr-only">{g.label}</span>
+                      </>
+                    );
+                  }
+                  const tabId = tabKey(host, g.tabId);
+                  return title.positional ? (
+                    <span className="text-muted-foreground/70">{title.text}</span>
+                  ) : (
+                    <CrossfadeText text={g.label} identity={tabId} />
                   );
-                }
-                const tabId = tabKey(host, g.tabId);
-                return title.positional ? (
-                  <span className="text-muted-foreground/70">{title.text}</span>
-                ) : (
-                  <CrossfadeText text={g.label} identity={tabId} />
-                );
-              })()}
-            </h3>
-          )}
-          {g.panes.length === 0 ? (
-            <p className="text-xs text-muted-foreground">{t("space.view.emptyTab")}</p>
-          ) : (
-            <div className="flex flex-col gap-2">
-              {/* scope="tab": this list already sits under its space heading and per-tab section,
-                  so the cards lead with each pane's own name rather than repeating both. */}
-              {g.panes.map((p) => (
-                <AgentCard
-                  key={p.paneId}
-                  agent={p}
-                  onClick={(el) => onOpen(p, el)}
-                  glideKey={glideKeyOf?.(p)}
-                  onPress={onPress && (() => onPress(p))}
-                  scope="tab"
-                  draftScope={paneScope(scope ?? {}, p, servers, sessions)}
-                />
-              ))}
-            </div>
-          )}
-        </section>
-      ))}
+                })()}
+              </h3>
+            )}
+            {treeRows.length === 0 ? (
+              <p className="text-xs text-muted-foreground">{t("space.view.emptyTab")}</p>
+            ) : (
+              <div className="flex flex-col gap-2">
+                {/* scope="tab": this list already sits under its space heading and per-tab section,
+                    so the cards lead with each pane's own name rather than repeating both. */}
+                {treeRows.map((entry) => {
+                  const key = paneRowKey(entry.pane);
+                  return (
+                    <AgentCard
+                      key={entry.pane.paneId}
+                      agent={entry.pane}
+                      onClick={(el) => onOpen(entry.pane, el)}
+                      glideKey={glideKeyOf?.(entry.pane)}
+                      onPress={onPress && (() => onPress(entry.pane))}
+                      scope="tab"
+                      draftScope={paneScope(scope ?? {}, entry.pane, servers, sessions)}
+                      tree={entry}
+                      onToggleFold={entry.childCount > 0 ? () => toggleFoldedParent(key) : undefined}
+                    />
+                  );
+                })}
+              </div>
+            )}
+          </section>
+        );
+      })}
 
       {groups.length === 0 && (
         <p className="py-8 text-center text-sm text-muted-foreground">

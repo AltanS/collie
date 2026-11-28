@@ -388,3 +388,4 @@ One live record for this topic is being written.
 | [0043](./0043-operator-bar-rows-replace-the-bar-not-the-palette.md) | Operator `bar = true` rows replace the bar, not the Agent palette. | Accepted |
 | [0074](./0074-a-push-title-is-a-code-the-phone-translates.md) | A push title is a code the phone translates. | Accepted |
 | [0162](./0162-an-adapter-that-reads-raw-vt-keeps-two-stateless-row-transforms.md) | An adapter that reads raw VT turns a cursor-forward into spaces and drops what is not SGR, row by row, and nothing more. | Proposed |
+| [0180](./0180-a-child-terminal-reports-completion-to-its-parent.md) | A child terminal reports completion to its parent: on `herdr-core`, a terminal with a live local parent nests in Place order, suppresses its own unread mark and `done` push, and keeps `blocked` alerts. | Proposed |

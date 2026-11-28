@@ -141,6 +141,7 @@ export type FakeInput = { readonly kind: "text"; readonly text: string } | { rea
 interface FakeTerminal {
   address: string;
   name: string;
+  parent: string;
   labels: Record<string, string>;
   state: "live" | "finished";
   cwd: string;
@@ -174,6 +175,7 @@ function record(terminal: FakeTerminal): WireTerminal {
   return {
     address: terminal.address,
     name: terminal.name,
+    parent: terminal.parent,
     labels: { ...terminal.labels },
     state: terminal.state,
     cwd: terminal.cwd,
@@ -259,6 +261,7 @@ export class FakeHcCore implements HcRpc {
     const terminal: FakeTerminal = {
       address,
       name: partial.name ?? "",
+      parent: partial.parent ?? "",
       labels: partial.labels ?? {},
       state: partial.state ?? "live",
       cwd: partial.cwd ?? "/home/dev",

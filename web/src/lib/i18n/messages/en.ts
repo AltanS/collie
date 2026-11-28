@@ -1468,6 +1468,8 @@ export const en = {
   "home.workspaceFilter.count.other": "{count} spaces",
   "home.sidebar.shells": "Shells",
   "home.pinned.title": "Pinned",
+  "home.subagents.collapse": "Collapse sub-agents ({count})",
+  "home.subagents.expand": "Expand sub-agents ({count})",
   "home.pinHint.hold": "Hold a pane to pin it here.",
   "home.pinHint.rightClick": "Right-click a pane to pin it here.",
   "home.pinHint.dismiss": "Dismiss hint",

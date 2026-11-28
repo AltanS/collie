@@ -34,7 +34,7 @@ export function useAgentTransitions(agents: AgentView[], openPaneKey: string | n
         if (key === openPaneKey) continue; // you're already looking at it
         if (a.status === "blocked") {
           setStatus(`${a.agent} needs you · ${a.workspaceLabel}`, "warn");
-        } else if (a.status === "done") {
+        } else if (a.status === "done" && a.parentPaneId === undefined) {
           setStatus(`${a.agent} is done · ${a.workspaceLabel}`, "success");
         }
       }

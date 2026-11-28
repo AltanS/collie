@@ -68,14 +68,24 @@ export function rememberTabPane(pane: { paneId: string; tabId: string; host?: st
 }
 
 /**
- * The pane to open for a tab: the remembered one when it is still among `panes` (the tab's panes, in
- * the order the caller would have taken the first of), else the first, which is the choice the strip
- * always made. `at` names the tab on the machine and session the strip belongs to.
+ * The default pane to land on among a tab's candidates: the first visible (non-unpaned) pane so a
+ * background `unpaned` child never steals focus from its shell/agent parent, falling back to the
+ * first candidate when every pane is unpaned.
  */
-export function pickTabPane<T extends { paneId: string; host?: string | undefined }>(panes: readonly T[], at: TabAddress): T | undefined {
+export function firstVisiblePane<T extends { unpaned?: true | undefined }>(panes: readonly T[]): T | undefined {
+  return panes.find((p) => !p.unpaned) ?? panes[0];
+}
+
+/**
+ * The pane to open for a tab: the remembered one when it is still among `panes` (the tab's panes, in
+ * the order the caller would have taken the first of), else the first visible (non-unpaned) one,
+ * falling back to `panes[0]` when every pane is unpaned. `at` names the tab on the machine and
+ * session the strip belongs to.
+ */
+export function pickTabPane<T extends { paneId: string; host?: string | undefined; unpaned?: true | undefined }>(panes: readonly T[], at: TabAddress): T | undefined {
   const remembered = rememberedPaneId(at);
   const kept = remembered === undefined ? undefined : panes.find((p) => p.paneId === remembered && hostKey(p) === hostKey(at));
-  return kept ?? panes[0];
+  return kept ?? firstVisiblePane(panes);
 }
 
 /** Drop every remembered pane, memory and storage (the wipe at the end of a pairing runs it). */
